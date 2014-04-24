@@ -31,11 +31,11 @@ func keyBackupPart(key []byte, index interface{}) []byte {
 	case int:
 		indexbyte = []byte(strconv.Itoa(k))
 	}
-	k := make([]byte, len(indexbyte) + len(key) + 5)
-	k[0] = BackupPart
-	binary.LittleEndian.PutUint32(k[1:5], uint32(len(key)))
-	cpos := 5 + len(key)
-	copy(k[5:cpos], key)
+	k := make([]byte, len(indexbyte) + len(set) + 5)
+	k[0] = Set
+	binary.LittleEndian.PutUint32(k[1:5], uint32(len(set)))
+	cpos := 5 + len(set)
+	copy(k[5:cpos], set)
 	if len(indexbyte) > 0 {
 		copy(k[cpos:], indexbyte)
 	}
@@ -66,31 +66,37 @@ func (db *DB) Bpcard(key string) int {
 }
 
 
-func (db *DB) Bpadd(key string, index int, hash string) int {
+func (db *DB) Sadd(key string, members ...string) int {
 	bkey := []byte(key)
 	db.mutex.Lock(bkey)
 	defer db.mutex.Unlock(bkey)
 	cnt := 0
-	kmember := keyBackupPart(bkey, index)
-	cval, _ := db.ldb.Get(db.ro, kmember)
-	if cval == nil {
-		db.ldb.Put(db.wo, kmember, []byte(hash))
-		cnt++
+	for _, member := range members {
+		kmember := keyBackupPart(bkey, member)
+		cval, _ := db.ldb.Get(db.ro, kmember)
+		if cval == nil {
+			db.ldb.Put(db.wo, kmember, []byte{})
+			cnt++
+		}
 	}
-	cardkey := backupPartCard(bkey)
+	cardkey := keySetCard(bkey)
 	db.incrUint32(KeyType(cardkey, Meta), cnt)
 	return cnt
 }
 
-func (db *DB) Bpget(key string, index int) []byte {
+func (db *DB) Sismember(key string, index int) int {
 	bkey := []byte(key)
 	db.mutex.Lock(bkey)
 	defer db.mutex.Unlock(bkey)
 	cval, _ := db.ldb.Get(db.ro, keyBackupPart(bkey, index))
-	return cval
+	cnt := 0
+	if cval != nil {
+		cnt++
+	}
+	return cnt
 }
 
-func (db *DB) Bparts(key string) [][]byte {
+func (db *DB) Smembers(key string) [][]byte {
 	bkey := []byte(key)
 	db.mutex.Lock(bkey)
 	snap := db.ldb.NewSnapshot()
@@ -104,8 +110,7 @@ func (db *DB) Bparts(key string) [][]byte {
 	kvs, _ := GetRange(db.ldb, ro, start, end, 0) 
 	res := [][]byte{}
 	for _, kv := range kvs {
-		res = append(res, []byte(kv.Value))
-		//res = append(res,  decodeBackupPartInt([]byte(kv.Key)))
+		res = append(res,  keyBackupPart([]byte(kv.Key)))
 	}
 	return res
 }
