@@ -165,6 +165,48 @@ func New() {
 		out.WriteOK()
 		return nil
 	})
+	srv.HandleFunc("hset", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 3)
+		if err != nil {
+			return err
+		}
+		txmode := CheckTxMode(req, "hset")
+		if txmode {
+			out.WriteInlineString("QUEUED")
+			return nil
+		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		cnt, err  := cdb.Hset(req.Args[0], req.Args[1], req.Args[2])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		out.WriteInt(cnt)
+		return nil
+	})
+	srv.HandleFunc("hget", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 2)
+		if err != nil {
+			return err
+		}
+		txmode := CheckTxMode(req, "hget")
+		if txmode {
+			out.WriteInlineString("QUEUED")
+			return nil
+		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		res, err := cdb.Hget(req.Args[0], req.Args[1])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		if res != nil {
+			out.WriteString(string(res))
+		} else {
+			out.WriteNil()
+		}
+		return nil
+	})
 	srv.HandleFunc("bsize", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 0)

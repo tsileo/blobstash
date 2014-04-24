@@ -32,6 +32,9 @@ const (
 	BackupPartCnt
 	BlobsCnt
 	BlobsSize
+	Hash
+	HashFieldsCnt
+	HashCnt
 )
 
 const SnapshotTTL = 30
