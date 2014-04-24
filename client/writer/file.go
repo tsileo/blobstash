@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"time"
 	"io"
+	"bufio"
 	"github.com/tsileo/silokv/rolling"
 	"github.com/garyburd/redigo/redis"
+	"log"
 )
 
 func GetDbPool() (pool *redis.Pool, err error) {
@@ -41,28 +43,45 @@ func SHA1(data []byte) string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
+func FullSHA1(path string) string {
+	f, _ := os.Open(path)
+	defer f.Close()
+	//reader := bufio.NewReader(f)
+	//log.Printf("%+v", reader)
+	h := sha1.New()
+	w, _ := io.Copy(h, f)
+	//log.Printf("%+v", reader)
+	log.Printf("w:%v", w)
+	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
 func FileWriter(key, path string) (*WriteResult, error) {
 	writeResult := &WriteResult{}
 	window := 64
 	rs := rolling.New(window)
+	log.Printf("H:%v", FullSHA1(path))
 	f, err := os.Open(path)
+	defer f.Close()
 	if err != nil {
 		return writeResult, err
 	}
+	freader := bufio.NewReader(f)
 	rpool, _ := GetDbPool()
 	con := rpool.Get()
 	defer con.Close()
 	var buf bytes.Buffer
+	buf.Reset()
 	fullHash := sha1.New()
 	eof := false
 	for {
 		b := make([]byte, 1)
-		_, err := f.Read(b)
+		_, err := freader.Read(b)
 		if err == io.EOF {
 			eof = true
+		} else {
+			rs.Write(b)
+			buf.Write(b)	
 		}
-		rs.Write(b)
-		buf.Write(b)
 		onSplit := rs.OnSplit()
 		if (onSplit && (buf.Len() > 64 << 10)) || buf.Len() >= 1 << 20 || eof {
 			nsha := SHA1(buf.Bytes())
