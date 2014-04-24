@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"github.com/jmhodges/levigo"
 	"strconv"
-	"log"
 )
 
 //

@@ -165,7 +165,44 @@ func New() {
 		out.WriteOK()
 		return nil
 	})
-
+	srv.HandleFunc("bsize", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 0)
+		if err != nil {
+			return err
+		}
+		txmode := CheckTxMode(req, "bsize")
+		if txmode {
+			out.WriteInlineString("QUEUED")
+			return nil
+		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		size := cdb.GetBlobsSize()
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		out.WriteInt(int(size))
+		return nil
+	})
+	srv.HandleFunc("bcnt", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 0)
+		if err != nil {
+			return err
+		}
+		txmode := CheckTxMode(req, "bcnt")
+		if txmode {
+			out.WriteInlineString("QUEUED")
+			return nil
+		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		cnt := cdb.GetBlobsCnt()
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		out.WriteInt(int(cnt))
+		return nil
+	})
 	srv.HandleFunc("bput", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 1)
@@ -184,6 +221,9 @@ func New() {
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		cdb.IncrBlobsCnt(1)
+		cdb.IncrBlobsSize(len(blob))
 		out.WriteString(sha)
 		return nil
 	})

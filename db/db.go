@@ -30,6 +30,8 @@ const (
 	BackupPart
 	BackupPartCardinality
 	BackupPartCnt
+	BlobsCnt
+	BlobsSize
 )
 
 const SnapshotTTL = 30
