@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"github.com/jmhodges/levigo"
 	"strconv"
+	"log"
 )
 
 //
@@ -29,16 +30,15 @@ func keyBackupPart(key []byte, index interface{}) []byte {
 	case byte:
 		indexbyte = []byte{k}
 	case int:
-		indexbyte = []byte(strconv.Itoa(k))
+		indexbyte = make([]byte, 4)
+		binary.BigEndian.PutUint32(indexbyte[:], uint32(k))
 	}
-	k := make([]byte, len(indexbyte) + len(key) + 5)
+	k := make([]byte, len(key) + 9)
 	k[0] = BackupPart
 	binary.LittleEndian.PutUint32(k[1:5], uint32(len(key)))
 	cpos := 5 + len(key)
 	copy(k[5:cpos], key)
-	if len(indexbyte) > 0 {
-		copy(k[cpos:], indexbyte)
-	}
+	copy(k[cpos:cpos+4], indexbyte)
 	return k
 }
 

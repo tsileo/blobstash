@@ -48,6 +48,7 @@ func (ctx *ServerCtx) GetDb() *db.DB {
 
 func SetUpCtx(req *redeo.Request) {
 	if req.Client().Ctx == nil {
+		log.Println("New con")
 		req.Client().Ctx = &ServerCtx{"default", dbmananger, []*redeo.Request{}, false}
 	}
 }
@@ -177,12 +178,31 @@ func New() {
 			return nil
 		}
 		blob := []byte(req.Args[0])
+		log.Printf("Blob len: %v", len(blob))
 		sha := SHA1(blob)
 		err  = localBackend.Put(sha, blob)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
 		out.WriteString(sha)
+		return nil
+	})
+	srv.HandleFunc("bget", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 1)
+		if err != nil {
+			return err
+		}
+		txmode := CheckTxMode(req, "bget")
+		if txmode {
+			out.WriteInlineString("QUEUED")
+			return nil
+		}
+		blob, err  := localBackend.Get(req.Args[0])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		out.WriteString(string(blob))
 		return nil
 	})
 
