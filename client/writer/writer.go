@@ -1,6 +1,7 @@
 package writer
 
 type WriteResult struct {
+	Filename string
 	Hash string
 	Size int
 	BlobsCnt int

@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"github.com/tsileo/silokv/rolling"
 	"github.com/garyburd/redigo/redis"
+	"path/filepath"
 )
 
 func GetDbPool() (pool *redis.Pool, err error) {
@@ -111,4 +112,15 @@ func FileWriter(key, path string) (*WriteResult, error) {
 	}
 	writeResult.Hash = fmt.Sprintf("%x", fullHash.Sum(nil))
 	return writeResult, nil
+}
+
+func PutFile(path string) (wr *WriteResult, err error) {
+	if _, err = os.Stat(path); os.IsNotExist(err) {
+		return
+	}
+	sha := FullSHA1(path)
+	wr, err = FileWriter(sha, path)
+	_, filename := filepath.Split(path)
+	wr.Filename = filename
+	return
 }
