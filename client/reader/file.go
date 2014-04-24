@@ -8,16 +8,6 @@ import (
 	"github.com/garyburd/redigo/redis"
 )
 
-type ReadResult struct {
-	Hash string
-	Size int
-	BlobsCnt int
-//	SkippedCnt int
-//	SkippedSize int
-	DownloadedCnt int
-	DownloadedSize int
-}
-
 func GetDbPool() (pool *redis.Pool, err error) {
 	pool = &redis.Pool{
 		MaxIdle:     50,
@@ -61,6 +51,11 @@ func FileReader(key, path string) (*ReadResult, error) {
 	fullHash := sha1.New()
 	start := ""
 	snapId, _ := redis.String(con.Do("SNAPSHOT"))
+	defer func(rpool *redis.Pool, snapId string) {
+		rcon := rpool.Get()
+		defer rcon.Close()
+		rcon.Do("SNAPRELEASE", snapId)
+	}(rpool, snapId)
 	for {
 		hs, _ := redis.Strings(con.Do("BPRANGE", snapId, key, start, "\xff", 50))
 		for _, hash := range hs {

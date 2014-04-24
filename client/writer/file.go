@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"time"
 	"io"
-	"log"
 	"github.com/tsileo/silokv/rolling"
 	"github.com/garyburd/redigo/redis"
 )
@@ -42,16 +41,6 @@ func SHA1(data []byte) string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
-type WriteResult struct {
-	Hash string
-	Size int
-	BlobsCnt int
-	SkippedCnt int
-	SkippedSize int
-	UploadedCnt int
-	UploadedSize int
-}
-
 func FileWriter(key, path string) (*WriteResult, error) {
 	writeResult := &WriteResult{}
 	window := 64
@@ -80,7 +69,6 @@ func FileWriter(key, path string) (*WriteResult, error) {
 			ndata := string(buf.Bytes())
 			fullHash.Write(buf.Bytes())
 			exists, err := redis.Bool(con.Do("BEXISTS", nsha))
-			log.Printf("exists:%v", exists)
 			if err != nil {
 				panic(fmt.Sprintf("DB error: %v", err))
 			}
