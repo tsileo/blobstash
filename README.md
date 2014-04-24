@@ -24,7 +24,7 @@ Metadata are stored in LevelDB and are exposed via a Redis protocol tcp server, 
 - Snapshot handling
 - String
 - Hashmap
-- Set
+- Set (lexicographical order)
 - Backup part (custom zset)
 
 A backup is a set with pointer to hashmap (either representing a directory or a file, and a directory is also a set of pointer).

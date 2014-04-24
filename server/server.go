@@ -3,9 +3,11 @@ package server
 import (
 	"github.com/bsm/redeo"
 	"github.com/tsileo/datadatabase/db"
+	"github.com/tsileo/datadatabase/backend"
 	"log"
 	"fmt"
 	"sync"
+	"crypto/sha1"
 	"errors"
 	"strconv"
 )
@@ -66,10 +68,17 @@ func CheckTxMode(req *redeo.Request, cmd string) bool {
 	return false
 }
 
+func SHA1(data []byte) string {
+	h := sha1.New()
+	h.Write(data)
+	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
 var dbmananger *DBsManager
 
 func New() {
 	dbmananger = &DBsManager{DBs: make(map[string]*db.DB), mutex:&sync.Mutex{}}
+	localBackend := backend.NewLocalBackend("./tmp_blobs")
 	srv := redeo.NewServer(nil)
 	srv.HandleFunc("ping", func(out *redeo.Responder, _ *redeo.Request) error {
 		out.WriteInlineString("PONG")
@@ -156,7 +165,47 @@ func New() {
 		return nil
 	})
 
+	srv.HandleFunc("bput", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 1)
+		if err != nil {
+			return err
+		}
+		txmode := CheckTxMode(req, "bput")
+		if txmode {
+			out.WriteInlineString("QUEUED")
+			return nil
+		}
+		blob := []byte(req.Args[0])
+		sha := SHA1(blob)
+		err  = localBackend.Put(sha, blob)
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		out.WriteString(sha)
+		return nil
+	})
 
+	srv.HandleFunc("bexists", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 1)
+		if err != nil {
+			return err
+		}
+		txmode := CheckTxMode(req, "bexists")
+		if txmode {
+			out.WriteInlineString("QUEUED")
+			return nil
+		}
+		exists := localBackend.Exists(req.Args[0])
+		res := 0
+		if exists {
+			res = 1
+		}
+		out.WriteInt(res)
+		return nil
+	})
+	
 	srv.HandleFunc("bpcard", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 1)
@@ -226,8 +275,6 @@ func New() {
 		}
 		return nil
 	})
-
-
 	srv.HandleFunc("bprange", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 5)

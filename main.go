@@ -13,41 +13,6 @@ import (
 	"github.com/tsileo/silokv/rolling"
 )
 
-type Backend interface {
-	Put(hash string, data []byte) (err error)
-	Exists(hash string) bool
-	Get(hash string) (data []byte, err error)
-}
-
-type LocalBackend struct {
-	Directory string
-}
-
-func (b *LocalBackend) Put(hash string, data []byte) (err error) {
-	err = ioutil.WriteFile(b.blobPath(hash), data, 0644)	
-	return
-}
-
-func (b *LocalBackend) blobPath(hash string) string {
-	return filepath.Join(b.Directory, hash)
-}
-
-func NewLocalBackend(dir string) *LocalBackend {
-	os.Mkdir(dir, 0744)
-	return &LocalBackend{dir}
-}
-
-func (b *LocalBackend) Exists(hash string) bool {
-	if _, err := os.Stat(b.blobPath(hash)); err == nil {
-		return true
-	}
-	return false
-}
-
-func (b *LocalBackend) Get(hash string) (data []byte, err error) {
-	data, err = ioutil.ReadFile(b.blobPath(hash))
-	return
-}
 
 type Blob struct {
 	buf *bytes.Buffer
