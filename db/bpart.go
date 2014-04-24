@@ -108,5 +108,21 @@ func (db *DB) Bparts(key string) [][]byte {
 	return res
 }
 
+
+// Return a lexicographical range from a snapshot
+func (db *DB) GetBpartRange(snapId, key, kStart string, kEnd string, limit int) (kvs []*KeyValue, err error) {
+	bkey := []byte(key)
+	snap, snapExists := db.GetSnapshot(snapId)
+	if snapExists {
+		ro := levigo.NewReadOptions()
+		ro.SetSnapshot(snap)
+		defer ro.Close()
+		kvs, _ = GetRange(db.ldb, ro, keyBackupPart(bkey, kStart), keyBackupPart(bkey, kEnd), limit)
+	}
+	db.UpdateSnapshotTTL(snapId, SnapshotTTL)
+	return
+}
+
+
 // func (db *DB) Srange(snapId, kStart string, kEnd string, limit int) [][]byte
 // func (db *DB) Srem(key string, member ...string) int

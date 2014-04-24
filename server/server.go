@@ -226,6 +226,38 @@ func New() {
 		}
 		return nil
 	})
+
+
+	srv.HandleFunc("bprange", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 5)
+		if err != nil {
+			return err
+		}
+		txmode := CheckTxMode(req, "bprange")
+		if txmode {
+			return ErrSomethingWentWrong
+		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		limit, err := strconv.Atoi(req.Args[4])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		kvs, err := cdb.GetBpartRange(req.Args[0], req.Args[1], req.Args[2], req.Args[3], limit)
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		if len(kvs) == 0 {
+			out.WriteNil()	
+		} else {
+			out.WriteBulkLen(len(kvs))
+			for _, kv := range kvs {
+				out.WriteString(kv.Value)
+			}
+		}
+		return nil
+	})
+
 	srv.HandleFunc("snapshot", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 0)
