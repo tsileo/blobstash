@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync"
 	"errors"
+	"strconv"
 )
 
 var (
@@ -32,6 +33,7 @@ func (dbm *DBsManager) GetDb(dbname string) *db.DB {
 	cdb, exists := dbm.DBs[dbname]
 	if !exists {
 		newdb := db.New(fmt.Sprintf("./ldb_%v", dbname))
+		go newdb.SnapshotHandler()
 		dbm.DBs[dbname] = newdb
 		return newdb
 	}
@@ -153,7 +155,110 @@ func New() {
 		out.WriteOK()
 		return nil
 	})
-	
+
+
+	srv.HandleFunc("bpcard", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 1)
+		if err != nil {
+			return err
+		}
+		txmode := CheckTxMode(req, "bpcard")
+		if txmode {
+			out.WriteInlineString("QUEUED")
+			return nil
+		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		card, err  := cdb.Bpcard(req.Args[0])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		out.WriteInt(card)
+		return nil
+	})
+	srv.HandleFunc("bpadd", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 3)
+		if err != nil {
+			return err
+		}
+		txmode := CheckTxMode(req, "bpadd")
+		if txmode {
+			out.WriteInlineString("QUEUED")
+			return nil
+		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		cindex, err := strconv.Atoi(req.Args[1])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		err  = cdb.Bpadd(req.Args[0], cindex, req.Args[2])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		out.WriteOK()
+		return nil
+	})
+	srv.HandleFunc("bpget", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 2)
+		if err != nil {
+			return err
+		}
+		txmode := CheckTxMode(req, "bpget")
+		if txmode {
+			out.WriteInlineString("QUEUED")
+			return nil
+		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		cindex, err := strconv.Atoi(req.Args[1])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		res, err := cdb.Bpget(req.Args[0], cindex)
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		if res != nil {
+			out.WriteString(string(res))	
+		} else {
+			out.WriteNil()
+		}
+		return nil
+	})
+	srv.HandleFunc("snapshot", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 0)
+		if err != nil {
+			return err
+		}
+		txmode := CheckTxMode(req, "snapshot")
+		if txmode {
+			out.WriteInlineString("QUEUED")
+			return nil
+		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		snapId := cdb.CreateSnapshot()
+		out.WriteString(snapId)
+		return nil
+	})
+	srv.HandleFunc("snaprelease", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 1)
+		if err != nil {
+			return err
+		}
+		txmode := CheckTxMode(req, "snaprelease")
+		if txmode {
+			out.WriteInlineString("QUEUED")
+			return nil
+		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		cdb.ReleaseSnapshot(req.Args[0])
+		out.WriteOK()
+		return nil
+	})
+
 	srv.HandleFunc("multi", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		req.Client().Ctx.(*ServerCtx).TxMode = true

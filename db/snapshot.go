@@ -3,6 +3,7 @@ package db
 import (
 	"time"
 	"github.com/jmhodges/levigo"
+	"log"
 )
 
 // Infinite loop that check snapshots TTL and release them if expired
@@ -13,6 +14,7 @@ func (db *DB) SnapshotHandler() {
 			now := t.UTC().Unix()
 			for snapId, snapTTL := range db.snapshotsTTL {
 				if now >= snapTTL {
+					log.Printf("SnapshotHandler: releasing timed-out snapshot %v\n", snapId)
 					db.ReleaseSnapshot(snapId)
 				}
 			}

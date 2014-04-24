@@ -58,36 +58,34 @@ func backupPartCard(key []byte) []byte {
 	return cardkey
 }
 
-func (db *DB) Bpcard(key string) int {
+func (db *DB) Bpcard(key string) (int, error) {
 	bkey := []byte(key)
 	cardkey := backupPartCard(bkey)
 	card := db.getUint32(KeyType(cardkey, Meta))
-	return int(card)
+	return int(card), nil
 }
 
 
-func (db *DB) Bpadd(key string, index int, hash string) int {
+func (db *DB) Bpadd(key string, index int, hash string) error {
 	bkey := []byte(key)
 	db.mutex.Lock(bkey)
 	defer db.mutex.Unlock(bkey)
-	cnt := 0
 	kmember := keyBackupPart(bkey, index)
 	cval, _ := db.ldb.Get(db.ro, kmember)
+	db.ldb.Put(db.wo, kmember, []byte(hash))
 	if cval == nil {
-		db.ldb.Put(db.wo, kmember, []byte(hash))
-		cnt++
+		cardkey := backupPartCard(bkey)
+		db.incrUint32(KeyType(cardkey, Meta), 1)
 	}
-	cardkey := backupPartCard(bkey)
-	db.incrUint32(KeyType(cardkey, Meta), cnt)
-	return cnt
+	return nil
 }
 
-func (db *DB) Bpget(key string, index int) []byte {
+func (db *DB) Bpget(key string, index int) ([]byte, error) {
 	bkey := []byte(key)
 	db.mutex.Lock(bkey)
 	defer db.mutex.Unlock(bkey)
-	cval, _ := db.ldb.Get(db.ro, keyBackupPart(bkey, index))
-	return cval
+	cval, err := db.ldb.Get(db.ro, keyBackupPart(bkey, index))
+	return cval, err
 }
 
 func (db *DB) Bparts(key string) [][]byte {
