@@ -10,7 +10,6 @@ import (
 	"bufio"
 	"github.com/tsileo/silokv/rolling"
 	"github.com/garyburd/redigo/redis"
-	"log"
 )
 
 func GetDbPool() (pool *redis.Pool, err error) {
@@ -46,12 +45,9 @@ func SHA1(data []byte) string {
 func FullSHA1(path string) string {
 	f, _ := os.Open(path)
 	defer f.Close()
-	//reader := bufio.NewReader(f)
-	//log.Printf("%+v", reader)
+	reader := bufio.NewReader(f)
 	h := sha1.New()
-	w, _ := io.Copy(h, f)
-	//log.Printf("%+v", reader)
-	log.Printf("w:%v", w)
+	_, _ = io.Copy(h, reader)
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
@@ -59,7 +55,6 @@ func FileWriter(key, path string) (*WriteResult, error) {
 	writeResult := &WriteResult{}
 	window := 64
 	rs := rolling.New(window)
-	log.Printf("H:%v", FullSHA1(path))
 	f, err := os.Open(path)
 	defer f.Close()
 	if err != nil {
