@@ -16,9 +16,27 @@ A backup database built on top of [LevelDB](https://code.google.com/p/leveldb/),
 
 Blobs are store as file with its sha1 as filename in a flat directory.
 
+### Metadata
+
+Metadata are stored in LevelDB and are exposed via a Redis protocol tcp server, with custom Redis-like data type and commands, but implemented using LevelDB lexicographical range queries.
+
+- Redis-like transactions
+- String
+- Hashmap
+- Set
+- Backup part (custom zset)
+
+A backup is a set with pointer to hashmap (either representing a directory or a file, and a directory is also a set of pointer).
+
+Hashmap pointer are the SHA1 of the JSON object, so if a file is stored multiple times, metadata are not duplicated.
+
+A hashmap contains the backup parts reference, an ordered list of the files hash blobs.
+
 ### Databases
 
 Databases are actually different LevelDB databases, so you can export/import the meta data to be backup along with blobs.
+
+A database is tied to a storage.
 
 ## Roadmap / Ideas
 
