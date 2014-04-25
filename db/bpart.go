@@ -60,8 +60,8 @@ func backupPartCard(key []byte) []byte {
 func (db *DB) Bpcard(key string) (int, error) {
 	bkey := []byte(key)
 	cardkey := backupPartCard(bkey)
-	card := db.getUint32(KeyType(cardkey, Meta))
-	return int(card), nil
+	card, err := db.getUint32(KeyType(cardkey, Meta))
+	return int(card), err
 }
 
 

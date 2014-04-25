@@ -5,14 +5,14 @@ import (
 )
 
 // Return the number of string key stored
-func (db *DB) GetStringCnt() uint32 {
+func (db *DB) GetStringCnt() (uint32, error) {
 	return db.getUint32(KeyType(StringCnt, Meta))
 }
 
 // Increment the key by the given value,
 // just return the value, the result must be set by a raft command
 func (db *DB) IncrBy(key string, value int) {
-	db.incrby(key, value)
+	db.incrby([]byte(key), value)
 	return
 }
 
@@ -32,7 +32,7 @@ func (db *DB) Put(key string, value string) error {
 	// Incr the StringCnt if needed
 	cval, err := db.getset(KeyType(key, String), []byte(value))
 	if cval == nil {
-		db.incrUint32(KeyType(StringCnt, Meta), 1)
+		err = db.incrUint32(KeyType(StringCnt, Meta), 1)
 	}
 	return err
 }

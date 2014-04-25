@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	_ "fmt"
 	"github.com/jmhodges/levigo"
-	_ "log"
+	"log"
 	"strconv"
 	"sync"
 )
@@ -96,6 +96,7 @@ func GetRange(db *levigo.DB, ro *levigo.ReadOptions, kStart []byte, kEnd []byte,
 // The key-value database.
 type DB struct {
 	ldb          *levigo.DB
+	ldb_path string
 	mutex        *SlottedMutex
 	wo           *levigo.WriteOptions
 	ro           *levigo.ReadOptions
@@ -112,9 +113,15 @@ func New(ldb_path string) *DB {
 	opts.SetFilterPolicy(filter)
 	db, _ := levigo.Open(ldb_path, opts)
 	mutex := NewSlottedMutex()
-	return &DB{ldb: db, mutex: mutex,
+	return &DB{ldb: db, ldb_path: ldb_path, mutex: mutex,
 		wo: levigo.NewWriteOptions(), ro: levigo.NewReadOptions(),
 		snapMutex: &sync.Mutex{}, snapshots: map[string]*levigo.Snapshot{}, snapshotsTTL: map[string]int64{}}
+}
+
+func (db *DB) Destroy() error {
+	opts := levigo.NewOptions()
+	err := levigo.DestroyDatabase(db.ldb_path, opts)
+	return err
 }
 
 // Cleanly close the DB
@@ -144,69 +151,82 @@ func (db *DB) getset(key []byte, value []byte) ([]byte, error) {
 }
 
 // Sets the value for a given key.
-func (db *DB) put(key []byte, value []byte) {
+func (db *DB) put(key []byte, value []byte) error {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
-	db.ldb.Put(db.wo, key, value)
-	return
+	err := db.ldb.Put(db.wo, key, value)
+	return err
 }
 
 // Delete the key
-func (db *DB) del(key []byte) {
+func (db *DB) del(key []byte) error {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
-	db.ldb.Delete(db.wo, key)
-	return
+	err := db.ldb.Delete(db.wo, key)
+	return err
 }
 
 // Store a uint32 as binary data
-func (db *DB) putUint32(key []byte, value uint32) {
+func (db *DB) putUint32(key []byte, value uint32) error {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
 	val := make([]byte, 4)
 	binary.LittleEndian.PutUint32(val[:], value)
-	db.ldb.Put(db.wo, key, val)
-	return
+	err := db.ldb.Put(db.wo, key, val)
+	return err
 }
 
 // Retrieve a binary stored uint32
-func (db *DB) getUint32(key []byte) uint32 {
+func (db *DB) getUint32(key []byte) (uint32, error) {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
-	data, _ := db.ldb.Get(db.ro, key)
-	if data == nil {
-		return 0
+	data, err := db.ldb.Get(db.ro, key)
+	if err != nil || data == nil {
+		return 0, err
 	}
-	return binary.LittleEndian.Uint32(data)
+	return binary.LittleEndian.Uint32(data), nil
 }
 
 // Increment a binary stored uint32
-func (db *DB) incrUint32(key []byte, step int) {
+func (db *DB) incrUint32(key []byte, step int) error {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
 	data, err := db.ldb.Get(db.ro, key)
 	var value uint32
-	if err != nil || data == nil {
+	if err != nil {
+		return err
+	}
+	if data == nil {
 		value = 0
 	} else {
 		value = binary.LittleEndian.Uint32(data)
 	}
 	val := make([]byte, 4)
 	binary.LittleEndian.PutUint32(val[:], value+uint32(step))
-	db.ldb.Put(db.wo, key, val)
+	err = db.ldb.Put(db.wo, key, val)
+	return err
 }
 
 // Increment the given string key, the key is created is it doesn't exists
-func (db *DB) incrby(key string, value int) {
-	bkey := []byte(key)
-	db.mutex.Lock(bkey)
-	defer db.mutex.Unlock(bkey)
-	sval, err := db.ldb.Get(db.ro, KeyType(key, String))
-	if err != nil || sval == nil {
+func (db *DB) incrby(key []byte, value int) error {
+	db.mutex.Lock(key)
+	defer db.mutex.Unlock(key)
+	sval, err := db.ldb.Get(db.ro, key)
+	if err != nil {
+		return err
+	}
+	if sval == nil {
 		sval = []byte("0")
-		db.incrUint32(KeyType(StringCnt, Meta), 1)
+		err = db.incrUint32(KeyType(StringCnt, Meta), 1)
+		if err != nil {
+			return err
+		}
 	}
 	ival, err := strconv.Atoi(string(sval))
-	db.ldb.Put(db.wo, KeyType(key, String), []byte(strconv.Itoa(ival+value)))
-	return
+	if err != nil {
+		return err
+	}
+	log.Printf("%+v", ival+value)
+	err = db.ldb.Put(db.wo, key, []byte(strconv.Itoa(ival+value)))
+	return err
 }

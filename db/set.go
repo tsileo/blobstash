@@ -53,11 +53,11 @@ func keySetCard(key []byte) []byte {
 }
 
 //   Set + (key length as binary encoded uint32) + set key + set member  => empty
-func (db *DB) Scard(key string) int {
+func (db *DB) Scard(key string) (int, error) {
 	bkey := []byte(key)
 	cardkey := keySetCard(bkey)
-	card := db.getUint32(KeyType(cardkey, Meta))
-	return int(card)
+	card, err := db.getUint32(KeyType(cardkey, Meta))
+	return int(card), err
 }
 
 
