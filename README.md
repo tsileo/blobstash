@@ -3,14 +3,16 @@ Data Database
 
 ## Overview
 
-Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com/bup/bup) (files are split into multiple blobs using a rolling checksum).
-
 A backup database built on top of [LevelDB](https://code.google.com/p/leveldb/), and [elasticsearch](http://www.elasticsearch.org/) and the [Redis Protocol](http://redis.io/topics/protocol).
+
+Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com/bup/bup) (files are split into multiple blobs using a rolling checksum).
 
 ## Features:
  
 - Content addressed, files are split into blobs, and retrieved by hash
 - Incremental backups by default
+- Server handles uploading/downloading blobs to/from different storage
+- Client only query the server and send blobs to it (the client take care of chunking/building blobs).
 
 ### Blobs
 
@@ -22,10 +24,11 @@ Metadata are stored in LevelDB and are exposed via a Redis protocol tcp server, 
 
 - Redis-like transactions
 - Snapshot handling
-- String
-- Hashmap
-- Set (lexicographical order)
-- Backup part (custom zset)
+- String data type
+- Hashmap data type
+- Set (lexicographical order) data type
+- Backup part (custom zset) data type
+- Blob data type (upload/download from/to storage is handled by the server)
 
 A backup is a set with pointer to hashmap (either representing a directory or a file, and a directory is also a set of pointer).
 
@@ -45,6 +48,8 @@ A database is tied to a storage.
 - Easy way to backup/restore internal LevelDB
 - Master/slave replication of metadatas
 - Optional Elastic search powered searches
+- Web UI (with download support)
+- Encryption
 
 ## Supported storages
 
