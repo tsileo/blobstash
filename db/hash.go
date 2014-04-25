@@ -95,3 +95,8 @@ func (db *DB) Hget(key, field string) ([]byte, error) {
 	cval, err := db.ldb.Get(db.ro, keyHashField(bkey, field))
 	return cval, err
 }
+
+// Hid
+// Hdel
+// Hmset
+// Hmget
