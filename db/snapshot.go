@@ -23,14 +23,14 @@ func (db *DB) SnapshotHandler() {
 }
 
 // Create a new LevelDB snapshot and return its newly generated ID
-func (db *DB) CreateSnapshot() string {
+func (db *DB) CreateSnapshot() (*levigo.Snapshot, string) {
 	db.snapMutex.Lock()
 	defer db.snapMutex.Unlock()
 	snap := db.ldb.NewSnapshot()
 	snapId := NewId()
 	db.snapshots[snapId] = snap
 	db.snapshotsTTL[snapId] = time.Now().UTC().Unix() + SnapshotTTL
-	return snapId
+	return snap, snapId
 }
 
 // Retrieve the given LevelDB snapshot

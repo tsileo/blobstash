@@ -106,16 +106,16 @@ type DB struct {
 }
 
 // Creates a new database.
-func New(ldb_path string) *DB {
+func New(ldb_path string) (*DB, error) {
 	opts := levigo.NewOptions()
 	opts.SetCreateIfMissing(true)
 	filter := levigo.NewBloomFilter(10)
 	opts.SetFilterPolicy(filter)
-	db, _ := levigo.Open(ldb_path, opts)
+	db, err := levigo.Open(ldb_path, opts)
 	mutex := NewSlottedMutex()
 	return &DB{ldb: db, ldb_path: ldb_path, mutex: mutex,
 		wo: levigo.NewWriteOptions(), ro: levigo.NewReadOptions(),
-		snapMutex: &sync.Mutex{}, snapshots: map[string]*levigo.Snapshot{}, snapshotsTTL: map[string]int64{}}
+		snapMutex: &sync.Mutex{}, snapshots: map[string]*levigo.Snapshot{}, snapshotsTTL: map[string]int64{}}, err
 }
 
 func (db *DB) Destroy() error {
