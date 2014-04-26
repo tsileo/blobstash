@@ -3,6 +3,7 @@ package db
 import (
     "testing"
     "bytes"
+    "sync"
 )
 
 func check(e error) {
@@ -90,6 +91,24 @@ func TestSuite(t *testing.T) {
 	check(err)
 	if valUint != uint32(7) {
 		t.Error("Key should be set to 7")
+	}
+
+	var wg sync.WaitGroup
+	// Test the mutex
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err = db.incrUint32([]byte("foo3"), 1)
+			check(err)
+		}()
+	}
+	wg.Wait()
+
+	valUint, err = db.getUint32([]byte("foo3"))
+	check(err)
+	if valUint != uint32(50) {
+		t.Errorf("Key foo3 should be set to 10, got %v", valUint)
 	}
 
 	db.Close()

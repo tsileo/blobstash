@@ -52,6 +52,8 @@ func keySetCard(key []byte) []byte {
 	return cardkey
 }
 
+//func (db *DB) SetCnt() int {}
+
 //   Set + (key length as binary encoded uint32) + set key + set member  => empty
 func (db *DB) Scard(key string) (int, error) {
 	bkey := []byte(key)
@@ -109,6 +111,28 @@ func (db *DB) Smembers(key string) [][]byte {
 	}
 	return res
 }
+
+// Remove the set
+func (db *DB) Sdel(key string) error {
+	bkey := []byte(key)
+	db.mutex.Lock(bkey)
+	snap := db.ldb.NewSnapshot()
+	db.mutex.Unlock(bkey)
+	defer db.ldb.ReleaseSnapshot(snap)
+	ro := levigo.NewReadOptions()
+	ro.SetSnapshot(snap)
+	defer ro.Close()
+	start := keySetMember(bkey, []byte{})
+	end := keySetMember(bkey, "\xff")
+	kvs, _ := GetRange(db.ldb, ro, start, end, 0) 
+	for _, kv := range kvs {
+		db.del([]byte(kv.Key))
+	}
+	cardkey := keySetCard(bkey)
+	db.del(KeyType(cardkey, Meta))
+	return nil	
+}
+
 
 // func (db *DB) Srange(snapId, kStart string, kEnd string, limit int) [][]byte
 // func (db *DB) Srem(key string, member ...string) int

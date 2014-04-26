@@ -2,6 +2,7 @@ package db
 
 import (
 	"github.com/jmhodges/levigo"
+	"errors"
 )
 
 // Return the number of string key stored
@@ -53,7 +54,9 @@ func (db *DB) GetStringRange(snapId, kStart string, kEnd string, limit int) (kvs
 		ro.SetSnapshot(snap)
 		defer ro.Close()
 		kvs, _ = GetRange(db.ldb, ro, KeyType(kStart, String), KeyType(kEnd, String), limit)
+		db.UpdateSnapshotTTL(snapId, SnapshotTTL)
+	} else {
+		err = errors.New("Snapshot not found")
 	}
-	db.UpdateSnapshotTTL(snapId, SnapshotTTL)
 	return
 }

@@ -16,7 +16,7 @@ type SlottedMutex struct {
 }
 
 func NewSlottedMutex() *SlottedMutex {
-	return &SlottedMutex{make([]sync.Mutex, size)}
+	return &SlottedMutex{make([]sync.Mutex, 1024)}
 }
 
 func (m *SlottedMutex) Lock(key []byte) {
