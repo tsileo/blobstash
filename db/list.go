@@ -114,6 +114,34 @@ func (db *DB) Liter(key string) [][]byte {
 	return res
 }
 
+// Delete the entire list
+func (db *DB) Ldel(key string) error {
+	bkey := []byte(key)
+	db.mutex.Lock(bkey)
+	snap := db.ldb.NewSnapshot()
+	db.mutex.Unlock(bkey)
+	defer db.ldb.ReleaseSnapshot(snap)
+	ro := levigo.NewReadOptions()
+	ro.SetSnapshot(snap)
+	defer ro.Close()
+	start := keyList(bkey, []byte{})
+	end := keyList(bkey, "\xff")
+	kvs, err := GetRange(db.ldb, ro, start, end, 0) 
+	if err != nil {
+		return err
+	}
+	for _, kv := range kvs {
+		err := db.del([]byte(kv.Key))
+		if err != nil {
+			return err
+		}
+	}
+	cardkey := listLen(bkey)
+	err = db.del(KeyType(cardkey, Meta))
+	return err
+}
+
+
 
 // Return a lexicographical range from a snapshot
 func (db *DB) GetListRange(snapId, key, kStart string, kEnd string, limit int) (kvs []*KeyValue, err error) {
