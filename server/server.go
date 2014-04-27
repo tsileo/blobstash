@@ -168,6 +168,29 @@ func New() {
 		}
 		return nil
 	})
+	srv.HandleFunc("hgetall", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 1)
+		if err != nil {
+			return err
+		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		kvs, err := cdb.Hgetall(req.Args[0])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		if len(kvs) != 0 {
+			out.WriteBulkLen(len(kvs) * 2)
+			for _, kv := range kvs {
+				out.WriteString(kv.Key)
+				out.WriteString(kv.Value)
+			}
+			//out.WriteString(string(res))
+		} else {
+			out.WriteNil()
+		}
+		return nil
+	})
 	srv.HandleFunc("bsize", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 0)

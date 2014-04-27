@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"fmt"
-	"time"
 	"io"
 	"bufio"
 	"github.com/tsileo/silokv/rolling"
@@ -13,44 +12,6 @@ import (
 	"path/filepath"
 )
 
-func GetDbPool() (pool *redis.Pool, err error) {
-	pool = &redis.Pool{
-		MaxIdle:     50,
-		MaxActive: 50,
-		IdleTimeout: 240 * time.Second,
-		Dial: func() (redis.Conn, error) {
-			c, err := redis.Dial("tcp", "localhost:9736")
-			if err != nil {
-				return nil, err
-			}
-			//if _, err := c.Do("AUTH", password); err != nil {
-			//    c.Close()
-			//    return nil, err
-			//}
-			return c, err
-		},
-		TestOnBorrow: func(c redis.Conn, t time.Time) error {
-			_, err := c.Do("PING")
-			return err
-		},
-	}
-	return
-}
-
-func SHA1(data []byte) string {
-	h := sha1.New()
-	h.Write(data)
-	return fmt.Sprintf("%x", h.Sum(nil))
-}
-
-func FullSHA1(path string) string {
-	f, _ := os.Open(path)
-	defer f.Close()
-	reader := bufio.NewReader(f)
-	h := sha1.New()
-	_, _ = io.Copy(h, reader)
-	return fmt.Sprintf("%x", h.Sum(nil))
-}
 
 func FileWriter(key, path string) (*WriteResult, error) {
 	writeResult := &WriteResult{}
@@ -101,7 +62,7 @@ func FileWriter(key, path string) (*WriteResult, error) {
 				writeResult.SkippedSize += buf.Len()
 				writeResult.SkippedCnt++
 			}
-			con.Do("BPADD", key, writeResult.BlobsCnt, nsha)
+			con.Do("LADD", key, writeResult.BlobsCnt, nsha)
 			writeResult.Size += buf.Len()
 			buf.Reset()
 			writeResult.BlobsCnt++

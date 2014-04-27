@@ -1,42 +1,11 @@
-package reader
+package models
 
 import (
 	"os"
 	"crypto/sha1"
 	"fmt"
-	"time"
 	"github.com/garyburd/redigo/redis"
 )
-
-func GetDbPool() (pool *redis.Pool, err error) {
-	pool = &redis.Pool{
-		MaxIdle:     50,
-		MaxActive: 50,
-		IdleTimeout: 240 * time.Second,
-		Dial: func() (redis.Conn, error) {
-			c, err := redis.Dial("tcp", "localhost:9736")
-			if err != nil {
-				return nil, err
-			}
-			//if _, err := c.Do("AUTH", password); err != nil {
-			//    c.Close()
-			//    return nil, err
-			//}
-			return c, err
-		},
-		TestOnBorrow: func(c redis.Conn, t time.Time) error {
-			_, err := c.Do("PING")
-			return err
-		},
-	}
-	return
-}
-
-func SHA1(data []byte) string {
-	h := sha1.New()
-	h.Write(data)
-	return fmt.Sprintf("%x", h.Sum(nil))
-}
 
 func FileReader(key, path string) (*ReadResult, error) {
 	readResult := &ReadResult{}
@@ -57,7 +26,7 @@ func FileReader(key, path string) (*ReadResult, error) {
 		rcon.Do("SNAPRELEASE", snapId)
 	}(rpool, snapId)
 	for {
-		hs, _ := redis.Strings(con.Do("BPRANGE", snapId, key, start, "\xff", 50))
+		hs, _ := redis.Strings(con.Do("LRANGE", snapId, key, start, "\xff", 50))
 		for _, hash := range hs {
 			data, err := redis.String(con.Do("BGET", hash))
 			if err != nil {
