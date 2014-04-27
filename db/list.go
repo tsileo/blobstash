@@ -8,7 +8,7 @@ import (
 
 //
 // ## List
-// List of strings, but sorted by custom key instead of insertion order,
+// List of strings, but sorted by an uint32 index key instead of insertion order,
 // quite like a zset, but member have no unique constraint.
 // (quite similar to set (but only indexes are unique), the set member is the index,
 // and instead of an empty value, the value is stored)
@@ -94,7 +94,7 @@ func (db *DB) Lindex(key string, index int) ([]byte, error) {
 }
 
 // Returns list values, sorted by index ASC
-func (db *DB) Liter(key string) [][]byte {
+func (db *DB) Liter(key string) ([][]byte, error) {
 	bkey := []byte(key)
 	db.mutex.Lock(bkey)
 	snap := db.ldb.NewSnapshot()
@@ -105,13 +105,16 @@ func (db *DB) Liter(key string) [][]byte {
 	defer ro.Close()
 	start := keyList(bkey, []byte{})
 	end := keyList(bkey, "\xff")
-	kvs, _ := GetRange(db.ldb, ro, start, end, 0) 
 	res := [][]byte{}
+	kvs, err := GetRange(db.ldb, ro, start, end, 0) 
+	if err != nil {
+		return res, err
+	}	
 	for _, kv := range kvs {
 		res = append(res, []byte(kv.Value))
 		//res = append(res,  decodeListIndex([]byte(kv.Key)))
 	}
-	return res
+	return res, nil
 }
 
 // Delete the entire list
@@ -140,8 +143,6 @@ func (db *DB) Ldel(key string) error {
 	err = db.del(KeyType(cardkey, Meta))
 	return err
 }
-
-
 
 // Return a lexicographical range from a snapshot
 func (db *DB) GetListRange(snapId, key, kStart string, kEnd string, limit int) (kvs []*KeyValue, err error) {
