@@ -26,14 +26,14 @@ const (
 	Set
 	SetCardinality
 	SetCnt
-	BackupPart
-	BackupPartCardinality
-	BackupPartCnt
-	BlobsCnt
-	BlobsSize
+	List
+	ListLen
+	ListCnt
 	Hash
 	HashFieldsCnt
 	HashCnt
+	BlobsCnt
+	BlobsSize
 )
 
 const SnapshotTTL = 30
