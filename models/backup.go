@@ -2,7 +2,6 @@ package models
 
 import (
 	"github.com/garyburd/redigo/redis"
-	"log"
 )
 
 type Backup struct {
@@ -12,12 +11,11 @@ type Backup struct {
 	Ts int64 `redis:"ts"`
 }
 
-func NewFromDB(pool *redis.Pool, key string) (f *Backup, err error) {
+func NewBackupFromDB(pool *redis.Pool, key string) (f *Backup, err error) {
 	f = &Backup{}
 	con := pool.Get()
 	defer con.Close()
 	reply, err := redis.Values(con.Do("HGETALL", key))
-	log.Printf("%+v", reply)
 	if err != nil {
 		return
 	}
@@ -35,3 +33,5 @@ func (f *Backup) Save(pool *redis.Pool, key string) error {
 	_, err = con.Do("HSET", key, "ts", f.Ts)
 	return err
 }
+
+

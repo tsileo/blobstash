@@ -75,7 +75,7 @@ func FileWriter(key, path string) (*WriteResult, error) {
 	return writeResult, nil
 }
 
-func PutFile(path string) (wr *WriteResult, err error) {
+func RawPutFile(path string) (wr *WriteResult, err error) {
 	if _, err = os.Stat(path); os.IsNotExist(err) {
 		return
 	}

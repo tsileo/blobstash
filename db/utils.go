@@ -14,5 +14,4 @@ func NewId() string {
 		panic(err)
 	}
 	return base64.StdEncoding.EncodeToString(b)
-
 }
