@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	_ "fmt"
 	"github.com/jmhodges/levigo"
-	"log"
 	"strconv"
 	"sync"
 )
@@ -226,7 +225,6 @@ func (db *DB) incrby(key []byte, value int) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("%+v", ival+value)
 	err = db.ldb.Put(db.wo, key, []byte(strconv.Itoa(ival+value)))
 	return err
 }

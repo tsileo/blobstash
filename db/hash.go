@@ -2,6 +2,9 @@ package db
 
 import (
 	"encoding/binary"
+	"errors"
+	"github.com/jmhodges/levigo"
+	"bytes"
 )
 
 //
@@ -25,25 +28,26 @@ func keyHashField(key []byte, field interface{}) []byte {
 	case byte:
 		fieldbyte = []byte{k}
 	}
-	k := make([]byte, len(fieldbyte) + len(key) + 5)
-	k[0] = Hash
-	binary.LittleEndian.PutUint32(k[1:5], uint32(len(key)))
-	cpos := 5 + len(key)
-	copy(k[5:cpos], key)
-	if len(fieldbyte) > 0 {
-		copy(k[cpos:], fieldbyte)
-	}
-	return k
+	var buf bytes.Buffer
+	buf.Write([]byte{Hash})
+	l := make([]byte, 4)
+	binary.LittleEndian.PutUint32(l, uint32(len(key)))
+	buf.Write(l)
+	buf.Write(key)
+	buf.Write(fieldbyte)
+	return buf.Bytes()
 }
 
+// Extract the field from a raw key
 func decodeKeyHashField(key []byte) []byte {
 	// The first byte is already remove
-	cpos := int(binary.LittleEndian.Uint32(key[1:5])) + 5
-	member := make([]byte, len(key) -  cpos)
+	klen := int(binary.LittleEndian.Uint32(key[0:4]))
+	cpos := 4 + klen
+	member := make([]byte, len(key) - cpos)
 	copy(member[:], key[cpos:])
 	return member
 }
-
+// Create the key to retrieve the number of field of the hash
 func hashFieldsCnt(key []byte) []byte {
 	cardkey := make([]byte, len(key) + 1)
 	cardkey[0] = HashFieldsCnt
@@ -51,7 +55,7 @@ func hashFieldsCnt(key []byte) []byte {
 	return cardkey
 }
 
-//   Set + (key length as binary encoded uint32) + set key + set member  => empty
+// Returns the number of fields
 func (db *DB) Hlen(key string) (int, error) {
 	bkey := []byte(key)
 	cardkey := hashFieldsCnt(bkey)
@@ -59,7 +63,7 @@ func (db *DB) Hlen(key string) (int, error) {
 	return int(card), err
 }
 
-
+// Set field to value
 func (db *DB) Hset(key, field, value string) (int, error) {
 	bkey := []byte(key)
 	db.mutex.Lock(bkey)
@@ -72,22 +76,49 @@ func (db *DB) Hset(key, field, value string) (int, error) {
 	}
 	db.ldb.Put(db.wo, kfield, []byte(value))
 	cardkey := hashFieldsCnt(bkey)
-	db.incrUint32(cardkey, cnt)
+	db.incrUint32(KeyType(cardkey, Meta), cnt)
 	return cnt, nil
 }
 
-func (db *DB) Hexists(key, field string) int {
+func (db *DB) Hmset(key string, fieldvalue ...string) (int, error) {
 	bkey := []byte(key)
 	db.mutex.Lock(bkey)
 	defer db.mutex.Unlock(bkey)
-	cval, _ := db.ldb.Get(db.ro, keyHashField(bkey, field))
+	cnt := 0
+	if len(fieldvalue) % 2 != 0 {
+		return cnt, errors.New("Hmset invalid args cnt")
+	}
+	for i := 0; i < len(fieldvalue); i = i + 2 {
+		field := fieldvalue[i] 
+		value := fieldvalue[i+1]
+		kfield := keyHashField(bkey, field)
+		cval, _ := db.ldb.Get(db.ro, kfield)
+		if cval == nil {
+			cnt++
+		}
+		db.ldb.Put(db.wo, kfield, []byte(value))
+	}
+	cardkey := hashFieldsCnt(bkey)
+	db.incrUint32(KeyType(cardkey, Meta), cnt)
+	return cnt, nil
+}
+
+
+
+// Test for field existence
+func (db *DB) Hexists(key, field string) (int, error) {
+	bkey := []byte(key)
+	db.mutex.Lock(bkey)
+	defer db.mutex.Unlock(bkey)
+	cval, err := db.ldb.Get(db.ro, keyHashField(bkey, field))
 	cnt := 0
 	if cval != nil {
 		cnt++
 	}
-	return cnt
+	return cnt, err
 }
 
+// Return the given field
 func (db *DB) Hget(key, field string) ([]byte, error) {
 	bkey := []byte(key)
 	db.mutex.Lock(bkey)
@@ -96,7 +127,29 @@ func (db *DB) Hget(key, field string) ([]byte, error) {
 	return cval, err
 }
 
-// Hid
+func (db *DB) Hgetall(key string) ([]*KeyValue, error) {
+	hkvs := []*KeyValue{}
+	bkey := []byte(key)
+	db.mutex.Lock(bkey)
+	defer db.mutex.Unlock(bkey)
+	snap, _ := db.CreateSnapshot()
+	defer db.ldb.ReleaseSnapshot(snap)
+	ro := levigo.NewReadOptions()
+	ro.SetSnapshot(snap)
+	defer ro.Close()
+
+	start := keyHashField(bkey, []byte{})
+	end := keyHashField(bkey, "\xff")
+	kvs, err := GetRange(db.ldb, ro, start, end, 0)
+
+	for _, kv := range kvs {
+		ckv := &KeyValue{string(decodeKeyHashField([]byte(kv.Key))), kv.Value}
+		hkvs = append(hkvs, ckv)
+	}
+	return hkvs, err
+}
+
+// Hhash
 // Hdel
 // Hmset
 // Hmget

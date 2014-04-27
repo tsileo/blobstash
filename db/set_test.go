@@ -2,6 +2,7 @@ package db
 
 import (
 	"testing"
+	"bytes"
 )
 
 func TestDBSetDataType(t *testing.T) {
@@ -43,6 +44,13 @@ func TestDBSetDataType(t *testing.T) {
 	members := db.Smembers("foo")
 	if len(members) != 3 {
 		t.Errorf("foo members should have a len of 3, got %v", len(members))
+	}
+
+	expected := [][]byte{[]byte("a"), []byte("b"), []byte("c")}
+	for i, member := range members {
+		if !bytes.Equal(member, expected[i]) {
+			t.Errorf("Bad set member, expected %v, got %v", expected[i], member)
+		}
 	}
 
 	card, err = db.Scard("foo")

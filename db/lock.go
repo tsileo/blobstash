@@ -8,7 +8,7 @@ import (
 	"sync"
 )
 
-// 512 slots
+// 1024 slots
 const size = 0x3ff
 
 type SlottedMutex struct {
