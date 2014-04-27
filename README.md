@@ -22,7 +22,6 @@ Blobs are store as file with its sha1 as filename in a flat directory.
 
 Metadata are stored in LevelDB and are exposed via a Redis protocol tcp server, with custom Redis-like data type and commands, but implemented using LevelDB lexicographical range queries and snapshots.
 
-- Redis-like transactions
 - Snapshot handling
 - String data type
 - Hash data type
