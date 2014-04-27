@@ -25,16 +25,16 @@ Metadata are stored in LevelDB and are exposed via a Redis protocol tcp server, 
 - Redis-like transactions
 - Snapshot handling
 - String data type
-- Hashmap data type
+- Hash data type
 - Set (lexicographical order) data type
-- Backup part (custom zset) data type
-- Blob data type (upload/download from/to storage is handled by the server)
+- List (sorted by an uint index) data type
+- "Virtual" Blob data type (upload/download from/to storage)
 
 A backup is a set with pointer to hashmap (either representing a directory or a file, and a directory is also a set of pointer).
 
-Hashmap pointer are the SHA1 of the JSON object, so if a file is stored multiple times, metadata are not duplicated.
+Hash pointer are the SHA1 of the JSON object, so if a file is stored multiple times, metadata are not duplicated.
 
-A hashmap contains the backup parts reference, an ordered list of the files hash blobs.
+A hash contains the backup parts reference, an ordered list of the files hash blobs.
 
 ### Databases
 
@@ -44,11 +44,9 @@ A database is tied to a storage.
 
 ## Roadmap / Ideas
 
-- Mount backups with fuse
-- Easy way to backup/restore internal LevelDB
+- Mount backups with fuse (with time machine like directory structure)
+- Easy way to backup/restore internal LevelDB (RDB like format)
 - Master/slave replication of metadatas
-- Optional Elastic search powered searches
-- Web UI (with download support)
 - Encryption
 
 ## Supported storages
@@ -56,3 +54,4 @@ A database is tied to a storage.
 - Local
 - S3 (not started yet)
 - Glacier (not started yet)
+- Submit a pull request!

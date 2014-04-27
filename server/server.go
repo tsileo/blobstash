@@ -20,8 +20,6 @@ var (
 type ServerCtx struct {
 	DB string
 	Dbm *DBsManager
-	TxCommands []*redeo.Request
-	TxMode bool
 }
 
 type DBsManager struct {
@@ -34,7 +32,10 @@ func (dbm *DBsManager) GetDb(dbname string) *db.DB {
 	defer dbm.mutex.Unlock()
 	cdb, exists := dbm.DBs[dbname]
 	if !exists {
-		newdb := db.New(fmt.Sprintf("./ldb_%v", dbname))
+		newdb, err := db.New(fmt.Sprintf("./ldb_%v", dbname))
+		if err != nil {
+			panic(err)
+		}
 		go newdb.SnapshotHandler()
 		dbm.DBs[dbname] = newdb
 		return newdb
@@ -49,7 +50,7 @@ func (ctx *ServerCtx) GetDb() *db.DB {
 func SetUpCtx(req *redeo.Request) {
 	if req.Client().Ctx == nil {
 		log.Println("New con")
-		req.Client().Ctx = &ServerCtx{"default", dbmananger, []*redeo.Request{}, false}
+		req.Client().Ctx = &ServerCtx{"default", dbmananger}
 	}
 }
 func CheckArgs(req *redeo.Request, argsCnt int) error {
@@ -57,16 +58,6 @@ func CheckArgs(req *redeo.Request, argsCnt int) error {
 		return redeo.ErrWrongNumberOfArgs
 	}
 	return nil
-}
-
-func CheckTxMode(req *redeo.Request, cmd string) bool {
-	ctx := req.Client().Ctx.(*ServerCtx)
-	if ctx.TxMode {
-		ctx.TxCommands = append(ctx.TxCommands, req)
-
-		return true
-	}
-	return false
 }
 
 func SHA1(data []byte) string {
@@ -91,11 +82,6 @@ func New() {
 		if err != nil {
 			return err
 		}
-		txmode := CheckTxMode(req, "select")
-		if txmode {
-			out.WriteInlineString("QUEUED")
-			return nil
-		}
 		req.Client().Ctx.(*ServerCtx).DB = req.Args[0]
 		out.WriteOK()
 		return nil
@@ -105,11 +91,6 @@ func New() {
 		err := CheckArgs(req, 1)
 		if err != nil {
 			return err
-		}
-		txmode := CheckTxMode(req, "get")
-		if txmode {
-			out.WriteInlineString("QUEUED")
-			return nil
 		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
 		res, err := cdb.Get(req.Args[0])
@@ -129,11 +110,6 @@ func New() {
 		if err != nil {
 			return err
 		}
-		txmode := CheckTxMode(req, "getset")
-		if txmode {
-			out.WriteInlineString("QUEUED")
-			return nil
-		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
 		res, err := cdb.Getset(req.Args[0], req.Args[1])
 		if err != nil {
@@ -152,11 +128,6 @@ func New() {
 		if err != nil {
 			return err
 		}
-		txmode := CheckTxMode(req, "set")
-		if txmode {
-			out.WriteInlineString("QUEUED")
-			return nil
-		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
 		err  = cdb.Put(req.Args[0], req.Args[1])
 		if err != nil {
@@ -171,11 +142,6 @@ func New() {
 		if err != nil {
 			return err
 		}
-		txmode := CheckTxMode(req, "hset")
-		if txmode {
-			out.WriteInlineString("QUEUED")
-			return nil
-		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
 		cnt, err  := cdb.Hset(req.Args[0], req.Args[1], req.Args[2])
 		if err != nil {
@@ -189,11 +155,6 @@ func New() {
 		err := CheckArgs(req, 2)
 		if err != nil {
 			return err
-		}
-		txmode := CheckTxMode(req, "hget")
-		if txmode {
-			out.WriteInlineString("QUEUED")
-			return nil
 		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
 		res, err := cdb.Hget(req.Args[0], req.Args[1])
@@ -213,13 +174,8 @@ func New() {
 		if err != nil {
 			return err
 		}
-		txmode := CheckTxMode(req, "bsize")
-		if txmode {
-			out.WriteInlineString("QUEUED")
-			return nil
-		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
-		size := cdb.GetBlobsSize()
+		size, err := cdb.GetBlobsSize()
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -232,13 +188,8 @@ func New() {
 		if err != nil {
 			return err
 		}
-		txmode := CheckTxMode(req, "bcnt")
-		if txmode {
-			out.WriteInlineString("QUEUED")
-			return nil
-		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
-		cnt := cdb.GetBlobsCnt()
+		cnt, err := cdb.GetBlobsCnt()
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -250,11 +201,6 @@ func New() {
 		err := CheckArgs(req, 1)
 		if err != nil {
 			return err
-		}
-		txmode := CheckTxMode(req, "bput")
-		if txmode {
-			out.WriteInlineString("QUEUED")
-			return nil
 		}
 		blob := []byte(req.Args[0])
 		log.Printf("Blob len: %v", len(blob))
@@ -275,11 +221,6 @@ func New() {
 		if err != nil {
 			return err
 		}
-		txmode := CheckTxMode(req, "bget")
-		if txmode {
-			out.WriteInlineString("QUEUED")
-			return nil
-		}
 		blob, err  := localBackend.Get(req.Args[0])
 		if err != nil {
 			return ErrSomethingWentWrong
@@ -294,11 +235,6 @@ func New() {
 		if err != nil {
 			return err
 		}
-		txmode := CheckTxMode(req, "bexists")
-		if txmode {
-			out.WriteInlineString("QUEUED")
-			return nil
-		}
 		exists := localBackend.Exists(req.Args[0])
 		res := 0
 		if exists {
@@ -308,65 +244,50 @@ func New() {
 		return nil
 	})
 	
-	srv.HandleFunc("bpcard", func(out *redeo.Responder, req *redeo.Request) error {
+	srv.HandleFunc("llen", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 1)
 		if err != nil {
 			return err
 		}
-		txmode := CheckTxMode(req, "bpcard")
-		if txmode {
-			out.WriteInlineString("QUEUED")
-			return nil
-		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
-		card, err  := cdb.Bpcard(req.Args[0])
+		card, err  := cdb.Llen(req.Args[0])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
 		out.WriteInt(card)
 		return nil
 	})
-	srv.HandleFunc("bpadd", func(out *redeo.Responder, req *redeo.Request) error {
+	srv.HandleFunc("ladd", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 3)
 		if err != nil {
 			return err
-		}
-		txmode := CheckTxMode(req, "bpadd")
-		if txmode {
-			out.WriteInlineString("QUEUED")
-			return nil
 		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
 		cindex, err := strconv.Atoi(req.Args[1])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
-		err  = cdb.Bpadd(req.Args[0], cindex, req.Args[2])
+		err  = cdb.Ladd(req.Args[0], cindex, req.Args[2])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
 		out.WriteOK()
 		return nil
 	})
-	srv.HandleFunc("bpget", func(out *redeo.Responder, req *redeo.Request) error {
+	srv.HandleFunc("lindex", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 2)
 		if err != nil {
 			return err
-		}
-		txmode := CheckTxMode(req, "bpget")
-		if txmode {
-			out.WriteInlineString("QUEUED")
-			return nil
 		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
 		cindex, err := strconv.Atoi(req.Args[1])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
-		res, err := cdb.Bpget(req.Args[0], cindex)
+		res, err := cdb.Lindex(req.Args[0], cindex)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -377,22 +298,18 @@ func New() {
 		}
 		return nil
 	})
-	srv.HandleFunc("bprange", func(out *redeo.Responder, req *redeo.Request) error {
+	srv.HandleFunc("lrange", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 5)
 		if err != nil {
 			return err
-		}
-		txmode := CheckTxMode(req, "bprange")
-		if txmode {
-			return ErrSomethingWentWrong
 		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
 		limit, err := strconv.Atoi(req.Args[4])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
-		kvs, err := cdb.GetBpartRange(req.Args[0], req.Args[1], req.Args[2], req.Args[3], limit)
+		kvs, err := cdb.GetListRange(req.Args[0], req.Args[1], req.Args[2], req.Args[3], limit)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -413,13 +330,8 @@ func New() {
 		if err != nil {
 			return err
 		}
-		txmode := CheckTxMode(req, "snapshot")
-		if txmode {
-			out.WriteInlineString("QUEUED")
-			return nil
-		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
-		snapId := cdb.CreateSnapshot()
+		_, snapId := cdb.CreateSnapshot()
 		out.WriteString(snapId)
 		return nil
 	})
@@ -429,37 +341,11 @@ func New() {
 		if err != nil {
 			return err
 		}
-		txmode := CheckTxMode(req, "snaprelease")
-		if txmode {
-			out.WriteInlineString("QUEUED")
-			return nil
-		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
 		cdb.ReleaseSnapshot(req.Args[0])
 		out.WriteOK()
 		return nil
 	})
-
-	srv.HandleFunc("multi", func(out *redeo.Responder, req *redeo.Request) error {
-		SetUpCtx(req)
-		req.Client().Ctx.(*ServerCtx).TxMode = true
-		out.WriteOK()
-		return nil
-	})
-	srv.HandleFunc("exec", func(out *redeo.Responder, req *redeo.Request) error {
-		SetUpCtx(req)
-		ctx := req.Client().Ctx.(*ServerCtx)
-		ctx.TxMode = false
-		out.WriteBulkLen(len(ctx.TxCommands))
-		for _, cmd := range ctx.TxCommands {
-			res, _ := srv.Apply(cmd)
-			res.WriteTo(out)
-		}
-		ctx.TxCommands = []*redeo.Request{}
-		return nil
-	})
-
-
 
 	log.Printf("Listening on tcp://%s", srv.Addr())
 	log.Fatal(srv.ListenAndServe())
