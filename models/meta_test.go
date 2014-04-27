@@ -4,19 +4,21 @@ import (
 	"testing"
 	"reflect"
 	"os"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"path/filepath"
 	"encoding/base64"
 	"crypto/rand"
 	mrand "math/rand"
-	"log"
 	"github.com/bradfitz/iter"
 )
 
-func NewRandomFile(path string, size int) string {
+const MaxRandomFileSize = 2<<20
+
+func NewRandomFile(path string) string {
 	filename := NewRandomName()
-	buf := make([]byte, size)
+	buf := make([]byte, mrand.Intn(MaxRandomFileSize))
 	rand.Read(buf)
 	f := filepath.Join(path, filename)
 	ioutil.WriteFile(f, buf, 0700)
@@ -40,8 +42,9 @@ func NewRandomName() string {
 	return base64.StdEncoding.EncodeToString(b)
 }
 
-func NewRandomTree(path string, rec, maxrec int) (string, int) {
+func CreateRandomTree(t *testing.T, path string, rec, maxrec int) (string, int) {
 	p := NewRandomDir(path)
+	t.Log("Creating a new random tree at %v", p)
 	nfiles := 0
 	for {
 		nfiles = mrand.Intn(10)
@@ -50,20 +53,24 @@ func NewRandomTree(path string, rec, maxrec int) (string, int) {
 		}
 	}
 	cnt := 0
-	log.Printf("nfiles:%v,rec:%v", nfiles, rec)
 	for _ = range iter.N(nfiles) {
-    	NewRandomFile(p, mrand.Intn(2000000))
+    	go NewRandomFile(p)
     	cnt++
-    	if rec < maxrec && mrand.Intn(10) <= 5 {
-    		_, ncnt := NewRandomTree(p, rec+1, maxrec)
+    	if rec < maxrec && mrand.Intn(10) < 5 {
+    		_, ncnt := CreateRandomTree(t, p, rec+1, maxrec)
     		cnt += ncnt
     	}
+    	// Break at 50 to spend less time
     	if cnt > 50 {
     		return p, cnt
     	}
 	}
 	return p, cnt
-} 
+}
+
+func NewRandomTree(t *testing.T, path string, maxrec int) (string, int) {
+	return CreateRandomTree(t, path, 0, maxrec)
+}
 
 func TestModelsMeta(t *testing.T) {
 	pool, err := GetDbPool()
@@ -78,18 +85,21 @@ func TestModelsMeta(t *testing.T) {
 	if !reflect.DeepEqual(f, fe) {
 		t.Errorf("Error retrieving Meta from DB, expected %+v, get %+v", f, fe)
 	}
-	NewRandomTree(".", 1, 3)
+	//NewRandomTree(t, ".", 3)
 
-	h, err := f.PutFile("./../test_data/file")
+	rfile := NewRandomFile(".")
+	defer os.Remove(rfile)
+	h, err := f.PutFile(rfile)
 	check(err)
 	if h == "" {
 		t.Errorf("Hash shouldn't be nil")
 	}
-	err = f.GetFile(h, "./../test_data/restored_file")
+	rfile2 := fmt.Sprintf("%v%v", rfile, "_restored")
+	err = f.GetFile(h, rfile2)
 	check(err)
 
-	h2 := FullSHA1("./../test_data/restored_file")
-	defer os.Remove("./../test_data/restored_file")
+	h2 := FullSHA1(rfile2)
+	defer os.Remove(rfile2)
 	
 	if h != h2 {
 		t.Error("File not restored successfully")
