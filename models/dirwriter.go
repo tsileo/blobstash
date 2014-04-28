@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"crypto/sha1"
 	"fmt"
+	"sort"
 	"github.com/garyburd/redigo/redis"
 )
 
@@ -30,10 +31,13 @@ func (client *Client) DirWriter(path string) (wr *WriteResult, err error) {
 		if cwr.Hash == "" {
 			panic("Hash shouldn't be nil")
 		}
-		h.Write([]byte(cwr.Hash))
 		hashes = append(hashes, cwr.Hash)
 	}
 	wr.Filename = filepath.Base(path)
+	sort.Strings(hashes)
+	for _, hash := range hashes {
+		h.Write([]byte(hash))
+	}
 	wr.Hash = fmt.Sprintf("%x", h.Sum(nil))
 	_, err = con.Do("SADD", redis.Args{}.Add(wr.Hash).AddFlat(hashes)...)
 	return

@@ -52,3 +52,22 @@ type ReadResult struct {
 	DownloadedCnt int
 	DownloadedSize int
 }
+
+func (rr *ReadResult) Add(rr2 *ReadResult) {
+	rr.Size += rr2.Size
+	rr.BlobsCnt += rr2.BlobsCnt
+//	rr.SkippedCnt += rr2.SkippedCnt
+//	rr.SkippedSize += rr2.SkippedSize
+	rr.DownloadedCnt += rr2.DownloadedCnt
+	rr.DownloadedSize += rr2.DownloadedSize
+}
+
+func MatchResult(wr *WriteResult, rr *ReadResult) bool {
+	if wr.Size == rr.Size && wr.Hash == rr.Hash &&
+	   		wr.BlobsCnt == rr.BlobsCnt &&
+	   		(wr.SkippedCnt + wr.UploadedCnt) == rr.DownloadedCnt &&
+	   		(wr.SkippedSize + wr.UploadedSize) == rr.DownloadedSize {
+	   	return true
+	}
+	return false
+}

@@ -1,13 +1,15 @@
 package models
 
 import (
-	"log"
 	"github.com/garyburd/redigo/redis"
 	"os"
 	"path/filepath"
+	"fmt"
+	"crypto/sha1"
 )
 
 func (client *Client) GetDir(key, path string) (rr *ReadResult, err error) {
+	fullHash := sha1.New()
 	rr = &ReadResult{}
 	con := client.Pool.Get()
 	defer con.Close()
@@ -19,21 +21,25 @@ func (client *Client) GetDir(key, path string) (rr *ReadResult, err error) {
 	if err != nil {
 		return
 	}
+	var crr *ReadResult
 	for _, member := range members {
 		meta, _ := NewMetaFromDB(client.Pool, member)
 		if meta.Type == "file" {
-			_, err = client.GetFile(meta.Hash, filepath.Join(path, meta.Name))
+			crr, err = client.GetFile(meta.Hash, filepath.Join(path, meta.Name))
 			if err != nil {
-				panic(err)
+				return
 			}
-			log.Printf("file:%+v", meta)
 		} else {
-			_, err = client.GetDir(meta.Hash, filepath.Join(path, meta.Name))
+			crr, err = client.GetDir(meta.Hash, filepath.Join(path, meta.Name))
 			if err != nil {
-				panic(err)
+				return
 			}
-			log.Printf("dir:%+v", meta)
 		}
+		fullHash.Write([]byte(crr.Hash))
+		rr.Add(crr)
+
 	}
+	// TODO(ts) sum the hash and check with the root
+	rr.Hash = fmt.Sprintf("%x", fullHash.Sum(nil))
 	return
 }

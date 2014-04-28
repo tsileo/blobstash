@@ -11,10 +11,14 @@ func TestClientDir(t *testing.T) {
  	check(err)
 	tdir := NewRandomTree(t, ".", 1)
 	defer os.RemoveAll(tdir) 
-	meta, drw, err := c.PutDir(tdir)
-	log.Printf("meta: %+v, dir rw: %+v", meta, drw)
+	meta, rw, err := c.PutDir(tdir)
+	log.Printf("meta: %+v, dir rw: %+v", meta, rw)
 	check(err)
 	rr, err := c.GetDir(meta.Hash, meta.Name + "_restored")
+	defer os.RemoveAll(meta.Name + "_restored")
 	check(err)
 	log.Printf("rr:%+v", rr)
+	if !MatchResult(rw, rr) {
+		t.Error("Directory not fully restored")
+	}
 }

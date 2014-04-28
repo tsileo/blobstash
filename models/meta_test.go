@@ -89,13 +89,13 @@ func NewRandomTree(t *testing.T, path string, maxrec int) (string) {
 func TestModelsMeta(t *testing.T) {
 	pool, err := GetDbPool()
 	check(err)
-	f := &Meta{Name:"foo", Type:"Meta", Hash:"foo_meta"}
+	f := NewMeta()
+	f.Hash = "foo_meta"
 	err = f.Save(pool)
 	check(err)
 
 	fe, err := NewMetaFromDB(pool, "foo_meta")
 	check(err)
-	f.Hash = ""
 	if !reflect.DeepEqual(f, fe) {
 		t.Errorf("Error retrieving Meta from DB, expected %+v, get %+v", f, fe)
 	}
