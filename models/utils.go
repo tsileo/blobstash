@@ -3,36 +3,10 @@ package models
 import (
 	"os"
 	"crypto/sha1"
-	"time"
 	"bufio"
 	"fmt"
 	"io"
-	"github.com/garyburd/redigo/redis"
 )
-
-func GetDbPool() (pool *redis.Pool, err error) {
-	pool = &redis.Pool{
-		MaxIdle:     50,
-		MaxActive: 50,
-		IdleTimeout: 240 * time.Second,
-		Dial: func() (redis.Conn, error) {
-			c, err := redis.Dial("tcp", "localhost:9736")
-			if err != nil {
-				return nil, err
-			}
-			//if _, err := c.Do("AUTH", password); err != nil {
-			//    c.Close()
-			//    return nil, err
-			//}
-			return c, err
-		},
-		TestOnBorrow: func(c redis.Conn, t time.Time) error {
-			_, err := c.Do("PING")
-			return err
-		},
-	}
-	return
-}
 
 func SHA1(data []byte) string {
 	h := sha1.New()
@@ -58,6 +32,15 @@ type WriteResult struct {
 	SkippedSize int
 	UploadedCnt int
 	UploadedSize int
+}
+
+func (wr *WriteResult) Add(wr2 *WriteResult) {
+	wr.Size += wr2.Size
+	wr.BlobsCnt += wr2.BlobsCnt
+	wr.SkippedCnt += wr2.SkippedCnt
+	wr.SkippedSize += wr2.SkippedSize
+	wr.UploadedCnt += wr2.UploadedCnt
+	wr.UploadedSize += wr2.UploadedSize
 }
 
 type ReadResult struct {

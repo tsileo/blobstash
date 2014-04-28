@@ -36,7 +36,7 @@ const (
 	BlobsSize
 )
 
-const SnapshotTTL = 120
+const SnapshotTTL = 120 * 100
 
 // Format a key (append the "type" byte)
 func KeyType(key interface{}, kType byte) []byte {

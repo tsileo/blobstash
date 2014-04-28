@@ -25,7 +25,7 @@ Metadata are stored in LevelDB and are exposed via a Redis protocol tcp server, 
 - Snapshot handling
 - String data type
 - Hash data type
-- Set (lexicographical order) data type
+- Set (lexicographical order) data type (used to store hash list)
 - List (sorted by an uint index) data type
 - "Virtual" Blob data type (upload/download from/to storage)
 

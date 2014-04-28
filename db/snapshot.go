@@ -9,17 +9,15 @@ import (
 // Infinite loop that check snapshots TTL and release them if expired
 func (db *DB) SnapshotHandler() {
 	ticker := time.NewTicker(1 * time.Second)
-	go func() {
-		for t := range ticker.C {
-			now := t.UTC().Unix()
-			for snapId, snapTTL := range db.snapshotsTTL {
-				if now >= snapTTL {
-					log.Printf("SnapshotHandler: releasing timed-out snapshot %v\n", snapId)
-					db.ReleaseSnapshot(snapId)
-				}
+	for t := range ticker.C {
+		now := t.UTC().Unix()
+		for snapId, snapTTL := range db.snapshotsTTL {
+			if now >= snapTTL {
+				log.Printf("SnapshotHandler: releasing timed-out snapshot %v\n", snapId)
+				db.ReleaseSnapshot(snapId)
 			}
 		}
-	}()
+	}
 }
 
 // Create a new LevelDB snapshot and return its newly generated ID
@@ -54,11 +52,12 @@ func (db *DB) UpdateSnapshotTTL(snapId string, ttl int) {
 
 // Release the LevelDB snapshot
 func (db *DB) ReleaseSnapshot(snapId string) {
+	//return
 	snap, snapExists := db.GetSnapshot(snapId)
-	if snapExists {
-		db.ldb.ReleaseSnapshot(snap)
+	if snapExists && snap != nil {
 		db.snapMutex.Lock()
 		defer db.snapMutex.Unlock()
+		db.ldb.ReleaseSnapshot(snap)
 		delete(db.snapshots, snapId)
 		delete(db.snapshotsTTL, snapId)
 	}

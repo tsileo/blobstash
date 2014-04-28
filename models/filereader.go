@@ -7,10 +7,9 @@ import (
 	"github.com/garyburd/redigo/redis"
 )
 
-func FileReader(key, path string) (*ReadResult, error) {
+func (client *Client) GetFile(key, path string) (*ReadResult, error) {
 	readResult := &ReadResult{}
-	rpool, _ := GetDbPool()
-	con := rpool.Get()
+	con := client.Pool.Get()
 	defer con.Close()
 	buf, err := os.Create(path)
 	defer buf.Close()
@@ -24,7 +23,7 @@ func FileReader(key, path string) (*ReadResult, error) {
 		rcon := rpool.Get()
 		defer rcon.Close()
 		rcon.Do("SNAPRELEASE", snapId)
-	}(rpool, snapId)
+	}(client.Pool, snapId)
 	for {
 		hs, _ := redis.Strings(con.Do("LRANGE", snapId, key, start, "\xff", 50))
 		for _, hash := range hs {

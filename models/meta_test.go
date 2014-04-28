@@ -4,12 +4,12 @@ import (
 	"testing"
 	"reflect"
 	"os"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"path/filepath"
-	"encoding/base64"
+	"sync"
 	"crypto/rand"
+	"log"
 	mrand "math/rand"
 	"github.com/bradfitz/iter"
 )
@@ -39,12 +39,19 @@ func NewRandomName() string {
 	if n != len(b) || err != nil {
 		panic(err)
 	}
-	return base64.StdEncoding.EncodeToString(b)
+	return SHA1(b)
+}
+
+func NewRandomFileWg(path string, wg *sync.WaitGroup) string {
+	defer wg.Done()
+	return NewRandomFile(path)
 }
 
 func CreateRandomTree(t *testing.T, path string, rec, maxrec int) (string, int) {
 	p := NewRandomDir(path)
-	t.Log("Creating a new random tree at %v", p)
+	if rec == 0 {
+		log.Printf("Creating a new random tree at", p)		
+	}
 	nfiles := 0
 	for {
 		nfiles = mrand.Intn(10)
@@ -53,8 +60,10 @@ func CreateRandomTree(t *testing.T, path string, rec, maxrec int) (string, int) 
 		}
 	}
 	cnt := 0
+	var wg sync.WaitGroup
 	for _ = range iter.N(nfiles) {
-    	go NewRandomFile(p)
+		wg.Add(1)
+    	go NewRandomFileWg(p, &wg)
     	cnt++
     	if rec < maxrec && mrand.Intn(10) < 5 {
     		_, ncnt := CreateRandomTree(t, p, rec+1, maxrec)
@@ -65,11 +74,16 @@ func CreateRandomTree(t *testing.T, path string, rec, maxrec int) (string, int) 
     		return p, cnt
     	}
 	}
+	wg.Wait()
+	if rec == 0 {
+		log.Printf("Done")
+	}
 	return p, cnt
 }
 
-func NewRandomTree(t *testing.T, path string, maxrec int) (string, int) {
-	return CreateRandomTree(t, path, 0, maxrec)
+func NewRandomTree(t *testing.T, path string, maxrec int) (string) {
+	tpath, _ := CreateRandomTree(t, path, 0, maxrec)
+	return tpath
 }
 
 func TestModelsMeta(t *testing.T) {
@@ -86,22 +100,4 @@ func TestModelsMeta(t *testing.T) {
 		t.Errorf("Error retrieving Meta from DB, expected %+v, get %+v", f, fe)
 	}
 	//NewRandomTree(t, ".", 3)
-
-	rfile := NewRandomFile(".")
-	defer os.Remove(rfile)
-	h, err := f.PutFile(rfile)
-	check(err)
-	if h == "" {
-		t.Errorf("Hash shouldn't be nil")
-	}
-	rfile2 := fmt.Sprintf("%v%v", rfile, "_restored")
-	err = f.GetFile(h, rfile2)
-	check(err)
-
-	h2 := FullSHA1(rfile2)
-	defer os.Remove(rfile2)
-	
-	if h != h2 {
-		t.Error("File not restored successfully")
-	}
 }

@@ -3,7 +3,6 @@ package models
 import (
 	"github.com/garyburd/redigo/redis"
 	"errors"
-	"log"
 )
 
 type Meta struct {
@@ -22,6 +21,11 @@ func NewMetaFromDB(pool *redis.Pool, key string) (m *Meta, err error) {
 	}
 	err = redis.ScanStruct(reply, m)
 	return
+}
+
+func NewMeta() *Meta {
+	meta := &Meta{}
+	return meta
 }
 
 func (m *Meta) Save(pool *redis.Pool) error {
@@ -48,22 +52,4 @@ func (m *Meta) IsDir() bool {
 		return true
 	}
 	return false
-}
-
-func (m *Meta) PutFile(path string) (h string, err error) {
-	wr, err := RawPutFile(path)
-	if err != nil {
-		return
-	}
-	log.Printf("%+v", wr)
-	h = wr.Hash
-	m.Hash = h
-	m.Type = "file"
-	return 
-}
-
-func (m *Meta) GetFile(key, path string) error {
-	rw, err := FileReader(key, path)
-	log.Printf("%+v", rw)
-	return err
 }

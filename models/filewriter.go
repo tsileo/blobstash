@@ -13,7 +13,7 @@ import (
 )
 
 
-func FileWriter(key, path string) (*WriteResult, error) {
+func (client *Client) FileWriter(key, path string) (*WriteResult, error) {
 	writeResult := &WriteResult{}
 	window := 64
 	rs := rolling.New(window)
@@ -23,8 +23,7 @@ func FileWriter(key, path string) (*WriteResult, error) {
 		return writeResult, err
 	}
 	freader := bufio.NewReader(f)
-	rpool, _ := GetDbPool()
-	con := rpool.Get()
+	con := client.Pool.Get()
 	defer con.Close()
 	var buf bytes.Buffer
 	buf.Reset()
@@ -75,13 +74,20 @@ func FileWriter(key, path string) (*WriteResult, error) {
 	return writeResult, nil
 }
 
-func RawPutFile(path string) (wr *WriteResult, err error) {
+func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err error) {
 	if _, err = os.Stat(path); os.IsNotExist(err) {
 		return
 	}
 	sha := FullSHA1(path)
-	wr, err = FileWriter(sha, path)
+	wr, err = client.FileWriter(sha, path)
+	if err != nil {
+		return
+	}
 	_, filename := filepath.Split(path)
-	wr.Filename = filename
+	meta = NewMeta()
+	meta.Hash = wr.Hash
+	meta.Name = filename
+	meta.Type = "file"
+	err = meta.Save(client.Pool)
 	return
 }
