@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"sync"
 	"crypto/sha1"
+	"net"
 	"errors"
 	"strconv"
+	"os"
 )
 
 var (
@@ -79,6 +81,7 @@ func SHA1(data []byte) string {
 var dbmananger *DBsManager
 
 func New() {
+	stop := make(chan bool)
 	dbmananger = &DBsManager{DBs: make(map[string]*db.DB), mutex:&sync.Mutex{}}
 	localBackend := backend.NewLocalBackend("./tmp_blobs")
 	srv := redeo.NewServer(nil)
@@ -416,7 +419,43 @@ func New() {
 		out.WriteOK()
 		return nil
 	})
+	srv.HandleFunc("shutdown", func(out *redeo.Responder, _ *redeo.Request) error {
+		stop <-true
+		out.WriteOK()
+		return nil
+	})
 
 	log.Printf("Listening on tcp://%s", srv.Addr())
-	log.Fatal(srv.ListenAndServe())
+	//log.Fatal(srv.ListenAndServe())
+
+	listener, err := net.Listen("tcp", srv.Addr())
+	if err != nil {
+		panic(err)
+	}
+	if stop != nil {
+		go func() {
+			for {
+				if flag := <-stop; flag {
+					err := listener.Close()
+					if err != nil {
+						os.Stderr.WriteString(err.Error())
+					}
+					os.Exit(1)
+					return
+				}
+			}
+		}()
+	}
+	errs := make(chan error)
+	srv.Serve(errs, listener)
+	// I know, that's a ugly and depending on undocumented behavior.
+	// But when the implementation changes, we'll see it immediately as panic.
+	// To the keepers of the Go standard libraries:
+	// It would be useful to return a documented error type
+	// when the network connection is closed.
+	//if !strings.Contains(err.Error(), "use of closed network connection") {
+	//	panic(err)
+	//}
+	log.Println("Server shutdown")
+
 }
