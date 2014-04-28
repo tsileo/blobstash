@@ -14,7 +14,7 @@ import (
 	"github.com/bradfitz/iter"
 )
 
-const MaxRandomFileSize = 2<<20
+const MaxRandomFileSize = 2<<19
 
 func NewRandomFile(path string) string {
 	filename := NewRandomName()
@@ -50,12 +50,12 @@ func NewRandomFileWg(path string, wg *sync.WaitGroup) string {
 func CreateRandomTree(t *testing.T, path string, rec, maxrec int) (string, int) {
 	p := NewRandomDir(path)
 	if rec == 0 {
-		log.Printf("Creating a new random tree at", p)		
+		log.Printf("Creating a new random tree at %v", p)		
 	}
 	nfiles := 0
 	for {
 		nfiles = mrand.Intn(10)
-		if nfiles >= 5 {
+		if nfiles >= 3 {
 			break
 		}
 	}
@@ -70,7 +70,7 @@ func CreateRandomTree(t *testing.T, path string, rec, maxrec int) (string, int) 
     		cnt += ncnt
     	}
     	// Break at 50 to spend less time
-    	if cnt > 50 {
+    	if cnt > 30 {
     		return p, cnt
     	}
 	}
