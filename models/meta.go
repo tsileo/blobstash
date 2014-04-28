@@ -20,6 +20,7 @@ func NewMetaFromDB(pool *redis.Pool, key string) (m *Meta, err error) {
 		return
 	}
 	err = redis.ScanStruct(reply, m)
+	m.Hash = key
 	return
 }
 

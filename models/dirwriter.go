@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"crypto/sha1"
 	"fmt"
+	"github.com/garyburd/redigo/redis"
 )
 
 func (client *Client) DirWriter(path string) (wr *WriteResult, err error) {
@@ -13,6 +14,7 @@ func (client *Client) DirWriter(path string) (wr *WriteResult, err error) {
 	wr = &WriteResult{}
 	dirdata, _ := ioutil.ReadDir(path)
 	h := sha1.New()
+	hashes := []string{}
 	var cwr *WriteResult
 	for _, data := range dirdata {
 		abspath := filepath.Join(path, data.Name())
@@ -25,11 +27,16 @@ func (client *Client) DirWriter(path string) (wr *WriteResult, err error) {
 			return
 		}
 		wr.Add(cwr)
-		h.Write([]byte(wr.Hash))
+		if cwr.Hash == "" {
+			panic("Hash shouldn't be nil")
+		}
+		h.Write([]byte(cwr.Hash))
+		hashes = append(hashes, cwr.Hash)
 	}
-	wr.Filename = filepath.Dir(path) 
+	wr.Filename = filepath.Base(path)
 	wr.Hash = fmt.Sprintf("%x", h.Sum(nil))
-	return wr, nil
+	_, err = con.Do("SADD", redis.Args{}.Add(wr.Hash).AddFlat(hashes)...)
+	return
 }
 
 func (client *Client) PutDir(path string) (meta *Meta, wr *WriteResult, err error) {

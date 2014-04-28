@@ -53,8 +53,18 @@ func SetUpCtx(req *redeo.Request) {
 		req.Client().Ctx = &ServerCtx{"default", dbmananger}
 	}
 }
+
 func CheckArgs(req *redeo.Request, argsCnt int) error {
+	//log.Printf("%+v", req)
 	if len(req.Args) != argsCnt {
+		return redeo.ErrWrongNumberOfArgs
+	}
+	return nil
+}
+
+func CheckMinArgs(req *redeo.Request, argsCnt int) error {
+	log.Printf("%+v", req)
+	if len(req.Args) < argsCnt {
 		return redeo.ErrWrongNumberOfArgs
 	}
 	return nil
@@ -134,6 +144,43 @@ func New() {
 			return ErrSomethingWentWrong
 		}
 		out.WriteOK()
+		return nil
+	})
+	srv.HandleFunc("sadd", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckMinArgs(req, 2)
+		if err != nil {
+			return err
+		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		cmdArgs := make([]string, len(req.Args)-1)
+		copy(cmdArgs, req.Args[1:])
+		cnt := cdb.Sadd(req.Args[0], cmdArgs...)
+		//if err != nil {
+		//	return ErrSomethingWentWrong
+		//}
+		out.WriteInt(cnt)
+		return nil
+	})
+	srv.HandleFunc("smembers", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 1)
+		if err != nil {
+			return err
+		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		members := cdb.Smembers(req.Args[0])
+		//if err != nil {
+		//	return ErrSomethingWentWrong
+		//}
+		if len(members) != 0 {
+			out.WriteBulkLen(len(members))
+			for _, member := range members {
+				out.WriteString(string(member))
+			}
+		} else {
+			out.WriteNil()
+		}
 		return nil
 	})
 	srv.HandleFunc("hset", func(out *redeo.Responder, req *redeo.Request) error {
