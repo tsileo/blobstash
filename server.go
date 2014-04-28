@@ -5,5 +5,6 @@ import (
 )
 
 func main() {
-	server.New()
+	stop := make(chan bool)
+	server.New("127.0.0.1:9736", stop)
 }

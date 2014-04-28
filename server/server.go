@@ -26,12 +26,12 @@ type ServerCtx struct {
 
 type DBsManager struct {
 	DBs map[string]*db.DB
-	mutex *sync.Mutex
+	*sync.Mutex
 }
 
 func (dbm *DBsManager) GetDb(dbname string) *db.DB { 
-	dbm.mutex.Lock()
-	defer dbm.mutex.Unlock()
+	dbm.Lock()
+	defer dbm.Unlock()
 	cdb, exists := dbm.DBs[dbname]
 	if !exists {
 		newdb, err := db.New(fmt.Sprintf("./ldb_%v", dbname))
@@ -52,7 +52,7 @@ func (ctx *ServerCtx) GetDb() *db.DB {
 func SetUpCtx(req *redeo.Request) {
 	if req.Client().Ctx == nil {
 		log.Println("New con")
-		req.Client().Ctx = &ServerCtx{"default", dbmananger}
+		req.Client().Ctx = &ServerCtx{"default", dbmanager}
 	}
 }
 
@@ -78,13 +78,12 @@ func SHA1(data []byte) string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
-var dbmananger *DBsManager
+var dbmanager *DBsManager
 
-func New() {
-	stop := make(chan bool)
-	dbmananger = &DBsManager{DBs: make(map[string]*db.DB), mutex:&sync.Mutex{}}
+func New(addr string, stop chan bool) {
+	dbmanager = &DBsManager{DBs: make(map[string]*db.DB)}
 	localBackend := backend.NewLocalBackend("./tmp_blobs")
-	srv := redeo.NewServer(nil)
+	srv := redeo.NewServer(&redeo.Config{Addr: addr})
 	srv.HandleFunc("ping", func(out *redeo.Responder, _ *redeo.Request) error {
 		out.WriteInlineString("PONG")
 		return nil
@@ -436,11 +435,12 @@ func New() {
 		go func() {
 			for {
 				if flag := <-stop; flag {
+					log.Println("Server shutting down...")
 					err := listener.Close()
 					if err != nil {
 						os.Stderr.WriteString(err.Error())
 					}
-					os.Exit(1)
+					os.Exit(0)
 					return
 				}
 			}
@@ -448,14 +448,4 @@ func New() {
 	}
 	errs := make(chan error)
 	srv.Serve(errs, listener)
-	// I know, that's a ugly and depending on undocumented behavior.
-	// But when the implementation changes, we'll see it immediately as panic.
-	// To the keepers of the Go standard libraries:
-	// It would be useful to return a documented error type
-	// when the network connection is closed.
-	//if !strings.Contains(err.Error(), "use of closed network connection") {
-	//	panic(err)
-	//}
-	log.Println("Server shutdown")
-
 }
