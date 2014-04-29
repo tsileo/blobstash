@@ -6,7 +6,7 @@ import (
 )
 
 func TestDBStringDataType(t *testing.T) {
-	db, err := New("test_db_string")
+	db, err := NewMem()
 	if err != nil {
 		panic("db error")
 	}

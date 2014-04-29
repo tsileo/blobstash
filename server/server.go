@@ -11,6 +11,7 @@ import (
 	"net"
 	"errors"
 	"strconv"
+	"path/filepath"
 	"os"
 )
 
@@ -25,7 +26,9 @@ type ServerCtx struct {
 }
 
 type DBsManager struct {
+	dbpath string
 	DBs map[string]*db.DB
+	mem bool
 	*sync.Mutex
 }
 
@@ -34,7 +37,13 @@ func (dbm *DBsManager) GetDb(dbname string) *db.DB {
 	defer dbm.Unlock()
 	cdb, exists := dbm.DBs[dbname]
 	if !exists {
-		newdb, err := db.New(fmt.Sprintf("./ldb_%v", dbname))
+		var newdb *db.DB
+		var err error
+		if dbm.mem {
+			newdb, err = db.NewMem()
+		} else {
+			newdb, err = db.New(filepath.Join(dbm.dbpath, dbname))
+		}
 		if err != nil {
 			panic(err)
 		}
@@ -56,7 +65,6 @@ func SetUpCtx(req *redeo.Request) {
 }
 
 func CheckArgs(req *redeo.Request, argsCnt int) error {
-	//log.Printf("%+v", req)
 	if len(req.Args) != argsCnt {
 		return redeo.ErrWrongNumberOfArgs
 	}
@@ -64,7 +72,6 @@ func CheckArgs(req *redeo.Request, argsCnt int) error {
 }
 
 func CheckMinArgs(req *redeo.Request, argsCnt int) error {
-	log.Printf("%+v", req)
 	if len(req.Args) < argsCnt {
 		return redeo.ErrWrongNumberOfArgs
 	}
@@ -77,11 +84,15 @@ func SHA1(data []byte) string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
+func NewDBsManager(dbpath string, testMode bool) *DBsManager {
+	os.Mkdir(dbpath, 0700)
+	return &DBsManager{dbpath, make(map[string]*db.DB), testMode, &sync.Mutex{}}	
+}
+
 var dbmanager *DBsManager
 
-func New(addr string, stop chan bool) {
-	dbmanager = &DBsManager{make(map[string]*db.DB), &sync.Mutex{}}
-	localBackend := backend.NewLocalBackend("./tmp_blobs")
+func New(addr, dbpath string, blobBackend backend.Backend, testMode bool, stop chan bool) {
+	dbmanager = NewDBsManager(dbpath, testMode)
 	srv := redeo.NewServer(&redeo.Config{Addr: addr})
 	srv.HandleFunc("ping", func(out *redeo.Responder, _ *redeo.Request) error {
 		out.WriteInlineString("PONG")
@@ -276,7 +287,7 @@ func New(addr string, stop chan bool) {
 		blob := []byte(req.Args[0])
 		log.Printf("Blob len: %v", len(blob))
 		sha := SHA1(blob)
-		err  = localBackend.Put(sha, blob)
+		err  = blobBackend.Put(sha, blob)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -292,21 +303,20 @@ func New(addr string, stop chan bool) {
 		if err != nil {
 			return err
 		}
-		blob, err  := localBackend.Get(req.Args[0])
+		blob, err  := blobBackend.Get(req.Args[0])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
 		out.WriteString(string(blob))
 		return nil
 	})
-
 	srv.HandleFunc("bexists", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 1)
 		if err != nil {
 			return err
 		}
-		exists := localBackend.Exists(req.Args[0])
+		exists := blobBackend.Exists(req.Args[0])
 		res := 0
 		if exists {
 			res = 1
@@ -394,6 +404,10 @@ func New(addr string, stop chan bool) {
 		}
 		return nil
 	})
+	srv.HandleFunc("size", func(out *redeo.Responder, _ *redeo.Request) error {
+		out.WriteInt(0)
+		return nil
+	})
 	srv.HandleFunc("shutdown", func(out *redeo.Responder, _ *redeo.Request) error {
 		stop <-true
 		out.WriteOK()
@@ -416,7 +430,6 @@ func New(addr string, stop chan bool) {
 					if err != nil {
 						os.Stderr.WriteString(err.Error())
 					}
-					os.Exit(0)
 					return
 				}
 			}

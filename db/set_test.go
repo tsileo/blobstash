@@ -6,7 +6,7 @@ import (
 )
 
 func TestDBSetDataType(t *testing.T) {
-	db, err := New("test_db_set")
+	db, err := NewMem()
 	if err != nil {
 		panic("db error")
 	}

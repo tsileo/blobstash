@@ -7,7 +7,7 @@ import (
 )
 
 func TestDBListDataType(t *testing.T) {
-	db, err := New("test_db_list")
+	db, err := NewMem()
 	if err != nil {
 		panic("db error")
 	}

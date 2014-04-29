@@ -13,7 +13,7 @@ func check(e error) {
 }
 
 func TestDB(t *testing.T) {
-	db, err := New("test_db")
+	db, err := NewMem()
 	if err != nil {
 		t.Fatal("Error creating db")
 	}	

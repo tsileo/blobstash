@@ -7,7 +7,7 @@ import (
 )
 
 func TestDBHashDataType(t *testing.T) {
-	db, err := New("test_db_hash")
+	db, err := NewMem()
 	if err != nil {
 		panic("db error")
 	}

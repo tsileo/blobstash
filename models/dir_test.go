@@ -22,7 +22,7 @@ func TestClientDir(t *testing.T) {
 
 func TestClientDirDeepRecursion(t *testing.T) {
 	if testing.Short() {
-        t.Skip("Skipping DB snapshot TTL test in short mode.")
+        t.Skip("Skipping TestClientDirDeepRecursion test in short mode.")
     }
 	c, err := NewClient()
  	check(err)

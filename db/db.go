@@ -98,18 +98,31 @@ type DB struct {
 
 // Creates a new database.
 func New(db_path string) (*DB, error) {
+	createOpen := kv.Open
+	if _, err := os.Stat(db_path); os.IsNotExist(err) {
+		createOpen = kv.Create
+	}
 	//opts := opts()
 	//action := kv.Open
 	//if _, err := os.Stat(db_path); os.IsNotExist(err) {
 	//	action = kv.Create
 	//}
-	db, err := kv.CreateTemp("/tmp", "temp", ".db", &kv.Options{})
+	db, err := createOpen(db_path, &kv.Options{})
 	mutex := NewSlottedMutex()
 	return &DB{db: db, db_path: db_path, mutex: mutex}, err
 }
 
+func NewMem() (*DB, error) {
+	db, err := kv.CreateMem(&kv.Options{})
+	mutex := NewSlottedMutex()
+	return &DB{db: db, db_path: "", mutex: mutex}, err
+}
+
 func (db *DB) Destroy() error {
-	return os.RemoveAll(db.db_path)
+	if db.db_path != "" {
+		return os.RemoveAll(db.db_path)
+	}
+	return nil
 }
 
 // Cleanly close the DB
