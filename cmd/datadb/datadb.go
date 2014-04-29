@@ -1,8 +1,10 @@
 package main
 
 import (
-  "os"
-  "github.com/codegangsta/cli"
+	"os"
+	"github.com/codegangsta/cli"
+	"github.com/tsileo/datadatabase/models"
+	"fmt"
 )
 
 func main() {
@@ -34,11 +36,15 @@ func main() {
 	    },
 	  },
 	  {
-	    Name:      "complete",
-	    ShortName: "c",
-	    Usage:     "complete a task on the list",
+	    Name:      "ls",
+	    ShortName: "ls",
+	    Usage:     "List backups",
 	    Action: func(c *cli.Context) {
-	      println("completed task: ", c.Args().First())
+	    	client, _ := models.NewClient()
+	    	metas, _ := client.List()
+	    	for _, m := range metas {
+	    		fmt.Printf("%+v\n", m)
+	    	}
 	    },
 	  },
 	}

@@ -87,6 +87,7 @@ func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err err
 	meta = NewMeta()
 	meta.Hash = wr.Hash
 	meta.Name = filename
+	meta.Size = wr.Size
 	meta.Type = "file"
 	err = meta.Save(client.Pool)
 	return

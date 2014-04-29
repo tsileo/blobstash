@@ -55,6 +55,7 @@ func (client *Client) PutDir(path string) (meta *Meta, wr *WriteResult, err erro
 	meta = NewMeta()
 	meta.Name = wr.Filename
 	meta.Type = "dir"
+	meta.Size = wr.Size
 	meta.Hash = wr.Hash
 	err = meta.Save(client.Pool)
 	return

@@ -8,6 +8,7 @@ import (
 type Meta struct {
 	Name string `redis:"name"`
 	Type string `redis:"type"`
+	Size int	`redis:"size"`
 	Hash string `redis:"-"`
 }
 
@@ -21,6 +22,11 @@ func NewMetaFromDB(pool *redis.Pool, key string) (m *Meta, err error) {
 	}
 	err = redis.ScanStruct(reply, m)
 	m.Hash = key
+	return
+}
+
+func GetAllMeta(pool *redis.Pool) (metas []*Meta, err error) {
+	
 	return
 }
 
@@ -38,6 +44,7 @@ func (m *Meta) Save(pool *redis.Pool) error {
 	// TODO(tsileo) replace with a HMSET
 	_, err := con.Do("HSET", m.Hash, "name", m.Name)
 	_, err = con.Do("HSET", m.Hash, "type", m.Type)
+	_, err = con.Do("HSET", m.Hash, "size", m.Size)
 	return err
 }
 

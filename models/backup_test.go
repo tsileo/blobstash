@@ -14,11 +14,12 @@ func check(e error) {
 func TestModelsBackup(t *testing.T) {
 	pool, err := GetDbPool()
 	check(err)
-	f := &Backup{Name:"foo", Type:"file", Data:"bar", Ts:10}
-	err = f.Save(pool, "foo")
+	//f := &Backup{Name:"foo", Type:"file", Ref:"bar"}
+	f := NewBackup("foo", "file", "bar")
+	h, err := f.Save(pool)
 	check(err)
 
-	f2, err := NewBackupFromDB(pool, "foo")
+	f2, err := NewBackupFromDB(pool, h)
 	check(err)
 	if !reflect.DeepEqual(f, f2) {
 		t.Errorf("Error retrieving file from DB, expected %+v, get %+v", f, f2)
