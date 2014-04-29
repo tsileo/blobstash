@@ -48,6 +48,7 @@ func (client *Client) GetFile(key, path string) (*ReadResult, error) {
 		} else {
 			start = hs[49]
 		}
+		con.Do("SNAPTTL", snapId, 30)
 	}
 	readResult.Hash = fmt.Sprintf("%x", fullHash.Sum(nil))
 	return readResult, nil

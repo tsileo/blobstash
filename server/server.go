@@ -81,7 +81,7 @@ func SHA1(data []byte) string {
 var dbmanager *DBsManager
 
 func New(addr string, stop chan bool) {
-	dbmanager = &DBsManager{DBs: make(map[string]*db.DB)}
+	dbmanager = &DBsManager{make(map[string]*db.DB), &sync.Mutex{}}
 	localBackend := backend.NewLocalBackend("./tmp_blobs")
 	srv := redeo.NewServer(&redeo.Config{Addr: addr})
 	srv.HandleFunc("ping", func(out *redeo.Responder, _ *redeo.Request) error {
@@ -415,6 +415,21 @@ func New(addr string, stop chan bool) {
 		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
 		cdb.ReleaseSnapshot(req.Args[0])
+		out.WriteOK()
+		return nil
+	})
+	srv.HandleFunc("snapttl", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 2)
+		if err != nil {
+			return err
+		}
+		ttl, err := strconv.Atoi(req.Args[1])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		cdb.UpdateSnapshotTTL(req.Args[0], ttl)
 		out.WriteOK()
 		return nil
 	})
