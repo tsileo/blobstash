@@ -13,7 +13,10 @@ func (client *Client) DirWriter(path string) (wr *WriteResult, err error) {
 	con := client.Pool.Get()
 	defer con.Close()
 	wr = &WriteResult{}
-	dirdata, _ := ioutil.ReadDir(path)
+	dirdata, err := ioutil.ReadDir(path)
+	if err != nil {
+		return
+	}
 	h := sha1.New()
 	hashes := []string{}
 	var cwr *WriteResult
@@ -28,9 +31,6 @@ func (client *Client) DirWriter(path string) (wr *WriteResult, err error) {
 			return
 		}
 		wr.Add(cwr)
-		if cwr.Hash == "" {
-			panic("Hash shouldn't be nil")
-		}
 		hashes = append(hashes, cwr.Hash)
 	}
 	wr.Filename = filepath.Base(path)

@@ -3,7 +3,7 @@ Data Database
 
 ## Overview
 
-A backup database built on top of [LevelDB](https://code.google.com/p/leveldb/), and [elasticsearch](http://www.elasticsearch.org/) and the [Redis Protocol](http://redis.io/topics/protocol).
+A backup database built on top of [kv](https://github.com/cznic/kv), and [elasticsearch](http://www.elasticsearch.org/) and the [Redis Protocol](http://redis.io/topics/protocol).
 
 Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com/bup/bup) (files are split into multiple blobs using a rolling checksum).
 
@@ -16,13 +16,12 @@ Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com
 
 ### Blobs
 
-Blobs are store as file with its sha1 as filename in a flat directory.
+Blobs are store as file (or key/archive) with its sha1 as filename in a flat directory (or bucket/vault).
 
 ### Metadata
 
-Metadata are stored in LevelDB and are exposed via a Redis protocol tcp server, with custom Redis-like data type and commands, but implemented using LevelDB lexicographical range queries and snapshots.
+Metadata are stored in kv and are exposed via a Redis protocol tcp server, with custom Redis-like data type and commands, but implemented using kv lexicographical range queries.
 
-- Snapshot handling
 - String data type
 - Hash data type
 - Set (lexicographical order) data type (used to store hash list)
@@ -37,14 +36,14 @@ A hash contains the backup parts reference, an ordered list of the files hash bl
 
 ### Databases
 
-Databases are actually different LevelDB databases, so you can export/import the meta data to be backup along with blobs.
+Databases are actually different kv databases, so you can export/import the meta data to be backup along with blobs.
 
 A database is tied to a storage.
 
 ## Roadmap / Ideas
 
 - Mount backups with fuse (with time machine like directory structure)
-- Easy way to backup/restore internal LevelDB (RDB like format)
+- Easy way to backup/restore internal kv (RDB like format)
 - Master/slave replication of metadatas
 - Encryption
 

@@ -19,13 +19,16 @@ func TestClientFile(t *testing.T) {
 	}
 
 	rfile2 := fmt.Sprintf("%v%v", rfile, "_restored")
-	_, err = c.GetFile(h.Hash, rfile2)
+	rr, err := c.GetFile(h.Hash, rfile2)
 	check(err)
 
 	h2 := FullSHA1(rfile2)
 	defer os.Remove(rfile2)
-	
 	if th != h2 {
-		t.Error("File not restored successfully")
+		t.Errorf("File not restored successfully, hash:%v restored hash:%v", th, h2)
+	}
+
+	if !MatchResult(h, rr) {
+		t.Errorf("File not restored successfully, wr:%+v/rr:%+v", h, rr)
 	}
 }

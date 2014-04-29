@@ -126,7 +126,7 @@ func (db *DB) Ldel(key string) error {
 }
 
 // Return a lexicographical range from a snapshot
-func (db *DB) GetListRange(snapId, key, kStart string, kEnd string, limit int) (kvs []*KeyValue, err error) {
+func (db *DB) GetListRange(key, kStart string, kEnd string, limit int) (kvs []*KeyValue, err error) {
 	bkey := []byte(key)
 	kvs, _ = GetRange(db.db, keyList(bkey, kStart), keyList(bkey, kEnd), limit)
 	return

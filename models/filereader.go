@@ -18,14 +18,11 @@ func (client *Client) GetFile(key, path string) (*ReadResult, error) {
 	}
 	fullHash := sha1.New()
 	start := ""
-	snapId, _ := redis.String(con.Do("SNAPSHOT"))
-	defer func(rpool *redis.Pool, snapId string) {
-		rcon := rpool.Get()
-		defer rcon.Close()
-		rcon.Do("SNAPRELEASE", snapId)
-	}(client.Pool, snapId)
 	for {
-		hs, _ := redis.Strings(con.Do("LRANGE", snapId, key, start, "\xff", 50))
+		hs, err := redis.Strings(con.Do("LRANGE", key, start, "\xff", 50))
+		if err != nil {
+			return readResult, err
+		}
 		for _, hash := range hs {
 			data, err := redis.String(con.Do("BGET", hash))
 			if err != nil {
@@ -48,7 +45,6 @@ func (client *Client) GetFile(key, path string) (*ReadResult, error) {
 		} else {
 			start = hs[49]
 		}
-		con.Do("SNAPTTL", snapId, 30)
 	}
 	readResult.Hash = fmt.Sprintf("%x", fullHash.Sum(nil))
 	return readResult, nil

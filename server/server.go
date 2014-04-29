@@ -38,7 +38,6 @@ func (dbm *DBsManager) GetDb(dbname string) *db.DB {
 		if err != nil {
 			panic(err)
 		}
-		go newdb.SnapshotHandler()
 		dbm.DBs[dbname] = newdb
 		return newdb
 	}
@@ -372,16 +371,16 @@ func New(addr string, stop chan bool) {
 	})
 	srv.HandleFunc("lrange", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
-		err := CheckArgs(req, 5)
+		err := CheckArgs(req, 4)
 		if err != nil {
 			return err
 		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
-		limit, err := strconv.Atoi(req.Args[4])
+		limit, err := strconv.Atoi(req.Args[3])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
-		kvs, err := cdb.GetListRange(req.Args[0], req.Args[1], req.Args[2], req.Args[3], limit)
+		kvs, err := cdb.GetListRange(req.Args[0], req.Args[1], req.Args[2], limit)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -393,44 +392,6 @@ func New(addr string, stop chan bool) {
 				out.WriteString(kv.Value)
 			}
 		}
-		return nil
-	})
-
-	srv.HandleFunc("snapshot", func(out *redeo.Responder, req *redeo.Request) error {
-		SetUpCtx(req)
-		err := CheckArgs(req, 0)
-		if err != nil {
-			return err
-		}
-		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
-		_, snapId := cdb.CreateSnapshot()
-		out.WriteString(snapId)
-		return nil
-	})
-	srv.HandleFunc("snaprelease", func(out *redeo.Responder, req *redeo.Request) error {
-		SetUpCtx(req)
-		err := CheckArgs(req, 1)
-		if err != nil {
-			return err
-		}
-		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
-		cdb.ReleaseSnapshot(req.Args[0])
-		out.WriteOK()
-		return nil
-	})
-	srv.HandleFunc("snapttl", func(out *redeo.Responder, req *redeo.Request) error {
-		SetUpCtx(req)
-		err := CheckArgs(req, 2)
-		if err != nil {
-			return err
-		}
-		ttl, err := strconv.Atoi(req.Args[1])
-		if err != nil {
-			return ErrSomethingWentWrong
-		}
-		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
-		cdb.UpdateSnapshotTTL(req.Args[0], ttl)
-		out.WriteOK()
 		return nil
 	})
 	srv.HandleFunc("shutdown", func(out *redeo.Responder, _ *redeo.Request) error {
