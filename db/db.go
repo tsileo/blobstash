@@ -32,6 +32,7 @@ const (
 	ListCnt
 	Hash
 	HashFieldsCnt
+	HashIndex
 	HashCnt
 	BlobsCnt
 	BlobsSize

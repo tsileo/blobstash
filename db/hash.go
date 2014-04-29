@@ -14,6 +14,8 @@ import (
 //   Meta + HashFieldsCount + hash key => binary encoded uint32
 // the total number of hashes
 //   Meta + HashCnt => binary encoded uint32
+// an index to perform a range of hash
+//   Meta + HashIndex + key => empty
 //
 
 // Format a hash field
@@ -46,6 +48,24 @@ func decodeKeyHashField(key []byte) []byte {
 	copy(member[:], key[cpos:])
 	return member
 }
+
+// Create the key used to index all hashes key
+func keyHashIndex(key []byte) []byte {
+	ikey := make([]byte, len(key) + 2)
+	ikey[0] = Meta
+	ikey[1] = HashIndex
+	copy(ikey[2:], key)
+	return ikey
+}
+
+// Extract the hash key from the raw key
+func decodeKeyHashIndex(key []byte) []byte {
+	// the Meta byte is already removed from range
+	index := make([]byte, len(key) - 1)
+	copy(index[:], key[1:])
+	return index
+}
+
 // Create the key to retrieve the number of field of the hash
 func hashFieldsCnt(key []byte) []byte {
 	cardkey := make([]byte, len(key) + 1)
@@ -74,6 +94,7 @@ func (db *DB) Hset(key, field, value string) (int, error) {
 	db.put(kfield, []byte(value))
 	cardkey := hashFieldsCnt(bkey)
 	db.incrUint32(KeyType(cardkey, Meta), cnt)
+	db.put(keyHashIndex(bkey), []byte{})
 	return cnt, nil
 }
 
@@ -95,6 +116,7 @@ func (db *DB) Hmset(key string, fieldvalue ...string) (int, error) {
 	}
 	cardkey := hashFieldsCnt(bkey)
 	db.incrUint32(KeyType(cardkey, Meta), cnt)
+	db.put(keyHashIndex(bkey), []byte{})
 	return cnt, nil
 }
 
@@ -129,6 +151,17 @@ func (db *DB) Hgetall(key string) ([]*KeyValue, error) {
 		hkvs = append(hkvs, ckv)
 	}
 	return hkvs, err
+}
+
+func (db *DB) Hscan(start, end string, limit int) ([][]byte, error) {
+	hkeys := [][]byte{}
+	kStart := keyHashIndex([]byte(start))
+	kEnd := keyHashIndex([]byte(end))
+	kvs, err := GetRange(db.db, kStart, kEnd, limit)
+	for _, kv := range kvs {
+		hkeys = append(hkeys, decodeKeyHashIndex([]byte(kv.Key)))
+	}
+	return hkeys, err
 }
 
 // Hhash

@@ -60,6 +60,15 @@ func TestDBHashDataType(t *testing.T) {
 		t.Errorf("Bad hgetall result, got: %+v, expected: %+v", kvs, expected)
 	}
 
+	_, err = db.Hmset("foo2", "attr1", "bar")
+	check(err)
+
+	hkeys, err := db.Hscan("", "\xff", 0)
+	check(err)
+	hkeysExpected := [][]byte{[]byte("foo"), []byte("foo2")}
+	if !reflect.DeepEqual(hkeys, hkeysExpected) {
+		t.Errorf("Bad hscan result, got: %+v, expected: %+v", hkeys, hkeysExpected)
+	}
 	
 	hlen, err = db.Hlen("foo")
 	check(err)

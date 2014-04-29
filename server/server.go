@@ -250,6 +250,32 @@ func New(addr, dbpath string, blobBackend backend.Backend, testMode bool, stop c
 		}
 		return nil
 	})
+	srv.HandleFunc("hscan", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 3)
+		if err != nil {
+			return err
+		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		limit, err := strconv.Atoi(req.Args[2])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		hkeys, err := cdb.Hscan(req.Args[0], req.Args[1], limit)
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		if len(hkeys) != 0 {
+			out.WriteBulkLen(len(hkeys))
+			for _, hkey := range hkeys {
+				out.WriteString(string(hkey))
+			}
+			//out.WriteString(string(res))
+		} else {
+			out.WriteNil()
+		}
+		return nil
+	})
 	srv.HandleFunc("bsize", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 0)
