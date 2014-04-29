@@ -2,7 +2,6 @@ package models
 
 import (
 	"testing"
-	"reflect"
 	"os"
 	"io"
 	"io/ioutil"
@@ -96,7 +95,7 @@ func TestModelsMeta(t *testing.T) {
 
 	fe, err := NewMetaFromDB(pool, "foo_meta")
 	check(err)
-	if !reflect.DeepEqual(f, fe) {
+	if f.Hash != fe.Hash {
 		t.Errorf("Error retrieving Meta from DB, expected %+v, get %+v", f, fe)
 	}
 	//NewRandomTree(t, ".", 3)
