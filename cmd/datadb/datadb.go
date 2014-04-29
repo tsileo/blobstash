@@ -17,22 +17,13 @@ func main() {
 //  }
 	app.Commands = []cli.Command{
 	  {
-	    Name:      "add",
-	    ShortName: "a",
-	    Usage:     "add a task to the list",
+	    Name:      "put",
+	    ShortName: "put",
+	    Usage:     "put a file/directory",
 	    Action: func(c *cli.Context) {
-	    	info, err := os.Stat(c.Args().First())
-	    	if os.IsNotExist(err) {
-	    		println("No such file")
-	    	}
-	    	if err == nil {
-	    		if info.IsDir() {
-	    			println("it's a  dir")
-		    	} else {
-		    		println("it's a file")
-		    	}
-	    	}
-	      println("added task: ", c.Args().First())
+	    	client, _ := models.NewClient()
+	    	b, m, wr, _ := client.Put(c.Args().First())
+	    	fmt.Printf("b:%+v,m:%+v,wr:%+v\n", b, m, wr)
 	    },
 	  },
 	  {

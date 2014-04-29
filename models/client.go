@@ -39,13 +39,13 @@ func NewClient() (*Client, error) {
 	return &Client{Pool:pool}, err
 }
 
-func (client *Client) List() (metas []*Meta, err error) {
+func (client *Client) List() (backups []*Backup, err error) {
 	con := client.Pool.Get()
 	defer con.Close()
 	hkeys, err := redis.Strings(con.Do("HSCAN", "backup:", "backup:\xff", 0))
 	for _, hkey := range hkeys {
-		meta, _ := NewMetaFromDB(client.Pool, hkey)
-		metas = append(metas, meta)
+		meta, _ := NewBackupFromDB(client.Pool, hkey)
+		backups = append(backups, meta)
 	}
 	return
 }
@@ -66,7 +66,7 @@ func (client *Client) Put(path string) (backup *Backup, meta *Meta, wr *WriteRes
 	if err != nil {
 		return
 	}
-	backup := models.NewBackup(wr.Name, btype, wr.Hash)
-	_, err backup.Save(client.Pool)
+	backup = NewBackup(meta.Name, btype, wr.Hash)
+	_, err = backup.Save(client.Pool)
 	return
 }

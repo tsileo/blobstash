@@ -25,7 +25,7 @@ func NewBackupFromDB(pool *redis.Pool, key string) (f *Backup, err error) {
 	f = &Backup{}
 	con := pool.Get()
 	defer con.Close()
-	reply, err := redis.Values(con.Do("HGETALL", fmt.Sprintf("backup:%v", key)))
+	reply, err := redis.Values(con.Do("HGETALL", key))
 	if err != nil {
 		return
 	}
@@ -51,7 +51,7 @@ func (f *Backup) Save(pool *redis.Pool) (string, error) {
 	_, err = con.Do("HSET", rkey, "type", f.Type)
 	_, err = con.Do("HSET", rkey, "ref", f.Ref)
 	_, err = con.Do("HSET", rkey, "ts", f.Ts)
-	return f.Hash, err
+	return rkey, err
 }
 
 
