@@ -12,7 +12,7 @@ func check(e error) {
     }
 }
 
-func TestSuite(t *testing.T) {
+func TestDB(t *testing.T) {
 	db, err := New("test_db")
 	if err != nil {
 		t.Fatal("Error creating db")
@@ -28,10 +28,10 @@ func TestSuite(t *testing.T) {
 		t.Errorf("Error getting value")
 	}
 
-	val, err = db.get([]byte("foo2"))
+	valmissing, err := db.get([]byte("foomissing"))
 	check(err)
 	
-	if val != nil {
+	if valmissing != nil {
 		t.Errorf("Non existent key should return nil")
 	}
 

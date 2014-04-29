@@ -2,7 +2,6 @@ package db
 
 import (
 	"encoding/binary"
-	"github.com/jmhodges/levigo"
 )
 
 //
@@ -65,14 +64,12 @@ func (db *DB) Scard(key string) (int, error) {
 
 func (db *DB) Sadd(key string, members ...string) int {
 	bkey := []byte(key)
-	db.mutex.Lock(bkey)
-	defer db.mutex.Unlock(bkey)
 	cnt := 0
 	for _, member := range members {
 		kmember := keySetMember(bkey, member)
-		cval, _ := db.ldb.Get(db.ro, kmember)
+		cval, _ := db.get(kmember)
 		if cval == nil {
-			db.ldb.Put(db.wo, kmember, []byte{})
+			db.put(kmember, []byte{})
 			cnt++
 		}
 	}
@@ -83,9 +80,7 @@ func (db *DB) Sadd(key string, members ...string) int {
 
 func (db *DB) Sismember(key string, member string) int {
 	bkey := []byte(key)
-	db.mutex.Lock(bkey)
-	defer db.mutex.Unlock(bkey)
-	cval, _ := db.ldb.Get(db.ro, keySetMember(bkey, member))
+	cval, _ := db.get(keySetMember(bkey, member))
 	cnt := 0
 	if cval != nil {
 		cnt++
@@ -95,16 +90,9 @@ func (db *DB) Sismember(key string, member string) int {
 
 func (db *DB) Smembers(key string) [][]byte {
 	bkey := []byte(key)
-	db.mutex.Lock(bkey)
-	snap := db.ldb.NewSnapshot()
-	db.mutex.Unlock(bkey)
-	defer db.ldb.ReleaseSnapshot(snap)
-	ro := levigo.NewReadOptions()
-	ro.SetSnapshot(snap)
-	defer ro.Close()
 	start := keySetMember(bkey, []byte{})
 	end := keySetMember(bkey, "\xff")
-	kvs, _ := GetRange(db.ldb, ro, start, end, 0) 
+	kvs, _ := GetRange(db.db, start, end, 0) 
 	res := [][]byte{}
 	for _, kv := range kvs {
 		res = append(res,  decodeKeySetMember([]byte(kv.Key)))
@@ -115,16 +103,9 @@ func (db *DB) Smembers(key string) [][]byte {
 // Remove the set
 func (db *DB) Sdel(key string) error {
 	bkey := []byte(key)
-	db.mutex.Lock(bkey)
-	snap := db.ldb.NewSnapshot()
-	db.mutex.Unlock(bkey)
-	defer db.ldb.ReleaseSnapshot(snap)
-	ro := levigo.NewReadOptions()
-	ro.SetSnapshot(snap)
-	defer ro.Close()
 	start := keySetMember(bkey, []byte{})
 	end := keySetMember(bkey, "\xff")
-	kvs, _ := GetRange(db.ldb, ro, start, end, 0) 
+	kvs, _ := GetRange(db.db, start, end, 0) 
 	for _, kv := range kvs {
 		db.del([]byte(kv.Key))
 	}

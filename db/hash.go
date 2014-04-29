@@ -3,7 +3,6 @@ package db
 import (
 	"encoding/binary"
 	"errors"
-	"github.com/jmhodges/levigo"
 	"bytes"
 )
 
@@ -66,15 +65,13 @@ func (db *DB) Hlen(key string) (int, error) {
 // Set field to value
 func (db *DB) Hset(key, field, value string) (int, error) {
 	bkey := []byte(key)
-	db.mutex.Lock(bkey)
-	defer db.mutex.Unlock(bkey)
 	cnt := 0
 	kfield := keyHashField(bkey, field)
-	cval, _ := db.ldb.Get(db.ro, kfield)
+	cval, _ := db.get(kfield)
 	if cval == nil {
 		cnt++
 	}
-	db.ldb.Put(db.wo, kfield, []byte(value))
+	db.put(kfield, []byte(value))
 	cardkey := hashFieldsCnt(bkey)
 	db.incrUint32(KeyType(cardkey, Meta), cnt)
 	return cnt, nil
@@ -82,8 +79,6 @@ func (db *DB) Hset(key, field, value string) (int, error) {
 
 func (db *DB) Hmset(key string, fieldvalue ...string) (int, error) {
 	bkey := []byte(key)
-	db.mutex.Lock(bkey)
-	defer db.mutex.Unlock(bkey)
 	cnt := 0
 	if len(fieldvalue) % 2 != 0 {
 		return cnt, errors.New("Hmset invalid args cnt")
@@ -92,11 +87,11 @@ func (db *DB) Hmset(key string, fieldvalue ...string) (int, error) {
 		field := fieldvalue[i] 
 		value := fieldvalue[i+1]
 		kfield := keyHashField(bkey, field)
-		cval, _ := db.ldb.Get(db.ro, kfield)
+		cval, _ := db.get(kfield)
 		if cval == nil {
 			cnt++
 		}
-		db.ldb.Put(db.wo, kfield, []byte(value))
+		db.put(kfield, []byte(value))
 	}
 	cardkey := hashFieldsCnt(bkey)
 	db.incrUint32(KeyType(cardkey, Meta), cnt)
@@ -108,9 +103,7 @@ func (db *DB) Hmset(key string, fieldvalue ...string) (int, error) {
 // Test for field existence
 func (db *DB) Hexists(key, field string) (int, error) {
 	bkey := []byte(key)
-	db.mutex.Lock(bkey)
-	defer db.mutex.Unlock(bkey)
-	cval, err := db.ldb.Get(db.ro, keyHashField(bkey, field))
+	cval, err := db.get(keyHashField(bkey, field))
 	cnt := 0
 	if cval != nil {
 		cnt++
@@ -121,27 +114,16 @@ func (db *DB) Hexists(key, field string) (int, error) {
 // Return the given field
 func (db *DB) Hget(key, field string) ([]byte, error) {
 	bkey := []byte(key)
-	db.mutex.Lock(bkey)
-	defer db.mutex.Unlock(bkey)
-	cval, err := db.ldb.Get(db.ro, keyHashField(bkey, field))
+	cval, err := db.get(keyHashField(bkey, field))
 	return cval, err
 }
 
 func (db *DB) Hgetall(key string) ([]*KeyValue, error) {
-	hkvs := []*KeyValue{}
 	bkey := []byte(key)
-	db.mutex.Lock(bkey)
-	defer db.mutex.Unlock(bkey)
-	snap, _ := db.CreateSnapshot()
-	defer db.ldb.ReleaseSnapshot(snap)
-	ro := levigo.NewReadOptions()
-	ro.SetSnapshot(snap)
-	defer ro.Close()
-
+	hkvs := []*KeyValue{}
 	start := keyHashField(bkey, []byte{})
 	end := keyHashField(bkey, "\xff")
-	kvs, err := GetRange(db.ldb, ro, start, end, 0)
-
+	kvs, err := GetRange(db.db, start, end, 0)
 	for _, kv := range kvs {
 		ckv := &KeyValue{string(decodeKeyHashField([]byte(kv.Key))), kv.Value}
 		hkvs = append(hkvs, ckv)

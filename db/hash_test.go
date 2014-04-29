@@ -57,7 +57,7 @@ func TestDBHashDataType(t *testing.T) {
 	kvs, err := db.Hgetall("foo")
 	check(err)
 	if !reflect.DeepEqual(kvs, expected) {
-		t.Error("Bad hgetall result")
+		t.Errorf("Bad hgetall result, got: %+v, expected: %+v", kvs, expected)
 	}
 
 	

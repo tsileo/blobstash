@@ -2,7 +2,6 @@ package db
 
 import (
 	"encoding/binary"
-	"github.com/jmhodges/levigo"
 	"strconv"
 )
 
@@ -72,11 +71,9 @@ func (db *DB) Llen(key string) (int, error) {
 // Add an element in the list at the given index
 func (db *DB) Ladd(key string, index int, value string) error {
 	bkey := []byte(key)
-	db.mutex.Lock(bkey)
-	defer db.mutex.Unlock(bkey)
 	kmember := keyList(bkey, index)
-	cval, _ := db.ldb.Get(db.ro, kmember)
-	db.ldb.Put(db.wo, kmember, []byte(value))
+	cval, _ := db.get(kmember)
+	db.put(kmember, []byte(value))
 	if cval == nil {
 		cardkey := listLen(bkey)
 		db.incrUint32(KeyType(cardkey, Meta), 1)
@@ -87,26 +84,17 @@ func (db *DB) Ladd(key string, index int, value string) error {
 // Returns the value at the given index
 func (db *DB) Lindex(key string, index int) ([]byte, error) {
 	bkey := []byte(key)
-	db.mutex.Lock(bkey)
-	defer db.mutex.Unlock(bkey)
-	cval, err := db.ldb.Get(db.ro, keyList(bkey, index))
+	cval, err := db.get(keyList(bkey, index))
 	return cval, err
 }
 
 // Returns list values, sorted by index ASC
 func (db *DB) Liter(key string) ([][]byte, error) {
 	bkey := []byte(key)
-	db.mutex.Lock(bkey)
-	snap := db.ldb.NewSnapshot()
-	db.mutex.Unlock(bkey)
-	defer db.ldb.ReleaseSnapshot(snap)
-	ro := levigo.NewReadOptions()
-	ro.SetSnapshot(snap)
-	defer ro.Close()
 	start := keyList(bkey, []byte{})
 	end := keyList(bkey, "\xff")
 	res := [][]byte{}
-	kvs, err := GetRange(db.ldb, ro, start, end, 0) 
+	kvs, err := GetRange(db.db, start, end, 0) 
 	if err != nil {
 		return res, err
 	}	
@@ -120,16 +108,9 @@ func (db *DB) Liter(key string) ([][]byte, error) {
 // Delete the entire list
 func (db *DB) Ldel(key string) error {
 	bkey := []byte(key)
-	db.mutex.Lock(bkey)
-	snap := db.ldb.NewSnapshot()
-	db.mutex.Unlock(bkey)
-	defer db.ldb.ReleaseSnapshot(snap)
-	ro := levigo.NewReadOptions()
-	ro.SetSnapshot(snap)
-	defer ro.Close()
 	start := keyList(bkey, []byte{})
 	end := keyList(bkey, "\xff")
-	kvs, err := GetRange(db.ldb, ro, start, end, 0) 
+	kvs, err := GetRange(db.db, start, end, 0) 
 	if err != nil {
 		return err
 	}
@@ -147,14 +128,7 @@ func (db *DB) Ldel(key string) error {
 // Return a lexicographical range from a snapshot
 func (db *DB) GetListRange(snapId, key, kStart string, kEnd string, limit int) (kvs []*KeyValue, err error) {
 	bkey := []byte(key)
-	snap, snapExists := db.GetSnapshot(snapId)
-	if snapExists {
-		ro := levigo.NewReadOptions()
-		ro.SetSnapshot(snap)
-		defer ro.Close()
-		kvs, _ = GetRange(db.ldb, ro, keyList(bkey, kStart), keyList(bkey, kEnd), limit)
-	}
-	db.UpdateSnapshotTTL(snapId, SnapshotTTL)
+	kvs, _ = GetRange(db.db, keyList(bkey, kStart), keyList(bkey, kEnd), limit)
 	return
 }
 

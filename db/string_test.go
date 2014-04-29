@@ -34,12 +34,7 @@ func TestDBStringDataType(t *testing.T) {
 		t.Errorf("String cnt should be 3, not %v", cnt)
 	}
 
-	_, snapId := db.CreateSnapshot()
-
-	err = db.Put("foo4", "bar4")
-	check(err)
-	
-	kvs, err := db.GetStringRange(snapId, "", "\xff", 10)
+	kvs, err := db.GetStringRange("", "\xff", 10)
 	check(err)
 
 	if len(kvs) != 3 {
@@ -51,18 +46,9 @@ func TestDBStringDataType(t *testing.T) {
 		t.Errorf("Range error, expected:%+v, got: %+v", expected, kvs)
 	}
 
-	db.ReleaseSnapshot(snapId)
-
-	cnt, err = db.GetStringCnt()
-	check(err)
-	if cnt != 4 {
-		t.Errorf("String cnt should be 4, not %v", cnt)
-	}
-
 	db.Del("foo")
 	db.Del("foo2")
 	db.Del("foo3")
-	db.Del("foo4")
 
 	cnt, err = db.GetStringCnt()
 	check(err)

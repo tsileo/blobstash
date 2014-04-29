@@ -1,8 +1,6 @@
 package db
 
 import (
-	"github.com/jmhodges/levigo"
-	"errors"
 )
 
 // Return the number of string key stored
@@ -23,13 +21,13 @@ func (db *DB) Get(key string) (val []byte, err error) {
 	return
 }
 
-func (db *DB) Getset(key string, value string) (val []byte, err error) {
+func (db *DB) Getset(key, value string) (val []byte, err error) {
 	val, err = db.getset(KeyType(key, String), []byte(value))
 	return
 }
 
 // Sets the value for a given key.
-func (db *DB) Put(key string, value string) error {
+func (db *DB) Put(key, value string) error {
 	// Incr the StringCnt if needed
 	cval, err := db.getset(KeyType(key, String), []byte(value))
 	if cval == nil {
@@ -47,16 +45,7 @@ func (db *DB) Del(key string) {
 }
 
 // Return a lexicographical range from a snapshot
-func (db *DB) GetStringRange(snapId, kStart string, kEnd string, limit int) (kvs []*KeyValue, err error) {
-	snap, snapExists := db.GetSnapshot(snapId)
-	if snapExists {
-		ro := levigo.NewReadOptions()
-		ro.SetSnapshot(snap)
-		defer ro.Close()
-		kvs, _ = GetRange(db.ldb, ro, KeyType(kStart, String), KeyType(kEnd, String), limit)
-		db.UpdateSnapshotTTL(snapId, SnapshotTTL)
-	} else {
-		err = errors.New("Snapshot not found")
-	}
+func (db *DB) GetStringRange(kStart, kEnd string, limit int) (kvs []*KeyValue, err error) {
+	kvs, _ = GetRange(db.db, KeyType(kStart, String), KeyType(kEnd, String), limit)
 	return
 }

@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"encoding/binary"
 	_ "fmt"
-	"github.com/jmhodges/levigo"
+	"github.com/cznic/kv"
 	"strconv"
-	"sync"
+	"io"
+	"os"
 )
 
 //
@@ -19,8 +20,8 @@ import (
 //
 
 const (
-	Meta byte = iota
-	MetaTTL
+	Empty byte = iota
+	Meta
 	String
 	StringCnt
 	Set
@@ -36,7 +37,14 @@ const (
 	BlobsSize
 )
 
-const SnapshotTTL = 30
+func opts() *kv.Options {
+	return &kv.Options{
+		VerifyDbBeforeOpen:  true,
+		VerifyDbAfterOpen:   true,
+		VerifyDbBeforeClose: true,
+		VerifyDbAfterClose:  true,
+	}
+}
 
 // Format a key (append the "type" byte)
 func KeyType(key interface{}, kType byte) []byte {
@@ -61,91 +69,73 @@ type KeyValue struct {
 }
 
 // Perform a lexico range query
-func GetRange(db *levigo.DB, ro *levigo.ReadOptions, kStart []byte, kEnd []byte, limit int) (values []*KeyValue, err error) {
-	it := db.NewIterator(ro)
-	defer func() {
-		it.Close()
-	}()
-	it.Seek(kStart)
+func GetRange(db *kv.DB, kStart []byte, kEnd []byte, limit int) (values []*KeyValue, err error) {
+	enum, _, err := db.Seek(kStart)
 	endBytes := kEnd
-
 	i := 0
 	for {
-		if it.Valid() {
-			if bytes.Compare(it.Key(), endBytes) > 0 || (limit != 0 && i > limit) {
-				return
-			}
-			value := it.Value()
-			vstr := string(value[:])
-			key := it.Key()
-			// Drop the meta byte
-			kstr := string(key[1:])
-			values = append(values, &KeyValue{kstr, vstr})
-			it.Next()
-			i++
-		} else {
-			err = it.GetError()
-			return
+		k, v, err := enum.Next()
+		if err == io.EOF {
+			break
 		}
+		if bytes.Compare(k, endBytes) > 0 || (limit != 0 && i > limit) {
+			return values, nil
+		}
+		vstr := string(v)
+		kstr := string(k[1:])
+		values = append(values, &KeyValue{kstr, vstr})
+		i++
 	}
-
 	return
 }
 
 // The key-value database.
 type DB struct {
-	ldb          *levigo.DB
-	ldb_path string
+	db          *kv.DB
+	db_path string
 	mutex        *SlottedMutex
-	wo           *levigo.WriteOptions
-	ro           *levigo.ReadOptions
-	snapMutex    *sync.Mutex
-	snapshots    map[string]*levigo.Snapshot
-	snapshotsTTL map[string]int64
 }
 
 // Creates a new database.
-func New(ldb_path string) (*DB, error) {
-	opts := levigo.NewOptions()
-	opts.SetCreateIfMissing(true)
-	filter := levigo.NewBloomFilter(10)
-	opts.SetFilterPolicy(filter)
-	db, err := levigo.Open(ldb_path, opts)
+func New(db_path string) (*DB, error) {
+	//opts := opts()
+	//action := kv.Open
+	//if _, err := os.Stat(db_path); os.IsNotExist(err) {
+	//	action = kv.Create
+	//}
+	db, err := kv.CreateTemp("/tmp", "temp", ".db", &kv.Options{})
 	mutex := NewSlottedMutex()
-	return &DB{ldb: db, ldb_path: ldb_path, mutex: mutex,
-		wo: levigo.NewWriteOptions(), ro: levigo.NewReadOptions(),
-		snapMutex: &sync.Mutex{}, snapshots: map[string]*levigo.Snapshot{}, snapshotsTTL: map[string]int64{}}, err
+	return &DB{db: db, db_path: db_path, mutex: mutex}, err
 }
 
 func (db *DB) Destroy() error {
-	opts := levigo.NewOptions()
-	err := levigo.DestroyDatabase(db.ldb_path, opts)
-	return err
+	return os.RemoveAll(db.db_path)
 }
 
 // Cleanly close the DB
 func (db *DB) Close() {
-	db.wo.Close()
-	db.ro.Close()
-	db.ldb.Close()
+	db.db.Close()
 }
 
 // Retrieves the value for a given key.
 func (db *DB) get(key []byte) ([]byte, error) {
 	db.mutex.Lock([]byte(key))
 	defer db.mutex.Unlock([]byte(key))
-	data, err := db.ldb.Get(db.ro, key)
+	data, err := db.db.Get(nil, key)
+	if data != nil && data[0] == Empty {
+		data = []byte{}
+	}
 	return data, err
 }
 
-func (db *DB) getset(key []byte, value []byte) ([]byte, error) {
+func (db *DB) getset(key, value []byte) ([]byte, error) {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
-	cval, err := db.ldb.Get(db.ro, key)
+	cval, err := db.db.Get(nil, key)
 	if err != nil {
 		return cval, err
 	}
-	err = db.ldb.Put(db.wo, key, value)
+	err = db.db.Set(key, value)
 	return cval, err
 }
 
@@ -153,7 +143,10 @@ func (db *DB) getset(key []byte, value []byte) ([]byte, error) {
 func (db *DB) put(key []byte, value []byte) error {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
-	err := db.ldb.Put(db.wo, key, value)
+	if len(value) == 0 {
+		value = []byte{Empty}
+	}
+	err := db.db.Set(key, value)
 	return err
 }
 
@@ -161,7 +154,7 @@ func (db *DB) put(key []byte, value []byte) error {
 func (db *DB) del(key []byte) error {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
-	err := db.ldb.Delete(db.wo, key)
+	err := db.db.Delete(key)
 	return err
 }
 
@@ -171,7 +164,7 @@ func (db *DB) putUint32(key []byte, value uint32) error {
 	defer db.mutex.Unlock(key)
 	val := make([]byte, 4)
 	binary.LittleEndian.PutUint32(val[:], value)
-	err := db.ldb.Put(db.wo, key, val)
+	err := db.db.Set(key, val)
 	return err
 }
 
@@ -179,7 +172,7 @@ func (db *DB) putUint32(key []byte, value uint32) error {
 func (db *DB) getUint32(key []byte) (uint32, error) {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
-	data, err := db.ldb.Get(db.ro, key)
+	data, err := db.db.Get(nil, key)
 	if err != nil || data == nil {
 		return 0, err
 	}
@@ -190,7 +183,7 @@ func (db *DB) getUint32(key []byte) (uint32, error) {
 func (db *DB) incrUint32(key []byte, step int) error {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
-	data, err := db.ldb.Get(db.ro, key)
+	data, err := db.db.Get(nil, key)
 	var value uint32
 	if err != nil {
 		return err
@@ -202,7 +195,7 @@ func (db *DB) incrUint32(key []byte, step int) error {
 	}
 	val := make([]byte, 4)
 	binary.LittleEndian.PutUint32(val[:], value+uint32(step))
-	err = db.ldb.Put(db.wo, key, val)
+	err = db.db.Set(key, val)
 	return err
 }
 
@@ -210,7 +203,7 @@ func (db *DB) incrUint32(key []byte, step int) error {
 func (db *DB) incrby(key []byte, value int) error {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
-	sval, err := db.ldb.Get(db.ro, key)
+	sval, err := db.db.Get(nil, key)
 	if err != nil {
 		return err
 	}
@@ -225,6 +218,6 @@ func (db *DB) incrby(key []byte, value int) error {
 	if err != nil {
 		return err
 	}
-	err = db.ldb.Put(db.wo, key, []byte(strconv.Itoa(ival+value)))
+	err = db.db.Set(key, []byte(strconv.Itoa(ival+value)))
 	return err
 }

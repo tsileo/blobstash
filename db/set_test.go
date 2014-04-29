@@ -23,12 +23,12 @@ func TestDBSetDataType(t *testing.T) {
 
 	cnt := db.Sadd("foo", "a", "a", "b", "b")
 	if cnt != 2 {
-		t.Errorf("only 2 elements should have been inserted")
+		t.Errorf("only 2 elements should have been inserted, got %v", cnt)
 	}
 
 	cnt = db.Sadd("foo", "b", "c")
 	if cnt != 1 {
-		t.Errorf("only 1 elements should have been inserted")
+		t.Errorf("only 1 elements should have been inserted, got %v", cnt)
 	}
 
 	cnt = db.Sismember("foo", "c")

@@ -54,5 +54,5 @@ func TestDBListDataType(t *testing.T) {
 	check(err)
 	if cnt != 0 {
 		t.Error("Inexistent list should have a len of 0")
-	}	
+	}
 }
