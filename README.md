@@ -13,6 +13,7 @@ Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com
 - Incremental backups by default
 - Server handles uploading/downloading blobs to/from different storage
 - Client only query the server and send blobs to it (the client take care of chunking/building blobs).
+- Read-only FUSE filesystem
 
 ### Blobs
 
@@ -28,7 +29,7 @@ Metadata are stored in kv and are exposed via a Redis protocol tcp server, with 
 - List (sorted by an uint index) data type
 - "Virtual" Blob data type (upload/download from/to storage)
 
-A backup is a set with pointer to hashmap (either representing a directory or a file, and a directory is also a set of pointer).
+A backup is a set with pointer to hash (either representing a directory or a file, and a directory is also a set of pointer).
 
 Hash pointer are the SHA1 of the JSON object, so if a file is stored multiple times, metadata are not duplicated.
 
@@ -42,7 +43,6 @@ A database is tied to a storage.
 
 ## Roadmap / Ideas
 
-- Mount backups with fuse (with time machine like directory structure)
 - Easy way to backup/restore internal kv (RDB like format)
 - Master/slave replication of metadatas
 - Encryption
