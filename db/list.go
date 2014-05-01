@@ -133,7 +133,7 @@ func (db *DB) GetListRange(key, kStart string, kEnd string, limit int) (kvs []*K
 }
 
 // Return a lexicographical range (included the previous seeked item, and the index)
-func (db *DB) GetListRangeWithPrevAndIndex(key string, kStart, kEnd, limit int) (ivs []*IndexValue, err error) {
+func (db *DB) GetListRangeWithPrev(key string, kStart, kEnd, limit int) (ivs []*IndexValue, err error) {
 	bkey := []byte(key)
 	skvs, _ := GetRangeWithPrev(db.db, keyList(bkey, kStart), keyList(bkey, kEnd), limit)
 	for _, skv := range skvs {
