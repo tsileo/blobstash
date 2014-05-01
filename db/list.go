@@ -38,7 +38,7 @@ func keyList(key []byte, index interface{}) []byte {
 	binary.LittleEndian.PutUint32(k[1:5], uint32(len(key)))
 	cpos := 5 + len(key)
 	copy(k[5:cpos], key)
-	copy(k[cpos+1:], indexbyte)
+	copy(k[cpos:], indexbyte)
 	return k
 }
 
@@ -142,9 +142,9 @@ func (db *DB) GetListRange(key, kStart string, kEnd string, limit int) (kvs []*K
 }
 
 // Return a lexicographical range (included the previous seeked item, and the index)
-func (db *DB) GetListRangeWithPrev(key string, kStart, kEnd, limit int) (ivs []*IndexValue, err error) {
+func (db *DB) GetListMinRange(key string, kStart, kEnd, limit int) (ivs []*IndexValue, err error) {
 	bkey := []byte(key)
-	skvs, _ := GetRangeWithPrev(db.db, keyList(bkey, kStart), keyList(bkey, kEnd), limit)
+	skvs, _ := GetMinRange(db.db, keyList(bkey, kStart), keyList(bkey, kEnd), limit)
 	for _, skv := range skvs {
 		if bytes.Equal([]byte(key), decodeListKey([]byte(skv.Key))) {
 			ivs = append(ivs, &IndexValue{Index:decodeListIndex([]byte(skv.Key)), Value:skv.Value})

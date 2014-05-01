@@ -62,10 +62,11 @@ func (client *Client) FileWriter(key, path string) (*WriteResult, error) {
 				writeResult.SkippedSize += buf.Len()
 				writeResult.SkippedCnt++
 			}
-			con.Do("LADD", key, writeResult.Size, nsha)
 			writeResult.Size += buf.Len()
 			buf.Reset()
 			writeResult.BlobsCnt++
+			con.Do("LADD", key, writeResult.Size, nsha)
+			
 		}
 		if eof {
 			break

@@ -22,7 +22,7 @@ func TestClientFile(t *testing.T) {
 	}
 
 	rfile2 := fmt.Sprintf("%v%v", rfile, "_restored")
-	rr, err := c.GetFile(h.Hash, rfile2)
+	_, err = c.GetFile(h.Hash, rfile2)
 	check(err)
 
 	h2 := FullSHA1(rfile2)
@@ -31,9 +31,9 @@ func TestClientFile(t *testing.T) {
 		t.Errorf("File not restored successfully, hash:%v restored hash:%v", th, h2)
 	}
 
-	if !MatchResult(h, rr) {
-		t.Errorf("File not restored successfully, wr:%+v/rr:%+v", h, rr)
-	}
+	//if !MatchResult(h, rr) {
+	//	t.Errorf("File not restored successfully, wr:%+v/rr:%+v", h, rr)
+	//}
  	d1 := []byte("hello world\n")
  	helloPath := "test_hello_world.txt"
     err = ioutil.WriteFile(helloPath, d1, 0644)
@@ -47,6 +47,11 @@ func TestClientFile(t *testing.T) {
     check(err)
     if !bytes.Equal(fkr, []byte("hello")) {
     	t.Errorf("Error Fake file read, expected:hello, got %v", fkr)
+    }
+    fkr, err = fakeFile.read(6, 5)
+    check(err)
+    if !bytes.Equal(fkr, []byte("world")) {
+    	t.Errorf("Error Fake file read, expected:world, got %v", fkr)
     }
     d2 := make([]byte, len(d1))
     n, err := fakeFile.Read(d2)

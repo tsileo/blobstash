@@ -7,12 +7,12 @@ import (
 	"github.com/tsileo/datadatabase/lru"
 	"github.com/garyburd/redigo/redis"
 	"io"
-	"log"
+	_ "log"
 	"bytes"
 	"errors"
 )
 
-func (client *Client) GetFile(key, path string) (*ReadResult, error) {
+func (client *Client) GetFile2(key, path string) (*ReadResult, error) {
 	// TODO(ts) make io.Copy ?
 	readResult := &ReadResult{}
 	con := client.Pool.Get()
@@ -56,6 +56,23 @@ func (client *Client) GetFile(key, path string) (*ReadResult, error) {
 	return readResult, nil
 }
 
+func (client *Client) GetFile(key, path string) (*ReadResult, error) {
+	// TODO(ts) make io.Copy ?
+	readResult := &ReadResult{}
+	con := client.Pool.Get()
+	defer con.Close()
+	buf, err := os.Create(path)
+	defer buf.Close()
+	if err != nil {
+		return readResult, err
+	}
+	meta, _ := NewMetaFromDB(client.Pool, key) 
+	ffile := NewFakeFile(client.Pool, meta.Hash, meta.Size)
+	io.Copy(buf, ffile)
+	readResult.Hash = meta.Hash
+	return readResult, nil
+}
+
 
 type FakeFile struct {
 	pool *redis.Pool
@@ -95,16 +112,17 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 	}
 	con := f.pool.Get()
 	defer con.Close()
-	log.Printf("ref:%+v", f.ref)
-	values, err := redis.Values(con.Do("LRANGEWITHPREV", f.ref, offset, offset+cnt, 0))
+	//log.Printf("ref:%+v,offset:%v, cnt:%v", f.ref, offset, cnt)
+	values, err := redis.Values(con.Do("LMRANGE", f.ref, offset, offset+cnt, 0))
 	if err != nil {
+		//log.Printf("DB ERROR:%+v", err)
 		return nil, err
 	}
 	redis.ScanSlice(values, &indexValueList)
-	log.Printf("ivs:%+v\n", indexValueList)
+	//log.Printf("ivs:%+v\n", indexValueList)
 	for _, iv := range indexValueList {
 		//bbuf := f.blobs.Get(iv.Value).([]byte)
-		log.Printf("%+v\n", iv)
+		//log.Printf("%+v\n", iv)
 		data, err := redis.String(con.Do("BGET", iv.Value))
 		if err != nil {
 			return nil, err
@@ -112,18 +130,22 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 		bbuf := []byte(data)
 		foffset := 0
 		if offset != 0 {
-			foffset = offset - iv.Index
+			blobStart := iv.Index - len(bbuf)
+			//log.Printf("blob start:%v", blobStart)
+			foffset =  offset - blobStart
 			offset = 0
 		}
-		if cnt - written > len(bbuf) {
+		if cnt - written > len(bbuf) - foffset {
 			fwritten, err := buf.Write(bbuf[foffset:])
 			if err != nil {
 				return nil, err
 			}
 			written += fwritten
-			continue	
+			//return buf.Bytes(), nil
+			
 		} else {
-			fwritten, err := buf.Write(bbuf[foffset:cnt - written])
+			//log.Printf("DEBUG:%v, %v, %v, %v", foffset, cnt, written, len(bbuf))
+			fwritten, err := buf.Write(bbuf[foffset:foffset + cnt - written])
 			if err != nil {
 				return nil, err
 			}
@@ -131,7 +153,13 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 			if written != cnt {
 				panic("Error reading FakeFile")
 			}
-			return buf.Bytes(), err
+		}
+
+		if foffset == len(bbuf) {
+			return nil, io.EOF
+		}
+		if written == cnt {
+			return buf.Bytes(), nil
 		}
 	}
 	return nil, err
@@ -146,14 +174,21 @@ func (f *FakeFile) Read(p []byte) (n int, err error) {
     }
 	n = 0
 	limit := len(p)
-	if limit > f.size {
-		limit = f.size
+	if limit > (f.size - f.offset) {
+		limit = f.size - f.offset
 	}
+
+	//log.Printf("offset:%v,limit:%v/size:%v", f.offset, limit, len(p), f.size)
 	b, err := f.read(f.offset, limit)
+	if err == io.EOF {
+		return 0, io.EOF
+	}
 	if err != nil {
+		//log.Printf("stoooop")
 		return 0, errors.New("datadb: Error reading slice from blobs")
 	}
 	n = copy(p, b)
+	//log.Printf("b len:%v\n", len(b))
 	f.offset += n
 	return
 }

@@ -376,6 +376,7 @@ func New(addr, dbpath string, blobBackend backend.Backend, testMode bool, stop c
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
+		log.Printf("ladd index:%v\n%+v\n", cindex, req)
 		err  = cdb.Ladd(req.Args[0], cindex, req.Args[2])
 		if err != nil {
 			return ErrSomethingWentWrong
@@ -430,7 +431,7 @@ func New(addr, dbpath string, blobBackend backend.Backend, testMode bool, stop c
 		}
 		return nil
 	})
-	srv.HandleFunc("lrangewithprev", func(out *redeo.Responder, req *redeo.Request) error {
+	srv.HandleFunc("lmrange", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 4)
 		if err != nil {
@@ -449,7 +450,7 @@ func New(addr, dbpath string, blobBackend backend.Backend, testMode bool, stop c
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
-		ivs, err := cdb.GetListRangeWithPrev(req.Args[0], start, end, limit)
+		ivs, err := cdb.GetListMinRange(req.Args[0], start, end, limit)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}

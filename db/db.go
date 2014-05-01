@@ -96,9 +96,8 @@ func GetRange(db *kv.DB, kStart []byte, kEnd []byte, limit int) (values []*KeyVa
 }
 
 // Perform a lexico range query
-func GetRangeWithPrev(db *kv.DB, kStart []byte, kEnd []byte, limit int) (values []*KeyValue, err error) {
+func GetMinRange(db *kv.DB, kStart []byte, kEnd []byte, limit int) (values []*KeyValue, err error) {
 	enum, _, err := db.Seek(kStart)
-	enum.Prev()
 	endBytes := kEnd
 	i := 0
 	for {
@@ -106,7 +105,7 @@ func GetRangeWithPrev(db *kv.DB, kStart []byte, kEnd []byte, limit int) (values 
 		if err == io.EOF {
 			break
 		}
-		if bytes.Compare(k, endBytes) > 0 || (limit != 0 && i > limit) {
+		if (bytes.Compare(k, endBytes) > 0 && len(values) >= 2) || (limit != 0 && i > limit) {
 			return values, nil
 		}
 		vstr := string(v)
