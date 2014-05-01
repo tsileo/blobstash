@@ -430,6 +430,40 @@ func New(addr, dbpath string, blobBackend backend.Backend, testMode bool, stop c
 		}
 		return nil
 	})
+	srv.HandleFunc("lrangewithprev", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 4)
+		if err != nil {
+			return err
+		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		start, err := strconv.Atoi(req.Args[1])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		end, err := strconv.Atoi(req.Args[2])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		limit, err := strconv.Atoi(req.Args[3])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		ivs, err := cdb.GetListRangeWithPrev(req.Args[0], start, end, limit)
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		if len(ivs) == 0 {
+			out.WriteNil()	
+		} else {
+			out.WriteBulkLen(len(ivs) * 2)
+			for _, iv := range ivs {
+				out.WriteInt(iv.Index)
+				out.WriteString(iv.Value)
+			}
+		}
+		return nil
+	})
 	srv.HandleFunc("size", func(out *redeo.Responder, _ *redeo.Request) error {
 		out.WriteInt(0)
 		return nil
