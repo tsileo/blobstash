@@ -2,7 +2,6 @@ package db
 
 import (
 	"encoding/binary"
-	"strconv"
 )
 
 //
@@ -48,7 +47,7 @@ func decodeListIndex(key []byte) int {
 	cpos := int(binary.LittleEndian.Uint32(key[0:4])) + 4
 	member := make([]byte, len(key) -  cpos)
 	copy(member[:], key[cpos:])
-	index, _ := strconv.Atoi(string(member))
+	index := int(binary.BigEndian.Uint32(member))
 	return index
 }
 
@@ -127,8 +126,19 @@ func (db *DB) Ldel(key string) error {
 
 // Return a lexicographical range from a snapshot
 func (db *DB) GetListRange(key, kStart string, kEnd string, limit int) (kvs []*KeyValue, err error) {
+	// TODO(tsileo) make kStart, kEnd int instead of string
 	bkey := []byte(key)
 	kvs, _ = GetRange(db.db, keyList(bkey, kStart), keyList(bkey, kEnd), limit)
+	return
+}
+
+// Return a lexicographical range (included the previous seeked item, and the index)
+func (db *DB) GetListRangeWithPrevAndIndex(key string, kStart, kEnd, limit int) (ivs []*IndexValue, err error) {
+	bkey := []byte(key)
+	skvs, _ := GetRangeWithPrev(db.db, keyList(bkey, kStart), keyList(bkey, kEnd), limit)
+	for _, skv := range skvs {
+		ivs = append(ivs, &IndexValue{Index:decodeListIndex([]byte(skv.Key)), Value:skv.Value})
+	}
 	return
 }
 

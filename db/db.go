@@ -69,6 +69,11 @@ type KeyValue struct {
 	Value string
 }
 
+type IndexValue struct {
+	Index int
+	Value string
+}
+
 // Perform a lexico range query
 func GetRange(db *kv.DB, kStart []byte, kEnd []byte, limit int) (values []*KeyValue, err error) {
 	enum, _, err := db.Seek(kStart)
