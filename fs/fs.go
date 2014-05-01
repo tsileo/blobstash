@@ -8,7 +8,6 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-	"sync"
 )
 
 var Usage = func() {
@@ -76,7 +75,6 @@ func (n *Node) Setattr(req *fuse.SetattrRequest, resp *fuse.SetattrResponse, int
 
 type Dir struct {
 	Node
-	sync.RWMutex
 	Children map[string]fs.Node
 }
 
@@ -89,9 +87,7 @@ func NewDir() (d *Dir) {
 }
 
 func (d *Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, err fuse.Error) {
-	d.RLock()
 	fs, ok := d.Children[name]
-	d.RUnlock()
 	if !ok {
 		return nil, fuse.ENOENT
 	}
@@ -101,8 +97,6 @@ func (d *Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, err fuse.Error) {
 
 func (d *Dir) ReadDir(intr fs.Intr) ([]fuse.Dirent, fuse.Error) {
 	var out []fuse.Dirent
-	d.RLock()
-	d.RUnlock()
 	return out, nil
 }
 

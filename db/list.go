@@ -132,6 +132,5 @@ func (db *DB) GetListRange(key, kStart string, kEnd string, limit int) (kvs []*K
 	return
 }
 
-
 // func (db *DB) Srange(snapId, kStart string, kEnd string, limit int) [][]byte
 // func (db *DB) Srem(key string, member ...string) int

@@ -29,6 +29,7 @@ func (client *Client) FileWriter(key, path string) (*WriteResult, error) {
 	buf.Reset()
 	fullHash := sha1.New()
 	eof := false
+	i := 0
 	for {
 		b := make([]byte, 1)
 		_, err := freader.Read(b)
@@ -36,7 +37,8 @@ func (client *Client) FileWriter(key, path string) (*WriteResult, error) {
 			eof = true
 		} else {
 			rs.Write(b)
-			buf.Write(b)	
+			buf.Write(b)
+			i++
 		}
 		onSplit := rs.OnSplit()
 		if (onSplit && (buf.Len() > 64 << 10)) || buf.Len() >= 1 << 20 || eof {
@@ -61,7 +63,7 @@ func (client *Client) FileWriter(key, path string) (*WriteResult, error) {
 				writeResult.SkippedSize += buf.Len()
 				writeResult.SkippedCnt++
 			}
-			con.Do("LADD", key, writeResult.BlobsCnt, nsha)
+			con.Do("LADD", key, writeResult.Size, nsha)
 			writeResult.Size += buf.Len()
 			buf.Reset()
 			writeResult.BlobsCnt++

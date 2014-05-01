@@ -4,6 +4,7 @@ import (
     "testing"
     "bytes"
     "sync"
+    "reflect"
 )
 
 func check(e error) {
@@ -109,6 +110,24 @@ func TestDB(t *testing.T) {
 	check(err)
 	if valUint != uint32(50) {
 		t.Errorf("Key foo3 should be set to 10, got %v", valUint)
+	}
+
+	kvs, err := GetRange(db.db, []byte("foo2"), []byte("foo3"), 0)
+	check(err)
+	if len(kvs) != 2 {
+		t.Errorf("Range len should be %v, got %v", 2, len(kvs))
+	}
+	kvs, err = GetRangeWithPrev(db.db, []byte("foo2"), []byte("foo3"), 0)
+	check(err)
+	if len(kvs) != 3 {
+		t.Errorf("RangeWithPrev len should be %v, got %v", 3, len(kvs))
+	}
+
+	// the key is expected to be "oo", not "foo",
+	// because the range function remove the first byte
+	ekv := &KeyValue{"oo", "50"}
+	if !reflect.DeepEqual(kvs[0], ekv) {
+		t.Errorf("First RangeWithPrev kv error, expected %+v, got %+v", ekv, kvs[0])
 	}
 
 	db.Close()
