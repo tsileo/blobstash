@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 )
 
-
 func (client *Client) FileWriter(key, path string) (*WriteResult, error) {
 	writeResult := &WriteResult{}
 	window := 64
@@ -87,6 +86,9 @@ func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err err
 	}
 	_, filename := filepath.Split(path)
 	meta = NewMeta()
+	if sha != wr.Hash {
+		panic("Corrupted")
+	}
 	meta.Hash = wr.Hash
 	meta.Name = filename
 	meta.Size = wr.Size

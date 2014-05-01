@@ -458,7 +458,7 @@ func New(addr, dbpath string, blobBackend backend.Backend, testMode bool, stop c
 		} else {
 			out.WriteBulkLen(len(ivs) * 2)
 			for _, iv := range ivs {
-				out.WriteInt(iv.Index)
+				out.WriteString(strconv.Itoa(iv.Index))
 				out.WriteString(iv.Value)
 			}
 		}

@@ -2,6 +2,7 @@ package db
 
 import (
 	"encoding/binary"
+	"bytes"
 )
 
 //
@@ -37,7 +38,7 @@ func keyList(key []byte, index interface{}) []byte {
 	binary.LittleEndian.PutUint32(k[1:5], uint32(len(key)))
 	cpos := 5 + len(key)
 	copy(k[5:cpos], key)
-	copy(k[cpos:cpos+4], indexbyte)
+	copy(k[cpos+1:], indexbyte)
 	return k
 }
 
@@ -49,6 +50,14 @@ func decodeListIndex(key []byte) int {
 	copy(member[:], key[cpos:])
 	index := int(binary.BigEndian.Uint32(member))
 	return index
+}
+
+func decodeListKey(key []byte) []byte {
+	// The first byte is already remove
+	klen := int(binary.LittleEndian.Uint32(key[0:4]))
+	member := make([]byte, klen)
+	copy(member, key[4:4+klen])
+	return member
 }
 
 // Build the key to retrieve the list length
@@ -137,7 +146,9 @@ func (db *DB) GetListRangeWithPrev(key string, kStart, kEnd, limit int) (ivs []*
 	bkey := []byte(key)
 	skvs, _ := GetRangeWithPrev(db.db, keyList(bkey, kStart), keyList(bkey, kEnd), limit)
 	for _, skv := range skvs {
-		ivs = append(ivs, &IndexValue{Index:decodeListIndex([]byte(skv.Key)), Value:skv.Value})
+		if bytes.Equal([]byte(key), decodeListKey([]byte(skv.Key))) {
+			ivs = append(ivs, &IndexValue{Index:decodeListIndex([]byte(skv.Key)), Value:skv.Value})
+		}
 	}
 	return
 }

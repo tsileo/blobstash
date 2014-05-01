@@ -4,6 +4,9 @@ import (
 	"testing"
 	"os"
 	"fmt"
+	"io/ioutil"
+	"bytes"
+	"log"
 )
 
 func TestClientFile(t *testing.T) {
@@ -31,4 +34,27 @@ func TestClientFile(t *testing.T) {
 	if !MatchResult(h, rr) {
 		t.Errorf("File not restored successfully, wr:%+v/rr:%+v", h, rr)
 	}
+ 	d1 := []byte("hello world\n")
+ 	helloPath := "test_hello_world.txt"
+    err = ioutil.WriteFile(helloPath, d1, 0644)
+    check(err)
+    defer os.Remove(helloPath)
+    _, rw, err := c.PutFile(helloPath)
+    check(err)
+    log.Printf("fileput hash: %v", rw.Hash)
+    fakeFile := NewFakeFile(c.Pool, rw.Hash, rw.Size)
+    fkr, err := fakeFile.read(0, 5)
+    check(err)
+    if !bytes.Equal(fkr, []byte("hello")) {
+    	t.Errorf("Error Fake file read, expected:hello, got %v", fkr)
+    }
+    d2 := make([]byte, len(d1))
+    n, err := fakeFile.Read(d2)
+    check(err)
+    if n != len(d1) {
+    	t.Error("Error FakeFile reader len")
+    }
+    if !bytes.Equal(d1, d2) {
+    	t.Error("Error FakeFile reader")
+    }
 }
