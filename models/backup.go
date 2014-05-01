@@ -41,6 +41,7 @@ func backupHashkey(name string, ts int64) string {
 	return fmt.Sprintf("%x", hash.Sum(nil))
 }
 
+// Save the backup to DB
 func (f *Backup) Save(pool *redis.Pool) (string, error) {
 	con := pool.Get()
 	defer con.Close()
@@ -54,4 +55,7 @@ func (f *Backup) Save(pool *redis.Pool) (string, error) {
 	return rkey, err
 }
 
-
+// Fetch the associated Meta directly
+func (b *Backup) Meta(pool *redis.Pool) (m *Meta, err error) {
+	return NewMetaFromDB(pool, b.Ref)
+}

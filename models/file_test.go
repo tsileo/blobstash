@@ -30,7 +30,6 @@ func TestClientFile(t *testing.T) {
 	if th != h2 {
 		t.Errorf("File not restored successfully, hash:%v restored hash:%v", th, h2)
 	}
-
 	//if !MatchResult(h, rr) {
 	//	t.Errorf("File not restored successfully, wr:%+v/rr:%+v", h, rr)
 	//}

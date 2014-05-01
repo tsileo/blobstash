@@ -8,6 +8,8 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
+
+	"github.com/tsileo/datadatabase/models"
 )
 
 var Usage = func() {
@@ -45,16 +47,16 @@ func main() {
 }
 
 type FS struct {
-	Root *Dir
+	RootDir *Dir
 }
 
 func NewFS() (fs *FS) {
-	fs = &FS{Root: NewDir()}
+	fs = &FS{RootDir: NewRootDir()}
 	return
 }
 
 func (fs *FS) Root() (fs.Node, fuse.Error) {
-	return fs.Root, nil
+	return fs.RootDir, nil
 }
 
 type Node struct {
@@ -62,6 +64,7 @@ type Node struct {
 	Mode os.FileMode
 	Ref string
 	Size uint64
+	Client *models.Client
 }
 
 func (n *Node) Attr() fuse.Attr {
@@ -75,6 +78,7 @@ func (n *Node) Setattr(req *fuse.SetattrRequest, resp *fuse.SetattrResponse, int
 
 type Dir struct {
 	Node
+	Root bool
 	Children map[string]fs.Node
 }
 
@@ -82,8 +86,15 @@ func NewDir() (d *Dir) {
 	d = &Dir{}
 	d.Node = Node{}
 	d.Mode = os.ModeDir
+	d.Client, _ = models.NewClient()
 	d.Children = make(map[string]fs.Node)
 	return
+}
+
+func NewRootDir() (d *Dir) {
+	d = NewDir()
+	d.Root = true
+	return d
 }
 
 func (d *Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, err fuse.Error) {
@@ -97,11 +108,37 @@ func (d *Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, err fuse.Error) {
 
 func (d *Dir) ReadDir(intr fs.Intr) ([]fuse.Dirent, fuse.Error) {
 	var out []fuse.Dirent
+	if d.Root {
+		backups, _ := d.Client.List()
+		for _, backup := range backups {
+			meta, _ := backup.Meta(d.Client.Pool)
+			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
+			if meta.Type == "file" {
+				dirent.Type = fuse.DT_File
+				d.Children[meta.Name] = NewFile(meta.Name, meta.Hash, meta.Size) 
+			}
+			out = append(out, dirent)
+		}
+	}
+	log.Printf("root:%+v", out)
 	return out, nil
 }
 
 type File struct {
 	Node
+}
+
+func NewFile(name, ref string, size int) *File {
+	f := &File{}
+	f.Name = name
+	f.Ref = ref
+	f.Size = uint64(size)
+	f.Client, _ = models.NewClient()
+	return f
+}
+
+func (f *File) Attr() fuse.Attr {
+	return fuse.Attr{Inode: 2, Mode: 0444, Size:f.Size}
 }
 
 func (f *File) ReadAll(intr fs.Intr) (out []byte, ferr fuse.Error) {

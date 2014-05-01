@@ -2,8 +2,6 @@ package models
 
 import (
 	"os"
-	"crypto/sha1"
-	"fmt"
 	"github.com/tsileo/datadatabase/lru"
 	"github.com/garyburd/redigo/redis"
 	"io"
@@ -11,50 +9,6 @@ import (
 	"bytes"
 	"errors"
 )
-
-func (client *Client) GetFile2(key, path string) (*ReadResult, error) {
-	// TODO(ts) make io.Copy ?
-	readResult := &ReadResult{}
-	con := client.Pool.Get()
-	defer con.Close()
-	buf, err := os.Create(path)
-	defer buf.Close()
-	if err != nil {
-		return readResult, err
-	}
-	fullHash := sha1.New()
-	start := ""
-	for {
-		hs, err := redis.Strings(con.Do("LRANGE", key, start, "\xff", 50))
-		if err != nil {
-			return readResult, err
-		}
-		for _, hash := range hs {
-			data, err := redis.String(con.Do("BGET", hash))
-			if err != nil {
-				panic(err)
-			}
-			bdata := []byte(data)
-			if SHA1(bdata) != hash {
-				panic("Corrupted")
-			}
-			fullHash.Write(bdata)
-			buf.Write(bdata)
-			buf.Sync()
-			readResult.DownloadedCnt++
-			readResult.DownloadedSize += len(bdata)
-			readResult.Size += len(bdata)
-			readResult.BlobsCnt++
-		}
-		if len(hs) < 50 {
-			break
-		} else {
-			start = hs[49]
-		}
-	}
-	readResult.Hash = fmt.Sprintf("%x", fullHash.Sum(nil))
-	return readResult, nil
-}
 
 func (client *Client) GetFile(key, path string) (*ReadResult, error) {
 	// TODO(ts) make io.Copy ?
@@ -84,7 +38,7 @@ type FakeFile struct {
 
 func NewFakeFile(pool *redis.Pool, ref string, size int) (f *FakeFile) {
 	f = &FakeFile{pool:pool, ref:ref, size: size}
-	//f.blobs = lru.New(f.FetchBlob, 10)
+	f.blobs = lru.New(f.FetchBlob, 10)
 	return
 }
 
@@ -112,26 +66,16 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 	}
 	con := f.pool.Get()
 	defer con.Close()
-	//log.Printf("ref:%+v,offset:%v, cnt:%v", f.ref, offset, cnt)
 	values, err := redis.Values(con.Do("LMRANGE", f.ref, offset, offset+cnt, 0))
 	if err != nil {
-		//log.Printf("DB ERROR:%+v", err)
 		return nil, err
 	}
 	redis.ScanSlice(values, &indexValueList)
-	//log.Printf("ivs:%+v\n", indexValueList)
 	for _, iv := range indexValueList {
-		//bbuf := f.blobs.Get(iv.Value).([]byte)
-		//log.Printf("%+v\n", iv)
-		data, err := redis.String(con.Do("BGET", iv.Value))
-		if err != nil {
-			return nil, err
-		}
-		bbuf := []byte(data)
+		bbuf := f.blobs.Get(iv.Value).([]byte)
 		foffset := 0
 		if offset != 0 {
 			blobStart := iv.Index - len(bbuf)
-			//log.Printf("blob start:%v", blobStart)
 			foffset =  offset - blobStart
 			offset = 0
 		}
@@ -141,10 +85,8 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 				return nil, err
 			}
 			written += fwritten
-			//return buf.Bytes(), nil
 			
 		} else {
-			//log.Printf("DEBUG:%v, %v, %v, %v", foffset, cnt, written, len(bbuf))
 			fwritten, err := buf.Write(bbuf[foffset:foffset + cnt - written])
 			if err != nil {
 				return nil, err
@@ -178,17 +120,14 @@ func (f *FakeFile) Read(p []byte) (n int, err error) {
 		limit = f.size - f.offset
 	}
 
-	//log.Printf("offset:%v,limit:%v/size:%v", f.offset, limit, len(p), f.size)
 	b, err := f.read(f.offset, limit)
 	if err == io.EOF {
 		return 0, io.EOF
 	}
 	if err != nil {
-		//log.Printf("stoooop")
 		return 0, errors.New("datadb: Error reading slice from blobs")
 	}
 	n = copy(p, b)
-	//log.Printf("b len:%v\n", len(b))
 	f.offset += n
 	return
 }
