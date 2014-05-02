@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"path/filepath"
 	"os"
+	"strings"
 )
 
 var (
@@ -446,6 +447,50 @@ func New(addr, dbpath string, blobBackend backend.Backend, testMode bool, stop c
 			}
 		}
 		return nil
+	})
+	srv.HandleFunc("liter", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckMinArgs(req, 1)
+		if err != nil {
+			return err
+		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		if len(req.Args) == 1 {
+			vals, err := cdb.Liter(req.Args[0])
+			if err != nil {
+				return ErrSomethingWentWrong
+			}
+			if len(vals) == 0 {
+				out.WriteNil()	
+			} else {
+				out.WriteBulkLen(len(vals))
+				for _, bval := range vals {
+					out.WriteString(string(bval))
+				}
+			}
+			return nil
+		}
+		if len(req.Args) == 3 {
+			// WITH INDEX
+			if strings.ToLower(req.Args[1]) != "with" {
+				return ErrSomethingWentWrong
+			}
+			ivs, err := cdb.LiterWithIndex(req.Args[0])
+			if err != nil {
+				return ErrSomethingWentWrong
+			}
+			if len(ivs) == 0 {
+				out.WriteNil()	
+			} else {
+				out.WriteBulkLen(len(ivs) * 2)
+				for _, iv := range ivs {
+					out.WriteString(strconv.Itoa(iv.Index))
+					out.WriteString(iv.Value)
+				}
+			}
+			return nil
+		}
+		return ErrSomethingWentWrong
 	})
 	srv.HandleFunc("lmrange", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)

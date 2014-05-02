@@ -113,6 +113,21 @@ func (db *DB) Liter(key string) ([][]byte, error) {
 	return res, nil
 }
 
+// Returns list values, sorted by index ASC
+func (db *DB) LiterWithIndex(key string) (ivs []*IndexValue, err error) {
+	bkey := []byte(key)
+	start := keyList(bkey, []byte{})
+	end := keyList(bkey, "\xff")
+	kvs, err := GetRange(db.db, start, end, 0) 
+	if err != nil {
+		return
+	}	
+	for _, skv := range kvs {
+		ivs = append(ivs, &IndexValue{Index:decodeListIndex([]byte(skv.Key)), Value:skv.Value})
+	}
+	return
+}
+
 // Delete the entire list
 func (db *DB) Ldel(key string) error {
 	bkey := []byte(key)
