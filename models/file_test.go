@@ -41,7 +41,7 @@ func TestClientFile(t *testing.T) {
     _, rw, err := c.PutFile(helloPath)
     check(err)
     log.Printf("fileput hash: %v", rw.Hash)
-    fakeFile := NewFakeFile(c.Pool, rw.Hash, rw.Size)
+    fakeFile := NewFakeFile(c, rw.Hash, rw.Size)
     fkr, err := fakeFile.read(0, 5)
     check(err)
     if !bytes.Equal(fkr, []byte("hello")) {
