@@ -33,6 +33,9 @@ func TestClientFile(t *testing.T) {
 	//if !MatchResult(h, rr) {
 	//	t.Errorf("File not restored successfully, wr:%+v/rr:%+v", h, rr)
 	//}
+
+	// TODO(tsileo) found a way to check that directories are equals
+
  	d1 := []byte("hello world\n")
  	helloPath := "test_hello_world.txt"
     err = ioutil.WriteFile(helloPath, d1, 0644)
