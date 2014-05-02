@@ -8,7 +8,7 @@ import (
 	"crypto/sha1"
 )
 
-// Return the Metas for the directory
+// Return a slice of Meta for the directory
 func (client *Client) DirIter(key string) (metas []*Meta, err error) {
 	con := client.Pool.Get()
 	defer con.Close()
@@ -30,6 +30,7 @@ type DirFetcher interface{
 	Get(string) interface{}
 }
 
+// Used by the LRU to fetch the slice of Meta for the given dir
 func (client *Client) FetchDir(key string) interface{} {
 	metas, err := client.DirIter(key)
 	if err != nil {
@@ -38,6 +39,7 @@ func (client *Client) FetchDir(key string) interface{} {
 	return metas
 }
 
+// Reconstruct a directory given its hash to path
 func (client *Client) GetDir(key, path string) (rr *ReadResult, err error) {
 	fullHash := sha1.New()
 	rr = &ReadResult{}

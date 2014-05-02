@@ -13,6 +13,7 @@ type BlobFetcher interface {
 	Get(string) interface{}
 }
 
+// Download a file by its hash to path
 func (client *Client) GetFile(key, path string) (*ReadResult, error) {
 	// TODO(ts) make io.Copy ?
 	readResult := &ReadResult{}
@@ -30,6 +31,8 @@ func (client *Client) GetFile(key, path string) (*ReadResult, error) {
 	return readResult, nil
 }
 
+// FetchBlob is used by the client level blobs LRU
+// Return the data for the given hash
 func (client *Client) FetchBlob(hash string) interface{} {
 	con := client.Pool.Get()
 	defer con.Close()
@@ -42,6 +45,8 @@ func (client *Client) FetchBlob(hash string) interface{} {
 	return buf.Bytes()
 }
 
+// FakeFile implements io.Reader, and io.ReaderAt.
+// It fetch blobs on the fly.
 type FakeFile struct {
 	client *Client
 	ref string
@@ -49,6 +54,7 @@ type FakeFile struct {
 	size int
 }
 
+// Create a new FakeFile instance.
 func NewFakeFile(client *Client, ref string, size int) (f *FakeFile) {
 	f = &FakeFile{client: client, ref:ref, size: size}
 	return
@@ -92,10 +98,14 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 		bbuf := f.client.Blobs.Get(iv.Value).([]byte)
 		foffset := 0
 		if offset != 0 {
+			// Compute the starting offset of the blob
 			blobStart := iv.Index - len(bbuf)
+			// and subtract it to get the correct offset
 			foffset =  offset - blobStart
 			offset = 0
 		}
+		// If the remaining cnt (cnt - written)
+		// is greater than the blob slice 
 		if cnt - written > len(bbuf) - foffset {
 			fwritten, err := buf.Write(bbuf[foffset:])
 			if err != nil {
@@ -104,18 +114,17 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 			written += fwritten
 			
 		} else {
+			// What we need fit in this blob
+			// it should return after this
 			fwritten, err := buf.Write(bbuf[foffset:foffset + cnt - written])
 			if err != nil {
 				return nil, err
 			}
 			written += fwritten
+			// Check that the total written bytes equals the requested size
 			if written != cnt {
 				panic("Error reading FakeFile")
 			}
-		}
-
-		if foffset == len(bbuf) {
-			return nil, io.EOF
 		}
 		if written == cnt {
 			return buf.Bytes(), nil
