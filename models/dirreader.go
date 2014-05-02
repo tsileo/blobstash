@@ -32,10 +32,11 @@ type DirFetcher interface{
 
 // Used by the LRU to fetch the slice of Meta for the given dir
 func (client *Client) FetchDir(key string) interface{} {
-	metas, err := client.DirIter(key)
-	if err != nil {
-		panic(fmt.Sprintf("Error FetchDir key:%v", key))
-	}
+	// The error maybe be Nil if the dir is empty
+	metas, _ := client.DirIter(key)
+	//if err != nil {
+	//	panic(fmt.Sprintf("Error FetchDir key:%v", key))
+	//}
 	return metas
 }
 

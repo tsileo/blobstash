@@ -22,8 +22,8 @@ func main() {
 	    Usage:     "put a file/directory",
 	    Action: func(c *cli.Context) {
 	    	client, _ := models.NewClient()
-	    	b, m, wr, _ := client.Put(c.Args().First())
-	    	fmt.Printf("b:%+v,m:%+v,wr:%+v\n", b, m, wr)
+	    	b, m, wr, err := client.Put(c.Args().First())
+	    	fmt.Printf("b:%+v,m:%+v,wr:%+v,err:%v\n", b, m, wr, err)
 	    },
 	  },
 	  {

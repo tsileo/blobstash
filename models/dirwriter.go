@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"crypto/sha1"
 	"fmt"
+	"log"
+	"strconv"
+	"time"
 	"sort"
 	"github.com/garyburd/redigo/redis"
 )
@@ -12,7 +15,7 @@ import (
 func (client *Client) DirWriter(path string) (wr *WriteResult, err error) {
 	con := client.Pool.Get()
 	defer con.Close()
-	wr = &WriteResult{}
+	wr = &WriteResult{Filename: filepath.Base(path)}
 	dirdata, err := ioutil.ReadDir(path)
 	if err != nil {
 		return
@@ -20,26 +23,32 @@ func (client *Client) DirWriter(path string) (wr *WriteResult, err error) {
 	h := sha1.New()
 	hashes := []string{}
 	var cwr *WriteResult
-	for _, data := range dirdata {
-		abspath := filepath.Join(path, data.Name())
-		if data.IsDir() {
-			_, cwr, err = client.PutDir(abspath)
-		} else {
-			_, cwr, err = client.PutFile(abspath)
+	if len(dirdata) != 0 {
+		for _, data := range dirdata {
+			abspath := filepath.Join(path, data.Name())
+			if data.IsDir() {
+				_, cwr, err = client.PutDir(abspath)
+			} else {
+				_, cwr, err = client.PutFile(abspath)
+			}
+			if err != nil {
+				return
+			}
+			wr.Add(cwr)
+			hashes = append(hashes, cwr.Hash)
 		}
-		if err != nil {
-			return
+		sort.Strings(hashes)
+		for _, hash := range hashes {
+			h.Write([]byte(hash))
 		}
-		wr.Add(cwr)
-		hashes = append(hashes, cwr.Hash)
+		wr.Hash = fmt.Sprintf("%x", h.Sum(nil))
+		_, err = con.Do("SADD", redis.Args{}.Add(wr.Hash).AddFlat(hashes)...)
+	} else {
+		// If the dir is empty, set the hash to the current timestamp
+		// so it doesn't break things.
+		h.Write([]byte(strconv.Itoa(int(time.Now().UTC().Unix()))))
+		wr.Hash = fmt.Sprintf("%x", h.Sum(nil))
 	}
-	wr.Filename = filepath.Base(path)
-	sort.Strings(hashes)
-	for _, hash := range hashes {
-		h.Write([]byte(hash))
-	}
-	wr.Hash = fmt.Sprintf("%x", h.Sum(nil))
-	_, err = con.Do("SADD", redis.Args{}.Add(wr.Hash).AddFlat(hashes)...)
 	return
 }
 
@@ -50,6 +59,7 @@ func (client *Client) PutDir(path string) (meta *Meta, wr *WriteResult, err erro
 	}
 	wr, err = client.DirWriter(abspath)
 	if err != nil {
+		log.Printf("error DirWriter %v/%v", path, abspath)
 		return
 	}
 	meta = NewMeta()
