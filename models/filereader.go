@@ -10,6 +10,10 @@ import (
 	"errors"
 )
 
+type BlobFetcher interface {
+	Get(string) []byte
+}
+
 func (client *Client) GetFile(key, path string) (*ReadResult, error) {
 	// TODO(ts) make io.Copy ?
 	readResult := &ReadResult{}
@@ -33,7 +37,7 @@ type FakeFile struct {
 	ref string
 	offset int
 	size int
-	blobs *lru.LRU
+	blobs BlobFetcher
 }
 
 func NewFakeFile(pool *redis.Pool, ref string, size int) (f *FakeFile) {
@@ -42,11 +46,17 @@ func NewFakeFile(pool *redis.Pool, ref string, size int) (f *FakeFile) {
 	return
 }
 
-func (f *FakeFile) FetchBlob(hash interface{}) interface{} {
+func NewFakeFileWithBlobFetcher(pool *redis.Pool, ref string, size int, blobFetcher BlobFetcher) (f *FakeFile) {
+	f = &FakeFile{pool:pool, ref:ref, size: size}
+	f.blobs = blobFetcher
+	return
+}
+
+func (f *FakeFile) FetchBlob(hash string) []byte {
 	con := f.pool.Get()
 	defer con.Close()
 	var buf bytes.Buffer
-	data, err := redis.String(con.Do("BGET", hash.(string)))
+	data, err := redis.String(con.Do("BGET", hash))
 	if err != nil {
 		panic("Error FetchBlob")
 	}
@@ -88,7 +98,7 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 	}
 	redis.ScanSlice(values, &indexValueList)
 	for _, iv := range indexValueList {
-		bbuf := f.blobs.Get(iv.Value).([]byte)
+		bbuf := f.blobs.Get(iv.Value)
 		foffset := 0
 		if offset != 0 {
 			blobStart := iv.Index - len(bbuf)

@@ -6,10 +6,12 @@ import (
 	"log"
 	"io"
 	"os"
+	"bytes"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
 
+	"github.com/tsileo/datadatabase/lru"
 	"github.com/tsileo/datadatabase/models"
 	"github.com/garyburd/redigo/redis"
 )
@@ -50,15 +52,31 @@ func main() {
 
 type FS struct {
 	RootDir *Dir
+	Client *models.Client
+	blobs models.BlobFetcher
 }
 
 func NewFS() (fs *FS) {
-	fs = &FS{RootDir: NewRootDir()}
+	client, _ := models.NewClient()
+	fs = &FS{Client: client}
+	fs.blobs = lru.New(fs.FetchBlob, 512)
 	return
 }
 
+func (fs *FS) FetchBlob(hash string) []byte {
+	con := fs.Client.Pool.Get()
+	defer con.Close()
+	var buf bytes.Buffer
+	data, err := redis.String(con.Do("BGET", hash))
+	if err != nil {
+		panic("Error FetchBlob")
+	}
+	buf.WriteString(data)
+	return buf.Bytes()
+}
+
 func (fs *FS) Root() (fs.Node, fuse.Error) {
-	return fs.RootDir, nil
+	return NewRootDir(fs), nil
 }
 
 type Node struct {
@@ -66,7 +84,7 @@ type Node struct {
 	Mode os.FileMode
 	Ref string
 	Size uint64
-	Client *models.Client
+	fs *FS
 }
 
 func (n *Node) Attr() fuse.Attr {
@@ -84,39 +102,40 @@ type Dir struct {
 	Children map[string]fs.Node
 }
 
-func NewDir(name, ref string) (d *Dir) {
+func NewDir(cfs *FS, name, ref string) (d *Dir) {
 	d = &Dir{}
 	d.Node = Node{}
 	d.Mode = os.ModeDir
-	d.Client, _ = models.NewClient()
-	d.Children = make(map[string]fs.Node)
+	d.fs = cfs
 	d.Ref = ref
 	d.Name = name
+	d.Children = make(map[string]fs.Node)
 	return
 }
 
 func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
-	con := d.Client.Pool.Get()
+	con := d.fs.Client.Pool.Get()
 	defer con.Close()
 	members, _ := redis.Strings(con.Do("SMEMBERS", d.Ref))
 	for _, member := range members {
-		meta, _ := models.NewMetaFromDB(d.Client.Pool, member)
+		meta, _ := models.NewMetaFromDB(d.fs.Client.Pool, member)
 		var dirent fuse.Dirent
 		if meta.Type == "file" {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
-			d.Children[meta.Name] = NewFile(meta.Name, meta.Hash, meta.Size)
+			d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Hash, meta.Size)
 		} else {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-			d.Children[meta.Name] = NewDir(meta.Name, meta.Hash)
+			d.Children[meta.Name] = NewDir(d.fs, meta.Name, meta.Hash)
 		}
 		out = append(out, dirent)
 	}
 	return
 }
 
-func NewRootDir() (d *Dir) {
-	d = NewDir("root", "")
+func NewRootDir(fs *FS) (d *Dir) {
+	d = NewDir(fs, "root", "")
 	d.Root = true
+	d.fs = fs
 	return d
 }
 
@@ -134,16 +153,18 @@ func (d *Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, err fuse.Error) {
 func (d *Dir) ReadDir(intr fs.Intr) ([]fuse.Dirent, fuse.Error) {
 	var out []fuse.Dirent
 	if d.Root {
-		backups, _ := d.Client.List()
+		backups, _ := d.fs.Client.List()
+		// Reset the children, backups may have been removed
+		d.Children = make(map[string]fs.Node)
 		for _, backup := range backups {
-			meta, _ := backup.Meta(d.Client.Pool)
+			meta, _ := backup.Meta(d.fs.Client.Pool)
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
 			if meta.Type == "file" {
 				dirent.Type = fuse.DT_File
-				d.Children[meta.Name] = NewFile(meta.Name, meta.Hash, meta.Size) 
+				d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Hash, meta.Size) 
 			} else {
 				dirent.Type = fuse.DT_Dir
-				d.Children[meta.Name] = NewDir(meta.Name, meta.Hash)
+				d.Children[meta.Name] = NewDir(d.fs, meta.Name, meta.Hash)
 			}
 			out = append(out, dirent)
 		}
@@ -159,13 +180,13 @@ type File struct {
 	FakeFile *models.FakeFile
 }
 
-func NewFile(name, ref string, size int) *File {
+func NewFile(fs *FS, name, ref string, size int) *File {
 	f := &File{}
 	f.Name = name
 	f.Ref = ref
 	f.Size = uint64(size)
-	f.Client, _ = models.NewClient()
-	f.FakeFile = models.NewFakeFile(f.Client.Pool, ref, size)
+	f.fs = fs
+	f.FakeFile = models.NewFakeFileWithBlobFetcher(f.fs.Client.Pool, ref, size, fs.blobs)
 	return f
 }
 

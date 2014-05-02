@@ -1,3 +1,6 @@
+// Copyright 2014 Thomas Sileo
+// (updated for typed key and value)
+// https://gist.github.com/larsmans/4638795
 // Copyright 2013 Lars Buitinck
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -24,23 +27,23 @@ package lru
 
 // Cache for function Func.
 type LRU struct {
-    Func func(interface{}) interface{}
-    index map[interface{}]int   // index of key in queue
+    Func func(string) []byte
+    index map[string]int   // index of key in queue
     queue list
 }
 
 // Create a new LRU cache for function f with the desired capacity.
-func New(f func(interface{}) interface{}, capacity int) *LRU {
+func New(f func(string) []byte, capacity int) *LRU {
     if capacity < 1 {
         panic("capacity < 1")
     }
-    c := &LRU{Func: f, index: make(map[interface{}]int)}
+    c := &LRU{Func: f, index: make(map[string]int)}
     c.queue.init(capacity)
     return c
 }
 
 // Fetch value for key in the cache, calling Func to compute it if necessary.
-func (c *LRU) Get(key interface{}) (value interface{}) {
+func (c *LRU) Get(key string) (value []byte) {
     i, stored := c.index[key]
     if stored {
         value = c.queue.valueAt(i)
@@ -62,7 +65,7 @@ func (c *LRU) Capacity() int {
 }
 
 // Iterate over the cache in LRU order. Useful for debugging.
-func (c *LRU) Iter(keys chan interface{}, values chan interface{}) {
+func (c *LRU) Iter(keys chan string, values chan []byte) {
     for i := c.queue.tail; i != -1; {
         n := c.queue.links[i]
         keys <- n.key
@@ -73,12 +76,12 @@ func (c *LRU) Iter(keys chan interface{}, values chan interface{}) {
     close(values)
 }
 
-func (c *LRU) insert(key interface{}, value interface{}) {
+func (c *LRU) insert(key string, value []byte) {
     var i int
     q := &c.queue
     if q.full() {
         // evict least recently used item
-        var k interface{}
+        var k string
         i, k = q.popTail()
         delete(c.index, k)
     } else {
@@ -95,7 +98,8 @@ type list struct {
 }
 
 type link struct {
-    key, value interface{}
+    key string
+    value []byte
     prev, next int
 }
 
@@ -130,7 +134,7 @@ func (l *list) moveToFront(i int) {
 
 // Pop the tail off the list and return its index and its key.
 // Precondition: the list is full.
-func (l *list) popTail() (i int, key interface{}) {
+func (l *list) popTail() (i int, key string) {
     i = l.tail
     t := &l.links[i]
     key = t.key
@@ -140,7 +144,7 @@ func (l *list) popTail() (i int, key interface{}) {
 }
 
 // Put (key, value) in position i and make it the front of the list.
-func (l *list) putFront(key, value interface{}, i int) {
+func (l *list) putFront(key string, value []byte, i int) {
     f := &l.links[i]
     f.key = key
     f.value = value
@@ -155,6 +159,6 @@ func (l *list) putFront(key, value interface{}, i int) {
     l.front = i
 }
 
-func (l *list) valueAt(i int) interface{} {
+func (l *list) valueAt(i int) []byte {
     return l.links[i].value
 }
