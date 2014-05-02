@@ -25,15 +25,19 @@
 // strategy.
 package lru
 
+import (
+	"log"
+)
+
 // Cache for function Func.
 type LRU struct {
-    Func func(string) []byte
+    Func func(string) interface{}
     index map[string]int   // index of key in queue
     queue list
 }
 
 // Create a new LRU cache for function f with the desired capacity.
-func New(f func(string) []byte, capacity int) *LRU {
+func New(f func(string) interface{}, capacity int) *LRU {
     if capacity < 1 {
         panic("capacity < 1")
     }
@@ -43,12 +47,14 @@ func New(f func(string) []byte, capacity int) *LRU {
 }
 
 // Fetch value for key in the cache, calling Func to compute it if necessary.
-func (c *LRU) Get(key string) (value []byte) {
+func (c *LRU) Get(key string) (value interface{}) {
     i, stored := c.index[key]
     if stored {
+    	log.Printf("lru: %v, stored", key)
         value = c.queue.valueAt(i)
         c.queue.moveToFront(i)
     } else {
+    	log.Printf("lru: %v, fetched", key)
         value = c.Func(key)
         c.insert(key, value)
     }
@@ -65,7 +71,7 @@ func (c *LRU) Capacity() int {
 }
 
 // Iterate over the cache in LRU order. Useful for debugging.
-func (c *LRU) Iter(keys chan string, values chan []byte) {
+func (c *LRU) Iter(keys chan string, values chan interface{}) {
     for i := c.queue.tail; i != -1; {
         n := c.queue.links[i]
         keys <- n.key
@@ -76,7 +82,7 @@ func (c *LRU) Iter(keys chan string, values chan []byte) {
     close(values)
 }
 
-func (c *LRU) insert(key string, value []byte) {
+func (c *LRU) insert(key string, value interface{}) {
     var i int
     q := &c.queue
     if q.full() {
@@ -99,7 +105,7 @@ type list struct {
 
 type link struct {
     key string
-    value []byte
+    value interface{}
     prev, next int
 }
 
@@ -144,7 +150,7 @@ func (l *list) popTail() (i int, key string) {
 }
 
 // Put (key, value) in position i and make it the front of the list.
-func (l *list) putFront(key string, value []byte, i int) {
+func (l *list) putFront(key string, value interface{}, i int) {
     f := &l.links[i]
     f.key = key
     f.value = value
@@ -159,6 +165,6 @@ func (l *list) putFront(key string, value []byte, i int) {
     l.front = i
 }
 
-func (l *list) valueAt(i int) []byte {
+func (l *list) valueAt(i int) interface{} {
     return l.links[i].value
 }

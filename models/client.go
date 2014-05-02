@@ -3,6 +3,7 @@ package models
 import (
 	"time"
 	"github.com/garyburd/redigo/redis"
+	"github.com/tsileo/datadatabase/lru"
 	"os"
 )
 
@@ -32,11 +33,14 @@ func GetDbPool() (pool *redis.Pool, err error) {
 
 type Client struct {
 	Pool *redis.Pool
+	Blobs BlobFetcher
 }
 
 func NewClient() (*Client, error) {
 	pool, err := GetDbPool()
-	return &Client{Pool:pool}, err
+	c := &Client{Pool:pool}
+	c.Blobs = lru.New(c.FetchBlob, 512)
+	return c, err
 }
 
 func (client *Client) List() (backups []*Backup, err error) {

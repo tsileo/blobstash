@@ -2,7 +2,6 @@ package models
 
 import (
 	"os"
-	"github.com/tsileo/datadatabase/lru"
 	"github.com/garyburd/redigo/redis"
 	"io"
 	_ "log"
@@ -11,7 +10,7 @@ import (
 )
 
 type BlobFetcher interface {
-	Get(string) []byte
+	Get(string) interface{}
 }
 
 func (client *Client) GetFile(key, path string) (*ReadResult, error) {
@@ -25,35 +24,14 @@ func (client *Client) GetFile(key, path string) (*ReadResult, error) {
 		return readResult, err
 	}
 	meta, _ := NewMetaFromDB(client.Pool, key) 
-	ffile := NewFakeFile(client.Pool, meta.Hash, meta.Size)
+	ffile := NewFakeFile(client, meta.Hash, meta.Size)
 	io.Copy(buf, ffile)
 	readResult.Hash = meta.Hash
 	return readResult, nil
 }
 
-
-type FakeFile struct {
-	pool *redis.Pool
-	ref string
-	offset int
-	size int
-	blobs BlobFetcher
-}
-
-func NewFakeFile(pool *redis.Pool, ref string, size int) (f *FakeFile) {
-	f = &FakeFile{pool:pool, ref:ref, size: size}
-	f.blobs = lru.New(f.FetchBlob, 10)
-	return
-}
-
-func NewFakeFileWithBlobFetcher(pool *redis.Pool, ref string, size int, blobFetcher BlobFetcher) (f *FakeFile) {
-	f = &FakeFile{pool:pool, ref:ref, size: size}
-	f.blobs = blobFetcher
-	return
-}
-
-func (f *FakeFile) FetchBlob(hash string) []byte {
-	con := f.pool.Get()
+func (client *Client) FetchBlob(hash string) interface{} {
+	con := client.Pool.Get()
 	defer con.Close()
 	var buf bytes.Buffer
 	data, err := redis.String(con.Do("BGET", hash))
@@ -64,7 +42,18 @@ func (f *FakeFile) FetchBlob(hash string) []byte {
 	return buf.Bytes()
 }
 
+type FakeFile struct {
+	client *Client
+	ref string
+	offset int
+	size int
+}
 
+func NewFakeFile(client *Client, ref string, size int) (f *FakeFile) {
+	f = &FakeFile{client: client, ref:ref, size: size}
+	return
+}
+// Implement the io.ReaderAt interface
 func (f* FakeFile) ReadAt(p []byte, offset int64) (n int, err error) {
 	if len(p) == 0 {
     	return 0, nil
@@ -80,6 +69,8 @@ func (f* FakeFile) ReadAt(p []byte, offset int64) (n int, err error) {
 	return
 }
 
+// Low level read function, read a size from an offset
+// Iterate only the needed blobs
 func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 	if cnt < 0 || cnt > f.size {
 		cnt = f.size
@@ -90,7 +81,7 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 	    Index int
 	    Value string
 	}
-	con := f.pool.Get()
+	con := f.client.Pool.Get()
 	defer con.Close()
 	values, err := redis.Values(con.Do("LMRANGE", f.ref, offset, offset+cnt, 0))
 	if err != nil {
@@ -98,7 +89,7 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 	}
 	redis.ScanSlice(values, &indexValueList)
 	for _, iv := range indexValueList {
-		bbuf := f.blobs.Get(iv.Value)
+		bbuf := f.client.Blobs.Get(iv.Value).([]byte)
 		foffset := 0
 		if offset != 0 {
 			blobStart := iv.Index - len(bbuf)
@@ -138,6 +129,7 @@ func (f *FakeFile) Reset() {
 	f.offset = 0
 }
 
+// Implement io.Reader
 func (f *FakeFile) Read(p []byte) (n int, err error) {
 	if len(p) == 0 {
     	return 0, nil

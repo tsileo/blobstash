@@ -11,7 +11,6 @@ import (
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
 
-	"github.com/tsileo/datadatabase/lru"
 	"github.com/tsileo/datadatabase/models"
 	"github.com/garyburd/redigo/redis"
 )
@@ -53,17 +52,15 @@ func main() {
 type FS struct {
 	RootDir *Dir
 	Client *models.Client
-	blobs models.BlobFetcher
 }
 
 func NewFS() (fs *FS) {
 	client, _ := models.NewClient()
 	fs = &FS{Client: client}
-	fs.blobs = lru.New(fs.FetchBlob, 512)
 	return
 }
 
-func (fs *FS) FetchBlob(hash string) []byte {
+func (fs *FS) FetchBlob(hash string) interface{} {
 	con := fs.Client.Pool.Get()
 	defer con.Close()
 	var buf bytes.Buffer
@@ -144,7 +141,6 @@ func (d *Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, err fuse.Error) {
 	if !ok {
 		return nil, fuse.ENOENT
 	}
-
 	return
 }
 
@@ -186,7 +182,7 @@ func NewFile(fs *FS, name, ref string, size int) *File {
 	f.Ref = ref
 	f.Size = uint64(size)
 	f.fs = fs
-	f.FakeFile = models.NewFakeFileWithBlobFetcher(f.fs.Client.Pool, ref, size, fs.blobs)
+	f.FakeFile = models.NewFakeFile(f.fs.Client, ref, size)
 	return f
 }
 
