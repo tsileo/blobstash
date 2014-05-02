@@ -41,10 +41,7 @@ func (m *Meta) Save(pool *redis.Pool) error {
 	if m.Hash == "" {
 		return errors.New("Meta error: hash not set")
 	}
-	// TODO(tsileo) replace with a HMSET
-	_, err := con.Do("HSET", m.Hash, "name", m.Name)
-	_, err = con.Do("HSET", m.Hash, "type", m.Type)
-	_, err = con.Do("HSET", m.Hash, "size", m.Size)
+	_, err := con.Do("HMSET", m.Hash, "name", m.Name, "type", m.Type, "size", m.Size)
 	return err
 }
 

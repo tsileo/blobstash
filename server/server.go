@@ -209,6 +209,22 @@ func New(addr, dbpath string, blobBackend backend.Backend, testMode bool, stop c
 		out.WriteInt(cnt)
 		return nil
 	})
+	srv.HandleFunc("hmset", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckMinArgs(req, 3)
+		if err != nil {
+			return err
+		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		cmdArgs := make([]string, len(req.Args)-1)
+		copy(cmdArgs, req.Args[1:])
+		cnt, err  := cdb.Hmset(req.Args[0], cmdArgs...)
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		out.WriteInt(cnt)
+		return nil
+	})
 	srv.HandleFunc("hget", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 2)

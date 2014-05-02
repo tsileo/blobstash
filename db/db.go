@@ -64,11 +64,13 @@ func KeyType(key interface{}, kType byte) []byte {
 	return k
 }
 
+// KeyValue represents a key-value pair, also used for hashes attributes
 type KeyValue struct {
 	Key   string
 	Value string
 }
 
+// IndexValue represents a sorted list index-value pair
 type IndexValue struct {
 	Index int
 	Value string

@@ -63,7 +63,7 @@ func (client *Client) GetDir(key, path string) (rr *ReadResult, err error) {
 		fullHash.Write([]byte(crr.Hash))
 		rr.Add(crr)
 	}
-	// TODO(ts) sum the hash and check with the root
+	// TODO(tsileo) sum the hash and check with the root
 	rr.Hash = fmt.Sprintf("%x", fullHash.Sum(nil))
 	return
 }

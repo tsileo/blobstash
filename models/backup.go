@@ -48,10 +48,13 @@ func (f *Backup) Save(pool *redis.Pool) (string, error) {
 	f.Hash = backupHashkey(f.Name, f.Ts)
 	// TODO(tsileo) replace with a HMSET
 	rkey := fmt.Sprintf("backup:%v", f.Hash)
-	_, err := con.Do("HSET", rkey, "name", f.Name)
-	_, err = con.Do("HSET", rkey, "type", f.Type)
-	_, err = con.Do("HSET", rkey, "ref", f.Ref)
-	_, err = con.Do("HSET", rkey, "ts", f.Ts)
+	_, err := con.Do("HMSET", rkey, "name", f.Name, "type", f.Type, "ref", f.Ref, "ts", f.Ts)
+		// Set/update the latest meta for this filename (snapshot)
+	_, err = con.Do("SET", fmt.Sprintf("latest:%v", f.Name), f.Ref)
+	if err != nil {
+		return rkey, err
+	}
+	_, err = con.Do("LADD", f.Name, int(f.Ts), f.Ref)
 	return rkey, err
 }
 
