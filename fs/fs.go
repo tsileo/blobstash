@@ -113,9 +113,7 @@ func NewDir(cfs *FS, name, ref string) (d *Dir) {
 func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
 	con := d.fs.Client.Pool.Get()
 	defer con.Close()
-	members, _ := redis.Strings(con.Do("SMEMBERS", d.Ref))
-	for _, member := range members {
-		meta, _ := models.NewMetaFromDB(d.fs.Client.Pool, member)
+	for _, meta := range d.fs.Client.Dirs.Get(d.Ref).([]*models.Meta) {
 		var dirent fuse.Dirent
 		if meta.Type == "file" {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}

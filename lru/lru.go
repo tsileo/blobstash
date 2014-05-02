@@ -25,10 +25,6 @@
 // strategy.
 package lru
 
-import (
-	"log"
-)
-
 // Cache for function Func.
 type LRU struct {
     Func func(string) interface{}
@@ -50,12 +46,10 @@ func New(f func(string) interface{}, capacity int) *LRU {
 func (c *LRU) Get(key string) (value interface{}) {
     i, stored := c.index[key]
     if stored {
-    	log.Printf("lru: %v, stored", key)
         value = c.queue.valueAt(i)
         c.queue.moveToFront(i)
     } else {
-    	log.Printf("lru: %v, fetched", key)
-        value = c.Func(key)
+    	value = c.Func(key)
         c.insert(key, value)
     }
     return value
