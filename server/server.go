@@ -159,6 +159,31 @@ func New(addr, dbpath string, blobBackend backend.Backend, testMode bool, stop c
 		out.WriteOK()
 		return nil
 	})
+	srv.HandleFunc("range", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 3)
+		if err != nil {
+			return err
+		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		limit, err := strconv.Atoi(req.Args[2])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		kvs, err := cdb.GetStringRange(req.Args[0], req.Args[1], limit)
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		if len(kvs) == 0 {
+			out.WriteNil()
+			return nil
+		}
+		out.WriteBulkLen(len(kvs))
+		for _, skv := range kvs {
+			out.WriteString(skv.Value)
+		}
+		return nil
+	})
 	srv.HandleFunc("sadd", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckMinArgs(req, 2)

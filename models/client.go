@@ -74,5 +74,8 @@ func (client *Client) Put(path string) (backup *Backup, meta *Meta, wr *WriteRes
 	}
 	backup = NewBackup(meta.Name, btype, wr.Hash)
 	_, err = backup.Save(client.Pool)
+	if err != nil {
+		panic(err)
+	}
 	return
 }

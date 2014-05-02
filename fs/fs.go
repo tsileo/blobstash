@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"bytes"
+	"time"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
@@ -96,6 +97,11 @@ func (n *Node) Setattr(req *fuse.SetattrRequest, resp *fuse.SetattrResponse, int
 type Dir struct {
 	Node
 	Root bool
+	Latest bool
+	Snapshots bool
+	SnapshotDir bool
+	FakeDir bool
+	FakeDirContent []fuse.Dirent
 	Children map[string]fs.Node
 }
 
@@ -134,6 +140,40 @@ func NewRootDir(fs *FS) (d *Dir) {
 	return d
 }
 
+func NewLatestDir(fs *FS) (d *Dir) {
+	d = NewDir(fs, "latest", "")
+	d.Latest = true
+	d.fs = fs
+	return d
+}
+
+func NewSnapshotDir(cfs *FS, name, ref string) (d *Dir) {
+	d = &Dir{}
+	d.Node = Node{}
+	d.Mode = os.ModeDir
+	d.fs = cfs
+	d.Ref = ref
+	d.Name = name
+	d.Children = make(map[string]fs.Node)
+	d.SnapshotDir = true
+	return
+}
+
+func NewSnapshotsDir(cfs *FS) (d *Dir) {
+	d = NewDir(cfs, "snapshots", "")
+	d.fs = cfs
+	d.Snapshots = true
+	return
+}
+
+func NewFakeDir(cfs *FS, name, ref string) (d *Dir) {
+	d = NewDir(cfs, name, ref)
+	d.fs = cfs
+	d.Children = make(map[string]fs.Node)
+	d.FakeDir = true
+	return
+}
+
 func (d *Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, err fuse.Error) {
 	fs, ok := d.Children[name]
 	if !ok {
@@ -144,29 +184,76 @@ func (d *Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, err fuse.Error) {
 
 // TODO(tsileo) NewDirFromMetaList
 
-func (d *Dir) ReadDir(intr fs.Intr) ([]fuse.Dirent, fuse.Error) {
-	var out []fuse.Dirent
-	if d.Root {
-		backups, _ := d.fs.Client.List()
+func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
+	switch {
+	case d.Root:
+		//backups, _ := d.fs.Client.List()
 		// Reset the children, backups may have been removed
 		d.Children = make(map[string]fs.Node)
+		dirent := fuse.Dirent{Name: "latest", Type: fuse.DT_Dir}
+		out = append(out, dirent)
+		d.Children["latest"] = NewLatestDir(d.fs)
+		d.Children["snapshots"] = NewSnapshotsDir(d.fs)
+		dirent = fuse.Dirent{Name: "snapshots", Type: fuse.DT_Dir}
+		out = append(out, dirent)
+		return
+
+	case d.Latest:
+		d.Children = make(map[string]fs.Node)
+		backups, _ := d.fs.Client.Latest()
+		for _, backup := range backups {
+			meta, _ := backup.Meta(d.fs.Client.Pool)
+			if backup.Type == "file" {
+				dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
+				d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Hash, meta.Size)
+				out = append(out, dirent)
+			} else {
+				dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
+				d.Children[meta.Name] = NewDir(d.fs, meta.Name, meta.Hash)
+				out = append(out, dirent)
+			}
+		}
+		return out, nil
+	
+	case d.Snapshots:
+		d.Children = make(map[string]fs.Node)
+		backups, _ := d.fs.Client.Latest()
 		for _, backup := range backups {
 			meta, _ := backup.Meta(d.fs.Client.Pool)
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-			if meta.Type == "file" {
-				dirent.Type = fuse.DT_File
-				d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Hash, meta.Size) 
-			} else {
-				dirent.Type = fuse.DT_Dir
-				d.Children[meta.Name] = NewDir(d.fs, meta.Name, meta.Hash)
-			}
+			d.Children[meta.Name] = NewSnapshotDir(d.fs, meta.Name, meta.Hash)
 			out = append(out, dirent)
 		}
 		return out, nil
-	} else {
-		return d.readDir()
+
+	case d.SnapshotDir:
+		d.Children = make(map[string]fs.Node)
+		indexmetas, _ := d.fs.Client.Snapshots(d.Name)
+		for _, im := range indexmetas {
+			// TODO the index to dirname => blocked with one Node
+			stime := time.Unix(int64(im.Index), 0) 
+			sname := stime.Format(time.RFC3339)
+			meta := im.Meta
+			out = append(out, fuse.Dirent{Name: sname, Type: fuse.DT_Dir})
+			d.Children[sname] = NewFakeDir(d.fs, meta.Name, meta.Hash)
+		}
+		return out, nil
+
+	case d.FakeDir:
+		d.Children = make(map[string]fs.Node)
+		meta, _ := models.NewMetaFromDB(d.fs.Client.Pool, d.Ref)
+		if meta.Type == "file" {
+			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
+			d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Hash, meta.Size)
+			out = append(out, dirent)
+		} else {
+			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
+			d.Children[meta.Name] = NewDir(d.fs, meta.Name, meta.Hash)
+			out = append(out, dirent)
+		}
+		return out, nil
 	}
-	return out, nil
+	return d.readDir()
 }
 
 type File struct {

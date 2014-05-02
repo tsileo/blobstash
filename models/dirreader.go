@@ -34,7 +34,7 @@ type DirFetcher interface{
 func (client *Client) FetchDir(key string) interface{} {
 	metas, err := client.DirIter(key)
 	if err != nil {
-		panic("Error FetchDir")
+		panic(fmt.Sprintf("Error FetchDir key:%v", key))
 	}
 	return metas
 }
