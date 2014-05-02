@@ -11,6 +11,7 @@ import (
 	"bazil.org/fuse/fs"
 
 	"github.com/tsileo/datadatabase/models"
+	"github.com/garyburd/redigo/redis"
 )
 
 var Usage = func() {
@@ -83,17 +84,38 @@ type Dir struct {
 	Children map[string]fs.Node
 }
 
-func NewDir() (d *Dir) {
+func NewDir(name, ref string) (d *Dir) {
 	d = &Dir{}
 	d.Node = Node{}
 	d.Mode = os.ModeDir
 	d.Client, _ = models.NewClient()
 	d.Children = make(map[string]fs.Node)
+	d.Ref = ref
+	d.Name = name
+	return
+}
+
+func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
+	con := d.Client.Pool.Get()
+	defer con.Close()
+	members, _ := redis.Strings(con.Do("SMEMBERS", d.Ref))
+	for _, member := range members {
+		meta, _ := models.NewMetaFromDB(d.Client.Pool, member)
+		var dirent fuse.Dirent
+		if meta.Type == "file" {
+			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
+			d.Children[meta.Name] = NewFile(meta.Name, meta.Hash, meta.Size)
+		} else {
+			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
+			d.Children[meta.Name] = NewDir(meta.Name, meta.Hash)
+		}
+		out = append(out, dirent)
+	}
 	return
 }
 
 func NewRootDir() (d *Dir) {
-	d = NewDir()
+	d = NewDir("root", "")
 	d.Root = true
 	return d
 }
@@ -107,6 +129,8 @@ func (d *Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, err fuse.Error) {
 	return
 }
 
+// TODO(tsileo) NewDirFromMetaList
+
 func (d *Dir) ReadDir(intr fs.Intr) ([]fuse.Dirent, fuse.Error) {
 	var out []fuse.Dirent
 	if d.Root {
@@ -117,11 +141,16 @@ func (d *Dir) ReadDir(intr fs.Intr) ([]fuse.Dirent, fuse.Error) {
 			if meta.Type == "file" {
 				dirent.Type = fuse.DT_File
 				d.Children[meta.Name] = NewFile(meta.Name, meta.Hash, meta.Size) 
+			} else {
+				dirent.Type = fuse.DT_Dir
+				d.Children[meta.Name] = NewDir(meta.Name, meta.Hash)
 			}
 			out = append(out, dirent)
 		}
+		return out, nil
+	} else {
+		return d.readDir()
 	}
-	log.Printf("root:%+v", out)
 	return out, nil
 }
 
@@ -162,7 +191,3 @@ func (f *File) Read(req *fuse.ReadRequest, res *fuse.ReadResponse, intr fs.Intr)
 	res.Data = buf[:n]
 	return nil
 }
-
-//func (f *File) ReadAll(intr fs.Intr) (out []byte, ferr fuse.Error) {
-//	return []byte(""), ferr
-//}
