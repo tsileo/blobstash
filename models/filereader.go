@@ -54,6 +54,22 @@ func (f *FakeFile) FetchBlob(hash interface{}) interface{} {
 	return buf.Bytes()
 }
 
+
+func (f* FakeFile) ReadAt(p []byte, offset int64) (n int, err error) {
+	if len(p) == 0 {
+    	return 0, nil
+    }
+    if f.offset >= f.size {
+    	return 0, io.EOF
+    }
+	buf, err := f.read(int(offset), len(p))
+	if err != nil {
+		return
+	}
+	n = copy(p, buf)
+	return
+}
+
 func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 	if cnt < 0 || cnt > f.size {
 		cnt = f.size
@@ -105,6 +121,11 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 		}
 	}
 	return nil, err
+}
+
+// Reset the offset to 0
+func (f *FakeFile) Reset() {
+	f.offset = 0
 }
 
 func (f *FakeFile) Read(p []byte) (n int, err error) {

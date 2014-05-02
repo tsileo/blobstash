@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"io"
 	"os"
 
 	"bazil.org/fuse"
@@ -126,6 +127,7 @@ func (d *Dir) ReadDir(intr fs.Intr) ([]fuse.Dirent, fuse.Error) {
 
 type File struct {
 	Node
+	FakeFile *models.FakeFile
 }
 
 func NewFile(name, ref string, size int) *File {
@@ -134,13 +136,33 @@ func NewFile(name, ref string, size int) *File {
 	f.Ref = ref
 	f.Size = uint64(size)
 	f.Client, _ = models.NewClient()
+	f.FakeFile = models.NewFakeFile(f.Client.Pool, ref, size)
 	return f
 }
+
+// TODO(tsileo) handle release request and close FakeFile
 
 func (f *File) Attr() fuse.Attr {
 	return fuse.Attr{Inode: 2, Mode: 0444, Size:f.Size}
 }
 
-func (f *File) ReadAll(intr fs.Intr) (out []byte, ferr fuse.Error) {
-	return []byte(""), ferr
+func (f *File) Read(req *fuse.ReadRequest, res *fuse.ReadResponse, intr fs.Intr) fuse.Error {
+	if req.Offset >= int64(f.Size) {
+		return nil
+	}
+	buf := make([]byte, req.Size)
+	n, err := f.FakeFile.ReadAt(buf, req.Offset)
+	if err == io.EOF {
+		err = nil
+	}
+	if err != nil {
+		log.Printf("Error reading FakeFile on %v at %d: %v", f.Ref, req.Offset, err)
+		return fuse.EIO
+	}
+	res.Data = buf[:n]
+	return nil
 }
+
+//func (f *File) ReadAll(intr fs.Intr) (out []byte, ferr fuse.Error) {
+//	return []byte(""), ferr
+//}
