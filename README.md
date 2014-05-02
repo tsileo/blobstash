@@ -3,7 +3,7 @@ Data Database
 
 ## Overview
 
-A backup database built on top of [kv](https://github.com/cznic/kv), and [elasticsearch](http://www.elasticsearch.org/) and the [Redis Protocol](http://redis.io/topics/protocol).
+A backup database built on top of [kv](https://github.com/cznic/kv) and the [Redis Protocol](http://redis.io/topics/protocol), bundled with a command-line client and a FUSE file system.
 
 Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com/bup/bup) (files are split into multiple blobs using a rolling checksum).
 
@@ -11,10 +11,10 @@ Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com
  
 - Snapshots
 - Content addressed, files are split into blobs, and retrieved by hash
-- Incremental backups by default
+- Incremental backups/data deduplication
 - Server handles uploading/downloading blobs to/from different storage
 - Client only query the server and send blobs to it (the client take care of chunking/building blobs).
-- Read-only FUSE filesystem
+- Read-only FUSE file system to navigate backups/snapshots
 
 ### Blobs
 
@@ -22,7 +22,7 @@ Blobs are store as file (or key/archive) with its sha1 as filename in a flat dir
 
 ### Metadata
 
-Metadata are stored in kv and are exposed via a Redis protocol tcp server, with custom Redis-like data type and commands, but implemented using kv lexicographical range queries.
+Metadata are stored in kv database and are exposed via a Redis protocol tcp server, with custom Redis-like data type and commands, but implemented using kv lexicographical range queries.
 
 - String data type
 - Hash data type
