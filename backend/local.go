@@ -4,6 +4,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"log"
 )
 
 type LocalBackend struct {
@@ -34,4 +35,19 @@ func (b *LocalBackend) Exists(hash string) bool {
 func (b *LocalBackend) Get(hash string) (data []byte, err error) {
 	data, err = ioutil.ReadFile(b.blobPath(hash))
 	return
+}
+
+func (b *LocalBackend) Enumerate(blobs chan<- string) error {
+	defer close(blobs)
+	dirdata, err := ioutil.ReadDir(b.Directory)
+	if err != nil {
+		return err
+	}
+	for _, data := range dirdata {
+		if !data.IsDir() {
+			log.Printf("Enumerate:%v\n", data)
+			blobs <- data.Name()
+		}
+	}
+	return nil
 }

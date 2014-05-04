@@ -32,6 +32,7 @@ type WriteResult struct {
 	SkippedSize int
 	UploadedCnt int
 	UploadedSize int
+	AlreadyExists bool
 }
 
 func (wr *WriteResult) Add(wr2 *WriteResult) {

@@ -24,11 +24,13 @@ var (
 type ServerCtx struct {
 	DB string
 	Dbm *DBsManager
+	ReqBuffer *ReqBuffer
 }
 
 type DBsManager struct {
 	dbpath string
 	DBs map[string]*db.DB
+	metaBackend backend.BlobHandler
 	mem bool
 	*sync.Mutex
 }
@@ -59,9 +61,29 @@ func (ctx *ServerCtx) GetDb() *db.DB {
 }
 
 func SetUpCtx(req *redeo.Request) {
+	client := req.Client().RemoteAddr
+	reqName := strings.ToLower(req.Name)
 	if req.Client().Ctx == nil {
-		log.Println("New con")
-		req.Client().Ctx = &ServerCtx{"default", dbmanager}
+		log.Printf("New connection from: %+v\n", client)
+		ctx := &ServerCtx{"default", dbmanager, NewReqBuffer(dbmanager.metaBackend)}
+		req.Client().Ctx = ctx
+		//TODO once per DB
+		loadMetaBlobs.Do(ctx.ReqBuffer.Load)
+	}
+	if !strings.HasPrefix(reqName, "b") {
+		log.Printf("server: %+v command  with args %+v from client: %v\n", req.Name, req.Args, client)
+	} else {
+		log.Printf("server: %+v command from client: %v\n", req.Name, client)
+	}
+	bufferedCmd := map[string]bool{"sadd": true, "hmset": true, "hset": true, "ladd": true, "get": true}
+	_, buffered := bufferedCmd[reqName]
+	if buffered {
+		reqKey := req.Args[0]
+		reqArgs := make([]string, len(req.Args)-1)
+		copy(reqArgs, req.Args[1:])
+		rb := req.Client().Ctx.(*ServerCtx).ReqBuffer
+		rb.Add(reqName, reqKey, reqArgs)
+		rb.Dump()
 	}
 }
 
@@ -85,15 +107,15 @@ func SHA1(data []byte) string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
-func NewDBsManager(dbpath string, testMode bool) *DBsManager {
+func NewDBsManager(dbpath string, metaBackend backend.BlobHandler, testMode bool) *DBsManager {
 	os.Mkdir(dbpath, 0700)
-	return &DBsManager{dbpath, make(map[string]*db.DB), testMode, &sync.Mutex{}}	
+	return &DBsManager{dbpath, make(map[string]*db.DB), metaBackend, testMode, &sync.Mutex{}}	
 }
-
+var loadMetaBlobs sync.Once
 var dbmanager *DBsManager
 
-func New(addr, dbpath string, blobBackend backend.Backend, testMode bool, stop chan bool) {
-	dbmanager = NewDBsManager(dbpath, testMode)
+func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backend.BlobHandler, testMode bool, stop chan bool) {
+	dbmanager = NewDBsManager(dbpath, metaBackend, testMode)
 	srv := redeo.NewServer(&redeo.Config{Addr: addr})
 	srv.HandleFunc("ping", func(out *redeo.Responder, _ *redeo.Request) error {
 		out.WriteInlineString("PONG")
@@ -127,24 +149,25 @@ func New(addr, dbpath string, blobBackend backend.Backend, testMode bool, stop c
 		}
 		return nil
 	})
-	srv.HandleFunc("getset", func(out *redeo.Responder, req *redeo.Request) error {
-		SetUpCtx(req)
-		err := CheckArgs(req, 2)
-		if err != nil {
-			return err
-		}
-		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
-		res, err := cdb.Getset(req.Args[0], req.Args[1])
-		if err != nil {
-			return ErrSomethingWentWrong
-		}
-		if res != nil {
-			out.WriteString(string(res))	
-		} else {
-			out.WriteNil()
-		}
-		return nil
-	})
+	// Not needed as for now
+	//srv.HandleFunc("getset", func(out *redeo.Responder, req *redeo.Request) error {
+	//	SetUpCtx(req)
+	//	err := CheckArgs(req, 2)
+	//	if err != nil {
+	//		return err
+	//	}
+	//	cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+	//	res, err := cdb.Getset(req.Args[0], req.Args[1])
+	//	if err != nil {
+	//		return ErrSomethingWentWrong
+	//	}
+	//	if res != nil {
+	//		out.WriteString(string(res))	
+	//	} else {
+	//		out.WriteNil()
+	//	}
+	//	return nil
+	//})
 	srv.HandleFunc("set", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 2)
@@ -200,6 +223,20 @@ func New(addr, dbpath string, blobBackend backend.Backend, testMode bool, stop c
 		out.WriteInt(cnt)
 		return nil
 	})
+	srv.HandleFunc("scard", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 1)
+		if err != nil {
+			return err
+		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		cnt, err := cdb.Scard(req.Args[0])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		out.WriteInt(cnt)
+		return nil
+	})
 	srv.HandleFunc("smembers", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 1)
@@ -245,6 +282,20 @@ func New(addr, dbpath string, blobBackend backend.Backend, testMode bool, stop c
 		cmdArgs := make([]string, len(req.Args)-1)
 		copy(cmdArgs, req.Args[1:])
 		cnt, err  := cdb.Hmset(req.Args[0], cmdArgs...)
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		out.WriteInt(cnt)
+		return nil
+	})
+	srv.HandleFunc("hlen", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckMinArgs(req, 1)
+		if err != nil {
+			return err
+		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		cnt, err  := cdb.Hlen(req.Args[0])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -418,7 +469,6 @@ func New(addr, dbpath string, blobBackend backend.Backend, testMode bool, stop c
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
-		log.Printf("ladd index:%v\n%+v\n", cindex, req)
 		err  = cdb.Ladd(req.Args[0], cindex, req.Args[2])
 		if err != nil {
 			return ErrSomethingWentWrong

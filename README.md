@@ -22,12 +22,14 @@ If you backup a directory/file with the same filename more than once, it will be
 
 ### Blobs
 
-Blobs are handled by the server, you only perform three operations on blobs:
+Blobs are handled by the server, you only perform few operations on blobs:
 
 - (CMD arg => reply)
 - BPUT content => hash
 - BGET hash => content
 - BEXISTS hash => bool
+- BSIZE => int (total size of blobs)
+- BCNT => int (number of blobs)
 
 Blobs are store as file (or key/archive) with its sha1 as filename in a flat directory (or bucket/vault).
 

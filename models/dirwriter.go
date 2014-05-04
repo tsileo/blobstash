@@ -6,8 +6,6 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"log"
-	"strconv"
-	"time"
 	"sort"
 	"github.com/garyburd/redigo/redis"
 )
@@ -42,13 +40,26 @@ func (client *Client) DirWriter(path string) (wr *WriteResult, err error) {
 			h.Write([]byte(hash))
 		}
 		wr.Hash = fmt.Sprintf("%x", h.Sum(nil))
-		_, err = con.Do("SADD", redis.Args{}.Add(wr.Hash).AddFlat(hashes)...)
+		cnt, err := redis.Int(con.Do("SCARD", wr.Hash))
+		if err != nil {
+			return wr, err
+		}
+		if cnt == 0 {
+			_, err = con.Do("SADD", redis.Args{}.Add(wr.Hash).AddFlat(hashes)...)
+			if err != nil {
+				return wr, err
+			}
+		} else {
+			wr.AlreadyExists = true
+		}
 	} else {
-		// If the dir is empty, set the hash to the current timestamp
+		// If the dir is empty, hash the filename instead of members
 		// so it doesn't break things.
-		h.Write([]byte(strconv.Itoa(int(time.Now().UTC().Unix()))))
+		h.Write([]byte("emptydir:"))
+		h.Write([]byte(wr.Filename))
 		wr.Hash = fmt.Sprintf("%x", h.Sum(nil))
 	}
+	//log.Printf("datadb: DirWriter(%v) WriteResult:%+v", path, wr)
 	return
 }
 
@@ -59,7 +70,7 @@ func (client *Client) PutDir(path string) (meta *Meta, wr *WriteResult, err erro
 	}
 	wr, err = client.DirWriter(abspath)
 	if err != nil {
-		log.Printf("error DirWriter %v/%v", path, abspath)
+		log.Printf("datadb: error DirWriter path:%v/abspath:%v/wr:%+v/err:%v\n", path, abspath, wr, err)
 		return
 	}
 	meta = NewMeta()

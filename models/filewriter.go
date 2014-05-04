@@ -80,12 +80,25 @@ func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err err
 	if _, err = os.Stat(path); os.IsNotExist(err) {
 		return
 	}
+	_, filename := filepath.Split(path)
 	sha := FullSHA1(path)
-	wr, err = client.FileWriter(sha, path)
+	con := client.Pool.Get()
+	defer con.Close()
+	cnt, err := redis.Int(con.Do("HLEN", sha))
 	if err != nil {
 		return
 	}
-	_, filename := filepath.Split(path)
+	if cnt > 0 {
+		wr = &WriteResult{}
+		wr.Hash = sha
+		wr.AlreadyExists = true
+		wr.Filename = filename
+	} else {
+		wr, err = client.FileWriter(sha, path)
+		if err != nil {
+			return
+		}	
+	}
 	meta = NewMeta()
 	if sha != wr.Hash {
 		panic("Corrupted")

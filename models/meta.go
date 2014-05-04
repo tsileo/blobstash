@@ -5,6 +5,10 @@ import (
 	"errors"
 )
 
+var (
+	ErrMetaAlreadyExists = errors.New("datadb: meta already exists")
+)
+
 type Meta struct {
 	Name string `redis:"name"`
 	Type string `redis:"type"`
@@ -41,7 +45,14 @@ func (m *Meta) Save(pool *redis.Pool) error {
 	if m.Hash == "" {
 		return errors.New("Meta error: hash not set")
 	}
-	_, err := con.Do("HMSET", m.Hash, "name", m.Name, "type", m.Type, "size", m.Size)
+	cnt, err := redis.Int(con.Do("HLEN", m.Hash))
+	if err != nil {
+		return err
+	}
+	if cnt != 0 {
+		return nil
+	}
+	_, err = con.Do("HMSET", m.Hash, "name", m.Name, "type", m.Type, "size", m.Size)
 	return err
 }
 
