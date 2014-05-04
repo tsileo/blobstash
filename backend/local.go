@@ -4,7 +4,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"log"
 )
 
 type LocalBackend struct {
@@ -45,7 +44,6 @@ func (b *LocalBackend) Enumerate(blobs chan<- string) error {
 	}
 	for _, data := range dirdata {
 		if !data.IsDir() {
-			log.Printf("Enumerate:%v\n", data)
 			blobs <- data.Name()
 		}
 	}

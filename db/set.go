@@ -78,7 +78,7 @@ func (db *DB) Sadd(key string, members ...string) int {
 	return cnt
 }
 
-func (db *DB) Sismember(key string, member string) int {
+func (db *DB) Sismember(key, member string) int {
 	bkey := []byte(key)
 	cval, _ := db.get(keySetMember(bkey, member))
 	cnt := 0

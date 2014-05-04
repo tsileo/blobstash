@@ -6,10 +6,12 @@ import (
 	"sync"
 	"strings"
 	"log"
+	"strconv"
 	"encoding/json"
 )
 
 type ReqBuffer struct {
+	dbmanager *DBsManager
 	blobBackend backend.BlobHandler
 	db *db.DB
 	sync.Mutex
@@ -23,10 +25,14 @@ type ReqArgs struct {
 	Args [][]string `json:"args"`
 }
 
-func NewReqBuffer(blobBackend backend.BlobHandler) *ReqBuffer {
+func NewReqBuffer(blobBackend backend.BlobHandler, dbmanager *DBsManager) *ReqBuffer {
 	return &ReqBuffer{Reqs: make(map[string][]*ReqArgs),
 					ReqsKeyRef: make(map[string]map[string]*ReqArgs),
-					blobBackend: blobBackend}
+					blobBackend: blobBackend, dbmanager: dbmanager}
+}
+
+func (rb *ReqBuffer) SetDB(db *db.DB) {
+	rb.db = db
 }
 
 func (rb *ReqBuffer) reset() {
@@ -41,7 +47,7 @@ func (rb *ReqBuffer) Add(reqType, reqKey string, reqArgs []string) (err error) {
 	}
 	rb.Lock()
 	defer rb.Unlock()
-	if rb.reqCnt >= 5 {
+	if rb.reqCnt >= 1000 {
 		err = rb.Save()
 		if err != nil {
 			return
@@ -65,27 +71,90 @@ func (rb *ReqBuffer) Add(reqType, reqKey string, reqArgs []string) (err error) {
 }
 
 func (rb *ReqBuffer) Save() error {
+	if rb.reqCnt == 0 {
+		return nil
+	}
 	h, d := rb.JSON()
 	rb.reset()
 	log.Printf("datadb: Meta blob:%v (len:%v) written\n", h, len(d))
+	rb.db.Sadd("_meta", h)
 	return rb.blobBackend.Put(h, d)
 }
 
-func (rb *ReqBuffer) Load() {
+func (rb *ReqBuffer) Load() error {
 	hashes := make(chan string)
-	log.Println("before enumerate")
 	errs := make(chan error)
 	go func() {
 		errs <- rb.blobBackend.Enumerate(hashes)
 	
 	}()
-	log.Println("after enumerate")
 	for hash := range hashes {
-		log.Printf("datadb: Found meta blob:%v", hash)
+		cnt := rb.db.Sismember("_meta", hash)
+		if cnt == 0 {
+			log.Printf("datadb: Found a Meta blob not loaded %v\n", hash)
+			data, berr := rb.blobBackend.Get(hash)
+			if berr != nil {
+				return berr
+			}
+			// TODO(tsileo) check error
+			res := make(map[string][]*ReqArgs)
+			json.Unmarshal(data, &res)
+			for reqCmd, reqArgs := range res {
+				switch {
+				case reqCmd == "sadd":
+					for _, req := range reqArgs {
+						for _, args := range req.Args {
+							rb.db.Sadd(req.Key, args...)
+							log.Printf("datadb: Applying SADD: %+v/%+v", req.Key, args)
+						}
+					}
+
+				case reqCmd == "hset":
+					for _, req := range reqArgs {
+						for _, args := range req.Args {
+							rb.db.Hset(req.Key, args[0], args[1])
+							log.Printf("datadb: Applying HSET: %+v/%+v", req.Key, args)
+						}
+					}
+
+				case reqCmd == "hmset":
+					for _, req := range reqArgs {
+						for _, args := range req.Args {
+							rb.db.Hmset(req.Key, args...)
+							log.Printf("datadb: Applying HMSET: %+v/%+v", req.Key, args)
+						}
+					}
+
+				case reqCmd == "ladd":
+					for _, req := range reqArgs {
+						for _, args := range req.Args {
+							index, ierr := strconv.Atoi(args[0])
+							if ierr != nil {
+								log.Printf("datadb: Bad LADD index: %v, err:%v", index, ierr)
+								return ierr
+							}
+							rb.db.Ladd(req.Key, index, args[1])
+							log.Printf("datadb: Applying LADD: %+v/%+v", req.Key, args)
+						}
+					}
+
+				case reqCmd == "set":
+					for _, req := range reqArgs {
+						for _, args := range req.Args {
+							rb.db.Put(req.Key, args[0])
+							log.Printf("datadb: Applying SET: %+v/%+v", req.Key, args)
+						}
+					}
+
+				}
+			}
+			rb.db.Sadd("_meta", hash)
+		}
 	}
 	if err := <-errs; err != nil {
-		panic(err)
+		return err
 	}
+	return nil
 }
 
 func (rb *ReqBuffer) JSON() (string, []byte) {

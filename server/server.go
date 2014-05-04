@@ -24,7 +24,6 @@ var (
 type ServerCtx struct {
 	DB string
 	Dbm *DBsManager
-	ReqBuffer *ReqBuffer
 }
 
 type DBsManager struct {
@@ -32,6 +31,7 @@ type DBsManager struct {
 	DBs map[string]*db.DB
 	metaBackend backend.BlobHandler
 	mem bool
+	ReqBuffer *ReqBuffer
 	*sync.Mutex
 }
 
@@ -51,6 +51,11 @@ func (dbm *DBsManager) GetDb(dbname string) *db.DB {
 			panic(err)
 		}
 		dbm.DBs[dbname] = newdb
+		dbm.ReqBuffer.SetDB(newdb)
+		err = dbm.ReqBuffer.Load()
+		if err != nil {
+			panic(err)
+		}
 		return newdb
 	}
 	return cdb
@@ -65,25 +70,23 @@ func SetUpCtx(req *redeo.Request) {
 	reqName := strings.ToLower(req.Name)
 	if req.Client().Ctx == nil {
 		log.Printf("New connection from: %+v\n", client)
-		ctx := &ServerCtx{"default", dbmanager, NewReqBuffer(dbmanager.metaBackend)}
-		req.Client().Ctx = ctx
-		//TODO once per DB
-		loadMetaBlobs.Do(ctx.ReqBuffer.Load)
+		req.Client().Ctx = &ServerCtx{"default", dbmanager}
 	}
 	if !strings.HasPrefix(reqName, "b") {
 		log.Printf("server: %+v command  with args %+v from client: %v\n", req.Name, req.Args, client)
 	} else {
 		log.Printf("server: %+v command from client: %v\n", req.Name, client)
 	}
-	bufferedCmd := map[string]bool{"sadd": true, "hmset": true, "hset": true, "ladd": true, "get": true}
+	bufferedCmd := map[string]bool{"sadd": true, "hmset": true, "hset": true, "ladd": true, "set": true}
 	_, buffered := bufferedCmd[reqName]
 	if buffered {
 		reqKey := req.Args[0]
 		reqArgs := make([]string, len(req.Args)-1)
 		copy(reqArgs, req.Args[1:])
-		rb := req.Client().Ctx.(*ServerCtx).ReqBuffer
+		db := req.Client().Ctx.(*ServerCtx).GetDb()
+		rb := req.Client().Ctx.(*ServerCtx).Dbm.ReqBuffer
+		rb.SetDB(db)
 		rb.Add(reqName, reqKey, reqArgs)
-		rb.Dump()
 	}
 }
 
@@ -109,13 +112,15 @@ func SHA1(data []byte) string {
 
 func NewDBsManager(dbpath string, metaBackend backend.BlobHandler, testMode bool) *DBsManager {
 	os.Mkdir(dbpath, 0700)
-	return &DBsManager{dbpath, make(map[string]*db.DB), metaBackend, testMode, &sync.Mutex{}}	
+	return &DBsManager{dbpath, make(map[string]*db.DB), metaBackend, testMode, nil, &sync.Mutex{}}	
 }
 var loadMetaBlobs sync.Once
 var dbmanager *DBsManager
 
 func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backend.BlobHandler, testMode bool, stop chan bool) {
 	dbmanager = NewDBsManager(dbpath, metaBackend, testMode)
+	rb := NewReqBuffer(dbmanager.metaBackend, dbmanager)
+	dbmanager.ReqBuffer = rb
 	srv := redeo.NewServer(&redeo.Config{Addr: addr})
 	srv.HandleFunc("ping", func(out *redeo.Responder, _ *redeo.Request) error {
 		out.WriteInlineString("PONG")
@@ -625,6 +630,18 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 	})
 	srv.HandleFunc("shutdown", func(out *redeo.Responder, _ *redeo.Request) error {
 		stop <-true
+		out.WriteOK()
+		return nil
+	})
+	srv.HandleFunc("metadump", func(out *redeo.Responder, req *redeo.Request) error {
+		db := req.Client().Ctx.(*ServerCtx).GetDb()
+		rb := req.Client().Ctx.(*ServerCtx).Dbm.ReqBuffer
+		rb.SetDB(db)
+		rb.Dump()
+		err := rb.Save()
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
 		out.WriteOK()
 		return nil
 	})

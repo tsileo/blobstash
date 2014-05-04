@@ -58,6 +58,10 @@ func (f *Backup) Save(pool *redis.Pool) (string, error) {
 		return rkey, err
 	}
 	_, err = con.Do("LADD", f.Name, int(f.Ts), rkey)
+	if err != nil {
+		return rkey, err
+	}
+	_, err = con.Do("METADUMP")
 	return rkey, err
 }
 
