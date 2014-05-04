@@ -53,11 +53,11 @@ func (f *Backup) Save(pool *redis.Pool) (string, error) {
 		return rkey, err
 	}
 	// Set/update the latest meta for this filename (snapshot)
-	_, err = con.Do("SET", fmt.Sprintf("latest:%v", f.Name), rkey)
+	_, err = con.Do("SADD", "filenames", f.Name)
 	if err != nil {
 		return rkey, err
 	}
-	_, err = con.Do("LADD", f.Name, int(f.Ts), f.Ref)
+	_, err = con.Do("LADD", f.Name, int(f.Ts), rkey)
 	return rkey, err
 }
 

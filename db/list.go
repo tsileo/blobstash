@@ -148,11 +148,19 @@ func (db *DB) Ldel(key string) error {
 	return err
 }
 
-// Return a lexicographical range from a snapshot
+// Return a lexicographical range
 func (db *DB) GetListRange(key, kStart string, kEnd string, limit int) (kvs []*KeyValue, err error) {
 	// TODO(tsileo) make kStart, kEnd int instead of string
 	bkey := []byte(key)
 	kvs, _ = GetRange(db.db, keyList(bkey, kStart), keyList(bkey, kEnd), limit)
+	return
+}
+
+// Return a lexicographical range
+func (db *DB) GetListRangeLast(key, kStart string, kEnd string, limit int) (kv *KeyValue, err error) {
+	// TODO(tsileo) make kStart, kEnd int instead of string
+	bkey := []byte(key)
+	kv, _ = GetRangeLast(db.db, keyList(bkey, kStart), keyList(bkey, kEnd), limit)
 	return
 }
 

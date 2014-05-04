@@ -473,6 +473,24 @@ func New(addr, dbpath string, blobBackend backend.Backend, testMode bool, stop c
 		}
 		return nil
 	})
+	srv.HandleFunc("llast", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 4)
+		if err != nil {
+			return err
+		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDb()
+		limit, err := strconv.Atoi(req.Args[3])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		kv, err := cdb.GetListRangeLast(req.Args[0], req.Args[1], req.Args[2], limit)
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		out.WriteString(kv.Value)
+		return nil
+	})
 	srv.HandleFunc("liter", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckMinArgs(req, 1)

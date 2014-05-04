@@ -97,7 +97,30 @@ func GetRange(db *kv.DB, kStart []byte, kEnd []byte, limit int) (values []*KeyVa
 	return
 }
 
-// Perform a lexico range query
+// Perform a lexico range query, and return the last key-value pair
+func GetRangeLast(db *kv.DB, kStart []byte, kEnd []byte, limit int) (kv *KeyValue, err error) {
+	enum, _, err := db.Seek(kStart)
+	endBytes := kEnd
+	i := 0
+	for {
+		k, v, err := enum.Next()
+		if err == io.EOF {
+			break
+		}
+		if bytes.Compare(k, endBytes) > 0 || (limit != 0 && i > limit) {
+			return kv, nil
+		}
+		vstr := string(v)
+		kstr := string(k[1:])
+		kv = &KeyValue{kstr, vstr}
+		i++
+	}
+	return
+}
+
+// Perform a lexico range query but try to return a least two values,
+// even if  if the key is not "greater than or equal to" the given key.
+// For list, the list name will be checked later
 func GetMinRange(db *kv.DB, kStart []byte, kEnd []byte, limit int) (values []*KeyValue, err error) {
 	enum, _, err := db.Seek(kStart)
 	endBytes := kEnd

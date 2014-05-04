@@ -16,7 +16,18 @@ Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com
 - Client only query the server and send blobs to it (the client take care of chunking/building blobs).
 - Read-only FUSE file system to navigate backups/snapshots
 
+### Snapshots
+
+If you backup a directory/file with the same filename more than once, it will be grouped as a snapshot.
+
 ### Blobs
+
+Blobs are handled by the server, you only perform three operations on blobs:
+
+- (CMD arg => reply)
+- BPUT content => hash
+- BGET hash => content
+- BEXISTS hash => bool
 
 Blobs are store as file (or key/archive) with its sha1 as filename in a flat directory (or bucket/vault).
 
@@ -48,10 +59,11 @@ A database is tied to a storage.
 - Easy way to backup/restore internal kv (RDB like format)
 - Master/slave replication of metadatas
 - Encryption
+- Periodic snapshot/snapshots monitoring
+- A special cold storage backed (using AWS Glacier, can't use glacier since storing blobs with Glacier would cost too much, according to [this article](http://alestic.com/2012/12/s3-glacier-costs)) that would put one archive per snapshots, and keep track of stored blob (incremental backups).
 
 ## Supported storages
 
-- Local
+- Local/SFTP
 - S3 (not started yet)
-- Glacier (not started yet)
 - Submit a pull request!

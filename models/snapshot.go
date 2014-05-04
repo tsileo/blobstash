@@ -2,7 +2,6 @@ package models
 
 import (
 	"github.com/garyburd/redigo/redis"
-	"log"
 )
 
 // Returns a list of Backup, the latest for each filename/snapshot
@@ -14,9 +13,13 @@ func (client *Client) Latest() (backups []*Backup, err error) {
 	}
 	con := client.Pool.Get()
 	defer con.Close()
-	keys, err := redis.Strings(con.Do("RANGE", "latest:", "latest:\xff", 0))
-	log.Printf("keys:%v,err:%v", keys, err)
-	for _, key := range keys {
+	filenames, err := client.SnapshotIter()
+	for _, filename := range filenames {
+		// Get the latest backup for this backup/snapshot
+		key, kerr := redis.String(con.Do("LLAST", filename, "0", "\xff", 0))
+		if kerr != nil {
+			return backups, kerr
+		}
 		backup, berr := NewBackupFromDB(client.Pool, key)
 		if berr != nil {
 			return backups, berr
@@ -54,7 +57,11 @@ func (client *Client) Snapshots(filename string) (ivs []*IndexMeta, err error) {
 	}
 	redis.ScanSlice(values, &indexValueList)
 	for _, iv := range indexValueList {
-		meta, merr := NewMetaFromDB(client.Pool, iv.Value)
+		backup, berr := NewBackupFromDB(client.Pool, iv.Value)
+		if berr != nil {
+			return nil, berr
+		}
+		meta, merr := backup.Meta(client.Pool)
 		if merr != nil {
 			return nil, merr
 		}

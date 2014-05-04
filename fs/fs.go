@@ -187,8 +187,6 @@ func (d *Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, err fuse.Error) {
 func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 	switch {
 	case d.Root:
-		//backups, _ := d.fs.Client.List()
-		// Reset the children, backups may have been removed
 		d.Children = make(map[string]fs.Node)
 		dirent := fuse.Dirent{Name: "latest", Type: fuse.DT_Dir}
 		out = append(out, dirent)
@@ -271,7 +269,7 @@ func NewFile(fs *FS, name, ref string, size int) *File {
 	return f
 }
 
-// TODO(tsileo) handle release request and close FakeFile
+// TODO(tsileo) handle release request and close FakeFile if needed?
 
 func (f *File) Attr() fuse.Attr {
 	return fuse.Attr{Inode: 2, Mode: 0444, Size:f.Size}
