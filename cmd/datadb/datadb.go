@@ -3,7 +3,8 @@ package main
 import (
 	"os"
 	"github.com/codegangsta/cli"
-	"github.com/tsileo/datadatabase/models"
+	"github.com/tsileo/datadatabase/client"
+	"github.com/tsileo/datadatabase/fs"
 	"fmt"
 )
 
@@ -21,7 +22,7 @@ func main() {
 	    ShortName: "put",
 	    Usage:     "put a file/directory",
 	    Action: func(c *cli.Context) {
-	    	client, _ := models.NewClient()
+	    	client, _ := client.NewClient()
 	    	b, m, wr, err := client.Put(c.Args().First())
 	    	fmt.Printf("b:%+v,m:%+v,wr:%+v,err:%v\n", b, m, wr, err)
 	    },
@@ -31,11 +32,18 @@ func main() {
 	    ShortName: "ls",
 	    Usage:     "List backups",
 	    Action: func(c *cli.Context) {
-	    	client, _ := models.NewClient()
+	    	client, _ := client.NewClient()
 	    	metas, _ := client.List()
 	    	for _, m := range metas {
 	    		fmt.Printf("%+v\n", m)
 	    	}
+	    },
+	  },
+	  {
+	    Name:      "mount",
+	    Usage:     "Mount the read-only filesystem to the given path",
+	    Action: func(c *cli.Context) {
+	    	fs.Mount(c.Args().First())
 	    },
 	  },
 	}

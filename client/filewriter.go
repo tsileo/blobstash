@@ -1,12 +1,14 @@
-package models
+package client
 
 import (
 	"os"
 	"bytes"
 	"crypto/sha1"
 	"fmt"
+	"log"
 	"io"
 	"bufio"
+	"sync"
 	"github.com/tsileo/silokv/rolling"
 	"github.com/garyburd/redigo/redis"
 	"path/filepath"
@@ -77,6 +79,9 @@ func (client *Client) FileWriter(key, path string) (*WriteResult, error) {
 }
 
 func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err error) {
+	log.Printf("PutFile %v\n", path)
+	client.StartUpload()
+	defer client.UploadDone()
 	if _, err = os.Stat(path); os.IsNotExist(err) {
 		return
 	}
@@ -110,6 +115,17 @@ func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err err
 	// TODO(tsileo) load it ?
 	if cnt == 0 {
 		err = meta.Save(client.Pool)	
+	}
+	log.Printf("PutFile %v done\n", path)
+	return
+}
+func (client *Client) PutFileWg(path string, wg *sync.WaitGroup, cwrrc chan<- *WriteResult) {
+	defer wg.Done()
+	_, wr, err := client.PutFile(path)
+	if err == nil {
+		cwrrc <- wr	
+	} else {
+		log.Printf("Error putfile %v\n", err)
 	}
 	return
 }

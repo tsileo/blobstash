@@ -1,48 +1,56 @@
-package main
+/*
+
+Implements a FUSE filesystem, with a focus on snapshots.
+
+The root directory contains two specials directory:
+
+- **latest**, it contains the latest version of each files/directories (e.g. /datadb/mnt/latest/writing).
+- **snapshots**, it contains a list of directory with the file/dir name, and inside this directory,
+a list of directory: one directory per snapshots, and finally inside this dir,
+the file/dir (e.g /datadb/mnt/snapshots/writing/2014-05-04T17:42:48+02:00/writing).
+
+*/
+package fs
 
 import (
-	"flag"
-	"fmt"
 	"log"
 	"io"
 	"os"
-	"bytes"
+	"os/signal"
 	"time"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
 
-	"github.com/tsileo/datadatabase/models"
-	"github.com/garyburd/redigo/redis"
+	"github.com/tsileo/datadatabase/client"
 )
 
-var Usage = func() {
-	fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
-	fmt.Fprintf(os.Stderr, "  %s MOUNTPOINT\n", os.Args[0])
-	flag.PrintDefaults()
-}
-
-func main() {
-	flag.Usage = Usage
-	flag.Parse()
-
-	if flag.NArg() != 1 {
-		Usage()
-		os.Exit(2)
-	}
-	mountpoint := flag.Arg(0)
-
+// Mount the filesystem to the given mountpoint
+func Mount(mountpoint string) {
 	c, err := fuse.Mount(mountpoint)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer c.Close()
+	log.Printf("Mounting read-only filesystem on %v\nCtrl+C to unmount.", mountpoint)
+	
+	cs := make(chan os.Signal, 1)
+	signal.Notify(cs, os.Interrupt)
+	go func() {
+		for _ = range cs {
+			log.Printf("Unmounting %v...\n", mountpoint)
+			err := fuse.Unmount(mountpoint)
+			if err != nil {
+				log.Printf("Error unmounting: %v", err)
+			}
+			defer os.Exit(0)
+		}
+	}()
 
 	err = fs.Serve(c, NewFS())
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	// check if the mount process has an error to report
 	<-c.Ready
 	if err := c.MountError; err != nil {
@@ -52,25 +60,14 @@ func main() {
 
 type FS struct {
 	RootDir *Dir
-	Client *models.Client
+	Client *client.Client
 }
+
 
 func NewFS() (fs *FS) {
-	client, _ := models.NewClient()
+	client, _ := client.NewClient()
 	fs = &FS{Client: client}
 	return
-}
-
-func (fs *FS) FetchBlob(hash string) interface{} {
-	con := fs.Client.Pool.Get()
-	defer con.Close()
-	var buf bytes.Buffer
-	data, err := redis.String(con.Do("BGET", hash))
-	if err != nil {
-		panic("Error FetchBlob")
-	}
-	buf.WriteString(data)
-	return buf.Bytes()
 }
 
 func (fs *FS) Root() (fs.Node, fuse.Error) {
@@ -119,7 +116,7 @@ func NewDir(cfs *FS, name, ref string) (d *Dir) {
 func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
 	con := d.fs.Client.Pool.Get()
 	defer con.Close()
-	for _, meta := range d.fs.Client.Dirs.Get(d.Ref).([]*models.Meta) {
+	for _, meta := range d.fs.Client.Dirs.Get(d.Ref).([]*client.Meta) {
 		var dirent fuse.Dirent
 		if meta.Type == "file" {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
@@ -200,7 +197,7 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 		d.Children = make(map[string]fs.Node)
 		backups, _ := d.fs.Client.Latest()
 		for _, backup := range backups {
-			meta := d.fs.Client.Metas.Get(backup.Ref).(*models.Meta)
+			meta := d.fs.Client.Metas.Get(backup.Ref).(*client.Meta)
 			//meta, _ := backup.Meta(d.fs.Client.Pool)
 			if backup.Type == "file" {
 				dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
@@ -218,7 +215,7 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 		d.Children = make(map[string]fs.Node)
 		backups, _ := d.fs.Client.Latest()
 		for _, backup := range backups {
-			meta := d.fs.Client.Metas.Get(backup.Ref).(*models.Meta)
+			meta := d.fs.Client.Metas.Get(backup.Ref).(*client.Meta)
 			//meta, _ := backup.Meta(d.fs.Client.Pool)
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
 			d.Children[meta.Name] = NewSnapshotDir(d.fs, meta.Name, meta.Hash)
@@ -241,8 +238,8 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 
 	case d.FakeDir:
 		d.Children = make(map[string]fs.Node)
-		//meta, _ := models.NewMetaFromDB(d.fs.Client.Pool, d.Ref)
-		meta := d.fs.Client.Metas.Get(d.Ref).(*models.Meta)
+		//meta, _ := client.NewMetaFromDB(d.fs.Client.Pool, d.Ref)
+		meta := d.fs.Client.Metas.Get(d.Ref).(*client.Meta)
 		if meta.Type == "file" {
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
 			d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Hash, meta.Size)
@@ -259,7 +256,7 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 
 type File struct {
 	Node
-	FakeFile *models.FakeFile
+	FakeFile *client.FakeFile
 }
 
 func NewFile(fs *FS, name, ref string, size int) *File {
@@ -268,7 +265,7 @@ func NewFile(fs *FS, name, ref string, size int) *File {
 	f.Ref = ref
 	f.Size = uint64(size)
 	f.fs = fs
-	f.FakeFile = models.NewFakeFile(f.fs.Client, ref, size)
+	f.FakeFile = client.NewFakeFile(f.fs.Client, ref, size)
 	return f
 }
 

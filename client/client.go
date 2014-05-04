@@ -1,16 +1,17 @@
-package models
+package client
 
 import (
 	"time"
 	"github.com/garyburd/redigo/redis"
 	"github.com/tsileo/datadatabase/lru"
+	"log"
 	"os"
 )
 
 func GetDbPool() (pool *redis.Pool, err error) {
 	pool = &redis.Pool{
-		MaxIdle:     50,
-		MaxActive: 50,
+		MaxIdle:     250,
+		MaxActive: 250,
 		IdleTimeout: 240 * time.Second,
 		Dial: func() (redis.Conn, error) {
 			c, err := redis.Dial("tcp", "localhost:9736")
@@ -36,15 +37,32 @@ type Client struct {
 	Blobs BlobFetcher
 	Dirs DirFetcher
 	Metas MetaFetcher
+	uploader chan struct{}
 }
 
 func NewClient() (*Client, error) {
 	pool, err := GetDbPool()
-	c := &Client{Pool:pool}
+	c := &Client{Pool:pool, uploader: make(chan struct{}, 50)}
 	c.Blobs = lru.New(c.FetchBlob, 512)
 	c.Dirs = lru.New(c.FetchDir, 512)
 	c.Metas = lru.New(c.FetchMeta, 512)
 	return c, err
+}
+
+// Block until the client can start the upload
+func (client *Client) StartUpload() {
+	log.Println("Waiting to start upload")
+	client.uploader <- struct{}{}
+	log.Println("upload started")
+}
+
+// Read from the channel to let another upload start
+func (client *Client) UploadDone() {
+	select {
+		case <-client.uploader:
+	default:
+		panic("No upload to wait for")
+	}
 }
 
 func (client *Client) List() (backups []*Backup, err error) {

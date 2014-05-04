@@ -1,4 +1,4 @@
-package models
+package client
 
 import (
 	"github.com/garyburd/redigo/redis"
