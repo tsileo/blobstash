@@ -58,7 +58,6 @@ A database is tied to a storage.
 ## Roadmap / Ideas
 
 - Add a **drop** directory to support upload via FUSE
-- Easy way to backup/restore internal kv (RDB like format)
 - Master/slave replication of metadatas
 - Encryption
 - Periodic snapshot/snapshots monitoring

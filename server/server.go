@@ -637,7 +637,6 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		db := req.Client().Ctx.(*ServerCtx).GetDb()
 		rb := req.Client().Ctx.(*ServerCtx).Dbm.ReqBuffer
 		rb.SetDB(db)
-		rb.Dump()
 		err := rb.Save()
 		if err != nil {
 			return ErrSomethingWentWrong

@@ -61,10 +61,11 @@ func (client *Client) Snapshots(filename string) (ivs []*IndexMeta, err error) {
 		if berr != nil {
 			return nil, berr
 		}
-		meta, merr := backup.Meta(client.Pool)
-		if merr != nil {
-			return nil, merr
-		}
+		meta := client.Metas.Get(backup.Ref).(*Meta)
+		//meta, merr := backup.Meta(client.Pool)
+		//if merr != nil {
+		//	return nil, merr
+		//}
 		ivs = append(ivs, &IndexMeta{iv.Index, meta})
 	}
 	return	

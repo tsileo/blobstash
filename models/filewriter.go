@@ -107,6 +107,9 @@ func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err err
 	meta.Name = filename
 	meta.Size = wr.Size
 	meta.Type = "file"
-	err = meta.Save(client.Pool)
+	// TODO(tsileo) load it ?
+	if cnt == 0 {
+		err = meta.Save(client.Pool)	
+	}
 	return
 }

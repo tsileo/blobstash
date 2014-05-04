@@ -200,7 +200,8 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 		d.Children = make(map[string]fs.Node)
 		backups, _ := d.fs.Client.Latest()
 		for _, backup := range backups {
-			meta, _ := backup.Meta(d.fs.Client.Pool)
+			meta := d.fs.Client.Metas.Get(backup.Ref).(*models.Meta)
+			//meta, _ := backup.Meta(d.fs.Client.Pool)
 			if backup.Type == "file" {
 				dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
 				d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Hash, meta.Size)
@@ -217,7 +218,8 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 		d.Children = make(map[string]fs.Node)
 		backups, _ := d.fs.Client.Latest()
 		for _, backup := range backups {
-			meta, _ := backup.Meta(d.fs.Client.Pool)
+			meta := d.fs.Client.Metas.Get(backup.Ref).(*models.Meta)
+			//meta, _ := backup.Meta(d.fs.Client.Pool)
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
 			d.Children[meta.Name] = NewSnapshotDir(d.fs, meta.Name, meta.Hash)
 			out = append(out, dirent)
@@ -239,7 +241,8 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 
 	case d.FakeDir:
 		d.Children = make(map[string]fs.Node)
-		meta, _ := models.NewMetaFromDB(d.fs.Client.Pool, d.Ref)
+		//meta, _ := models.NewMetaFromDB(d.fs.Client.Pool, d.Ref)
+		meta := d.fs.Client.Metas.Get(d.Ref).(*models.Meta)
 		if meta.Type == "file" {
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
 			d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Hash, meta.Size)

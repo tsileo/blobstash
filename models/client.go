@@ -35,6 +35,7 @@ type Client struct {
 	Pool *redis.Pool
 	Blobs BlobFetcher
 	Dirs DirFetcher
+	Metas MetaFetcher
 }
 
 func NewClient() (*Client, error) {
@@ -42,6 +43,7 @@ func NewClient() (*Client, error) {
 	c := &Client{Pool:pool}
 	c.Blobs = lru.New(c.FetchBlob, 512)
 	c.Dirs = lru.New(c.FetchDir, 512)
+	c.Metas = lru.New(c.FetchMeta, 512)
 	return c, err
 }
 

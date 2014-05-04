@@ -3,6 +3,7 @@ package models
 import (
 	"github.com/garyburd/redigo/redis"
 	"errors"
+	"fmt"
 )
 
 var (
@@ -69,3 +70,20 @@ func (m *Meta) IsDir() bool {
 	}
 	return false
 }
+
+type MetaFetcher interface{
+	Get(string) interface{}
+}
+
+func (client *Client) MetaFromDB(key string) (*Meta, error) {
+	return NewMetaFromDB(client.Pool, key)	
+}
+
+// Used by the LRU to fetch the Meta for the given dir/file
+func (client *Client) FetchMeta(key string) interface{} {
+	metas, err := client.MetaFromDB(key)
+	if err != nil {
+		panic(fmt.Sprintf("Error FetchMeta key:%v", key))
+	}
+	return metas
+} 
