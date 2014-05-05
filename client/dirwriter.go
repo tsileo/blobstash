@@ -23,55 +23,38 @@ func (client *Client) DirWriter(path string) (wr *WriteResult, err error) {
 	}
 	h := sha1.New()
 	hashes := []string{}
-	//var cwr *WriteResult
-	if len(dirdata) != 0 {
-		cwrrc := make(chan *WriteResult, len(dirdata))
+	dirdatalen := len(dirdata)
+	if dirdatalen != 0 {
+		cwrrc := make(chan *WriteResult, dirdatalen)
+		errch := make(chan error, dirdatalen)
 		for _, data := range dirdata {
 			abspath := filepath.Join(path, data.Name())
 			if data.IsDir() {
 				wg.Add(1)
-				go client.PutDirWg(abspath, wg, cwrrc)
-				//if err != nil {
-				//	log.Printf("Error putdir: %v", err)
-				//}
-				//cwrrc <- crw
+				go client.PutDirWg(abspath, wg, cwrrc, errch)
 			} else {
-
-				if data.Mode() & os.ModeSymlink != 0 {
-					log.Printf("Skipping SymLink %v\n", path)
-					cwrrc <- &WriteResult{}		
-				} else {
+				// Skip SymLink for now
+				if data.Mode() & os.ModeSymlink == 0 {
 					wg.Add(1)
-					//_, cwr, err = 
-					go client.PutFileWg(abspath, wg, cwrrc)
+					go client.PutFileWg(abspath, wg, cwrrc, errch)
 				}
-			}
-			if err != nil {
-				return
 			}
 		}
 		wg.Wait()
+		close(errch)
 		close(cwrrc)
+		for cerr := range errch {
+			if cerr != nil {
+				return  nil, cerr
+			}
+		}
 		for ccwr := range cwrrc {
 			if ccwr.Hash != "" {
 				wr.Add(ccwr)
 				hashes = append(hashes, ccwr.Hash)	
 			}
 		}
-		//OuterLoop:
-		//	for {
-		//		var ccwr *WriteResult
-		//		select {
-		//		case ccwr = <-cwrrc:
-		//			if ccwr != nil {
-		//				wr.Add(ccwr)
-		//				hashes = append(hashes, ccwr.Hash)
-		//			}
-		//		default:
-		//			log.Println("breaking loop")
-		//			break OuterLoop
-		//		}
-		//	}
+		// Sort the hashes by lexical order so the hash is deterministic
 		sort.Strings(hashes)
 		for _, hash := range hashes {
 			h.Write([]byte(hash))
@@ -98,12 +81,12 @@ func (client *Client) DirWriter(path string) (wr *WriteResult, err error) {
 		h.Write([]byte(wr.Filename))
 		wr.Hash = fmt.Sprintf("%x", h.Sum(nil))
 	}
-	log.Printf("datadb: DirWriter(%v) WriteResult:%+v", path, wr)
+	//log.Printf("datadb: DirWriter(%v) WriteResult:%+v", path, wr)
 	return
 }
 
 func (client *Client) PutDir(path string) (meta *Meta, wr *WriteResult, err error) {
-	log.Printf("PutDir %v\n", path)
+	//log.Printf("PutDir %v\n", path)
 	abspath, err := filepath.Abs(path)
 	if err != nil {
 		return
@@ -119,17 +102,17 @@ func (client *Client) PutDir(path string) (meta *Meta, wr *WriteResult, err erro
 	meta.Size = wr.Size
 	meta.Hash = wr.Hash
 	err = meta.Save(client.Pool)
-	log.Printf("PutDir %v done\n", path)
 	return
 }
 
-func (client *Client) PutDirWg(path string, wg *sync.WaitGroup, cwrrc chan<- *WriteResult) {
+func (client *Client) PutDirWg(path string, wg *sync.WaitGroup, cwrrc chan<- *WriteResult, errch chan<- error) {
 	defer wg.Done()
 	_, wr, err := client.PutDir(path)
-	if err == nil {
-		cwrrc <- wr	
+	if err != nil {
+		log.Printf("Error PutDirWg %v", err)
+		errch <- err
 	} else {
-		log.Printf("Error putdir %v", err)
+		cwrrc <- wr	
 	}
 	return
 }

@@ -75,11 +75,12 @@ func (client *Client) FileWriter(key, path string) (*WriteResult, error) {
 		}
 	}
 	writeResult.Hash = fmt.Sprintf("%x", fullHash.Sum(nil))
+	//log.Printf("PutFile WriteResult:%+v", writeResult)
 	return writeResult, nil
 }
 
 func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err error) {
-	log.Printf("PutFile %v\n", path)
+	//log.Printf("PutFile %v\n", path)
 	client.StartUpload()
 	defer client.UploadDone()
 	if _, err = os.Stat(path); os.IsNotExist(err) {
@@ -116,16 +117,16 @@ func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err err
 	if cnt == 0 {
 		err = meta.Save(client.Pool)	
 	}
-	log.Printf("PutFile %v done\n", path)
 	return
 }
-func (client *Client) PutFileWg(path string, wg *sync.WaitGroup, cwrrc chan<- *WriteResult) {
+func (client *Client) PutFileWg(path string, wg *sync.WaitGroup, cwrrc chan<- *WriteResult, errch chan<- error) {
 	defer wg.Done()
 	_, wr, err := client.PutFile(path)
-	if err == nil {
-		cwrrc <- wr	
+	if err != nil {
+		log.Printf("Error PutFileWg %v", err)
+		errch <- err
 	} else {
-		log.Printf("Error putfile %v\n", err)
+		cwrrc <- wr	
 	}
 	return
 }

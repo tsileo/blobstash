@@ -4,7 +4,6 @@ import (
 	"time"
 	"github.com/garyburd/redigo/redis"
 	"github.com/tsileo/datadatabase/lru"
-	"log"
 	"os"
 )
 
@@ -51,9 +50,7 @@ func NewClient() (*Client, error) {
 
 // Block until the client can start the upload
 func (client *Client) StartUpload() {
-	log.Println("Waiting to start upload")
 	client.uploader <- struct{}{}
-	log.Println("upload started")
 }
 
 // Read from the channel to let another upload start
