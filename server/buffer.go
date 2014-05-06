@@ -168,9 +168,12 @@ func (rb *ReqBuffer) Save() error {
 	if rb.reqCnt == 0 {
 		return nil
 	}
+
+	if err := rb.Apply(); err != nil {
+		return err
+	}
 	h, d := rb.JSON()
 	log.Printf("datadb: Meta blob:%v (%v commands, len:%v) written\n", h, rb.reqCnt, len(d))
-	rb.db.Sadd("_meta", h)
 	return rb.blobBackend.Put(h, d)
 }
 
@@ -190,11 +193,14 @@ func (rb *ReqBuffer) Load() error {
 			if berr != nil {
 				return berr
 			}
-			// TODO(tsileo) check error
+
 			res := make(map[string][]*ReqArgs)
-			json.Unmarshal(data, &res)
-			err := NewReqBufferWithData(rb.db, rb.blobBackend, res).Apply()
-			if err != nil {
+			
+			if err := json.Unmarshal(data, &res); err != nil {
+				return err
+			}
+			
+			if err := NewReqBufferWithData(rb.db, rb.blobBackend, res).Apply(); err != nil {
 				return err
 			}
 		}
@@ -217,23 +223,36 @@ func (rb *ReqBuffer) Len() int {
 	return rb.reqCnt
 }
 
-// ApplyReqArgs actually execute each commands stored in a ReqArgs.
+// ApplyReqArgs execute each commands stored in a ReqArgs in a transaction.
 func (rb *ReqBuffer) Apply() error {
+	commit := false
+	defer func() {
+		if !commit {
+			log.Printf("Error applying ReqBuffer %+v, rolling back...", rb)
+			rb.db.Rollback()
+		}
+	}()
+	if err := rb.db.BeginTransaction(); err != nil {
+		return err
+	}
 	for reqCmd, reqArgs := range rb.Reqs {
 		switch {
 		case reqCmd == "sadd":
 			for _, req := range reqArgs {
 				for _, args := range req.Args {
-					rb.db.Sadd(req.Key, args...)
 					log.Printf("datadb: Applying SADD: %+v/%+v", req.Key, args)
+					// TODO(tsileo) error checking the SADD command
+					rb.db.Sadd(req.Key, args...)
 				}
 			}
 
 		case reqCmd == "hmset" || reqCmd == "hset":
 			for _, req := range reqArgs {
 				for _, args := range req.Args {
-					rb.db.Hmset(req.Key, args...)
 					log.Printf("datadb: Applying HMSET: %+v/%+v", req.Key, args)
+					if err := rb.db.Hmset(req.Key, args...); err != nil {
+						return err
+					}					
 				}
 			}
 
@@ -245,20 +264,28 @@ func (rb *ReqBuffer) Apply() error {
 						log.Printf("datadb: Bad LADD index: %v, err:%v", index, ierr)
 						return ierr
 					}
-					rb.db.Ladd(req.Key, index, args[1])
 					log.Printf("datadb: Applying LADD: %+v/%+v", req.Key, args)
+					if err := rb.db.Ladd(req.Key, index, args[1]); err != nil {
+						return err
+					}
 				}
 			}
 
 		case reqCmd == "set":
 			for _, req := range reqArgs {
 				for _, args := range req.Args {
-					rb.db.Put(req.Key, args[0])
 					log.Printf("datadb: Applying SET: %+v/%+v", req.Key, args)
+					if err := rb.db.Put(req.Key, args[0]); err != nil {
+						return err
+					}
 				}
 			}
 
 		}
+	}
+	commit = true
+	if err := rb.db.Commit(); err != nil {
+		return err
 	}
 	hash, _ := rb.JSON()
 	rb.db.Sadd("_meta", hash)

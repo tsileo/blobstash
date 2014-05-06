@@ -80,11 +80,18 @@ func (db *DB) Llen(key string) (int, error) {
 func (db *DB) Ladd(key string, index int, value string) error {
 	bkey := []byte(key)
 	kmember := keyList(bkey, index)
-	cval, _ := db.get(kmember)
-	db.put(kmember, []byte(value))
+	cval, err := db.get(kmember)
+	if err != nil {
+		return err
+	}
+	if err := db.put(kmember, []byte(value)); err != nil {
+		return err
+	}
 	if cval == nil {
 		cardkey := listLen(bkey)
-		db.incrUint32(KeyType(cardkey, Meta), 1)
+		if err := db.incrUint32(KeyType(cardkey, Meta), 1); err != nil {
+			return err
+		}
 	}
 	return nil
 }

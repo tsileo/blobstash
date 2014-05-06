@@ -112,11 +112,18 @@ func (db *DB) Hmset(key string, fieldvalue ...string) (int, error) {
 		if cval == nil {
 			cnt++
 		}
-		db.put(kfield, []byte(value))
+		if err := db.put(kfield, []byte(value)); err != nil {
+			return 0, err
+		}
 	}
 	cardkey := hashFieldsCnt(bkey)
-	db.incrUint32(KeyType(cardkey, Meta), cnt)
-	db.put(keyHashIndex(bkey), []byte{})
+	if err := db.incrUint32(KeyType(cardkey, Meta), cnt); err != nil {
+		return 0, err
+	}
+	// Add the hash to the HashIndex (needed for HSCAN)
+	if err := db.put(keyHashIndex(bkey), []byte{}); err != nil {
+		return 0, err
+	}
 	return cnt, nil
 }
 

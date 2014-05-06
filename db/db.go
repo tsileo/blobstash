@@ -182,6 +182,24 @@ func (db *DB) Close() {
 	db.db.Close()
 }
 
+// BeginTransaction is a shortcut to call cznic/kv BeginTransaction.
+// (it starts a new transaction)
+func (db *DB) BeginTransaction() (err error) {
+	return db.db.BeginTransaction()
+}
+
+// Commit is a shortcut to call cznic/kv Commit
+// (it try commits the current transaction).
+func (db *DB) Commit() (err error) {
+	return db.db.Commit()
+}
+
+// Rollback is a shortcut to call cznic/kv Rollback
+// (it cancels and undoes the current transaction).
+func (db *DB) Rollback() (err error) {
+	return db.db.Rollback()
+}
+
 // Retrieves the value for a given key.
 func (db *DB) get(key []byte) ([]byte, error) {
 	db.mutex.Lock([]byte(key))
