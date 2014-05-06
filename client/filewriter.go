@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"fmt"
-	"log"
+	_ "log"
 	"io"
 	"bufio"
 	"sync"
@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 )
 
+// FileWriter reads the file byte and byte and upload it,
+// chunk by chunk, it also constructs the file index .
 func (client *Client) FileWriter(key, path string) (*WriteResult, error) {
 	writeResult := &WriteResult{}
 	window := 64
@@ -119,11 +121,12 @@ func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err err
 	}
 	return
 }
+
+// PutFileWg is a wrapper around PutFile except it take a sync.WaitGroup and two channels.
 func (client *Client) PutFileWg(path string, wg *sync.WaitGroup, cwrrc chan<- *WriteResult, errch chan<- error) {
 	defer wg.Done()
 	_, wr, err := client.PutFile(path)
 	if err != nil {
-		log.Printf("Error PutFileWg %v", err)
 		errch <- err
 	} else {
 		cwrrc <- wr	

@@ -12,6 +12,7 @@ import (
 	"github.com/garyburd/redigo/redis"
 )
 
+// DirWriter reads the directory and upload it.
 func (client *Client) DirWriter(path string) (wr *WriteResult, err error) {
 	wg := &sync.WaitGroup{}
 	con := client.Pool.Get()
@@ -85,6 +86,8 @@ func (client *Client) DirWriter(path string) (wr *WriteResult, err error) {
 	return
 }
 
+// PutDir upload a directory, it returns the saved Meta,
+// a WriteResult containing infos about uploaded blobs.
 func (client *Client) PutDir(path string) (meta *Meta, wr *WriteResult, err error) {
 	//log.Printf("PutDir %v\n", path)
 	abspath, err := filepath.Abs(path)
@@ -105,11 +108,13 @@ func (client *Client) PutDir(path string) (meta *Meta, wr *WriteResult, err erro
 	return
 }
 
+// PutDirWg is a wrapper around PutDir, except it takes a sync.WaitGroup,
+// and two channels, one for WriteResult and one for error.
 func (client *Client) PutDirWg(path string, wg *sync.WaitGroup, cwrrc chan<- *WriteResult, errch chan<- error) {
 	defer wg.Done()
 	_, wr, err := client.PutDir(path)
 	if err != nil {
-		log.Printf("Error PutDirWg %v", err)
+		//log.Printf("Error PutDirWg %v", err)
 		errch <- err
 	} else {
 		cwrrc <- wr	
