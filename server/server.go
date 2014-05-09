@@ -707,12 +707,16 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		go func() {
 			for {
 				if flag := <-stop; flag {
+					log.Println("Closing DBs first...")
+					for _, cdb := range dbmanager.DBs {
+						cdb.Close()
+					}
 					log.Println("Server shutting down...")
 					err := listener.Close()
 					if err != nil {
-						os.Stderr.WriteString(err.Error())
+						log.Println(err.Error())
 					}
-					return
+					os.Exit(0)
 				}
 			}
 		}()
