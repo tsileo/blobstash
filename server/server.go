@@ -24,6 +24,7 @@ var (
 
 type ServerCtx struct {
 	DB string
+	TxID string
 	Dbm *DBsManager
 }
 
@@ -74,7 +75,7 @@ func SetUpCtx(req *redeo.Request) {
 	reqName := strings.ToLower(req.Name)
 	if req.Client().Ctx == nil {
 		log.Printf("New connection from: %+v\n", client)
-		req.Client().Ctx = &ServerCtx{"default", dbmanager}
+		req.Client().Ctx = &ServerCtx{"default", "", dbmanager}
 	}
 	if !strings.HasPrefix(reqName, "b") {
 		log.Printf("server: %+v command  with args %+v from client: %v\n", req.Name, req.Args, client)
@@ -88,7 +89,8 @@ func SetUpCtx(req *redeo.Request) {
 		reqKey := req.Args[0]
 		reqArgs := make([]string, len(req.Args)-1)
 		copy(reqArgs, req.Args[1:])
-		rb := req.Client().Ctx.(*ServerCtx).GetReqBuffer("default")
+		txID := req.Client().Ctx.(*ServerCtx).TxID
+		rb := req.Client().Ctx.(*ServerCtx).GetReqBuffer(txID)
 		rb.Add(reqName, reqKey, reqArgs)
 	}
 }
@@ -187,11 +189,11 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		if err != nil {
 			return err
 		}
-		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
-		err  = cdb.Put(req.Args[0], req.Args[1])
-		if err != nil {
-			return ErrSomethingWentWrong
-		}
+		//cdb := req.Client().Ctx.(*ServerCtx).GetDB()
+		//err  = cdb.Put(req.Args[0], req.Args[1])
+		//if err != nil {
+		//	return ErrSomethingWentWrong
+		//}
 		out.WriteOK()
 		return nil
 	})
@@ -226,15 +228,17 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		if err != nil {
 			return err
 		}
-		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
-		cmdArgs := make([]string, len(req.Args)-1)
-		copy(cmdArgs, req.Args[1:])
-		cnt := cdb.Sadd(req.Args[0], cmdArgs...)
+		out.WriteOK()
+		return nil
+		//cdb := req.Client().Ctx.(*ServerCtx).GetDB()
+		//cmdArgs := make([]string, len(req.Args)-1)
+		//copy(cmdArgs, req.Args[1:])
+		//cnt := cdb.Sadd(req.Args[0], cmdArgs...)
 		//if err != nil {
 		//	return ErrSomethingWentWrong
 		//}
-		out.WriteInt(cnt)
-		return nil
+		//out.WriteInt(cnt)
+		//return nil
 	})
 	srv.HandleFunc("scard", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
@@ -277,12 +281,13 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		if err != nil {
 			return err
 		}
-		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
-		cnt, err  := cdb.Hset(req.Args[0], req.Args[1], req.Args[2])
-		if err != nil {
-			return ErrSomethingWentWrong
-		}
-		out.WriteInt(cnt)
+		//cdb := req.Client().Ctx.(*ServerCtx).GetDB()
+		//cnt, err  := cdb.Hset(req.Args[0], req.Args[1], req.Args[2])
+		//if err != nil {
+		//	return ErrSomethingWentWrong
+		//}
+		//out.WriteInt(cnt)
+		out.WriteOK()
 		return nil
 	})
 	srv.HandleFunc("hmset", func(out *redeo.Responder, req *redeo.Request) error {
@@ -291,14 +296,15 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		if err != nil {
 			return err
 		}
-		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
-		cmdArgs := make([]string, len(req.Args)-1)
-		copy(cmdArgs, req.Args[1:])
-		cnt, err  := cdb.Hmset(req.Args[0], cmdArgs...)
-		if err != nil {
-			return ErrSomethingWentWrong
-		}
-		out.WriteInt(cnt)
+		//cdb := req.Client().Ctx.(*ServerCtx).GetDB()
+		//cmdArgs := make([]string, len(req.Args)-1)
+		//copy(cmdArgs, req.Args[1:])
+		//cnt, err  := cdb.Hmset(req.Args[0], cmdArgs...)
+		//if err != nil {
+		//	return ErrSomethingWentWrong
+		//}
+		//out.WriteInt(cnt)
+		out.WriteOK()
 		return nil
 	})
 	srv.HandleFunc("hlen", func(out *redeo.Responder, req *redeo.Request) error {
@@ -477,15 +483,15 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		if err != nil {
 			return err
 		}
-		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
-		cindex, err := strconv.Atoi(req.Args[1])
-		if err != nil {
-			return ErrSomethingWentWrong
-		}
-		err  = cdb.Ladd(req.Args[0], cindex, req.Args[2])
-		if err != nil {
-			return ErrSomethingWentWrong
-		}
+		//cdb := req.Client().Ctx.(*ServerCtx).GetDB()
+		//cindex, err := strconv.Atoi(req.Args[1])
+		//if err != nil {
+		//	return ErrSomethingWentWrong
+		//}
+		//err  = cdb.Ladd(req.Args[0], cindex, req.Args[2])
+		//if err != nil {
+		//	return ErrSomethingWentWrong
+		//}
 		out.WriteOK()
 		return nil
 	})
@@ -642,28 +648,46 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		return nil
 	})
 
-	srv.HandleFunc("txinit", func(out *redeo.Responder, _ *redeo.Request) error {
-		out.WriteString(NewID())
+	srv.HandleFunc("txinit", func(out *redeo.Responder, req *redeo.Request) error {
+		err := CheckMinArgs(req, 0)
+		if err != nil {
+			return err
+		}
+		switch {
+		case len(req.Args) == 0:
+			newID := NewID()
+			req.Client().Ctx.(*ServerCtx).TxID = newID
+			out.WriteString(newID)
+
+		case len(req.Args) == 1:
+			req.Client().Ctx.(*ServerCtx).TxID = req.Args[0]
+			out.WriteOK()
+
+		case len(req.Args) > 1:
+			return ErrSomethingWentWrong
+		
+		}
 		return nil
 	})
 	srv.HandleFunc("txdiscard", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
-		err := CheckArgs(req, 1)
+		err := CheckArgs(req, 0)
 		if err != nil {
 			return err
 		}
-		req.Client().Ctx.(*ServerCtx).GetReqBuffer(req.Args[0]).Reset()
+		txID := req.Client().Ctx.(*ServerCtx).TxID
+		req.Client().Ctx.(*ServerCtx).GetReqBuffer(txID).Reset()
 		out.WriteOK()
 		return nil
 	})
 	srv.HandleFunc("txcommit", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
-		err := CheckArgs(req, 1)
+		err := CheckArgs(req, 0)
 		if err != nil {
 			return err
 		}
-		// TODO(tsileo) check that the context exists
-		rb := req.Client().Ctx.(*ServerCtx).GetReqBuffer(req.Args[0])
+		txID := req.Client().Ctx.(*ServerCtx).TxID
+		rb := req.Client().Ctx.(*ServerCtx).GetReqBuffer(txID)
 		err = rb.Save()
 		if err != nil {
 			return ErrSomethingWentWrong

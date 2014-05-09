@@ -174,6 +174,7 @@ func (rb *ReqBuffer) Save() error {
 	}
 	h, d := rb.JSON()
 	log.Printf("datadb: Meta blob:%v (%v commands, len:%v) written\n", h, rb.reqCnt, len(d))
+	rb.Reset()
 	return rb.blobBackend.Put(h, d)
 }
 
@@ -250,7 +251,7 @@ func (rb *ReqBuffer) Apply() error {
 			for _, req := range reqArgs {
 				for _, args := range req.Args {
 					log.Printf("datadb: Applying HMSET: %+v/%+v", req.Key, args)
-					if err := rb.db.Hmset(req.Key, args...); err != nil {
+					if _, err := rb.db.Hmset(req.Key, args...); err != nil {
 						return err
 					}					
 				}

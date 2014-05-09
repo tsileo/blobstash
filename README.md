@@ -16,6 +16,16 @@ Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com
 - Client only query the server and send blobs to it (the client take care of chunking/building blobs).
 - Read-only FUSE file system to navigate backups/snapshots
 
+## How it works
+
+When you perform a backup (either a file or a directory), the client first generate a random hash,
+[read the dir/read file byte by byte and split by chunk]
+[check if blob exists/if not upload it/start building meta data and sending to buffer]
+[if it's a directory, multiple parallel upload]
+[if something fail => rollback the meta so no stale data]
+[if ok=>dump the meta blob with command]
+[adding a snapshot for the filename/creating a backup meta]
+
 ### Snapshots
 
 If you backup a directory/file with the same filename more than once, it will be grouped as a snapshot.
