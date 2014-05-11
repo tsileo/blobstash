@@ -3,6 +3,7 @@ package db
 import (
 	"encoding/binary"
 	"bytes"
+	"io"
 )
 
 //
@@ -154,6 +155,25 @@ func (db *DB) Ldel(key string) error {
 	err = db.del(KeyType(cardkey, Meta))
 	return err
 }
+
+func (db *DB) Lprev(key string, kStart int) string {
+	bkey := []byte(key)
+	enum, _, err := db.db.Seek([]byte(keyList(bkey, kStart + 1)))
+	if err == io.EOF {
+		return ""
+	}
+	enum.Prev()
+	k, v, err := enum.Next()
+	if err == io.EOF {
+		return ""
+	}
+	koff := int(binary.LittleEndian.Uint32(k[1:5]))
+	if string(k[5:5+koff]) == key {
+		return string(v)
+	}
+	return ""
+}
+	
 
 // Return a lexicographical range
 func (db *DB) GetListRange(key, kStart string, kEnd string, limit int) (kvs []*KeyValue, err error) {

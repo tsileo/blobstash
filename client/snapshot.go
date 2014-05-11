@@ -70,3 +70,17 @@ func (client *Client) Snapshots(filename string) (ivs []*IndexMeta, err error) {
 	}
 	return	
 }
+
+// Return the ref of the backup that match the given timestamp for the given filename
+func (client *Client) GetAt(filename string, ts int64) (string, error) {
+	con := client.Pool.Get()
+	defer con.Close()
+	backup, err := redis.String(con.Do("LPREV", filename, ts))
+	if err != nil {
+		return "", err
+	}
+	if backup != "" {
+		return redis.String(con.Do("HGET", backup, "ref"))
+	}
+	return "", nil
+}

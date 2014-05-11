@@ -22,6 +22,7 @@ import (
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
 
+	"github.com/jinzhu/now"
 	"github.com/tsileo/datadatabase/client"
 )
 
@@ -65,6 +66,7 @@ type FS struct {
 
 
 func NewFS() (fs *FS) {
+	now.TimeFormats = []string{"2006-1-2T15:4:5", "2006-1-2T15:4", "2006-1-2T15", "2006-1-2", "2006-1", "2006"}
 	client, _ := client.NewClient()
 	fs = &FS{Client: client}
 	return
@@ -98,6 +100,8 @@ type Dir struct {
 	Snapshots bool
 	SnapshotDir bool
 	FakeDir bool
+	AtRoot bool
+	AtDir bool
 	FakeDirContent []fuse.Dirent
 	Children map[string]fs.Node
 }
@@ -144,6 +148,25 @@ func NewLatestDir(fs *FS) (d *Dir) {
 	return d
 }
 
+func NewAtRootDir(fs *FS) (d *Dir) {
+	d = NewDir(fs, "at", "")
+	d.AtRoot = true
+	d.fs = fs
+	return d
+}
+
+func NewAtDir(cfs *FS, name, ref string) (d *Dir) {
+	d = &Dir{}
+	d.Node = Node{}
+	d.Mode = os.ModeDir
+	d.fs = cfs
+	d.Ref = ref
+	d.Name = name
+	d.Children = make(map[string]fs.Node)
+	d.AtDir = true
+	return
+}
+
 func NewSnapshotDir(cfs *FS, name, ref string) (d *Dir) {
 	d = &Dir{}
 	d.Node = Node{}
@@ -173,10 +196,20 @@ func NewFakeDir(cfs *FS, name, ref string) (d *Dir) {
 
 func (d *Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, err fuse.Error) {
 	fs, ok := d.Children[name]
-	if !ok {
-		return nil, fuse.ENOENT
+	if ok {
+		return
 	}
-	return
+	if d.AtDir {
+		t, err := now.Parse(name)
+		if err == nil {
+			ts := t.UTC().Unix()
+			ref, _ := d.fs.Client.GetAt(d.Name, ts)
+			if ref != "" {
+				return NewDir(d.fs, d.Name, ref), nil
+			}
+		}
+	}
+	return nil, fuse.ENOENT
 }
 
 // TODO(tsileo) NewDirFromMetaList
@@ -188,9 +221,12 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 		dirent := fuse.Dirent{Name: "latest", Type: fuse.DT_Dir}
 		out = append(out, dirent)
 		d.Children["latest"] = NewLatestDir(d.fs)
-		d.Children["snapshots"] = NewSnapshotsDir(d.fs)
 		dirent = fuse.Dirent{Name: "snapshots", Type: fuse.DT_Dir}
 		out = append(out, dirent)
+		d.Children["snapshots"] = NewSnapshotsDir(d.fs)
+		dirent = fuse.Dirent{Name: "at", Type: fuse.DT_Dir}
+		out = append(out, dirent)
+		d.Children["at"] = NewAtRootDir(d.fs)
 		return
 
 	case d.Latest:
@@ -222,6 +258,21 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 			out = append(out, dirent)
 		}
 		return out, nil
+
+	case d.AtRoot:
+		d.Children = make(map[string]fs.Node)
+		backups, _ := d.fs.Client.Latest()
+		for _, backup := range backups {
+			meta := d.fs.Client.Metas.Get(backup.Ref).(*client.Meta)
+			//meta, _ := backup.Meta(d.fs.Client.Pool)
+			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
+			d.Children[meta.Name] = NewAtDir(d.fs, meta.Name, meta.Hash)
+			out = append(out, dirent)
+		}
+		return out, nil
+
+	case d.AtDir:
+		return []fuse.Dirent{}, nil
 
 	case d.SnapshotDir:
 		d.Children = make(map[string]fs.Node)
