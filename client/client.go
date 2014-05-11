@@ -4,6 +4,7 @@ import (
 	"time"
 	"github.com/garyburd/redigo/redis"
 	"github.com/tsileo/datadatabase/lru"
+	"github.com/tsileo/datadatabase/disklru"
 	"os"
 	"log"
 )
@@ -42,8 +43,11 @@ type Client struct {
 
 func NewClient() (*Client, error) {
 	pool, err := GetDbPool()
+	if err != nil {
+		return nil, err
+	}
 	c := &Client{Pool:pool, uploader: make(chan struct{}, 50)}
-	c.Blobs = lru.New(c.FetchBlob, 512)
+	c.Blobs, err = disklru.New("./tmp_blobs_lru", c.FetchBlob, 536870912)
 	c.Dirs = lru.New(c.FetchDir, 512)
 	c.Metas = lru.New(c.FetchMeta, 512)
 	return c, err

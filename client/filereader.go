@@ -10,7 +10,7 @@ import (
 )
 
 type BlobFetcher interface {
-	Get(string) interface{}
+	Get(string) ([]byte, bool, error)
 }
 
 // Download a file by its hash to path
@@ -33,7 +33,7 @@ func (client *Client) GetFile(key, path string) (*ReadResult, error) {
 
 // FetchBlob is used by the client level blobs LRU
 // Return the data for the given hash
-func (client *Client) FetchBlob(hash string) interface{} {
+func (client *Client) FetchBlob(hash string) []byte {
 	con := client.Pool.Get()
 	defer con.Close()
 	var buf bytes.Buffer
@@ -95,7 +95,7 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 	}
 	redis.ScanSlice(values, &indexValueList)
 	for _, iv := range indexValueList {
-		bbuf := f.client.Blobs.Get(iv.Value).([]byte)
+		bbuf, _, _ := f.client.Blobs.Get(iv.Value)
 		foffset := 0
 		if offset != 0 {
 			// Compute the starting offset of the blob
