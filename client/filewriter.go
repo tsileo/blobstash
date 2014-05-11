@@ -5,18 +5,19 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"fmt"
-	_ "log"
+	"log"
 	"io"
 	"bufio"
 	"sync"
 	"github.com/tsileo/silokv/rolling"
 	"github.com/garyburd/redigo/redis"
 	"path/filepath"
+	"errors"
 )
 
 // FileWriter reads the file byte and byte and upload it,
 // chunk by chunk, it also constructs the file index .
-func (client *Client) FileWriter(key, path string) (*WriteResult, error) {
+func (client *Client) FileWriter(txID, key, path string) (*WriteResult, error) {
 	writeResult := &WriteResult{}
 	window := 64
 	rs := rolling.New(window)
@@ -28,6 +29,11 @@ func (client *Client) FileWriter(key, path string) (*WriteResult, error) {
 	freader := bufio.NewReader(f)
 	con := client.Pool.Get()
 	defer con.Close()
+	if _, err := con.Do("TXINIT", txID); err != nil {
+		log.Printf("Error TXINIT %v, %v", txID, err)
+		return writeResult, err
+	}
+	log.Printf("FileWriter(%v, %v, %v)", txID, key, path)
 	var buf bytes.Buffer
 	buf.Reset()
 	fullHash := sha1.New()
@@ -48,6 +54,7 @@ func (client *Client) FileWriter(key, path string) (*WriteResult, error) {
 			nsha := SHA1(buf.Bytes())
 			ndata := string(buf.Bytes())
 			fullHash.Write(buf.Bytes())
+			// Check if the blob exists
 			exists, err := redis.Bool(con.Do("BEXISTS", nsha))
 			if err != nil {
 				panic(fmt.Sprintf("DB error: %v", err))
@@ -59,6 +66,7 @@ func (client *Client) FileWriter(key, path string) (*WriteResult, error) {
 				}
 				writeResult.UploadedCnt++
 				writeResult.UploadedSize += buf.Len()
+				// Check if the hash returned correspond to the locally computed hash
 				if rsha != nsha {
 					panic(fmt.Sprintf("Corrupted data: %+v/%+v", rsha, nsha))
 				}
@@ -69,19 +77,19 @@ func (client *Client) FileWriter(key, path string) (*WriteResult, error) {
 			writeResult.Size += buf.Len()
 			buf.Reset()
 			writeResult.BlobsCnt++
+			// Save the location and the blob hash into a sorted list (with the offset as index)
 			con.Do("LADD", key, writeResult.Size, nsha)
-			
 		}
 		if eof {
 			break
 		}
 	}
 	writeResult.Hash = fmt.Sprintf("%x", fullHash.Sum(nil))
-	//log.Printf("PutFile WriteResult:%+v", writeResult)
+	log.Printf("PutFile WriteResult:%+v", writeResult)
 	return writeResult, nil
 }
 
-func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err error) {
+func (client *Client) PutFile(txID, path string) (meta *Meta, wr *WriteResult, err error) {
 	//log.Printf("PutFile %v\n", path)
 	client.StartUpload()
 	defer client.UploadDone()
@@ -92,6 +100,8 @@ func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err err
 	sha := FullSHA1(path)
 	con := client.Pool.Get()
 	defer con.Close()
+	// First we check if the file isn't already uploaded,
+	// if so we skip it.
 	cnt, err := redis.Int(con.Do("HLEN", sha))
 	if err != nil {
 		return
@@ -102,30 +112,31 @@ func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err err
 		wr.AlreadyExists = true
 		wr.Filename = filename
 	} else {
-		wr, err = client.FileWriter(sha, path)
+		wr, err = client.FileWriter(txID, sha, path)
 		if err != nil {
 			return
 		}	
 	}
 	meta = NewMeta()
 	if sha != wr.Hash {
-		panic("Corrupted")
+		err = errors.New("initial hash and WriteResult aren't the same")
+		return
 	}
 	meta.Hash = wr.Hash
 	meta.Name = filename
 	meta.Size = wr.Size
 	meta.Type = "file"
-	// TODO(tsileo) load it ?
+	// TODO(tsileo) load if it already exits ?
 	if cnt == 0 {
-		err = meta.Save(client.Pool)	
+		err = meta.Save(txID, client.Pool)	
 	}
 	return
 }
 
 // PutFileWg is a wrapper around PutFile except it take a sync.WaitGroup and two channels.
-func (client *Client) PutFileWg(path string, wg *sync.WaitGroup, cwrrc chan<- *WriteResult, errch chan<- error) {
+func (client *Client) PutFileWg(txID, path string, wg *sync.WaitGroup, cwrrc chan<- *WriteResult, errch chan<- error) {
 	defer wg.Done()
-	_, wr, err := client.PutFile(path)
+	_, wr, err := client.PutFile(txID, path)
 	if err != nil {
 		errch <- err
 	} else {

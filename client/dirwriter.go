@@ -13,10 +13,13 @@ import (
 )
 
 // DirWriter reads the directory and upload it.
-func (client *Client) DirWriter(path string) (wr *WriteResult, err error) {
+func (client *Client) DirWriter(txID, path string) (wr *WriteResult, err error) {
 	wg := &sync.WaitGroup{}
 	con := client.Pool.Get()
 	defer con.Close()
+	if _, err := con.Do("TXINIT", txID); err != nil {
+		return wr, err
+	}
 	wr = &WriteResult{Filename: filepath.Base(path)}
 	dirdata, err := ioutil.ReadDir(path)
 	if err != nil {
@@ -32,12 +35,12 @@ func (client *Client) DirWriter(path string) (wr *WriteResult, err error) {
 			abspath := filepath.Join(path, data.Name())
 			if data.IsDir() {
 				wg.Add(1)
-				go client.PutDirWg(abspath, wg, cwrrc, errch)
+				go client.PutDirWg(txID, abspath, wg, cwrrc, errch)
 			} else {
 				// Skip SymLink for now
 				if data.Mode() & os.ModeSymlink == 0 {
 					wg.Add(1)
-					go client.PutFileWg(abspath, wg, cwrrc, errch)
+					go client.PutFileWg(txID, abspath, wg, cwrrc, errch)
 				}
 			}
 		}
@@ -61,6 +64,7 @@ func (client *Client) DirWriter(path string) (wr *WriteResult, err error) {
 			h.Write([]byte(hash))
 		}
 		wr.Hash = fmt.Sprintf("%x", h.Sum(nil))
+		// Check if the directory meta already exists 
 		cnt, err := redis.Int(con.Do("SCARD", wr.Hash))
 		if err != nil {
 			return wr, err
@@ -76,8 +80,8 @@ func (client *Client) DirWriter(path string) (wr *WriteResult, err error) {
 			wr.AlreadyExists = true
 		}
 	} else {
-		// If the dir is empty, hash the filename instead of members
-		// so it doesn't break things.
+		// If the directory is empty, hash the filename instead of members
+		// so an empty directory won't invalidate the directory top hash.
 		h.Write([]byte("emptydir:"))
 		h.Write([]byte(wr.Filename))
 		wr.Hash = fmt.Sprintf("%x", h.Sum(nil))
@@ -88,13 +92,13 @@ func (client *Client) DirWriter(path string) (wr *WriteResult, err error) {
 
 // PutDir upload a directory, it returns the saved Meta,
 // a WriteResult containing infos about uploaded blobs.
-func (client *Client) PutDir(path string) (meta *Meta, wr *WriteResult, err error) {
+func (client *Client) PutDir(txID, path string) (meta *Meta, wr *WriteResult, err error) {
 	//log.Printf("PutDir %v\n", path)
 	abspath, err := filepath.Abs(path)
 	if err != nil {
 		return
 	}
-	wr, err = client.DirWriter(abspath)
+	wr, err = client.DirWriter(txID, abspath)
 	if err != nil {
 		log.Printf("datadb: error DirWriter path:%v/abspath:%v/wr:%+v/err:%v\n", path, abspath, wr, err)
 		return
@@ -104,15 +108,15 @@ func (client *Client) PutDir(path string) (meta *Meta, wr *WriteResult, err erro
 	meta.Type = "dir"
 	meta.Size = wr.Size
 	meta.Hash = wr.Hash
-	err = meta.Save(client.Pool)
+	err = meta.Save(txID, client.Pool)
 	return
 }
 
 // PutDirWg is a wrapper around PutDir, except it takes a sync.WaitGroup,
 // and two channels, one for WriteResult and one for error.
-func (client *Client) PutDirWg(path string, wg *sync.WaitGroup, cwrrc chan<- *WriteResult, errch chan<- error) {
+func (client *Client) PutDirWg(txID, path string, wg *sync.WaitGroup, cwrrc chan<- *WriteResult, errch chan<- error) {
 	defer wg.Done()
-	_, wr, err := client.PutDir(path)
+	_, wr, err := client.PutDir(txID, path)
 	if err != nil {
 		//log.Printf("Error PutDirWg %v", err)
 		errch <- err

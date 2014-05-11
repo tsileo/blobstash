@@ -649,6 +649,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 	})
 
 	srv.HandleFunc("txinit", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
 		err := CheckMinArgs(req, 0)
 		if err != nil {
 			return err
@@ -703,6 +704,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 	if err != nil {
 		panic(err)
 	}
+	// TODO(tsileo) a select <-stop, <-os.Signal exit
 	if stop != nil {
 		go func() {
 			for {

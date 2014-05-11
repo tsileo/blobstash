@@ -40,9 +40,12 @@ func NewMeta() *Meta {
 	return meta
 }
 
-func (m *Meta) Save(pool *redis.Pool) error {
+func (m *Meta) Save(txID string, pool *redis.Pool) error {
 	con := pool.Get()
 	defer con.Close()
+	if _, err := con.Do("TXINIT", txID); err != nil {
+		return err
+	}
 	if m.Hash == "" {
 		return errors.New("Meta error: hash not set")
 	}

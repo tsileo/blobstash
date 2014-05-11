@@ -5,6 +5,7 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"github.com/tsileo/datadatabase/lru"
 	"os"
+	"log"
 )
 
 func GetDbPool() (pool *redis.Pool, err error) {
@@ -74,6 +75,19 @@ func (client *Client) List() (backups []*Backup, err error) {
 }
 
 func (client *Client) Put(path string) (backup *Backup, meta *Meta, wr *WriteResult, err error) {
+	commit := false
+	con := client.Pool.Get()
+	defer func() {
+		if !commit {
+			log.Printf("Error putting file %+v, discarding current transaction...", path)
+			con.Do("TXDISCARD")
+		}
+		con.Close()
+	}()
+	txID, err := redis.String(con.Do("TXINIT"))
+	if err != nil {
+		return
+	}
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {
 		return
@@ -81,18 +95,21 @@ func (client *Client) Put(path string) (backup *Backup, meta *Meta, wr *WriteRes
 	var btype string
 	if info.IsDir() {
 		btype = "dir"
-		meta, wr, err = client.PutDir(path)
+		meta, wr, err = client.PutDir(txID, path)
 	} else {
 		btype = "file"
-		meta, wr, err = client.PutFile(path)
+		meta, wr, err = client.PutFile(txID, path)
 	}
 	if err != nil {
 		return
 	}
 	backup = NewBackup(meta.Name, btype, wr.Hash)
-	_, err = backup.Save(client.Pool)
-	if err != nil {
-		panic(err)
+	if _, err := backup.Save(txID, client.Pool); err != nil {
+		return backup, meta, wr, err
+	}	
+	_, err = con.Do("TXCOMMIT")
+	if err == nil {
+		commit = true
 	}
 	return
 }

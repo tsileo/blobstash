@@ -42,12 +42,14 @@ func backupHashkey(name string, ts int64) string {
 }
 
 // Save the backup to DB
-func (f *Backup) Save(pool *redis.Pool) (string, error) {
+func (f *Backup) Save(txID string, pool *redis.Pool) (string, error) {
 	con := pool.Get()
 	defer con.Close()
 	f.Hash = backupHashkey(f.Name, f.Ts)
-	// TODO(tsileo) replace with a HMSET
 	rkey := fmt.Sprintf("backup:%v", f.Hash)
+	if _, err := con.Do("TXINIT", txID); err != nil {
+		return rkey, err
+	}
 	_, err := con.Do("HMSET", rkey, "name", f.Name, "type", f.Type, "ref", f.Ref, "ts", f.Ts)
 	if err != nil {
 		return rkey, err
@@ -61,7 +63,6 @@ func (f *Backup) Save(pool *redis.Pool) (string, error) {
 	if err != nil {
 		return rkey, err
 	}
-	_, err = con.Do("METADUMP")
 	return rkey, err
 }
 
