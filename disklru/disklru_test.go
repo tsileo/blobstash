@@ -2,7 +2,6 @@ package disklru
 
 import (
 	"testing"
-	"log"
 	"os"
 	"bytes"
 	"time"
@@ -32,7 +31,7 @@ var fakeData = []struct{
 	{"bbbbbbbbbbbbbbbbbbbb", []byte("bbbbbbbbbbbbbbbbbbbb"), true, 48, 3},
 	{"aaaaaaaaaaaaaaaaaaaa", []byte("aaaaaaaaaaaaaaaaaaaa"), false, 48, 3},
 	{"cccccccccccccccccccc", []byte("cccccccccccccccccccc"), true, 40, 2},
-	{"bbbbbbbbbbbbbbbbbbbb", []byte("bbbbbbbbbbbbbbbbbbbb"), false, 40, 2},
+	{"bbbbbbbbbbbbbbbbbbbb", []byte("bbbbbbbbbbbbbbbbbbbb"), true, 40, 2},
 	{"cccccccccccccccccccc", []byte("cccccccccccccccccccc"), false, 40, 2},
 	{"testget", []byte("testget"), true, 47, 3},
 }
