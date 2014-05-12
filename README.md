@@ -67,6 +67,7 @@ A database is tied to a storage.
 
 ## Roadmap / Ideas
 
+- Follow .gitignore file
 - Add a **drop** directory to support upload via FUSE
 - Master/slave replication of metadatas
 - Encryption

@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"path/filepath"
 	"os"
+	"os/signal"
 	"strings"
 )
 
@@ -719,22 +720,29 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 	if err != nil {
 		panic(err)
 	}
+	cs := make(chan os.Signal, 1)
+	signal.Notify(cs, os.Interrupt)
 	// TODO(tsileo) a select <-stop, <-os.Signal exit
 	if stop != nil {
 		go func() {
 			for {
-				if flag := <-stop; flag {
-					log.Println("Closing DBs first...")
-					for _, cdb := range dbmanager.DBs {
-						cdb.Close()
-					}
-					log.Println("Server shutting down...")
-					err := listener.Close()
-					if err != nil {
-						log.Println(err.Error())
-					}
-					os.Exit(0)
+				select {
+				case _ = <-stop:
+					break
+				case sig := <- cs:
+					log.Printf("Captured %v\n", sig)
+					break
 				}
+				log.Println("Closing DBs first...")
+				for _, cdb := range dbmanager.DBs {
+					cdb.Close()
+				}
+				log.Println("Server shutting down...")
+				err := listener.Close()
+				if err != nil {
+					log.Println(err.Error())
+				}
+				os.Exit(0)
 			}
 		}()
 	}
