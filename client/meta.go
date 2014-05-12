@@ -40,6 +40,7 @@ func NewMeta() *Meta {
 	return meta
 }
 
+// Save the meta
 func (m *Meta) Save(txID string, pool *redis.Pool) error {
 	con := pool.Get()
 	defer con.Close()
@@ -60,6 +61,7 @@ func (m *Meta) Save(txID string, pool *redis.Pool) error {
 	return err
 }
 
+// IsFile returns true if the Meta is a file.
 func (m *Meta) IsFile() bool {
 	if m.Type == "file" {
 		return true
@@ -67,6 +69,7 @@ func (m *Meta) IsFile() bool {
 	return false
 }
 
+// IsDir returns true if the Meta is a directory.
 func (m *Meta) IsDir() bool {
 	if m.Type == "dir" {
 		return true

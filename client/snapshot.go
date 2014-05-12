@@ -30,6 +30,7 @@ func (client *Client) Latest() (backups []*Backup, err error) {
 
 }
 
+// SnapshotIter returns a slice of every snapshots keys.
 func (client *Client) SnapshotIter() (filenames []string, err error) {
 	con := client.Pool.Get()
 	defer con.Close()

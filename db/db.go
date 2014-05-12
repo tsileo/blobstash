@@ -1,3 +1,12 @@
+/*
+
+Package db implements a "data structure" database built on top of kv [1]: strings, hashes, sorted list, and sets.
+
+Links
+
+	[1] https://github.com/cznic/kv
+
+*/
 package db
 
 import (
@@ -19,6 +28,7 @@ import (
 //   Meta + StringCnt => binary encoded uint32
 //
 
+// Define namespaces for raw key sorted in db.
 const (
 	Empty byte = iota
 	Meta
@@ -47,7 +57,7 @@ func opts() *kv.Options {
 	}
 }
 
-// Format a key (append the "type" byte)
+// Format a key (append the given "type" byte).
 func KeyType(key interface{}, kType byte) []byte {
 	var keybyte []byte
 	switch k := key.(type) {
@@ -64,19 +74,19 @@ func KeyType(key interface{}, kType byte) []byte {
 	return k
 }
 
-// KeyValue represents a key-value pair, also used for hashes attributes
+// KeyValue represents a key-value pair, also used to represents hashes attributes.
 type KeyValue struct {
 	Key   string
 	Value string
 }
 
-// IndexValue represents a sorted list index-value pair
+// IndexValue represents a sorted list index-value pair.
 type IndexValue struct {
 	Index int
 	Value string
 }
 
-// Perform a lexico range query
+// GetRange performs a lexical range query.
 func GetRange(db *kv.DB, kStart []byte, kEnd []byte, limit int) (values []*KeyValue, err error) {
 	enum, _, err := db.Seek(kStart)
 	endBytes := kEnd
@@ -97,7 +107,7 @@ func GetRange(db *kv.DB, kStart []byte, kEnd []byte, limit int) (values []*KeyVa
 	return
 }
 
-// Perform a lexico range query, and return the last key-value pair
+// GetRangeLast performs a lexical range query, and return the last key-value pair.
 func GetRangeLast(db *kv.DB, kStart []byte, kEnd []byte, limit int) (kv *KeyValue, err error) {
 	enum, _, err := db.Seek(kStart)
 	endBytes := kEnd
@@ -118,9 +128,9 @@ func GetRangeLast(db *kv.DB, kStart []byte, kEnd []byte, limit int) (kv *KeyValu
 	return
 }
 
-// Perform a lexico range query but try to return a least two values,
+// GetMinRange perform a lexico range query but try to return a least two values,
 // even if  if the key is not "greater than or equal to" the given key.
-// For list, the list name will be checked later
+// For list, the list name will be checked later on.
 func GetMinRange(db *kv.DB, kStart []byte, kEnd []byte, limit int) (values []*KeyValue, err error) {
 	enum, _, err := db.Seek(kStart)
 	endBytes := kEnd
@@ -148,7 +158,7 @@ type DB struct {
 	mutex        *SlottedMutex
 }
 
-// Creates a new database.
+// New creates a new database.
 func New(db_path string) (*DB, error) {
 	createOpen := kv.Open
 	if _, err := os.Stat(db_path); os.IsNotExist(err) {
@@ -164,12 +174,14 @@ func New(db_path string) (*DB, error) {
 	return &DB{db: db, db_path: db_path, mutex: mutex}, err
 }
 
+// NewMem initialize a in-memory database (used for testing purpose).
 func NewMem() (*DB, error) {
 	db, err := kv.CreateMem(&kv.Options{})
 	mutex := NewSlottedMutex()
 	return &DB{db: db, db_path: "", mutex: mutex}, err
 }
 
+// Destroy remove completely the DB.
 func (db *DB) Destroy() error {
 	if db.db_path != "" {
 		return os.RemoveAll(db.db_path)
@@ -177,13 +189,13 @@ func (db *DB) Destroy() error {
 	return nil
 }
 
-// Cleanly close the DB
+// Cleanly close the DB.
 func (db *DB) Close() {
 	db.db.Close()
 }
 
 // BeginTransaction is a shortcut to call cznic/kv BeginTransaction.
-// (it starts a new transaction)
+// (it starts a new transaction).
 func (db *DB) BeginTransaction() (err error) {
 	return db.db.BeginTransaction()
 }
@@ -211,6 +223,7 @@ func (db *DB) get(key []byte) ([]byte, error) {
 	return data, err
 }
 
+// Perform an atomic getset (Redis-like).
 func (db *DB) getset(key, value []byte) ([]byte, error) {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
@@ -222,8 +235,8 @@ func (db *DB) getset(key, value []byte) ([]byte, error) {
 	return cval, err
 }
 
-// Sets the value for a given key.
-func (db *DB) put(key []byte, value []byte) error {
+// put sets the value for a given key.
+func (db *DB) put(key, value []byte) error {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
 	if len(value) == 0 {
@@ -233,7 +246,7 @@ func (db *DB) put(key []byte, value []byte) error {
 	return err
 }
 
-// Delete the key
+// del delete the given key.
 func (db *DB) del(key []byte) error {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
@@ -241,7 +254,7 @@ func (db *DB) del(key []byte) error {
 	return err
 }
 
-// Store a uint32 as binary data
+// Store a uint32 as binary data.
 func (db *DB) putUint32(key []byte, value uint32) error {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
@@ -251,7 +264,7 @@ func (db *DB) putUint32(key []byte, value uint32) error {
 	return err
 }
 
-// Retrieve a binary stored uint32
+// Retrieve a binary stored uint32.
 func (db *DB) getUint32(key []byte) (uint32, error) {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
@@ -262,7 +275,7 @@ func (db *DB) getUint32(key []byte) (uint32, error) {
 	return binary.LittleEndian.Uint32(data), nil
 }
 
-// Increment a binary stored uint32
+// Increment a binary stored uint32.
 func (db *DB) incrUint32(key []byte, step int) error {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
@@ -282,7 +295,7 @@ func (db *DB) incrUint32(key []byte, step int) error {
 	return err
 }
 
-// Increment the given string key, the key is created is it doesn't exists
+// Increment the given string key, the key is created is it doesn't exists.
 func (db *DB) incrby(key []byte, value int) error {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)

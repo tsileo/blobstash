@@ -64,8 +64,9 @@ type FS struct {
 	Client *client.Client
 }
 
-
+// NewFS initialize a new file system.
 func NewFS() (fs *FS) {
+	// Override supported time format
 	now.TimeFormats = []string{"2006-1-2T15:4:5", "2006-1-2T15:4", "2006-1-2T15", "2006-1-2", "2006-1", "2006"}
 	client, _ := client.NewClient()
 	fs = &FS{Client: client}

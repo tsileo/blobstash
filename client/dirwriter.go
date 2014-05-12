@@ -35,12 +35,28 @@ func (client *Client) DirWriter(txID, path string) (wr *WriteResult, err error) 
 			abspath := filepath.Join(path, data.Name())
 			if data.IsDir() {
 				wg.Add(1)
-				go client.PutDirWg(txID, abspath, wg, cwrrc, errch)
+				go func(path string) {
+					defer wg.Done()
+					_, wr, err := client.PutDir(txID, path)
+					if err != nil {
+						errch <- err
+					} else {
+						cwrrc <- wr	
+					}
+				}(abspath)
 			} else {
 				// Skip SymLink for now
 				if data.Mode() & os.ModeSymlink == 0 {
 					wg.Add(1)
-					go client.PutFileWg(txID, abspath, wg, cwrrc, errch)
+					go func(path string) {
+						defer wg.Done()
+						_, wr, err := client.PutFile(txID, path)
+						if err != nil {
+							errch <- err
+						} else {
+							cwrrc <- wr	
+						}
+					}(abspath)
 				}
 			}
 		}
@@ -112,16 +128,3 @@ func (client *Client) PutDir(txID, path string) (meta *Meta, wr *WriteResult, er
 	return
 }
 
-// PutDirWg is a wrapper around PutDir, except it takes a sync.WaitGroup,
-// and two channels, one for WriteResult and one for error.
-func (client *Client) PutDirWg(txID, path string, wg *sync.WaitGroup, cwrrc chan<- *WriteResult, errch chan<- error) {
-	defer wg.Done()
-	_, wr, err := client.PutDir(txID, path)
-	if err != nil {
-		//log.Printf("Error PutDirWg %v", err)
-		errch <- err
-	} else {
-		cwrrc <- wr	
-	}
-	return
-}

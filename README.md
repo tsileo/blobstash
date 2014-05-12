@@ -26,9 +26,43 @@ When you perform a backup (either a file or a directory), the client first gener
 [if ok=>dump the meta blob with command]
 [adding a snapshot for the filename/creating a backup meta]
 
+## Terminology
+
+### Backup
+
+A **backup** represents the state of the file/directory at a given time, it also holds a reference to a **meta**. attached to it.
+
 ### Snapshots
 
-If you backup a directory/file with the same filename more than once, it will be grouped as a snapshot.
+Multiple **backups** of the same file/directory form a **snapshot**. If you backup a directory only once, it will create a **snapshot** with 1 **backup** and so on.
+
+### Blobs
+
+A **blob** (binary large object) is where chunks are stored. **Blobs** are immutable and stored with the SHA-1 hash as filename.
+
+**Blobs** are stored in a **database**.
+
+### Metas
+
+A **meta** (stored as a hash) holds the file/directory metadata, like filename, size, type (file/directory) and a reference to the directory content (a set) or the file chunks (a sorted list).
+
+### Databases
+
+**Databases** are actually different kv databases (hold the index), so you can export/import the **meta** data to be backup along with **blobs**.
+
+A **database** is tied to a **backend**.
+
+### Backend
+
+A **backend** handle blobs operation (local/s3/glacier).
+
+- Put
+- Exists
+- Get
+- Enumerate
+
+
+## Getting Started
 
 ### Fuse file system
 
@@ -85,12 +119,6 @@ If a file is stored multiple times, metadata are not duplicated.
 
 A hash contains the backup parts reference, an ordered list of the files hash blobs.
 
-### Databases
-
-Databases are actually different kv databases, so you can export/import the meta data to be backup along with blobs.
-
-A database is tied to a storage.
-
 ## Roadmap / Ideas
 
 - Follow .gitignore file
@@ -104,4 +132,5 @@ A database is tied to a storage.
 
 - Local/SFTP
 - S3 (not started yet)
+- Glacier (not started yet)
 - Submit a pull request!

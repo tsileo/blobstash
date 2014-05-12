@@ -37,6 +37,7 @@ func (b *LocalBackend) Get(hash string) (data []byte, err error) {
 }
 
 func (b *LocalBackend) Enumerate(blobs chan<- string) error {
+	// TODO(tsileo) send the size along the hashes ?
 	defer close(blobs)
 	dirdata, err := ioutil.ReadDir(b.Directory)
 	if err != nil {

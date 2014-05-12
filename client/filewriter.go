@@ -8,7 +8,6 @@ import (
 	"log"
 	"io"
 	"bufio"
-	"sync"
 	"github.com/tsileo/silokv/rolling"
 	"github.com/garyburd/redigo/redis"
 	"path/filepath"
@@ -29,6 +28,7 @@ func (client *Client) FileWriter(txID, key, path string) (*WriteResult, error) {
 	freader := bufio.NewReader(f)
 	con := client.Pool.Get()
 	defer con.Close()
+	// Set the transaction id.
 	if _, err := con.Do("TXINIT", txID); err != nil {
 		log.Printf("Error TXINIT %v, %v", txID, err)
 		return writeResult, err
@@ -129,18 +129,6 @@ func (client *Client) PutFile(txID, path string) (meta *Meta, wr *WriteResult, e
 	// TODO(tsileo) load if it already exits ?
 	if cnt == 0 {
 		err = meta.Save(txID, client.Pool)	
-	}
-	return
-}
-
-// PutFileWg is a wrapper around PutFile except it take a sync.WaitGroup and two channels.
-func (client *Client) PutFileWg(txID, path string, wg *sync.WaitGroup, cwrrc chan<- *WriteResult, errch chan<- error) {
-	defer wg.Done()
-	_, wr, err := client.PutFile(txID, path)
-	if err != nil {
-		errch <- err
-	} else {
-		cwrrc <- wr	
 	}
 	return
 }
