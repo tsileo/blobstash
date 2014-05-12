@@ -33,34 +33,66 @@ func FullSHA1(path string) string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
-// a WriteResult keeps track of the number of blobs uploaded/skipped, and basic infos.
+// a WriteResult keeps track of the number of blobs uploaded/skipped, and basic stats.
 type WriteResult struct {
-	Filename string
 	Hash string
+
 	Size int
-	BlobsCnt int
-	SkippedCnt int
-	SkippedSize int
-	UploadedCnt int
-	UploadedSize int
+	SizeSkipped int
+	SizeUploaded int
+
+	BlobsCount int
+	BlobsSkipped int
+	BlobsUploaded int
+
+	FilesCount int
+	FilesSkipped int
+	FilesUploaded int
+
+	DirsCount int
+	DirsSkipped int
+	DirsUploaded int
+
 	AlreadyExists bool
+}
+
+func (wr *WriteResult) String() string {
+	return fmt.Sprintf(`Write Result:
+- Size: %v (skipped:%v, uploaded:%v)
+- Blobs: %d (skipped:%d, uploaded:%d)
+- Files: %d (skipped:%d, uploaded:%d)
+- Dirs: %d (skipped:%d, uploaded:%d)
+`,
+		wr.Size, wr.SizeSkipped, wr.SizeUploaded,
+		wr.BlobsCount, wr.BlobsSkipped, wr.BlobsUploaded,
+		wr.FilesCount, wr.FilesSkipped, wr.FilesUploaded,
+		wr.DirsCount, wr.DirsSkipped, wr.DirsUploaded)
 }
 
 // Add allows two WriteResult to be added.
 func (wr *WriteResult) Add(wr2 *WriteResult) {
 	wr.Size += wr2.Size
-	wr.BlobsCnt += wr2.BlobsCnt
-	wr.SkippedCnt += wr2.SkippedCnt
-	wr.SkippedSize += wr2.SkippedSize
-	wr.UploadedCnt += wr2.UploadedCnt
-	wr.UploadedSize += wr2.UploadedSize
+	wr.SizeSkipped += wr2.SizeSkipped
+	wr.SizeUploaded += wr2.SizeUploaded
+
+	wr.BlobsCount += wr2.BlobsCount
+	wr.BlobsSkipped += wr2.BlobsSkipped
+	wr.BlobsUploaded += wr2.BlobsUploaded
+
+	wr.FilesCount += wr2.FilesCount
+	wr.FilesSkipped += wr2.FilesSkipped
+	wr.FilesUploaded += wr2.FilesUploaded
+
+	wr.DirsCount += wr2.DirsCount
+	wr.DirsSkipped += wr2.DirsSkipped
+	wr.DirsUploaded += wr2.DirsUploaded
 }
 
 // a ReadResult keeps track of the number/size of downloaded blobs.
 type ReadResult struct {
 	Hash string
 	Size int
-	BlobsCnt int
+	BlobsCount int
 //	SkippedCnt int
 //	SkippedSize int
 	DownloadedCnt int
@@ -70,7 +102,7 @@ type ReadResult struct {
 // Add allow two ReadResult to be added.
 func (rr *ReadResult) Add(rr2 *ReadResult) {
 	rr.Size += rr2.Size
-	rr.BlobsCnt += rr2.BlobsCnt
+	rr.BlobsCount += rr2.BlobsCount
 //	rr.SkippedCnt += rr2.SkippedCnt
 //	rr.SkippedSize += rr2.SkippedSize
 	rr.DownloadedCnt += rr2.DownloadedCnt
@@ -79,11 +111,11 @@ func (rr *ReadResult) Add(rr2 *ReadResult) {
 
 // MatchResult checks if a WriteResult and a ReadResult have the same size.
 func MatchResult(wr *WriteResult, rr *ReadResult) bool {
-	if wr.Size == rr.Size && wr.Hash == rr.Hash &&
-	   		wr.BlobsCnt == rr.BlobsCnt &&
-	   		(wr.SkippedCnt + wr.UploadedCnt) == rr.DownloadedCnt &&
-	   		(wr.SkippedSize + wr.UploadedSize) == rr.DownloadedSize {
-	   	return true
-	}
+//	if wr.Size == rr.Size && wr.Hash == rr.Hash &&
+//	   		wr.BlobsCount == rr.BlobsCount &&
+//	   		(wr.SkippedCnt + wr.UploadedCnt) == rr.DownloadedCnt &&
+//	   		(wr.SkippedSize + wr.UploadedSize) == rr.DownloadedSize {
+//	   	return true
+//	}
 	return false
 }

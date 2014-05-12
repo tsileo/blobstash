@@ -3,7 +3,8 @@ Data Database
 
 ## Overview
 
-A backup database built on top of [kv](https://github.com/cznic/kv) and the [Redis Protocol](http://redis.io/topics/protocol), bundled with a command-line client and a FUSE file system.
+A backup database designed to efficiently handle snapshots of files/directories, built on top of [kv](https://github.com/cznic/kv) and the [Redis Protocol](http://redis.io/topics/protocol), bundled with a command-line client and a FUSE file system.
+
 
 Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com/bup/bup) (files are split into multiple blobs using a rolling checksum).
 
@@ -45,6 +46,8 @@ A **blob** (binary large object) is where chunks are stored. **Blobs** are immut
 ### Metas
 
 A **meta** (stored as a hash) holds the file/directory metadata, like filename, size, type (file/directory) and a reference to the directory content (a set) or the file chunks (a sorted list).
+
+Multiple **backups** may refers to the same **meta** if the content is the same.
 
 ### Databases
 

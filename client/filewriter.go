@@ -64,19 +64,19 @@ func (client *Client) FileWriter(txID, key, path string) (*WriteResult, error) {
 				if err != nil {
 					panic(fmt.Sprintf("DB error: %v", err))
 				}
-				writeResult.UploadedCnt++
-				writeResult.UploadedSize += buf.Len()
+				writeResult.BlobsUploaded++
+				writeResult.SizeUploaded += buf.Len()
 				// Check if the hash returned correspond to the locally computed hash
 				if rsha != nsha {
 					panic(fmt.Sprintf("Corrupted data: %+v/%+v", rsha, nsha))
 				}
 			} else {
-				writeResult.SkippedSize += buf.Len()
-				writeResult.SkippedCnt++
+				writeResult.SizeSkipped += buf.Len()
+				writeResult.BlobsSkipped++
 			}
 			writeResult.Size += buf.Len()
 			buf.Reset()
-			writeResult.BlobsCnt++
+			writeResult.BlobsCount++
 			// Save the location and the blob hash into a sorted list (with the offset as index)
 			con.Do("LADD", key, writeResult.Size, nsha)
 		}
@@ -110,7 +110,9 @@ func (client *Client) PutFile(txID, path string) (meta *Meta, wr *WriteResult, e
 		wr = &WriteResult{}
 		wr.Hash = sha
 		wr.AlreadyExists = true
-		wr.Filename = filename
+		wr.FilesSkipped++
+		wr.FilesCount++
+		// TODO(tsileo) => set wr.SizeSkipped
 	} else {
 		wr, err = client.FileWriter(txID, sha, path)
 		if err != nil {

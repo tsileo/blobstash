@@ -20,7 +20,7 @@ func (client *Client) DirWriter(txID, path string) (wr *WriteResult, err error) 
 	if _, err := con.Do("TXINIT", txID); err != nil {
 		return wr, err
 	}
-	wr = &WriteResult{Filename: filepath.Base(path)}
+	wr = &WriteResult{}
 	dirdata, err := ioutil.ReadDir(path)
 	if err != nil {
 		return
@@ -94,12 +94,14 @@ func (client *Client) DirWriter(txID, path string) (wr *WriteResult, err error) 
 			}
 		} else {
 			wr.AlreadyExists = true
+			wr.DirsSkipped++
+			wr.DirsCount++
 		}
 	} else {
 		// If the directory is empty, hash the filename instead of members
 		// so an empty directory won't invalidate the directory top hash.
 		h.Write([]byte("emptydir:"))
-		h.Write([]byte(wr.Filename))
+		h.Write([]byte(filepath.Base(path)))
 		wr.Hash = fmt.Sprintf("%x", h.Sum(nil))
 	}
 	//log.Printf("datadb: DirWriter(%v) WriteResult:%+v", path, wr)
@@ -120,7 +122,7 @@ func (client *Client) PutDir(txID, path string) (meta *Meta, wr *WriteResult, er
 		return
 	}
 	meta = NewMeta()
-	meta.Name = wr.Filename
+	meta.Name = filepath.Base(path)
 	meta.Type = "dir"
 	meta.Size = wr.Size
 	meta.Hash = wr.Hash
