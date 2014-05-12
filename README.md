@@ -30,6 +30,32 @@ When you perform a backup (either a file or a directory), the client first gener
 
 If you backup a directory/file with the same filename more than once, it will be grouped as a snapshot.
 
+### Fuse file system
+
+The most convenient way to restore/navigate snapshots is the FUSE file system.
+There is three magic directories at the root:
+
+- **latest**: it contains the latest version of every snapshots/backups.
+- **snapshots**: it let you navigate for every snapshots, you can see every versions. 
+- **at**: let access directories/files at a given time, it automatically retrieve the closest previous snapshots.
+
+```console
+$ datadb mount /backups                              
+2014/05/12 17:26:34 Mounting read-only filesystem on /backups
+Ctrl+C to unmount.
+```
+
+```console
+$ ls /backups 
+at  latest  snapshots
+$ ls /backups/latest 
+writing
+$ ls /backups/snapshots/writing 
+2014-05-11T11:01:07+02:00  2014-05-11T18:36:06+02:00  2014-05-12T17:25:47+02:00
+$ ls /backups/at/writing/2014-05-12
+file1  file2  file3
+```
+
 ### Blobs
 
 Blobs are handled by the server, you only perform few operations on blobs:
