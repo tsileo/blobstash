@@ -35,6 +35,7 @@ type Client struct {
 	Dirs DirFetcher
 	Metas MetaFetcher
 	uploader chan struct{}
+	uploader2 chan struct{}
 }
 
 func NewClient() (*Client, error) {
@@ -42,7 +43,7 @@ func NewClient() (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &Client{Pool:pool, uploader: make(chan struct{}, 50)}
+	c := &Client{Pool:pool, uploader: make(chan struct{}, 100)}
 	c.Blobs, err = disklru.New("./tmp_blobs_lru", c.FetchBlob, 536870912)
 	c.Dirs = lru.New(c.FetchDir, 512)
 	c.Metas = lru.New(c.FetchMeta, 512)

@@ -15,11 +15,6 @@ import (
 // DirWriter reads the directory and upload it.
 func (client *Client) DirWriter(txID, path string) (wr *WriteResult, err error) {
 	wg := &sync.WaitGroup{}
-	con := client.Pool.Get()
-	defer con.Close()
-	if _, err := con.Do("TXINIT", txID); err != nil {
-		return wr, err
-	}
 	wr = &WriteResult{}
 	dirdata, err := ioutil.ReadDir(path)
 	if err != nil {
@@ -80,6 +75,11 @@ func (client *Client) DirWriter(txID, path string) (wr *WriteResult, err error) 
 			h.Write([]byte(hash))
 		}
 		wr.Hash = fmt.Sprintf("%x", h.Sum(nil))
+		con := client.Pool.Get()
+		defer con.Close()
+		if _, err := con.Do("TXINIT", txID); err != nil {
+			return wr, err
+		}
 		// Check if the directory meta already exists 
 		cnt, err := redis.Int(con.Do("SCARD", wr.Hash))
 		if err != nil {
