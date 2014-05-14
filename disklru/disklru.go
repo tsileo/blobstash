@@ -219,6 +219,7 @@ func (lru *DiskLRU) evict() error {
 func (lru *DiskLRU) Iter(items chan<- *CacheItem) {
 	lru.Lock()
 	defer lru.Unlock()
+	defer close(items)
 	enum, _, _ := lru.db.Seek(buildKey(Index, ""))
 	endBytes := buildKey(Index, "\xff")
 	for {
@@ -230,7 +231,6 @@ func (lru *DiskLRU) Iter(items chan<- *CacheItem) {
 		rsize := binary.LittleEndian.Uint32(v)
 		items <- &CacheItem{Key:rkey, Index:rindex, Size:rsize}
 	}
-	close(items)
 }
 
 // Store a uint32 as binary data.

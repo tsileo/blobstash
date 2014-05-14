@@ -85,6 +85,8 @@ func (client *Client) FileWriter(txID, key, path string) (*WriteResult, error) {
 		}
 	}
 	writeResult.Hash = fmt.Sprintf("%x", fullHash.Sum(nil))
+	writeResult.FilesCount++
+	writeResult.FilesUploaded++
 	log.Printf("PutFile WriteResult:%+v", writeResult)
 	return writeResult, nil
 }
@@ -93,7 +95,8 @@ func (client *Client) PutFile(txID, path string) (meta *Meta, wr *WriteResult, e
 	//log.Printf("PutFile %v\n", path)
 	client.StartUpload()
 	defer client.UploadDone()
-	if _, err = os.Stat(path); os.IsNotExist(err) {
+	fstat, err := os.Stat(path);
+	if os.IsNotExist(err) {
 		return
 	}
 	_, filename := filepath.Split(path)
@@ -102,7 +105,7 @@ func (client *Client) PutFile(txID, path string) (meta *Meta, wr *WriteResult, e
 	defer con.Close()
 	// First we check if the file isn't already uploaded,
 	// if so we skip it.
-	cnt, err := redis.Int(con.Do("HLEN", sha))
+	cnt, err := redis.Int(con.Do("LLEN", sha))
 	if err != nil {
 		return
 	}
@@ -112,7 +115,10 @@ func (client *Client) PutFile(txID, path string) (meta *Meta, wr *WriteResult, e
 		wr.AlreadyExists = true
 		wr.FilesSkipped++
 		wr.FilesCount++
-		// TODO(tsileo) => set wr.SizeSkipped
+		wr.SizeSkipped = int(fstat.Size())
+		wr.Size = wr.SizeSkipped
+		wr.BlobsCount += cnt
+		wr.BlobsSkipped += cnt
 	} else {
 		wr, err = client.FileWriter(txID, sha, path)
 		if err != nil {

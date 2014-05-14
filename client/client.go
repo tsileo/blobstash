@@ -50,7 +50,7 @@ func NewClient() (*Client, error) {
 	return c, err
 }
 
-// Block until the client can start the upload
+// Block until the client can start the upload, thus limiting the number of file descriptor used.
 func (client *Client) StartUpload() {
 	client.uploader <- struct{}{}
 }

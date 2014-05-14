@@ -90,7 +90,9 @@ func (client *Client) DirWriter(txID, path string) (wr *WriteResult, err error) 
 				_, err = con.Do("SADD", redis.Args{}.Add(wr.Hash).AddFlat(hashes)...)
 				if err != nil {
 					return wr, err
-				}	
+				}
+				wr.DirsUploaded++
+				wr.DirsCount++
 			}
 		} else {
 			wr.AlreadyExists = true
