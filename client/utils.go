@@ -91,31 +91,42 @@ func (wr *WriteResult) Add(wr2 *WriteResult) {
 // a ReadResult keeps track of the number/size of downloaded blobs.
 type ReadResult struct {
 	Hash string
+
 	Size int
+	SizeDownloaded int
+
 	BlobsCount int
-//	SkippedCnt int
-//	SkippedSize int
-	DownloadedCnt int
-	DownloadedSize int
+	BlobsDownloaded int
+
+	FilesCount int
+	FilesDownloaded int
+
+	DirsCount int
+	DirsDownloaded int
 }
 
 // Add allow two ReadResult to be added.
 func (rr *ReadResult) Add(rr2 *ReadResult) {
 	rr.Size += rr2.Size
+	rr.SizeDownloaded += rr2.SizeDownloaded
+
 	rr.BlobsCount += rr2.BlobsCount
-//	rr.SkippedCnt += rr2.SkippedCnt
-//	rr.SkippedSize += rr2.SkippedSize
-	rr.DownloadedCnt += rr2.DownloadedCnt
-	rr.DownloadedSize += rr2.DownloadedSize
+	rr.BlobsDownloaded += rr2.BlobsDownloaded
+
+	rr.FilesCount += rr2.FilesCount
+	rr.FilesDownloaded += rr2.FilesDownloaded
+	
+	rr.DirsCount += rr2.DirsCount
+	rr.DirsDownloaded += rr2.DirsDownloaded
 }
 
 // MatchResult checks if a WriteResult and a ReadResult have the same size.
 func MatchResult(wr *WriteResult, rr *ReadResult) bool {
-//	if wr.Size == rr.Size && wr.Hash == rr.Hash &&
-//	   		wr.BlobsCount == rr.BlobsCount &&
-//	   		(wr.SkippedCnt + wr.UploadedCnt) == rr.DownloadedCnt &&
-//	   		(wr.SkippedSize + wr.UploadedSize) == rr.DownloadedSize {
-//	   	return true
-//	}
+	if wr.Hash == rr.Hash &&
+			wr.Size == rr.Size &&
+			wr.FilesCount == rr.FilesCount &&
+			wr.DirsCount == rr.DirsCount {
+	   return true
+	}
 	return false
 }

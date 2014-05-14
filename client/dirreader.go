@@ -65,6 +65,8 @@ func (client *Client) GetDir(key, path string) (rr *ReadResult, err error) {
 		rr.Add(crr)
 	}
 	// TODO(tsileo) sum the hash and check with the root
+	rr.DirsCount++
+	rr.DirsDownloaded++
 	rr.Hash = fmt.Sprintf("%x", fullHash.Sum(nil))
 	return
 }

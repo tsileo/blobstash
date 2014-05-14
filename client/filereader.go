@@ -5,6 +5,8 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"io"
 	_ "log"
+	"fmt"
+	"crypto/sha1"
 	"bytes"
 	"errors"
 )
@@ -27,22 +29,18 @@ func (client *Client) GetFile(key, path string) (*ReadResult, error) {
 	meta, _ := NewMetaFromDB(client.Pool, key) 
 	ffile := NewFakeFile(client, meta.Hash, meta.Size)
 	io.Copy(buf, ffile)
-	readResult.Hash = meta.Hash
-	return readResult, nil
-}
-
-// FetchBlob is used by the client level blobs LRU
-// Return the data for the given hash
-func (client *Client) FetchBlob(hash string) []byte {
-	con := client.Pool.Get()
-	defer con.Close()
-	var buf bytes.Buffer
-	data, err := redis.String(con.Do("BGET", hash))
+	h := sha1.New()
+	io.Copy(h, buf)
+	readResult.Hash = fmt.Sprintf("%x", h.Sum(nil))
+	readResult.FilesCount++
+	readResult.FilesDownloaded++
+	fstat, err := buf.Stat()
 	if err != nil {
-		panic("Error FetchBlob")
+		return readResult, err
 	}
-	buf.WriteString(data)
-	return buf.Bytes()
+	readResult.Size = int(fstat.Size())
+	readResult.SizeDownloaded = readResult.Size
+	return readResult, nil
 }
 
 // FakeFile implements io.Reader, and io.ReaderAt.
@@ -138,7 +136,7 @@ func (f *FakeFile) Reset() {
 	f.offset = 0
 }
 
-// Implement io.Reader
+// Read implement io.Reader
 func (f *FakeFile) Read(p []byte) (n int, err error) {
 	if len(p) == 0 {
     	return 0, nil
