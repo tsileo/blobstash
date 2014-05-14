@@ -80,6 +80,20 @@ func New(path string, f func(string) []byte, threshold int64) (*DiskLRU, error) 
 	return &DiskLRU{f, threshold, db, path, sync.Mutex{}}, err
 }
 
+func NewTest(f func(string) []byte, threshold int64) (*DiskLRU, error) {
+	db, err := kv.CreateMem(&kv.Options{})
+	return &DiskLRU{f, threshold, db, "tmp_test_blobs_lru", sync.Mutex{}}, err	
+}
+
+// Close cleanly close the kv db.
+func (lru *DiskLRU) Close() {
+	lru.db.Close()
+}
+
+func (lru *DiskLRU) Remove() {
+	os.RemoveAll(lru.path)
+}
+
 // Build the key by adding the given byte to namespace keys in the DB.
 func buildKey(ktype byte, key string) []byte {
 	bkey := []byte(key)

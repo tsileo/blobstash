@@ -13,6 +13,22 @@ import (
 
 type BlobFetcher interface {
 	Get(string) ([]byte, bool, error)
+	Close()
+	Remove()
+}
+
+// FetchBlob is used by the client level blobs LRU
+// Return the data for the given hash
+func (client *Client) FetchBlob(hash string) []byte {
+	con := client.Pool.Get()
+	defer con.Close()
+	var buf bytes.Buffer
+	data, err := redis.String(con.Do("BGET", hash))
+	if err != nil {
+		panic("Error FetchBlob")
+	}
+	buf.WriteString(data)
+	return buf.Bytes()
 }
 
 // Download a file by its hash to path
@@ -26,11 +42,11 @@ func (client *Client) GetFile(key, path string) (*ReadResult, error) {
 	if err != nil {
 		return readResult, err
 	}
+	h := sha1.New()
 	meta, _ := NewMetaFromDB(client.Pool, key) 
 	ffile := NewFakeFile(client, meta.Hash, meta.Size)
-	io.Copy(buf, ffile)
-	h := sha1.New()
-	io.Copy(h, buf)
+	ffilreReader := io.TeeReader(ffile, h)
+	io.Copy(buf, ffilreReader)
 	readResult.Hash = fmt.Sprintf("%x", h.Sum(nil))
 	readResult.FilesCount++
 	readResult.FilesDownloaded++

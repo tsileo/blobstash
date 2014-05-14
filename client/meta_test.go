@@ -11,6 +11,7 @@ import (
 	"log"
 	mrand "math/rand"
 	"github.com/bradfitz/iter"
+	"github.com/garyburd/redigo/redis"
 )
 
 const MaxRandomFileSize = 2<<19
@@ -88,9 +89,15 @@ func NewRandomTree(t *testing.T, path string, maxrec int) (string) {
 func TestModelsMeta(t *testing.T) {
 	pool, err := GetDbPool()
 	check(err)
+	con := pool.Get()
+	defer con.Close()
+	txId, err := redis.String(con.Do("TXINIT"))
+	check(err)
 	f := NewMeta()
 	f.Hash = "foo_meta"
-	err = f.Save(pool)
+	err = f.Save(txId, pool)
+	check(err)
+	_, err = con.Do("TXCOMMIT")
 	check(err)
 
 	fe, err := NewMetaFromDB(pool, "foo_meta")

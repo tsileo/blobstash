@@ -50,6 +50,26 @@ func NewClient() (*Client, error) {
 	return c, err
 }
 
+func NewTestClient() (*Client, error) {
+	pool, err := GetDbPool()
+	if err != nil {
+		return nil, err
+	}
+	c := &Client{Pool:pool, uploader: make(chan struct{}, 100)}
+	c.Blobs, err = disklru.NewTest(c.FetchBlob, 536870912)
+	c.Dirs = lru.New(c.FetchDir, 512)
+	c.Metas = lru.New(c.FetchMeta, 512)
+	return c, err
+}
+
+func (client *Client) Close() {
+	client.Blobs.Close()
+}
+
+func (client *Client) RemoveCache() {
+	client.Blobs.Remove()
+}
+
 // Block until the client can start the upload, thus limiting the number of file descriptor used.
 func (client *Client) StartUpload() {
 	client.uploader <- struct{}{}
