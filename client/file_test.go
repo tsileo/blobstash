@@ -14,6 +14,7 @@ import (
 func TestClientFile(t *testing.T) {
 	c, err := NewTestClient()
 	defer c.Close()
+	defer c.RemoveCache()
  	check(err)
  	con := c.Pool.Get()
 	defer con.Close()
@@ -31,7 +32,7 @@ func TestClientFile(t *testing.T) {
 	check(err)
 
 	rfile2 := fmt.Sprintf("%v%v", rfile, "_restored")
-	_, err = c.GetFile(h.Hash, rfile2)
+	rr, err := c.GetFile(h.Hash, rfile2)
 	check(err)
 
 	h2 := FullSHA1(rfile2)
@@ -39,11 +40,9 @@ func TestClientFile(t *testing.T) {
 	if th != h2 {
 		t.Errorf("File not restored successfully, hash:%v restored hash:%v", th, h2)
 	}
-	//if !MatchResult(h, rr) {
-	//	t.Errorf("File not restored successfully, wr:%+v/rr:%+v", h, rr)
-	//}
-
-	// TODO(tsileo) found a way to check that directories are equals
+	if !MatchResult(h, rr) {
+		t.Errorf("File not restored successfully, wr:%+v/rr:%+v", h, rr)
+	}
 
 	txID, err = redis.String(con.Do("TXINIT"))
 	check(err)

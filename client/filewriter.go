@@ -5,13 +5,15 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"fmt"
-	"log"
+	_ "log"
 	"io"
 	"bufio"
-	"github.com/tsileo/silokv/rolling"
-	"github.com/garyburd/redigo/redis"
 	"path/filepath"
 	"errors"
+	
+	"github.com/tsileo/silokv/rolling"
+	"github.com/garyburd/redigo/redis"
+	
 )
 
 // FileWriter reads the file byte and byte and upload it,
@@ -30,10 +32,9 @@ func (client *Client) FileWriter(txID, key, path string) (*WriteResult, error) {
 	defer con.Close()
 	// Set the transaction id.
 	if _, err := con.Do("TXINIT", txID); err != nil {
-		log.Printf("Error TXINIT %v, %v", txID, err)
 		return writeResult, err
 	}
-	log.Printf("FileWriter(%v, %v, %v)", txID, key, path)
+	//log.Printf("FileWriter(%v, %v, %v)", txID, key, path)
 	var buf bytes.Buffer
 	buf.Reset()
 	fullHash := sha1.New()
@@ -87,7 +88,6 @@ func (client *Client) FileWriter(txID, key, path string) (*WriteResult, error) {
 	writeResult.Hash = fmt.Sprintf("%x", fullHash.Sum(nil))
 	writeResult.FilesCount++
 	writeResult.FilesUploaded++
-	log.Printf("PutFile WriteResult:%+v", writeResult)
 	return writeResult, nil
 }
 

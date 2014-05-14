@@ -7,6 +7,8 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+
+	"github.com/dustin/go-humanize"
 )
 
 // NewID generate a random hash that can be used as random key
@@ -63,7 +65,7 @@ func (wr *WriteResult) String() string {
 - Files: %d (skipped:%d, uploaded:%d)
 - Dirs: %d (skipped:%d, uploaded:%d)
 `,
-		wr.Size, wr.SizeSkipped, wr.SizeUploaded,
+		humanize.Bytes(uint64(wr.Size)), wr.SizeSkipped, wr.SizeUploaded,
 		wr.BlobsCount, wr.BlobsSkipped, wr.BlobsUploaded,
 		wr.FilesCount, wr.FilesSkipped, wr.FilesUploaded,
 		wr.DirsCount, wr.DirsSkipped, wr.DirsUploaded)
