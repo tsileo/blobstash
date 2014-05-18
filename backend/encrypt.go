@@ -11,6 +11,7 @@ import (
 	"github.com/tsileo/datadatabase/encrypt"
 
 	"code.google.com/p/go.crypto/nacl/secretbox"
+	"code.google.com/p/snappy-go/snappy"
 )
 
 var headerSize = 59
@@ -20,16 +21,27 @@ type EncryptBackend struct {
 	// index map the plain text hash to encrypted hash
 	index map[string]string
 
+	// holds the encryption key
 	key *[32]byte
 
 	sync.Mutex
 }
 
+// NewEncryptBackend return a backend that encrypt/decrypt blobs on the fly,
+// blobs are compressed with snappy before encryption with nacl/secretbox.
+// At startup it scan encrypted blobs to discover the plain hash (the hash of the plain-text/unencrypted data).
+// Blobs are stored in the following format:
+//
+// #datadb/secretbox\n
+// [plain hash]\n
+// [encrypted data]
+//
 func NewEncryptBackend(keyPath string, dest BlobHandler) *EncryptBackend {
 	if err := encrypt.LoadKey(keyPath); err != nil {
 		panic(err)
 	}
 	b := &EncryptBackend{dest: dest, index:make(map[string]string), key:&encrypt.Key}
+	// Scan the blobs to discover the plain text blob hashes and build the in-memory index
 	hashes := make(chan string)
 	errs := make(chan error)
 	go func() {
@@ -52,7 +64,7 @@ func NewEncryptBackend(keyPath string, dest BlobHandler) *EncryptBackend {
 	return b
 }
 
-func (b *EncryptBackend) Put(hash string, data []byte) (err error) {
+func (b *EncryptBackend) Put(hash string, rawData []byte) (err error) {
 	// #datadb/secretbox\n
 	// data hash\n
 	// data
@@ -60,6 +72,11 @@ func (b *EncryptBackend) Put(hash string, data []byte) (err error) {
 	//out := make([]byte, len(data) + secretbox.Overhead + 24 + headerSize)
 	if err := encrypt.GenerateNonce(&nonce); err != nil {
 		return err
+	}
+	// First we compress the data with snappy
+	data, err := snappy.Encode(nil, rawData)
+	if err != nil {
+		return
 	}
 	var out bytes.Buffer
 	out.WriteString("#datadb/secretbox\n")
@@ -123,7 +140,12 @@ func (b *EncryptBackend) Get(hash string) (data []byte, err error) {
 	if !success {
 		return data, fmt.Errorf("failed to decrypt blob %v/%v", hash, ref)
 	}
-	return out, nil
+	// Decode snappy data
+	data, err = snappy.Decode(nil, out)
+	if err != nil {
+		return data, fmt.Errorf("failed to decode blob %v/%v", hash, ref)
+	}
+	return 
 }
 
 func (b *EncryptBackend) Enumerate(blobs chan<- string) error {
