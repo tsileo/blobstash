@@ -1,3 +1,4 @@
+*.key
 .subl*
 .fuse*
 draft_*
