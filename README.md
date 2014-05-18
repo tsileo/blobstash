@@ -16,16 +16,15 @@ Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com
 - Server handles uploading/downloading blobs to/from different storage
 - Client only query the server and send blobs to it (the client take care of chunking/building blobs).
 - Read-only FUSE file system to navigate backups/snapshots
+- Encryption using [go.crypto/nacl secretbox](http://godoc.org/code.google.com/p/go.crypto/nacl)
 
 ## How it works
 
-When you perform a backup (either a file or a directory), the client first generate a random hash,
-[read the dir/read file byte by byte and split by chunk]
-[check if blob exists/if not upload it/start building meta data and sending to buffer]
-[if it's a directory, multiple parallel upload]
-[if something fail => rollback the meta so no stale data]
-[if ok=>dump the meta blob with command]
-[adding a snapshot for the filename/creating a backup meta]
+First, a transaction is initiated (if something goes wrong, no stale data will be saved and the transaction will be discarded).
+
+If the source is a directory, it will be uploaded recursively, if it's a file, it will be split into multiple blobs/chunks (blobs will be sent only if it doesn't exists yet), while performing the backup, meta data (size, name, hashes, directory trees) are sent to the server and buffered until the backup is done.
+
+If something has gone wrong, the transaction is discarded. If everything is OK, the transaction is applied and a meta blob will be created.
 
 ## Terminology
 
@@ -93,20 +92,7 @@ $ ls /backups/at/writing/2014-05-12
 file1  file2  file3
 ```
 
-### Blobs
-
-Blobs are handled by the server, you only perform few operations on blobs:
-
-- (CMD arg => reply)
-- BPUT content => hash
-- BGET hash => content
-- BEXISTS hash => bool
-- BSIZE => int (total size of blobs)
-- BCNT => int (number of blobs)
-
-Blobs are store as file (or key/archive) with its sha1 as filename in a flat directory (or bucket/vault).
-
-### Metadata
+### Metadata format
 
 Metadata are stored in kv database and are exposed via a Redis protocol tcp server, with custom Redis-like data type and commands, but implemented using kv lexicographical range queries.
 
@@ -127,7 +113,6 @@ A hash contains the backup parts reference, an ordered list of the files hash bl
 - Follow .gitignore file
 - Add a **drop** directory to support upload via FUSE
 - Master/slave replication of metadatas
-- Encryption
 - Periodic snapshot/snapshots monitoring
 - A special cold storage backed (using AWS Glacier, can't use glacier since storing blobs with Glacier would cost too much, according to [this article](http://alestic.com/2012/12/s3-glacier-costs)) that would put one archive per snapshots, and keep track of stored blob (incremental backups).
 
