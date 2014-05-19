@@ -35,7 +35,6 @@ type Client struct {
 	Dirs DirFetcher
 	Metas MetaFetcher
 	uploader chan struct{}
-	uploader2 chan struct{}
 }
 
 func NewClient() (*Client, error) {

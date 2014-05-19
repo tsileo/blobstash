@@ -92,7 +92,7 @@ func (client *Client) FileWriter(txID, key, path string) (*WriteResult, error) {
 }
 
 func (client *Client) PutFile(txID, path string) (meta *Meta, wr *WriteResult, err error) {
-	//log.Printf("PutFile %v\n", path)
+	//log.Printf("PutFile %v/%v\n", txID, path)
 	client.StartUpload()
 	defer client.UploadDone()
 	fstat, err := os.Stat(path);

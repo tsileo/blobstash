@@ -5,7 +5,6 @@ Data Database
 
 A backup database designed to efficiently handle snapshots of files/directories, built on top of [kv](https://github.com/cznic/kv) and the [Redis Protocol](http://redis.io/topics/protocol), bundled with a command-line client and a FUSE file system.
 
-
 Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com/bup/bup) (files are split into multiple blobs using a rolling checksum).
 
 ## Features:
