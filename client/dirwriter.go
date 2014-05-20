@@ -6,7 +6,7 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"os"
-	_ "log"
+	"log"
 	"sync"
 	"sort"
 	"github.com/garyburd/redigo/redis"
@@ -14,17 +14,24 @@ import (
 
 type node struct {
 	root bool
+	
 	path string
 	fi       os.FileInfo
 	children []*node
+	
 	wr *WriteResult
 	meta *Meta
+
 	err error
+	
+	// Used to sync access to the WriteResult
 	mu sync.Mutex
 	cond sync.Cond
 }
 
 func (client *Client) DirExplorer(path string, pnode *node, files chan<- *node, result chan<- *node) {
+	pnode.mu.Lock()
+	defer pnode.mu.Unlock()
 	dirdata, err := ioutil.ReadDir(path)
 	if err != nil {
 		return
@@ -33,20 +40,18 @@ func (client *Client) DirExplorer(path string, pnode *node, files chan<- *node, 
 		abspath := filepath.Join(path, fi.Name())
 		n := &node{path:abspath, fi: fi}
 		n.cond.L = &n.mu
+		pnode.children = append(pnode.children, n)
 		if fi.IsDir() {
 			client.DirExplorer(abspath, n, files, result)
 			result <- n
 		} else {
 			if fi.Mode() & os.ModeSymlink == 0 {
-				pnode.children = append(pnode.children, n)
 				files <- n
 			}
 		}
+		
 	}
-	if pnode.root {
-		close(files)
-		close(result)
-	}
+	pnode.cond.Signal()
 	return
 }
 
@@ -129,9 +134,10 @@ func (client *Client) PutDir(txID, path string) (meta *Meta, wr *WriteResult, er
 	}
 	files := make(chan *node)
 	directories := make(chan *node)
-	dirSem := make(chan struct{}, 50)
+	//dirSem := make(chan struct{}, 50)
 	fi, _ := os.Stat(abspath)
 	n := &node{root: true, path: abspath, fi: fi}
+	n.cond.L = &n.mu
 	var wg sync.WaitGroup
 	// Iterate the directory tree in a goroutine
 	// and dispatch node accordingly in the files/result channels.
@@ -139,6 +145,8 @@ func (client *Client) PutDir(txID, path string) (meta *Meta, wr *WriteResult, er
 	go func() {
 		defer wg.Done()
 		client.DirExplorer(path, n, files, directories)
+		defer close(files)
+		defer close(directories)
 	}()
 	// Upload discovered files (100 file descriptor at the same time max).
 	wg.Add(1)
@@ -158,26 +166,21 @@ func (client *Client) PutDir(txID, path string) (meta *Meta, wr *WriteResult, er
 	go func() {
 		defer wg.Done()
 		for d := range directories {
-			if !d.root {
-				dirSem <- struct{}{}
-				go func(node *node) {
-					defer func() {
-						select {
-							case <-dirSem:
-						default:
-							panic("No dir upload to wait for")
-						}
-					}()
-					client.DirWriterNode(txID, node)
-					// TODO(tsileo) check that r.wr is up to date.
-				}(d)
-			}
-			
+			//log.Printf("waiting to aquire dir:%q", d)
+			//dirSem <- struct{}{}
+			//go func(node *node) {
+				//defer func() {
+				//	<-dirSem
+				//}()
+				client.DirWriterNode(txID, d)
+				// TODO(tsileo) check that r.wr is up to date.
+			//}(d)
 		}
 	}()
 
 	wg.Wait()
 	// Upload the root directory
+	log.Printf("last node")
 	client.DirWriterNode(txID, n)
 	return n.meta, n.wr, n.err
 }

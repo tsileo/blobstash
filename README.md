@@ -101,6 +101,8 @@ Metadata are stored in kv database and are exposed via a Redis protocol tcp serv
 - List (sorted by an uint index) data type
 - "Virtual" Blob data type (upload/download from/to storage)
 
+Check [db/buffer.go](https://github.com/tsileo/datadatabase/blob/master/server/buffer.go) for more documentation.
+
 A backup is a set with pointer to hash (either representing a directory or a file, and a directory is also a set of pointer).
 
 If a file is stored multiple times, metadata are not duplicated.
