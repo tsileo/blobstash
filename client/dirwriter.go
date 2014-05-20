@@ -40,13 +40,14 @@ func (client *Client) DirExplorer(path string, pnode *node, files chan<- *node, 
 		abspath := filepath.Join(path, fi.Name())
 		n := &node{path:abspath, fi: fi}
 		n.cond.L = &n.mu
-		pnode.children = append(pnode.children, n)
 		if fi.IsDir() {
 			client.DirExplorer(abspath, n, files, result)
 			result <- n
+			pnode.children = append(pnode.children, n)
 		} else {
 			if fi.Mode() & os.ModeSymlink == 0 {
 				files <- n
+				pnode.children = append(pnode.children, n)
 			}
 		}
 		
@@ -134,10 +135,11 @@ func (client *Client) PutDir(txID, path string) (meta *Meta, wr *WriteResult, er
 	}
 	files := make(chan *node)
 	directories := make(chan *node)
-	//dirSem := make(chan struct{}, 50)
+	dirSem := make(chan struct{}, 25)
 	fi, _ := os.Stat(abspath)
 	n := &node{root: true, path: abspath, fi: fi}
 	n.cond.L = &n.mu
+
 	var wg sync.WaitGroup
 	// Iterate the directory tree in a goroutine
 	// and dispatch node accordingly in the files/result channels.
@@ -167,14 +169,14 @@ func (client *Client) PutDir(txID, path string) (meta *Meta, wr *WriteResult, er
 		defer wg.Done()
 		for d := range directories {
 			//log.Printf("waiting to aquire dir:%q", d)
-			//dirSem <- struct{}{}
-			//go func(node *node) {
-				//defer func() {
-				//	<-dirSem
-				//}()
-				client.DirWriterNode(txID, d)
+			dirSem <- struct{}{}
+			go func(node *node) {
+				defer func() {
+					<-dirSem
+				}()
+				client.DirWriterNode(txID, node)
 				// TODO(tsileo) check that r.wr is up to date.
-			//}(d)
+			}(d)
 		}
 	}()
 
