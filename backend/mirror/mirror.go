@@ -37,7 +37,6 @@ func (backend *MirrorBackend) Put(hash string, data []byte) (err error) {
 	return
 }
 
-
 func (backend *MirrorBackend) Exists(hash string) bool {
 	for _, b := range backend.backends {
 		return b.Exists(hash)

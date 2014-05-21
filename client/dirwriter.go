@@ -13,22 +13,28 @@ import (
 )
 
 type node struct {
+	// root of the snapshot
 	root bool
 	
+	// File path/FileInfo
 	path string
 	fi       os.FileInfo
+
+	// Children (if the node is a directory)
 	children []*node
 	
+	// Upload result is stored in the node
 	wr *WriteResult
 	meta *Meta
-
 	err error
 	
-	// Used to sync access to the WriteResult
+	// Used to sync access to the WriteResult/Meta
 	mu sync.Mutex
 	cond sync.Cond
 }
 
+// Recursively read the directory and
+// send/route the files/directories to the according channel for processing  
 func (client *Client) DirExplorer(path string, pnode *node, files chan<- *node, result chan<- *node) {
 	pnode.mu.Lock()
 	defer pnode.mu.Unlock()
