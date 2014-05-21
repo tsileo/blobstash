@@ -81,8 +81,11 @@ func (index *BlobsIndex) GetPos(hash string) (*BlobPos, error) {
 	index.Lock()
 	defer index.Unlock()
 	data, err := index.db.Get(nil, []byte(hash))	
-	if err != nil || data == nil {
+	if err != nil {
 		return nil, fmt.Errorf("Error getting BlobPos %v")
+	}
+	if data == nil {
+		return nil, nil
 	}
 	bpos, err := ScanBlobPos(string(data))
 	return &bpos, err

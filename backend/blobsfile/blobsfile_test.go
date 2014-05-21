@@ -19,4 +19,10 @@ func TestBlobsFileBackend(t *testing.T) {
 	err := backend.load()
 	check(err)
 	log.Printf("%+v", backend)
+	err = backend.Put("OMG", []byte("YES"))
+	check(err)
+	log.Printf("%+v", backend)
+	data, err := backend.Get("OMG")
+	check(err)
+	log.Printf("DATA:%v", string(data))
 }

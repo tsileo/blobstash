@@ -19,7 +19,7 @@ type BlobsFileBackend struct {
 	current *os.File
 	// Size of the current blobs file
 	size int64
-	// Old blobs files opened for read
+	// All blobs files opened for read
 	files map[int]*os.File
 
 	sync.Mutex
@@ -82,12 +82,12 @@ func (backend *BlobsFileBackend) wopen(n int) error {
 	if _, err := os.Stat(backend.filename(n)); os.IsNotExist(err) {
 		fallocate = true
 	}
-	f, err := os.OpenFile(backend.filename(n), os.O_CREATE|os.O_RDWR, 0666)
-	defer f.Close()
+	f, err := os.OpenFile(backend.filename(n), os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		return err
 	}
 	backend.current = f
+	backend.n = n
 	if fallocate {
 		if ferr := backend.allocateBlobsFile(); ferr != nil {
 			log.Printf("Error fallocate file %v: %v", backend.filename(n), ferr)
@@ -135,3 +135,56 @@ func (backend *BlobsFileBackend) filename(n int) string {
 	return filepath.Join(backend.Directory, fmt.Sprintf("blobs-%05d", n))
 }
 
+func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
+	backend.Lock()
+	defer backend.Unlock()
+	size := len(data)
+	// TODO(tsileo) use transactions
+	// TODO(tsileo) => set head HASH size binary encoded
+	blobPos := BlobPos{n: backend.n, offset: int(backend.size), size: int(size)}
+	if err := backend.index.SetPos(hash, blobPos); err != nil {
+		return err
+	}
+	n, err := backend.current.Write(data)
+	backend.size += int64(n)
+	if err != nil || n != size {
+		return fmt.Errorf("Error writing blob (%v,%v,%v)", err, n , size)
+	}
+	return
+}
+
+func (backend *BlobsFileBackend) Exists(hash string) bool {
+	blobPos, _ := backend.index.GetPos(hash)
+	if blobPos != nil {
+		return true
+	}
+	return false
+}
+
+func parseBlob(data []byte) (hash string, size int, blob []byte) {
+	
+	return
+}
+
+func encodeBlob(hash string, size int, blob []byte) (data []byte) {
+
+}
+
+func (backend *BlobsFileBackend) Get(hash string) ([]byte, error) {
+	blobPos, err := backend.index.GetPos(hash)
+	if err != nil {
+		return nil, err
+	}
+	if blobPos == nil {
+		return nil, fmt.Errorf("Blob %v not found in index", err)
+	}
+	data := make([]byte, blobPos.size)
+	n, err := backend.files[blobPos.n].ReadAt(data, int64(blobPos.offset))
+	if err != nil {
+		return nil, err
+	}
+	if n != blobPos.size {
+		return nil, fmt.Errorf("Bad blob %v size, got %v, expected %v", hash, n, blobPos.size)
+	}
+	return data, nil
+}
