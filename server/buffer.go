@@ -173,13 +173,14 @@ func (rb *ReqBuffer) Save() error {
 		return err
 	}
 	h, d := rb.JSON()
-	log.Printf("datadb: Meta blob:%v (%v commands, len:%v) written\n", h, rb.reqCnt, len(d))
+	log.Printf("server: Meta blob:%v (%v commands, len:%v) written\n", h, rb.reqCnt, len(d))
 	rb.Reset()
 	return rb.blobBackend.Put(h, d)
 }
 
 // Enumerate every meta blobs filename and check if the data is already indexed.
 func (rb *ReqBuffer) Load() error {
+	log.Printf("server: scanning meta blobs")
 	hashes := make(chan string)
 	errs := make(chan error)
 	go func() {
@@ -189,7 +190,7 @@ func (rb *ReqBuffer) Load() error {
 	for hash := range hashes {
 		cnt := rb.db.Sismember("_meta", hash)
 		if cnt == 0 {
-			log.Printf("datadb: Found a Meta blob not loaded %v\n", hash)
+			log.Printf("server: found a Meta blob not loaded %v\n", hash)
 			data, berr := rb.blobBackend.Get(hash)
 			if berr != nil {
 				return berr
@@ -229,7 +230,7 @@ func (rb *ReqBuffer) Apply() error {
 	commit := false
 	defer func() {
 		if !commit {
-			log.Printf("Error applying ReqBuffer %+v, rolling back...", rb)
+			log.Printf("server: error applying ReqBuffer %+v, rolling back...", rb)
 			rb.db.Rollback()
 		}
 	}()
@@ -241,7 +242,7 @@ func (rb *ReqBuffer) Apply() error {
 		case reqCmd == "sadd":
 			for _, req := range reqArgs {
 				for _, args := range req.Args {
-					log.Printf("datadb: Applying SADD: %+v/%+v", req.Key, args)
+					log.Printf("server: Applying SADD: %+v/%+v", req.Key, args)
 					// TODO(tsileo) error checking the SADD command
 					rb.db.Sadd(req.Key, args...)
 				}
@@ -250,7 +251,7 @@ func (rb *ReqBuffer) Apply() error {
 		case reqCmd == "hmset" || reqCmd == "hset":
 			for _, req := range reqArgs {
 				for _, args := range req.Args {
-					log.Printf("datadb: Applying HMSET: %+v/%+v", req.Key, args)
+					log.Printf("server: Applying HMSET: %+v/%+v", req.Key, args)
 					if _, err := rb.db.Hmset(req.Key, args...); err != nil {
 						return err
 					}					
@@ -262,10 +263,10 @@ func (rb *ReqBuffer) Apply() error {
 				for _, args := range req.Args {
 					index, ierr := strconv.Atoi(args[0])
 					if ierr != nil {
-						log.Printf("datadb: Bad LADD index: %v, err:%v", index, ierr)
+						log.Printf("server: Bad LADD index: %v, err:%v", index, ierr)
 						return ierr
 					}
-					log.Printf("datadb: Applying LADD: %+v/%+v", req.Key, args)
+					log.Printf("server: Applying LADD: %+v/%+v", req.Key, args)
 					if err := rb.db.Ladd(req.Key, index, args[1]); err != nil {
 						return err
 					}
@@ -275,7 +276,7 @@ func (rb *ReqBuffer) Apply() error {
 		case reqCmd == "set":
 			for _, req := range reqArgs {
 				for _, args := range req.Args {
-					log.Printf("datadb: Applying SET: %+v/%+v", req.Key, args)
+					log.Printf("server: Applying SET: %+v/%+v", req.Key, args)
 					if err := rb.db.Put(req.Key, args[0]); err != nil {
 						return err
 					}

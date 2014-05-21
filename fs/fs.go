@@ -124,11 +124,11 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
 	defer con.Close()
 	log.Printf("fs: readDir %v", d.Ref)
 	//d.fs.Client.Dirs.Get(d.Ref).([]*client.Meta)
-	metas, err := d.fs.Client.DirIter(d.Ref)
-	if err != nil {
-		log.Printf("fs: Error readDir %v", err)
-	}
-	for _, meta := range metas {
+	//metas, err := d.fs.Client.DirIter(d.Ref)
+	//if err != nil {
+	//	log.Printf("fs: Error readDir %v", err)
+	//}
+	for _, meta := range d.fs.Client.Dirs.Get(d.Ref).([]*client.Meta) {
 		var dirent fuse.Dirent
 		if meta.Type == "file" {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}

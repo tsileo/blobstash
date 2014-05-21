@@ -2,13 +2,14 @@ package blobsfile
 
 import (
 	"testing"
+	"os"
 )
 
 func TestBlobsIndex(t *testing.T) {
 	index, err := NewIndex("tmp_test_index")
 	check(err)
 	defer index.Close()
-	defer index.Remove()
+	defer os.RemoveAll("tmp_test_index")
 
 	bp := &BlobPos{n:1, offset:5, size:10}
 	bpString := bp.String()
