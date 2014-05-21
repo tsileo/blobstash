@@ -1,9 +1,9 @@
-package backend
+package blobsfile
 
 import (
 	"os"
-	"log"
 	"syscall"
+	"sync"
 	"fmt"
 	"path/filepath"
 )
@@ -21,9 +21,9 @@ type BlobsFileBackend struct {
 	sync.Mutex
 }
 
-func NewBlobsFileBackend(dir string) *LocalBackend {
+func NewBlobsFileBackend(dir string) *BlobsFileBackend {
 	os.Mkdir(dir, 0744)
-	return &BlobsFileBackend{dir}
+	return &BlobsFileBackend{Directory:dir}
 }
 
 // Generate a new blobs file and fallocate a 256MB file.
@@ -38,4 +38,5 @@ func (backend *BlobsFileBackend) allocateBlobsFile(n int) error {
 	if err := syscall.Fallocate(int(f.Fd()), 0x01, 0, 256 << 20); err != nil {
 		return err
 	}
+	return nil
 }
