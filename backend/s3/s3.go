@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"io"
 	"bufio"
-	_ "log"
+	"log"
 
 	ks3 "github.com/kr/s3"
 	"github.com/kr/s3/s3util"
@@ -27,6 +27,7 @@ type S3Backend struct {
 }
 
 func New(bucket string) *S3Backend {
+	log.Println("S3Backend: starting")
 	keys := ks3.Keys{
 		AccessKey: os.Getenv("S3_ACCESS_KEY"),
 		SecretKey: os.Getenv("S3_SECRET_KEY"),
@@ -70,13 +71,13 @@ func (backend *S3Backend) Get(hash string) ([]byte, error) {
 	}
 	defer r.Close()
 	var buf bytes.Buffer
-    w := bufio.NewWriter(&buf)
+	w := bufio.NewWriter(&buf)
 	io.Copy(w, r)
 	return buf.Bytes(), nil
 }
 
-
 func (backend *S3Backend) Exists(hash string) (bool) {
+	// TODO(tsileo) HEAD request!
 	r, err := s3util.Open(backend.bucket(hash), nil)
 	defer r.Close()
 	if err != nil {

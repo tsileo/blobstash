@@ -8,7 +8,7 @@ Links
 	[1] godoc.org/code.google.com/p/go.crypto/nacl/secretbox
 
 */
-package backend
+package encrypt
 
 import (
 	"sync"
@@ -18,8 +18,10 @@ import (
 	"crypto/sha1"
 	"bufio"
 	"log"
+	"io"
+	"crypto/rand"
 
-	"github.com/tsileo/datadatabase/encrypt"
+	"github.com/tsileo/datadatabase/backend"
 
 	"code.google.com/p/go.crypto/nacl/secretbox"
 	"code.google.com/p/snappy-go/snappy"
@@ -27,8 +29,13 @@ import (
 
 var headerSize = 59
 
+func GenerateNonce(nonce *[24]byte) (err error) {
+	_, err = io.ReadFull(rand.Reader, nonce[:])
+	return
+}
+
 type EncryptBackend struct {
-	dest BlobHandler
+	dest backend.BlobHandler
 	// index map the plain text hash to encrypted hash
 	index map[string]string
 
@@ -38,7 +45,7 @@ type EncryptBackend struct {
 	sync.Mutex
 }
 
-// NewEncryptBackend return a backend that encrypt/decrypt blobs on the fly,
+// New return a backend that encrypt/decrypt blobs on the fly,
 // blobs are compressed with snappy before encryption with nacl/secretbox.
 // At startup it scan encrypted blobs to discover the plain hash (the hash of the plain-text/unencrypted data).
 // Blobs are stored in the following format:
@@ -47,12 +54,13 @@ type EncryptBackend struct {
 // [plain hash]\n
 // [encrypted data]
 //
-func NewEncryptBackend(keyPath string, dest BlobHandler) *EncryptBackend {
+func New(keyPath string, dest backend.BlobHandler) *EncryptBackend {
 	log.Println("EncryptBackend: starting")
-	if err := encrypt.LoadKey(keyPath); err != nil {
+	if err := LoadKey(keyPath); err != nil {
 		panic(err)
 	}
-	b := &EncryptBackend{dest: dest, index:make(map[string]string), key:&encrypt.Key}
+	log.Printf("EncryptBackend: loaded key at %v", keyPath)
+	b := &EncryptBackend{dest: dest, index:make(map[string]string), key:&Key}
 	log.Println("EncryptBackend: scanning blobs to discover plain-text blobs hashes")
 	// Scan the blobs to discover the plain text blob hashes and build the in-memory index
 	hashes := make(chan string)
@@ -83,7 +91,7 @@ func (b *EncryptBackend) Put(hash string, rawData []byte) (err error) {
 	// data
 	var nonce [24]byte
 	//out := make([]byte, len(data) + secretbox.Overhead + 24 + headerSize)
-	if err := encrypt.GenerateNonce(&nonce); err != nil {
+	if err := GenerateNonce(&nonce); err != nil {
 		return err
 	}
 	// First we compress the data with snappy
