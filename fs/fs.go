@@ -23,6 +23,7 @@ import (
 	"bazil.org/fuse/fs"
 
 	"github.com/jinzhu/now"
+
 	"github.com/tsileo/datadatabase/client"
 )
 
@@ -121,7 +122,13 @@ func NewDir(cfs *FS, name, ref string) (d *Dir) {
 func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
 	con := d.fs.Client.Pool.Get()
 	defer con.Close()
-	for _, meta := range d.fs.Client.Dirs.Get(d.Ref).([]*client.Meta) {
+	log.Printf("fs: readDir %v", d.Ref)
+	//d.fs.Client.Dirs.Get(d.Ref).([]*client.Meta)
+	metas, err := d.fs.Client.DirIter(d.Ref)
+	if err != nil {
+		log.Printf("fs: Error readDir %v", err)
+	}
+	for _, meta := range metas {
 		var dirent fuse.Dirent
 		if meta.Type == "file" {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}

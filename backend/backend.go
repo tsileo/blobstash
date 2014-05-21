@@ -7,5 +7,6 @@ type BlobHandler interface {
 	Exists(hash string) bool
 	Get(hash string) (data []byte, err error)
 	Enumerate(chan<- string) error
+	Close()
 }
 

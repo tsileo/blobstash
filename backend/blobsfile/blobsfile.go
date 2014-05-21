@@ -32,6 +32,7 @@ type BlobsFileBackend struct {
 }
 
 func New(dir string) *BlobsFileBackend {
+	log.Println("BlobsFileBackend: opening index")
 	os.Mkdir(dir, 0744)
 	index, _ := NewIndex(dir)
 	backend := &BlobsFileBackend{Directory: dir, index: index, files: make(map[int]*os.File)}
@@ -40,6 +41,7 @@ func New(dir string) *BlobsFileBackend {
 }
 
 func (backend *BlobsFileBackend) Close() {
+	log.Println("BlobsFileBackend: closing index")
 	backend.index.Close()
 }
 
@@ -49,6 +51,7 @@ func (backend *BlobsFileBackend) Remove() {
 
 // Open all the blobs-XXXXX (read-only) and open the last for write
 func (backend *BlobsFileBackend) load() error {
+	log.Printf("BlobsFileBackend: scanning BlobsFiles...")
 	n := 0
 	for {
 		err := backend.ropen(n)
@@ -58,6 +61,7 @@ func (backend *BlobsFileBackend) load() error {
 		if err != nil {
 			return err
 		}
+		log.Printf("BlobsFileBackend: %v loaded", backend.filename(n))
 		n++
 	}
 	if n == 0 {
@@ -82,6 +86,7 @@ func (backend *BlobsFileBackend) load() error {
 
 // Open a file for write
 func (backend *BlobsFileBackend) wopen(n int) error {
+	log.Printf("BlobsFileBackend: opening %v for writing", backend.filename(n))
 	// Close the already opened file if any
 	if backend.current != nil {
 		if err := backend.current.Close(); err != nil {
@@ -104,7 +109,6 @@ func (backend *BlobsFileBackend) wopen(n int) error {
 		}
 	}
 	backend.size, err = f.Seek(0, os.SEEK_END)
-	log.Printf("Seeked %v at %v", n, backend.size)
 	if err != nil {
 		return err
 	}
@@ -132,6 +136,7 @@ func (backend *BlobsFileBackend) ropen(n int) error {
 
 // Generate a new blobs file and fallocate a 256MB file.
 func (backend *BlobsFileBackend) allocateBlobsFile() error {
+	log.Printf("BlobsFileBackend: running fallocate on BlobsFile %v", backend.filename(backend.n))
 	// fallocate 256MB
 	if err := syscall.Fallocate(int(backend.current.Fd()), 0x01, 0, maxBlobsFileSize); err != nil {
 		return err
@@ -162,6 +167,7 @@ func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
 	}
 	if backend.size > maxBlobsFileSize {
 		backend.n++
+		log.Printf("BlobsFileBackend: creating a new BlobsFile")
 		if err := backend.wopen(backend.n); err != nil {
 			panic(err)
 		}

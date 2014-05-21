@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"crypto/sha1"
 	"bufio"
+	"log"
 
 	"github.com/tsileo/datadatabase/encrypt"
 
@@ -37,10 +38,12 @@ type EncryptBackend struct {
 // [encrypted data]
 //
 func NewEncryptBackend(keyPath string, dest BlobHandler) *EncryptBackend {
+	log.Println("EncryptBackend: starting")
 	if err := encrypt.LoadKey(keyPath); err != nil {
 		panic(err)
 	}
 	b := &EncryptBackend{dest: dest, index:make(map[string]string), key:&encrypt.Key}
+	log.Println("EncryptBackend: scanning blobs to discover plain-text blobs hashes")
 	// Scan the blobs to discover the plain text blob hashes and build the in-memory index
 	hashes := make(chan string)
 	errs := make(chan error)
@@ -154,4 +157,8 @@ func (b *EncryptBackend) Enumerate(blobs chan<- string) error {
 		blobs <- plainHash
 	}
 	return nil
+}
+
+func (b *EncryptBackend) Close() {
+	b.dest.Close()
 }

@@ -75,7 +75,7 @@ func SetUpCtx(req *redeo.Request) {
 	client := req.Client().RemoteAddr
 	reqName := strings.ToLower(req.Name)
 	if req.Client().Ctx == nil {
-		log.Printf("New connection from: %+v\n", client)
+		log.Printf("server: new connection from: %+v", client)
 		req.Client().Ctx = &ServerCtx{"default", "", dbmanager}
 	}
 	if !strings.HasPrefix(reqName, "b") {
@@ -394,11 +394,11 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 			return err
 		}
 		blob := []byte(req.Args[0])
-		log.Printf("Blob len: %v", len(blob))
+		log.Printf("server: BPUT blob len: %v", len(blob))
 		sha := SHA1(blob)
 		err  = blobBackend.Put(sha, blob)
 		if err != nil {
-			log.Printf("Error BPUT:%v", err)
+			log.Printf("server: Error BPUT:%v", err)
 			return ErrSomethingWentWrong
 		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
@@ -676,7 +676,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		return nil
 	})
 
-	log.Printf("Listening on tcp://%s", srv.Addr())
+	log.Printf("server: listening on tcp://%s", srv.Addr())
 	//log.Fatal(srv.ListenAndServe())
 
 	listener, err := net.Listen("tcp", srv.Addr())
@@ -692,14 +692,14 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 				case _ = <-stop:
 					break
 				case sig := <- cs:
-					log.Printf("Captured %v\n", sig)
+					log.Printf("server: Captured %v\n", sig)
 					break
 				}
-				log.Println("Closing DBs first...")
+				log.Println("server: closing DBs first...")
 				for _, cdb := range dbmanager.DBs {
 					cdb.Close()
 				}
-				log.Println("Server shutting down...")
+				log.Println("server: shutting down...")
 				err := listener.Close()
 				if err != nil {
 					log.Println(err.Error())

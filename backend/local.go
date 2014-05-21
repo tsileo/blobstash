@@ -15,6 +15,10 @@ func (b *LocalBackend) Put(hash string, data []byte) (err error) {
 	return
 }
 
+func (b *LocalBackend) Close() {
+	return
+}
+
 func (b *LocalBackend) blobPath(hash string) string {
 	return filepath.Join(b.Directory, hash)
 }

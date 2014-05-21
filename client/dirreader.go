@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"fmt"
+	"log"
 	"crypto/sha1"
 )
 
@@ -14,12 +15,14 @@ func (client *Client) DirIter(key string) (metas []*Meta, err error) {
 	defer con.Close()
 	members, err := redis.Strings(con.Do("SMEMBERS", key))
 	if err != nil {
+		log.Printf("client: error DirIter SMEMBERS %v", err)
 		return
 	}
 	for _, member := range members {
 		meta, merr := NewMetaFromDB(client.Pool, member)
 		if merr != nil {
-			return metas, merr
+			log.Printf("client: error DirIter fetching meta %v", member)
+			continue
 		}
 		metas = append(metas, meta)
 	}
