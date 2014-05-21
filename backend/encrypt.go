@@ -1,3 +1,13 @@
+/*
+
+Package encrypt implement a backend that encrypt/decrypt on the fly (using nacl/secretbox [1])
+and store blobs in the "dest" backend.
+
+Links
+
+	[1] godoc.org/code.google.com/p/go.crypto/nacl/secretbox
+
+*/
 package backend
 
 import (

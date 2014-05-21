@@ -1,9 +1,12 @@
 package blobsfile
 
 import (
-	"log"
 	"testing"
 	"bytes"
+	"crypto/rand"
+	"crypto/sha1"
+	"fmt"
+	"os"
 )
 
 func check(e error) {
@@ -13,25 +16,45 @@ func check(e error) {
 }
 
 func TestBlobsFileBackend(t *testing.T) {
-	backend := New("/box/tmp_blobsfile_test")
+	backend := New("./tmp_blobsfile_test")
 	//check(err)
 	defer backend.Close()
-	defer backend.Remove()
-	err := backend.load()
+	defer os.RemoveAll("./tmp_blobsfile_test")
+	hash1 := sha1.New()
+	blob1 := make([]byte, 1024)
+	rand.Read(blob1)
+	hash1.Write(blob1)
+	shash1 := fmt.Sprintf("%x", hash1.Sum(nil))
+	hash2 := sha1.New()
+	blob2 := make([]byte, 512)
+	rand.Read(blob2)
+	hash2.Write(blob2)
+	shash2 := fmt.Sprintf("%x", hash2.Sum(nil))
+	
+	err := backend.Put(shash1, blob1)
 	check(err)
-	log.Printf("%+v", backend)
-	err = backend.Put("OMG", []byte("YES"))
+	data, err := backend.Get(shash1)
 	check(err)
-	log.Printf("%+v", backend)
-	data, err := backend.Get("OMG")
+	if !bytes.Equal(data, blob1) {
+		t.Errorf("Error getting blob: %v/%v", data[:10], blob1[:10])
+	}
+
+	err = backend.Put(shash2, blob2)
 	check(err)
-	log.Printf("DATA:%v", string(data))
+	data, err = backend.Get(shash2)
+	check(err)
+	if !bytes.Equal(data, blob2) {
+		t.Errorf("Error getting blob: %v/%v", data[:10], blob2[:10])
+	}	
+	
 }
 
 func TestBlobsFileBlobEncoding(t *testing.T) {
-	data := encodeBlob(5, []byte("ooooo"))
-	size, blob := decodeBlob(data)
-	if size != 5 || !bytes.Equal(blob, []byte("ooooo")) {
-		t.Errorf("Error blob encoding, got size:%v, expected:5, got blob:%v, expected:%v", size, blob, []byte("ooooo"))
+	blob := make([]byte, 512)
+	rand.Read(blob)
+	data := encodeBlob(len(blob), blob)
+	size, blob2 := decodeBlob(data)
+	if size != 512 || !bytes.Equal(blob, blob2) {
+		t.Errorf("Error blob encoding, got size:%v, expected:512, got blob:%v, expected:%v", size, blob2[:10], blob[:10])
 	}
 }

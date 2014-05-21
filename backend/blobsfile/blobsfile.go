@@ -1,3 +1,22 @@
+/*
+
+Package blobsfile implement the BlobsFile backend for storing blobs.
+
+It stores multiple blobs inside "BlobsFile"/fat file/packed file of 256MB (every new file are "fallocate"d).
+Blobs are indexed by a kv file.
+
+Blobs are append to the current file, and when the file exceed the limit, a new fie is created.
+
+Blobs are stored with its size followed by the blob itself, thus allowing re-indexing (not yet implemented).
+
+	Blob size (4 byte, uint32 binary encoded) + Blob data
+
+
+Blobs are indexed by a BlobPos entry (value stored as string):
+
+	Blob Hash => n (BlobFile index) + (space) + offset + (space) + Blob size
+
+*/
 package blobsfile
 
 import (
@@ -105,7 +124,7 @@ func (backend *BlobsFileBackend) wopen(n int) error {
 	backend.n = n
 	if fallocate {
 		if ferr := backend.allocateBlobsFile(); ferr != nil {
-			log.Printf("Error fallocate file %v: %v", backend.filename(n), ferr)
+			log.Printf("BlobsFileBackend: fallocate file %v error: %v", backend.filename(n), ferr)
 		}
 	}
 	backend.size, err = f.Seek(0, os.SEEK_END)
@@ -161,9 +180,12 @@ func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
 	}
 	blobEncoded := encodeBlob(size, data)
 	n, err := backend.current.Write(blobEncoded)
-	backend.size += int64(n + 4)
-	if err != nil || n != size + 4 {
+	backend.size += int64(len(blobEncoded))
+	if err != nil || n != len(blobEncoded) {
 		return fmt.Errorf("Error writing blob (%v,%v,%v)", err, n, size)
+	}
+	if err = backend.current.Sync(); err != nil {
+		panic(err)
 	}
 	if backend.size > maxBlobsFileSize {
 		backend.n++
@@ -206,6 +228,7 @@ func (backend *BlobsFileBackend) Get(hash string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	//log.Printf("BlobsFileBackend: blobPos:%+v", blobPos)
 	if blobPos == nil {
 		return nil, fmt.Errorf("Blob %v not found in index", err)
 	}

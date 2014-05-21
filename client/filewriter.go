@@ -130,7 +130,7 @@ func (client *Client) PutFile(txID, path string) (meta *Meta, wr *WriteResult, e
 		err = errors.New("initial hash and WriteResult aren't the same")
 		return
 	}
-	meta.Hash = wr.Hash
+	meta.Ref = wr.Hash
 	meta.Name = filename
 	meta.Size = wr.Size
 	meta.Type = "file"

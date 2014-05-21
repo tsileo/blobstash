@@ -123,7 +123,7 @@ func (client *Client) Put(path string) (backup *Backup, meta *Meta, wr *WriteRes
 	if err != nil {
 		return
 	}
-	backup = NewBackup(meta.Name, btype, wr.Hash)
+	backup = NewBackup(meta.Name, btype, meta.Hash)
 	if _, err := backup.Save(txID, client.Pool); err != nil {
 		return backup, meta, wr, err
 	}	

@@ -132,10 +132,10 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
 		var dirent fuse.Dirent
 		if meta.Type == "file" {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
-			d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Hash, meta.Size)
+			d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Ref, meta.Size)
 		} else {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-			d.Children[meta.Name] = NewDir(d.fs, meta.Name, meta.Hash)
+			d.Children[meta.Name] = NewDir(d.fs, meta.Name, meta.Ref)
 		}
 		out = append(out, dirent)
 	}
@@ -245,11 +245,11 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 			//meta, _ := backup.Meta(d.fs.Client.Pool)
 			if backup.Type == "file" {
 				dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
-				d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Hash, meta.Size)
+				d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Ref, meta.Size)
 				out = append(out, dirent)
 			} else {
 				dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-				d.Children[meta.Name] = NewDir(d.fs, meta.Name, meta.Hash)
+				d.Children[meta.Name] = NewDir(d.fs, meta.Name, meta.Ref)
 				out = append(out, dirent)
 			}
 		}
@@ -262,7 +262,7 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 			meta := d.fs.Client.Metas.Get(backup.Ref).(*client.Meta)
 			//meta, _ := backup.Meta(d.fs.Client.Pool)
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-			d.Children[meta.Name] = NewSnapshotDir(d.fs, meta.Name, meta.Hash)
+			d.Children[meta.Name] = NewSnapshotDir(d.fs, meta.Name, meta.Ref)
 			out = append(out, dirent)
 		}
 		return out, nil
@@ -274,7 +274,7 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 			meta := d.fs.Client.Metas.Get(backup.Ref).(*client.Meta)
 			//meta, _ := backup.Meta(d.fs.Client.Pool)
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-			d.Children[meta.Name] = NewAtDir(d.fs, meta.Name, meta.Hash)
+			d.Children[meta.Name] = NewAtDir(d.fs, meta.Name, meta.Ref)
 			out = append(out, dirent)
 		}
 		return out, nil
@@ -291,7 +291,7 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 			sname := stime.Format(time.RFC3339)
 			meta := im.Meta
 			out = append(out, fuse.Dirent{Name: sname, Type: fuse.DT_Dir})
-			d.Children[sname] = NewFakeDir(d.fs, meta.Name, meta.Hash)
+			d.Children[sname] = NewFakeDir(d.fs, meta.Name, meta.Ref)
 		}
 		return out, nil
 
@@ -301,11 +301,11 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 		meta := d.fs.Client.Metas.Get(d.Ref).(*client.Meta)
 		if meta.Type == "file" {
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
-			d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Hash, meta.Size)
+			d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Ref, meta.Size)
 			out = append(out, dirent)
 		} else {
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-			d.Children[meta.Name] = NewDir(d.fs, meta.Name, meta.Hash)
+			d.Children[meta.Name] = NewDir(d.fs, meta.Name, meta.Ref)
 			out = append(out, dirent)
 		}
 		return out, nil
@@ -335,6 +335,7 @@ func (f *File) Attr() fuse.Attr {
 }
 
 func (f *File) Read(req *fuse.ReadRequest, res *fuse.ReadResponse, intr fs.Intr) fuse.Error {
+	log.Printf("Read %+v", f)
 	if req.Offset >= int64(f.Size) {
 		return nil
 	}

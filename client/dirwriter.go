@@ -71,7 +71,7 @@ func (client *Client) DirWriterNode(txID string, node *node) {
 				cnode.cond.Wait()
 			}
 			node.wr.Add(cnode.wr)
-			hashes = append(hashes, cnode.wr.Hash)
+			hashes = append(hashes, cnode.meta.Hash)
 			cnode.mu.Unlock()
 		}
 		// Sort the hashes by lexical order so the hash is deterministic
@@ -118,7 +118,7 @@ func (client *Client) DirWriterNode(txID string, node *node) {
 	node.meta.Name = filepath.Base(node.path)
 	node.meta.Type = "dir"
 	node.meta.Size = node.wr.Size
-	node.meta.Hash = node.wr.Hash
+	node.meta.Ref = node.wr.Hash
 	err := node.meta.Save(txID, client.Pool)
 	node.err = err
 	node.cond.Signal()

@@ -54,12 +54,12 @@ func (client *Client) GetDir(key, path string) (rr *ReadResult, err error) {
 	var crr *ReadResult
 	for _, meta := range client.Dirs.Get(key).([]*Meta) {
 		if meta.Type == "file" {
-			crr, err = client.GetFile(meta.Hash, filepath.Join(path, meta.Name))
+			crr, err = client.GetFile(meta.Ref, filepath.Join(path, meta.Name))
 			if err != nil {
 				return
 			}
 		} else {
-			crr, err = client.GetDir(meta.Hash, filepath.Join(path, meta.Name))
+			crr, err = client.GetDir(meta.Ref, filepath.Join(path, meta.Name))
 			if err != nil {
 				return
 			}

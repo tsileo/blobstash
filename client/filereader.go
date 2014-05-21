@@ -44,7 +44,7 @@ func (client *Client) GetFile(key, path string) (*ReadResult, error) {
 	}
 	h := sha1.New()
 	meta, _ := NewMetaFromDB(client.Pool, key) 
-	ffile := NewFakeFile(client, meta.Hash, meta.Size)
+	ffile := NewFakeFile(client, meta.Ref, meta.Size)
 	ffilreReader := io.TeeReader(ffile, h)
 	io.Copy(buf, ffilreReader)
 	readResult.Hash = fmt.Sprintf("%x", h.Sum(nil))

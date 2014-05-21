@@ -4,6 +4,7 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"errors"
 	"fmt"
+	"crypto/sha1"
 )
 
 var (
@@ -14,7 +15,15 @@ type Meta struct {
 	Name string `redis:"name"`
 	Type string `redis:"type"`
 	Size int	`redis:"size"`
+	Ref string	`redis:"ref"`
 	Hash string `redis:"-"`
+}
+
+func metaKey(filename, hash string) string {
+	sha := sha1.New()
+	sha.Write([]byte(filename))
+	sha.Write([]byte(hash))
+	return fmt.Sprintf("%x", sha.Sum(nil))
 }
 
 func NewMetaFromDB(pool *redis.Pool, key string) (m *Meta, err error) {
@@ -47,9 +56,7 @@ func (m *Meta) Save(txID string, pool *redis.Pool) error {
 	if _, err := con.Do("TXINIT", txID); err != nil {
 		return err
 	}
-	if m.Hash == "" {
-		return errors.New("Meta error: hash not set")
-	}
+	m.Hash = metaKey(m.Name, m.Ref)
 	cnt, err := redis.Int(con.Do("HLEN", m.Hash))
 	if err != nil {
 		return err
@@ -57,7 +64,7 @@ func (m *Meta) Save(txID string, pool *redis.Pool) error {
 	if cnt != 0 {
 		return nil
 	}
-	_, err = con.Do("HMSET", m.Hash, "name", m.Name, "type", m.Type, "size", m.Size)
+	_, err = con.Do("HMSET", m.Hash, "name", m.Name, "type", m.Type, "size", m.Size, "ref", m.Ref)
 	return err
 }
 
