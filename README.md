@@ -9,9 +9,8 @@ Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com
 
 ## Features:
  
-- Snapshots
 - Content addressed, files are split into blobs, and retrieved by hash
-- Incremental backups/data deduplication
+- Incremental backups/snapshots thanks to data deduplication
 - Server handles uploading/downloading blobs to/from different storage
 - Client only query the server and send blobs to it (the client take care of chunking/building blobs).
 - Read-only FUSE file system to navigate backups/snapshots
@@ -31,6 +30,8 @@ If something has gone wrong, the transaction is discarded. If everything is OK, 
 
 A **backup** represents the state of the file/directory at a given time, it also holds a reference to a **meta**. attached to it.
 
+The hash of a backup is: SHA1(hash + timestamp).
+
 ### Snapshots
 
 Multiple **backups** of the same file/directory form a **snapshot**. If you backup a directory only once, it will create a **snapshot** with 1 **backup** and so on.
@@ -47,6 +48,8 @@ A **meta** (stored as a hash) holds the file/directory metadata, like filename, 
 
 Multiple **backups** may refers to the same **meta** if the content is the same.
 
+The Hash of a meta is: SHA1(filename + file hash).
+
 ### Databases
 
 **Databases** are actually different kv databases (hold the index), so you can export/import the **meta** data to be backup along with **blobs**.
@@ -55,13 +58,14 @@ A **database** is tied to a **backend**.
 
 ### Backend
 
-A **backend** handle blobs operation (local/s3/glacier).
+A **backend** handle blobs operation (blobsfile/s3/encrypt/mirror/remote).
 
 - Put
 - Exists
 - Get
 - Enumerate
 
+You can combine backend as you wish, e.g. Mirror( Encrypt( S3() ), BlobsFile() ).
 
 ## Getting Started
 
@@ -119,7 +123,8 @@ A hash contains the backup parts reference, an ordered list of the files hash bl
 
 ## Supported storages
 
-- Local/SFTP
-- S3 (not started yet)
+- Local
+- S3
+- A remote DataDB instance
 - Glacier (not started yet)
 - Submit a pull request!
