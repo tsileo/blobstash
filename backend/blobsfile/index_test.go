@@ -4,12 +4,6 @@ import (
 	"testing"
 )
 
-func check(e error) {
-	if e != nil {
-		panic(e)
-	}
-}
-
 func TestBlobsIndex(t *testing.T) {
 	index, err := NewIndex("tmp_test_index")
 	check(err)
