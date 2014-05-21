@@ -5,12 +5,18 @@ import (
 	"syscall"
 	"sync"
 	"fmt"
+	"io"
 	"path/filepath"
 	"log"
+	"encoding/binary"
 )
+
+const maxBlobsFileSize = 256 << 20; // 256MB
 
 type BlobsFileBackend struct {
 	Directory string
+
+	loaded bool
 
 	index *BlobsIndex
 
@@ -25,10 +31,12 @@ type BlobsFileBackend struct {
 	sync.Mutex
 }
 
-func NewBlobsFileBackend(dir string) *BlobsFileBackend {
+func New(dir string) *BlobsFileBackend {
 	os.Mkdir(dir, 0744)
 	index, _ := NewIndex(dir)
-	return &BlobsFileBackend{Directory: dir, index: index, files: make(map[int]*os.File)}
+	backend := &BlobsFileBackend{Directory: dir, index: index, files: make(map[int]*os.File)}
+	backend.load()
+	return backend
 }
 
 func (backend *BlobsFileBackend) Close() {
@@ -61,12 +69,14 @@ func (backend *BlobsFileBackend) load() error {
 		if err := backend.ropen(n); err != nil {
 			return err
 		}
+		backend.loaded = true
 		return nil
 	}
 	// Open the last file for write
 	if err := backend.wopen(n - 1); err != nil {
 		return err
 	}
+	backend.loaded = true
 	return nil
 }
 
@@ -103,8 +113,6 @@ func (backend *BlobsFileBackend) wopen(n int) error {
 
 // Open a file for read
 func (backend *BlobsFileBackend) ropen(n int) error {
-	backend.Lock()
-	defer backend.Unlock()
 	_, alreadyOpen := backend.files[n]
 	if alreadyOpen {
 		return fmt.Errorf("File %v already open", n)
@@ -125,7 +133,7 @@ func (backend *BlobsFileBackend) ropen(n int) error {
 // Generate a new blobs file and fallocate a 256MB file.
 func (backend *BlobsFileBackend) allocateBlobsFile() error {
 	// fallocate 256MB
-	if err := syscall.Fallocate(int(backend.current.Fd()), 0x01, 0, 256 << 20); err != nil {
+	if err := syscall.Fallocate(int(backend.current.Fd()), 0x01, 0, maxBlobsFileSize); err != nil {
 		return err
 	}
 	return nil
@@ -136,19 +144,30 @@ func (backend *BlobsFileBackend) filename(n int) string {
 }
 
 func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
+	if !backend.loaded {
+		panic("backend BlobsFileBackend not loaded")
+	}
 	backend.Lock()
 	defer backend.Unlock()
 	size := len(data)
-	// TODO(tsileo) use transactions
-	// TODO(tsileo) => set head HASH size binary encoded
 	blobPos := BlobPos{n: backend.n, offset: int(backend.size), size: int(size)}
 	if err := backend.index.SetPos(hash, blobPos); err != nil {
 		return err
 	}
-	n, err := backend.current.Write(data)
-	backend.size += int64(n)
-	if err != nil || n != size {
-		return fmt.Errorf("Error writing blob (%v,%v,%v)", err, n , size)
+	blobEncoded := encodeBlob(size, data)
+	n, err := backend.current.Write(blobEncoded)
+	backend.size += int64(n + 4)
+	if err != nil || n != size + 4 {
+		return fmt.Errorf("Error writing blob (%v,%v,%v)", err, n, size)
+	}
+	if backend.size > maxBlobsFileSize {
+		backend.n++
+		if err := backend.wopen(backend.n); err != nil {
+			panic(err)
+		}
+		if err := backend.ropen(backend.n); err != nil {
+			panic(err)
+		}
 	}
 	return
 }
@@ -161,16 +180,22 @@ func (backend *BlobsFileBackend) Exists(hash string) bool {
 	return false
 }
 
-func parseBlob(data []byte) (hash string, size int, blob []byte) {
-	
-	return
+func decodeBlob(data []byte) (size int, blob []byte) {
+	size = int(binary.LittleEndian.Uint32(data[0:4]))
+	return size, data[4:]
 }
 
-func encodeBlob(hash string, size int, blob []byte) (data []byte) {
-
+func encodeBlob(size int, blob []byte) (data []byte) {
+	data = make([]byte, len(blob) + 4)
+	binary.LittleEndian.PutUint32(data[:], uint32(size))
+	copy(data[4:], blob)
+	return data
 }
 
 func (backend *BlobsFileBackend) Get(hash string) ([]byte, error) {
+	if !backend.loaded {
+		panic("backend BlobsFileBackend not loaded")
+	}
 	blobPos, err := backend.index.GetPos(hash)
 	if err != nil {
 		return nil, err
@@ -178,13 +203,36 @@ func (backend *BlobsFileBackend) Get(hash string) ([]byte, error) {
 	if blobPos == nil {
 		return nil, fmt.Errorf("Blob %v not found in index", err)
 	}
-	data := make([]byte, blobPos.size)
+	data := make([]byte, blobPos.size + 4)
 	n, err := backend.files[blobPos.n].ReadAt(data, int64(blobPos.offset))
 	if err != nil {
 		return nil, err
 	}
-	if n != blobPos.size {
-		return nil, fmt.Errorf("Bad blob %v size, got %v, expected %v", hash, n, blobPos.size)
+	if n != blobPos.size + 4 {
+		return nil, fmt.Errorf("Error reading blob %v, read %v, expected %v", hash, n, blobPos.size)
 	}
-	return data, nil
+	blobSize, blob := decodeBlob(data)
+	if blobSize != blobPos.size {
+		return nil, fmt.Errorf("Bad blob %v encoded size, got %v, expected %v", hash, n , blobSize)
+	}
+	return blob, nil
+}
+
+func (backend *BlobsFileBackend) Enumerate(blobs chan<- string) error {
+	backend.Lock()
+	defer backend.Unlock()
+	// TODO(tsileo) send the size along the hashes ?
+	defer close(blobs)
+	enum, _, err := backend.index.db.Seek([]byte(""))
+	if err != nil {
+		return err
+	}
+	for {
+		k, _, err := enum.Next()
+		if err == io.EOF {
+			break
+		}
+		blobs <- string(k)
+	}
+	return nil
 }

@@ -63,7 +63,7 @@ func (client *Client) FileWriter(txID, key, path string) (*WriteResult, error) {
 			if !exists {
 				rsha, err := redis.String(con.Do("BPUT", ndata))
 				if err != nil {
-					panic(fmt.Sprintf("DB error: %v", err))
+					panic(fmt.Sprintf("Error BPUT: %v", err))
 				}
 				writeResult.BlobsUploaded++
 				writeResult.SizeUploaded += buf.Len()

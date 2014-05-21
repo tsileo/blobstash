@@ -398,6 +398,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		sha := SHA1(blob)
 		err  = blobBackend.Put(sha, blob)
 		if err != nil {
+			log.Printf("Error BPUT:%v", err)
 			return ErrSomethingWentWrong
 		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
