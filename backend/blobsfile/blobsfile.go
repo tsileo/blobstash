@@ -53,7 +53,10 @@ type BlobsFileBackend struct {
 func New(dir string) *BlobsFileBackend {
 	log.Println("BlobsFileBackend: opening index")
 	os.Mkdir(dir, 0744)
-	index, _ := NewIndex(dir)
+	index, err := NewIndex(dir)
+	if err != nil {
+		panic(err)
+	}
 	backend := &BlobsFileBackend{Directory: dir, index: index, files: make(map[int]*os.File)}
 	backend.load()
 	return backend
@@ -248,6 +251,9 @@ func (backend *BlobsFileBackend) Get(hash string) ([]byte, error) {
 }
 
 func (backend *BlobsFileBackend) Enumerate(blobs chan<- string) error {
+	if !backend.loaded {
+		panic("backend BlobsFileBackend not loaded")
+	}
 	backend.Lock()
 	defer backend.Unlock()
 	// TODO(tsileo) send the size along the hashes ?

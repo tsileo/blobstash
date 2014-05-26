@@ -73,6 +73,7 @@ import (
 	"github.com/tsileo/datadatabase/db"
 	"sync"
 	"strings"
+	"fmt"
 	"log"
 	"strconv"
 	"encoding/json"
@@ -112,6 +113,7 @@ func (txm *TxManager) GetReqBuffer(name string) *ReqBuffer {
 	rb, rbExists := txm.Txs[name]
 	if !rbExists {
 		txm.Txs[name] = NewReqBuffer(txm.db, txm.blobBackend)
+		//go txm.Txs[name].Load()
 		return txm.Txs[name]
 	}
 	return rb
@@ -168,19 +170,26 @@ func (rb *ReqBuffer) Save() error {
 	if rb.reqCnt == 0 {
 		return nil
 	}
-
-	if err := rb.Apply(); err != nil {
-		return err
-	}
+	//if err := rb.Apply(); err != nil {
+	//	return err
+	//}
 	h, d := rb.JSON()
 	log.Printf("server: Meta blob:%v (%v commands, len:%v) written\n", h, rb.reqCnt, len(d))
 	rb.Reset()
-	return rb.blobBackend.Put(h, d)
+	if err := rb.blobBackend.Put(h, d); err != nil {
+		return err
+	}
+	if cnt := rb.db.Sadd("_meta", h); cnt != 1 {
+		return fmt.Errorf("Error adding the meta blob %v to _meta list", h)
+	}
+	return nil
 }
 
 // Enumerate every meta blobs filename and check if the data is already indexed.
 func (rb *ReqBuffer) Load() error {
 	log.Printf("server: scanning meta blobs")
+	//rb.Lock()
+	//defer rb.Unlock()
 	hashes := make(chan string)
 	errs := make(chan error)
 	go func() {
@@ -190,7 +199,7 @@ func (rb *ReqBuffer) Load() error {
 	for hash := range hashes {
 		cnt := rb.db.Sismember("_meta", hash)
 		if cnt == 0 {
-			log.Printf("server: found a Meta blob not loaded %v\n", hash)
+			log.Printf("server: meta blob %v not loaded", hash)
 			data, berr := rb.blobBackend.Get(hash)
 			if berr != nil {
 				return berr
@@ -205,11 +214,14 @@ func (rb *ReqBuffer) Load() error {
 			if err := NewReqBufferWithData(rb.db, rb.blobBackend, res).Apply(); err != nil {
 				return err
 			}
+			log.Printf("server: meta blob %v applied", hash)
 		}
 	}
 	if err := <-errs; err != nil {
+		log.Printf("server: aborting scan, err:%v", err)
 		return err
 	}
+	log.Printf("server: scan done")
 	return nil
 }
 

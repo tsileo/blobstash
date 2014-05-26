@@ -131,6 +131,7 @@ var loadMetaBlobs sync.Once
 var dbmanager *DBsManager
 
 func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backend.BlobHandler, testMode bool, stop chan bool) {
+	log.Println("server: starting...")
 	dbmanager = NewDBsManager(dbpath, metaBackend, testMode)
 	srv := redeo.NewServer(&redeo.Config{Addr: addr})
 	srv.HandleFunc("ping", func(out *redeo.Responder, _ *redeo.Request) error {
@@ -190,6 +191,11 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		if err != nil {
 			return err
 		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
+		err  = cdb.Put(req.Args[0], req.Args[1])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
 		out.WriteOK()
 		return nil
 	})
@@ -224,7 +230,14 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		if err != nil {
 			return err
 		}
-		out.WriteOK()
+		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
+		cmdArgs := make([]string, len(req.Args)-1)
+		copy(cmdArgs, req.Args[1:])
+		cnt := cdb.Sadd(req.Args[0], cmdArgs...)
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		out.WriteInt(cnt)
 		return nil
 	})
 	srv.HandleFunc("scard", func(out *redeo.Responder, req *redeo.Request) error {
@@ -268,7 +281,12 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		if err != nil {
 			return err
 		}
-		out.WriteOK()
+		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
+		cnt, err  := cdb.Hset(req.Args[0], req.Args[1], req.Args[2])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		out.WriteInt(cnt)
 		return nil
 	})
 	srv.HandleFunc("hmset", func(out *redeo.Responder, req *redeo.Request) error {
@@ -277,7 +295,14 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		if err != nil {
 			return err
 		}
-		out.WriteOK()
+		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
+		cmdArgs := make([]string, len(req.Args)-1)
+		copy(cmdArgs, req.Args[1:])
+		cnt, err  := cdb.Hmset(req.Args[0], cmdArgs...)
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		out.WriteInt(cnt)
 		return nil
 	})
 	srv.HandleFunc("hlen", func(out *redeo.Responder, req *redeo.Request) error {
@@ -456,6 +481,16 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		if err != nil {
 			return err
 		}
+		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
+		cindex, err := strconv.Atoi(req.Args[1])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		err  = cdb.Ladd(req.Args[0], cindex, req.Args[2])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		log.Printf("ladd done")
 		out.WriteOK()
 		return nil
 	})
@@ -627,6 +662,20 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		return nil
 	})
 
+	srv.HandleFunc("init", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 0)
+		if err != nil {
+			return err
+		}
+		txID := req.Client().Ctx.(*ServerCtx).TxID
+		if err := req.Client().Ctx.(*ServerCtx).GetReqBuffer(txID).Load(); err != nil {
+			return ErrSomethingWentWrong
+		}
+		out.WriteOK()
+		return nil
+	})
+
 	srv.HandleFunc("txinit", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckMinArgs(req, 0)
@@ -699,6 +748,9 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 				for _, cdb := range dbmanager.DBs {
 					cdb.Close()
 				}
+				log.Println("server: closing backends...")
+				blobBackend.Close()
+				metaBackend.Close()
 				log.Println("server: shutting down...")
 				err := listener.Close()
 				if err != nil {

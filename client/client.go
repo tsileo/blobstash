@@ -104,6 +104,10 @@ func (client *Client) Put(path string) (backup *Backup, meta *Meta, wr *WriteRes
 		}
 		con.Close()
 	}()
+	_, err = con.Do("INIT")
+	if err != nil {
+		return
+	}
 	txID, err := redis.String(con.Do("TXINIT"))
 	if err != nil {
 		return
@@ -126,7 +130,7 @@ func (client *Client) Put(path string) (backup *Backup, meta *Meta, wr *WriteRes
 	backup = NewBackup(meta.Name, btype, meta.Hash)
 	if _, err := backup.Save(txID, client.Pool); err != nil {
 		return backup, meta, wr, err
-	}	
+	}
 	_, err = con.Do("TXCOMMIT")
 	if err == nil {
 		commit = true
