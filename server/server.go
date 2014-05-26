@@ -423,7 +423,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		sha := SHA1(blob)
 		err  = blobBackend.Put(sha, blob)
 		if err != nil {
-			log.Printf("server: Error BPUT:%v", err)
+			log.Printf("server: Error BPUT:%v\nBlob %v:%v", err, sha, blob)
 			return ErrSomethingWentWrong
 		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
@@ -438,6 +438,11 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		if err != nil {
 			return err
 		}
+		// Handle empty blob
+		if req.Args[0] == "da39a3ee5e6b4b0d3255bfef95601890afd80709" {
+			out.WriteString("")
+			return nil
+		}
 		blob, err  := blobBackend.Get(req.Args[0])
 		if err != nil {
 			log.Printf("Error bget %v: %v", req.Args[0], err)
@@ -451,6 +456,11 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		err := CheckArgs(req, 1)
 		if err != nil {
 			return err
+		}
+		// Handle empty blob
+		if req.Args[0] == "da39a3ee5e6b4b0d3255bfef95601890afd80709" {
+			out.WriteInt(1)
+			return nil
 		}
 		exists := blobBackend.Exists(req.Args[0])
 		res := 0
