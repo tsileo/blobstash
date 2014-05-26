@@ -122,7 +122,7 @@ func NewDir(cfs *FS, name, ref string) (d *Dir) {
 func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
 	con := d.fs.Client.Pool.Get()
 	defer con.Close()
-	log.Printf("fs: readDir %v", d.Ref)
+	//log.Printf("fs: readDir %v", d.Ref)
 	//d.fs.Client.Dirs.Get(d.Ref).([]*client.Meta)
 	//metas, err := d.fs.Client.DirIter(d.Ref)
 	//if err != nil {
@@ -335,7 +335,7 @@ func (f *File) Attr() fuse.Attr {
 }
 
 func (f *File) Read(req *fuse.ReadRequest, res *fuse.ReadResponse, intr fs.Intr) fuse.Error {
-	log.Printf("Read %+v", f)
+	//log.Printf("Read %+v", f)
 	if req.Offset >= int64(f.Size) {
 		return nil
 	}

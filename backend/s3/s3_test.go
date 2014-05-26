@@ -13,6 +13,6 @@ func check(e error) {
 }
 
 func TestS3Backend(t *testing.T) {
-	b := New("thomassileotestdatadb2")
+	b := New("thomassileotestdatadb3")
 	backend.Test(t, b)
 }

@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/tsileo/datadatabase/server"
-	"github.com/tsileo/datadatabase/backend"
 	"github.com/tsileo/datadatabase/backend/blobsfile"
 )
 
@@ -12,6 +11,7 @@ func main() {
 	blobBackend := blobsfile.New("/box/tmp_blobsfile")
 	defer blobBackend.Close()
 	//encBlobBackend := backend.NewEncryptBackend(keyPath, blobBackend)
-	metaBackend := backend.NewLocalBackend("./tmp_meta3")
+	metaBackend := blobsfile.New("/box/tmp_blobsfile_meta")
+	defer metaBackend.Close()
 	server.New("127.0.0.1:9736", "./tmp_db3", blobBackend, metaBackend, false, stop)
 }

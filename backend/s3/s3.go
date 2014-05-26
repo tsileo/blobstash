@@ -14,11 +14,35 @@ import (
 	"io"
 	"bufio"
 	"log"
+	"time"
+	"net/http"
 
 	ks3 "github.com/kr/s3"
 	"github.com/kr/s3/s3util"
 	"sync"
 )
+
+func s3Exists(url string, c *s3util.Config) (bool, error) {
+	if c == nil {
+		c = s3util.DefaultConfig
+	}
+	// TODO(kr): maybe parallel range fetching
+	r, _ := http.NewRequest("HEAD", url, nil)
+	r.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
+	c.Sign(r, *c.Keys)
+	client := c.Client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(r)
+	if err != nil {
+		return false, err
+	}
+	if resp.StatusCode != 200 {
+		return false, fmt.Errorf("Bad response: %+v", resp)
+	}
+	return true, nil
+}
 
 type S3Backend struct {
 	Bucket string
@@ -78,12 +102,8 @@ func (backend *S3Backend) Get(hash string) ([]byte, error) {
 
 func (backend *S3Backend) Exists(hash string) (bool) {
 	// TODO(tsileo) HEAD request!
-	r, err := s3util.Open(backend.bucket(hash), nil)
-	defer r.Close()
-	if err != nil {
-		return false
-	}
-	return true
+	r, _ := s3Exists(backend.bucket(hash), nil)
+	return r
 }
 
 func (backend *S3Backend) Enumerate(blobs chan<- string) error {

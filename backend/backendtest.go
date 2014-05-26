@@ -77,10 +77,14 @@ func Test(t *testing.T, b BlobHandler) {
 		}
 	}
 
-	t.Logf("Testing Get non-existent")
-	neBlob, err := b.Get("d9fb9b3717dbf4cf657b503c0a4f42469309359a")
-	if neBlob != nil || err == nil {
-		t.Fatalf("No blob should be returned")	
+	t.Logf("Testing Exists")
+
+	if res := b.Exists("d9fb9b3717dbf4cf657b503c0a4f42469309359a"); res {
+		t.Fatalf(fmt.Sprintf("Blob %v shouldn't exists", "d9fb9b3717dbf4cf657b503c0a4f42469309359a"))
+	}
+
+	if res := b.Exists(eblobs[0]); !res {
+		t.Fatalf(fmt.Sprintf("Blob %v should exists", eblobs[0]))
 	}
 
 	t.Logf("Testing Enumerate")
