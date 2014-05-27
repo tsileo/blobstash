@@ -11,10 +11,12 @@ import (
 	"os"
 	"bytes"
 	"fmt"
+	"encoding/xml"
 	"io"
 	"bufio"
 	"log"
 	"time"
+	"strings"
 	"net/http"
 
 	ks3 "github.com/kr/s3"
@@ -22,12 +24,13 @@ import (
 	"sync"
 )
 
-func Do(verb, url string, c *s3util.Config) (int, error) {
+func do(verb, url string, body io.Reader, c *s3util.Config) (int, error) {
 	if c == nil {
 		c = s3util.DefaultConfig
 	}
 	// TODO(kr): maybe parallel range fetching
-	r, _ := http.NewRequest(verb, url, nil)
+	r, err := http.NewRequest(verb, url, body)
+	//r.ContentLength = 
 	r.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
 	c.Sign(r, *c.Keys)
 	client := c.Client
@@ -42,19 +45,23 @@ func Do(verb, url string, c *s3util.Config) (int, error) {
 		var buf bytes.Buffer
 		io.Copy(&buf, resp.Body)
 		resp.Body.Close()
-		return resp.StatusCode, fmt.Errorf("Bad response code for query %v/%v, %v: %+v", verb, url, resp.StatusCode, buf.String())
+		return resp.StatusCode, fmt.Errorf("Bad response code for query %v/%v, %v: %+v",
+			verb, url, resp.StatusCode, buf.String())
 	}
 	return resp.StatusCode, nil
 }
 
 type S3Backend struct {
 	Bucket string
+	Location string
+	BucketURL string
 	keys *ks3.Keys
 	sync.Mutex
 }
 
-func New(bucket string) *S3Backend {
-	log.Println("S3Backend: starting")
+func New(bucket, location string) *S3Backend {
+	log.Printf("S3Backend: starting")
+	log.Printf("s3Backend: bucket:%v/location:%v", bucket, location)
 	keys := ks3.Keys{
 		AccessKey: os.Getenv("S3_ACCESS_KEY"),
 		SecretKey: os.Getenv("S3_SECRET_KEY"),
@@ -62,7 +69,7 @@ func New(bucket string) *S3Backend {
 
 	s3util.DefaultConfig.AccessKey = keys.AccessKey
 	s3util.DefaultConfig.SecretKey = keys.SecretKey
-	backend := &S3Backend{Bucket: bucket, keys: &keys}
+	backend := &S3Backend{Bucket: bucket, Location: location, keys: &keys}
 	if err := backend.load(); err != nil {
 		panic(fmt.Errorf("Error loading %T: %v", backend, err))
 	}
@@ -70,27 +77,82 @@ func New(bucket string) *S3Backend {
 }
 
 func (backend *S3Backend) bucket(key string) string {
-	return fmt.Sprintf("https://%v.s3.amazonaws.com/%v", backend.Bucket, key)
+	//"https://%v.s3.amazonaws.com/%v"
+	return fmt.Sprintf("https://%v.%v/%v", backend.Bucket, backend.BucketURL, key)
 }
 
 func (backend *S3Backend) Close() {
 	return
 }
 
+type CreateBucketConfiguration struct {
+	XMLName	xml.Name	`xml:"CreateBucketConfiguration"`
+	Xmlns	string	`xml:"xmlns,attr"`
+	LocationConstraint	string	`xml:"LocationConstraint"`
+}
+
+type LocationConstraint struct {
+	XMLName  xml.Name `xml:"LocationConstraint"`
+	Location string   `xml:",chardata"`
+}
+
+const s3Xmlns = "http://s3.amazonaws.com/doc/2006-03-01/"
+
+func NewCreateBucketConfiguration(location string) io.Reader {
+	if location == "" {
+		return nil
+	}
+	conf := &CreateBucketConfiguration{Xmlns: s3Xmlns, LocationConstraint: location}
+	out, err := xml.Marshal(conf)
+	if err != nil {
+		panic(err)
+	}
+	return strings.NewReader(string(out))
+}
+
+func (backend *S3Backend) bucketLocation(bucket string) (string, error) {
+	c := s3util.DefaultConfig
+	r, _ := http.NewRequest("GET", fmt.Sprintf("https://%v.s3.amazonaws.com?location", backend.Bucket), nil)
+	//r.ContentLength = 
+	r.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
+	c.Sign(r, *c.Keys)
+	client := c.Client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(r)
+	if err != nil {
+		return "", err
+	}
+	var locationConstraint LocationConstraint
+	if err := xml.NewDecoder(resp.Body).Decode(&locationConstraint); err != nil {
+		return "", err
+	}
+	if locationConstraint.Location == "" {
+		return "s3.amazonaws.com", nil
+	}
+	return fmt.Sprintf("s3-%v.amazonaws.com", locationConstraint.Location), nil
+}
+
 func (backend *S3Backend) load() error {
 	log.Println("S3Backend: checking if backend exists")
-	exists, err := Do("HEAD", backend.bucket(""), nil)
+	exists, err := do("HEAD", "https://" + backend.Bucket + ".s3.amazonaws.com", nil, nil)
 	if err != nil {
 		return err
 	}
-	if exists != 200 {
+	if exists == 404 {
 		log.Printf("S3Backend: creating bucket %v", backend.Bucket)
-		created, err := Do("PUT", backend.bucket(""), nil)
+		created, err := do("PUT", "https://" + backend.Bucket + ".s3.amazonaws.com", NewCreateBucketConfiguration(backend.Location), nil)
 		if created != 200 || err != nil {
 			log.Println("S3Backend: error creating bucket: %v", err)
 			return err
 		}
 	}
+	burl, err := backend.bucketLocation(backend.Bucket)
+	if err != nil {
+		return err
+	}
+	backend.BucketURL = burl
 	return nil
 }
 
@@ -125,7 +187,7 @@ func (backend *S3Backend) Get(hash string) ([]byte, error) {
 }
 
 func (backend *S3Backend) Exists(hash string) (bool) {
-	r, err := Do("HEAD", backend.bucket(hash), nil)
+	r, err := do("HEAD", backend.bucket(hash), nil, nil)
 	if r == 200 {
 		return true
 	} else if r == 404 {
@@ -137,7 +199,7 @@ func (backend *S3Backend) Exists(hash string) (bool) {
 }
 
 func (backend *S3Backend) Delete(hash string) (error) {
-	_, err := Do("DELETE", backend.bucket(hash), nil)
+	_, err := do("DELETE", backend.bucket(hash), nil, nil)
 	return err
 }
 
@@ -173,5 +235,6 @@ func (backend *S3Backend) Drop() error {
 			return err
 		}
 	}
-	return nil
+	_, err := do("DELETE", backend.bucket(""), nil, nil)
+	return err
 }
