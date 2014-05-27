@@ -9,4 +9,3 @@ type BlobHandler interface {
 	Enumerate(chan<- string) error
 	Close()
 }
-

@@ -13,6 +13,11 @@ func check(e error) {
 }
 
 func TestS3Backend(t *testing.T) {
-	b := New("thomassileotestdatadb3")
+	b := New("thomassileotestdatadb5")
+	defer func() {
+		if err := b.Drop(); err != nil {
+			panic(err)
+		}
+	}()
 	backend.Test(t, b)
 }

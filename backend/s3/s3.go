@@ -22,12 +22,12 @@ import (
 	"sync"
 )
 
-func s3Exists(url string, c *s3util.Config) (bool, error) {
+func Do(verb, url string, c *s3util.Config) (int, error) {
 	if c == nil {
 		c = s3util.DefaultConfig
 	}
 	// TODO(kr): maybe parallel range fetching
-	r, _ := http.NewRequest("HEAD", url, nil)
+	r, _ := http.NewRequest(verb, url, nil)
 	r.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
 	c.Sign(r, *c.Keys)
 	client := c.Client
@@ -36,12 +36,15 @@ func s3Exists(url string, c *s3util.Config) (bool, error) {
 	}
 	resp, err := client.Do(r)
 	if err != nil {
-		return false, err
+		return resp.StatusCode, err
 	}
-	if resp.StatusCode != 200 {
-		return false, fmt.Errorf("Bad response: %+v", resp)
+	if resp.StatusCode != 200 && resp.StatusCode != 204 && resp.StatusCode != 404 {
+		var buf bytes.Buffer
+		io.Copy(&buf, resp.Body)
+		resp.Body.Close()
+		return resp.StatusCode, fmt.Errorf("Bad response code for query %v/%v, %v: %+v", verb, url, resp.StatusCode, buf.String())
 	}
-	return true, nil
+	return resp.StatusCode, nil
 }
 
 type S3Backend struct {
@@ -59,7 +62,11 @@ func New(bucket string) *S3Backend {
 
 	s3util.DefaultConfig.AccessKey = keys.AccessKey
 	s3util.DefaultConfig.SecretKey = keys.SecretKey
-	return &S3Backend{Bucket: bucket, keys: &keys}
+	backend := &S3Backend{Bucket: bucket, keys: &keys}
+	if err := backend.load(); err != nil {
+		panic(fmt.Errorf("Error loading %T: %v", backend, err))
+	}
+	return backend
 }
 
 func (backend *S3Backend) bucket(key string) string {
@@ -68,6 +75,23 @@ func (backend *S3Backend) bucket(key string) string {
 
 func (backend *S3Backend) Close() {
 	return
+}
+
+func (backend *S3Backend) load() error {
+	log.Println("S3Backend: checking if backend exists")
+	exists, err := Do("HEAD", backend.bucket(""), nil)
+	if err != nil {
+		return err
+	}
+	if exists != 200 {
+		log.Printf("S3Backend: creating bucket %v", backend.Bucket)
+		created, err := Do("PUT", backend.bucket(""), nil)
+		if created != 200 || err != nil {
+			log.Println("S3Backend: error creating bucket: %v", err)
+			return err
+		}
+	}
+	return nil
 }
 
 func (backend *S3Backend) Put(hash string, data []byte) error {
@@ -101,9 +125,20 @@ func (backend *S3Backend) Get(hash string) ([]byte, error) {
 }
 
 func (backend *S3Backend) Exists(hash string) (bool) {
-	// TODO(tsileo) HEAD request!
-	r, _ := s3Exists(backend.bucket(hash), nil)
-	return r
+	r, err := Do("HEAD", backend.bucket(hash), nil)
+	if r == 200 {
+		return true
+	} else if r == 404 {
+		return false
+	} else {
+		log.Printf("S3Backend: error performing HEAD request for blob %v, err:%v", hash, err)
+	}
+	return false
+}
+
+func (backend *S3Backend) Delete(hash string) (error) {
+	_, err := Do("DELETE", backend.bucket(hash), nil)
+	return err
 }
 
 func (backend *S3Backend) Enumerate(blobs chan<- string) error {
@@ -123,6 +158,19 @@ func (backend *S3Backend) Enumerate(blobs chan<- string) error {
 		for _, info := range infos {
 			c := info.Sys().(*s3util.Stat)
 			blobs <- c.Key
+		}
+	}
+	return nil
+}
+
+// Delete all keys in a bucket (assumes the directory is flat/no sub-directories).
+func (backend *S3Backend) Drop() error {
+	log.Printf("S3Backend: dropping bucket...")
+	blobs := make(chan string)
+	go backend.Enumerate(blobs)
+	for blob := range blobs {
+		if err := backend.Delete(blob); err != nil {
+			return err
 		}
 	}
 	return nil

@@ -58,7 +58,9 @@ func New(dir string) *BlobsFileBackend {
 		panic(err)
 	}
 	backend := &BlobsFileBackend{Directory: dir, index: index, files: make(map[int]*os.File)}
-	backend.load()
+	if err := backend.load(); err != nil {
+		panic(fmt.Errorf("Error loading %T: %v", backend, err))
+	}
 	return backend
 }
 
