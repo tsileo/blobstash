@@ -41,7 +41,7 @@ func do(verb, url string, body io.Reader, c *s3util.Config) (int, error) {
 	if err != nil {
 		return resp.StatusCode, err
 	}
-	if resp.StatusCode != 200 && resp.StatusCode != 204 && resp.StatusCode != 404 {
+	if resp.StatusCode != 200 && resp.StatusCode != 204 && resp.StatusCode != 404 && resp.StatusCode != 403 {
 		var buf bytes.Buffer
 		io.Copy(&buf, resp.Body)
 		resp.Body.Close()
@@ -98,7 +98,7 @@ type LocationConstraint struct {
 
 const s3Xmlns = "http://s3.amazonaws.com/doc/2006-03-01/"
 
-func NewCreateBucketConfiguration(location string) io.Reader {
+func newCreateBucketConfiguration(location string) io.Reader {
 	if location == "" {
 		return nil
 	}
@@ -134,6 +134,8 @@ func (backend *S3Backend) bucketLocation(bucket string) (string, error) {
 	return fmt.Sprintf("s3-%v.amazonaws.com", locationConstraint.Location), nil
 }
 
+// load check if the bucket already exists, if not, will try to create it.
+// It also fetch the bucket location.
 func (backend *S3Backend) load() error {
 	log.Println("S3Backend: checking if backend exists")
 	exists, err := do("HEAD", "https://" + backend.Bucket + ".s3.amazonaws.com", nil, nil)
@@ -142,7 +144,7 @@ func (backend *S3Backend) load() error {
 	}
 	if exists == 404 {
 		log.Printf("S3Backend: creating bucket %v", backend.Bucket)
-		created, err := do("PUT", "https://" + backend.Bucket + ".s3.amazonaws.com", NewCreateBucketConfiguration(backend.Location), nil)
+		created, err := do("PUT", "https://" + backend.Bucket + ".s3.amazonaws.com", newCreateBucketConfiguration(backend.Location), nil)
 		if created != 200 || err != nil {
 			log.Println("S3Backend: error creating bucket: %v", err)
 			return err
