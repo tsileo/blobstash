@@ -28,6 +28,8 @@ import (
 	"path/filepath"
 	"log"
 	"encoding/binary"
+
+	"github.com/bitly/go-simplejson"
 )
 
 const maxBlobsFileSize = 256 << 20; // 256MB
@@ -62,6 +64,10 @@ func New(dir string) *BlobsFileBackend {
 		panic(fmt.Errorf("Error loading %T: %v", backend, err))
 	}
 	return backend
+}
+
+func NewFromConfig(conf *simplejson.Json) *BlobsFileBackend {
+	return New(conf.Get("path").MustString("./backend_blobsfile"))
 }
 
 func (backend *BlobsFileBackend) Close() {

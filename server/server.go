@@ -34,8 +34,7 @@ type DBsManager struct {
 	DBs map[string]*db.DB
 	TxManagers map[string]*TxManager
 	metaBackend backend.BlobHandler
-	mem bool
-	*sync.Mutex
+	sync.Mutex
 }
 
 func (dbm *DBsManager) GetDB(dbname string) *db.DB { 
@@ -43,13 +42,7 @@ func (dbm *DBsManager) GetDB(dbname string) *db.DB {
 	defer dbm.Unlock()
 	cdb, exists := dbm.DBs[dbname]
 	if !exists {
-		var newdb *db.DB
-		var err error
-		if dbm.mem {
-			newdb, err = db.NewMem()
-		} else {
-			newdb, err = db.New(filepath.Join(dbm.dbpath, dbname))
-		}
+		newdb, err := db.New(filepath.Join(dbm.dbpath, dbname))
 		if err != nil {
 			panic(err)
 		}
@@ -123,16 +116,16 @@ func NewID() string {
 	return SHA1(data)
 }
 
-func NewDBsManager(dbpath string, metaBackend backend.BlobHandler, testMode bool) *DBsManager {
+func NewDBsManager(dbpath string, metaBackend backend.BlobHandler) *DBsManager {
 	os.Mkdir(dbpath, 0700)
-	return &DBsManager{dbpath, make(map[string]*db.DB), make(map[string]*TxManager), metaBackend, testMode, &sync.Mutex{}}	
+	return &DBsManager{dbpath, make(map[string]*db.DB), make(map[string]*TxManager), metaBackend, sync.Mutex{}}	
 }
 var loadMetaBlobs sync.Once
 var dbmanager *DBsManager
 
-func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backend.BlobHandler, testMode bool, stop chan bool) {
+func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backend.BlobHandler, stop chan bool) {
 	log.Println("server: starting...")
-	dbmanager = NewDBsManager(dbpath, metaBackend, testMode)
+	dbmanager = NewDBsManager(dbpath, metaBackend)
 	srv := redeo.NewServer(&redeo.Config{Addr: addr})
 	srv.HandleFunc("ping", func(out *redeo.Responder, _ *redeo.Request) error {
 		out.WriteInlineString("PONG")

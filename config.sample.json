@@ -1,0 +1,20 @@
+{
+    "backend-type": "mirror",
+    "backend-args": {
+        "backends": [
+            {
+                "backend-type": "blobsfile",
+                "backend-args": {
+                    "path": "/box/blobsfile_blobs"
+                }
+            },
+            {
+                "backend-type": "s3",
+                "backend-args": {
+                    "bucket": "mybucket",
+                    "location": "eu-west-1"
+                }
+            }
+        ]
+    }
+}

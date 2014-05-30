@@ -1,5 +1,6 @@
 *.key
 .subl*
+config.json
 .fuse*
 draft_*
 tmp_*
