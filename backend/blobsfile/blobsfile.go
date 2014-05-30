@@ -37,6 +37,10 @@ const maxBlobsFileSize = 256 << 20; // 256MB
 
 var (
 	openFdsVar  = expvar.NewMap("blobsfile-open-fds")
+	bytesUploaded = expvar.NewMap("blobsfile-bytes-uploaded")
+	bytesDownloaded = expvar.NewMap("blobsfile-bytes-downloaded")
+	blobsUploaded = expvar.NewMap("blobsfile-blobs-uploaded")
+	blobsDownloaded = expvar.NewMap("blobsfile-blobs-downloaded")
 )
 
 type BlobsFileBackend struct {
@@ -84,6 +88,10 @@ func (backend *BlobsFileBackend) Remove() {
 	backend.index.Remove()
 }
 
+func (backend *BlobsFileBackend) String() string {
+	return fmt.Sprintf("blobsfile-%v", backend.Directory)
+}
+
 // Open all the blobs-XXXXX (read-only) and open the last for write
 func (backend *BlobsFileBackend) load() error {
 	log.Printf("BlobsFileBackend: scanning BlobsFiles...")
@@ -125,7 +133,7 @@ func (backend *BlobsFileBackend) wopen(n int) error {
 	// Close the already opened file if any
 	if backend.current != nil {
 		if err := backend.current.Close(); err != nil {
-			openFdsVar.Add(backend.Directory, 1)
+			openFdsVar.Add(backend.Directory, -1)
 			return err
 		}
 	}
@@ -148,6 +156,7 @@ func (backend *BlobsFileBackend) wopen(n int) error {
 	if err != nil {
 		return err
 	}
+	openFdsVar.Add(backend.Directory, 1)
 	return nil
 }
 
@@ -205,6 +214,9 @@ func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
 	if err = backend.current.Sync(); err != nil {
 		panic(err)
 	}
+	bytesUploaded.Add(backend.Directory, int64(size))
+	blobsUploaded.Add(backend.Directory, 1)
+
 	if backend.size > maxBlobsFileSize {
 		backend.n++
 		log.Printf("BlobsFileBackend: creating a new BlobsFile")
@@ -262,6 +274,8 @@ func (backend *BlobsFileBackend) Get(hash string) ([]byte, error) {
 	if blobSize != blobPos.size {
 		return nil, fmt.Errorf("Bad blob %v encoded size, got %v, expected %v", hash, n , blobSize)
 	}
+	bytesDownloaded.Add(backend.Directory, int64(blobSize))
+	blobsUploaded.Add(backend.Directory, 1)
 	return blob, nil
 }
 

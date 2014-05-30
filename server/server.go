@@ -6,6 +6,7 @@ import (
 	"github.com/tsileo/datadatabase/backend"
 	"log"
 	"fmt"
+	"expvar"
 	"sync"
 	"crypto/sha1"
 	"crypto/rand"
@@ -26,6 +27,10 @@ func handler(w http.ResponseWriter, r *http.Request) {
 var (
 	ErrInvalidDB = errors.New("redeo: invalid DB index")
 	ErrSomethingWentWrong = errors.New("redeo: something went wrong")
+)
+
+var (
+	commandStatsVar  = expvar.NewMap("server-command-stats")
 )
 
 // Hash of an empty file
@@ -81,6 +86,9 @@ func SetUpCtx(req *redeo.Request) {
 		log.Printf("server: new connection from: %+v", client)
 		req.Client().Ctx = &ServerCtx{"default", "", dbmanager}
 	}
+
+	commandStatsVar.Add(req.Name, 1)
+	
 	if !strings.HasPrefix(reqName, "b") {
 		log.Printf("server: %+v command  with args %+v from client: %v\n", req.Name, req.Args, client)
 	} else {

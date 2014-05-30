@@ -15,6 +15,7 @@ import (
 	"errors"
 	"bytes"
 	"fmt"
+	"expvar"
 	"crypto/sha1"
 	"bufio"
 	"log"
@@ -25,6 +26,13 @@ import (
 
 	"code.google.com/p/go.crypto/nacl/secretbox"
 	"code.google.com/p/snappy-go/snappy"
+)
+
+var (
+	bytesUploaded = expvar.NewMap("encrypt-bytes-uploaded")
+	bytesDownloaded = expvar.NewMap("encrypt-bytes-downloaded")
+	blobsUploaded = expvar.NewMap("encrypt-blobs-uploaded")
+	blobsDownloaded = expvar.NewMap("encrypt-blobs-downloaded")
 )
 
 var headerSize = 59
@@ -113,6 +121,8 @@ func (b *EncryptBackend) Put(hash string, rawData []byte) (err error) {
 	b.Lock()
 	b.index[hash] = encHash
 	defer b.Unlock()
+	blobsUploaded.Add(fmt.Sprintf("%v", b.dest), 1)
+	bytesUploaded.Add(fmt.Sprintf("%v", b.dest), int64(len(out.Bytes())))
 	return
 }
 
@@ -166,6 +176,8 @@ func (b *EncryptBackend) Get(hash string) (data []byte, err error) {
 	if err != nil {
 		return data, fmt.Errorf("failed to decode blob %v/%v", hash, ref)
 	}
+	blobsDownloaded.Add(fmt.Sprintf("%v", b.dest), 1)
+	bytesDownloaded.Add(fmt.Sprintf("%v", b.dest), int64(len(enc)))
 	return 
 }
 
