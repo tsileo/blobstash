@@ -8,4 +8,5 @@ type BlobHandler interface {
 	Get(hash string) (data []byte, err error)
 	Enumerate(chan<- string) error
 	Close()
+	String() string
 }

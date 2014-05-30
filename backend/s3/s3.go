@@ -76,6 +76,10 @@ func New(bucket, location string) *S3Backend {
 	return backend
 }
 
+func (backend *S3Backend) String() string {
+	return fmt.Sprintf("s3-%v", backend.Bucket)
+}
+
 func (backend *S3Backend) bucket(key string) string {
 	//"https://%v.s3.amazonaws.com/%v"
 	return fmt.Sprintf("https://%v.%v/%v", backend.Bucket, backend.BucketURL, key)

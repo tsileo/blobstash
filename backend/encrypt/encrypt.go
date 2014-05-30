@@ -93,6 +93,10 @@ func New(keyPath string, dest backend.BlobHandler) *EncryptBackend {
 	return b
 }
 
+func (backend *EncryptBackend) String() string {
+	return fmt.Sprintf("encrypt-%v", backend.dest.String())
+}
+
 func (b *EncryptBackend) Put(hash string, rawData []byte) (err error) {
 	// #datadb/secretbox\n
 	// data hash\n
@@ -121,8 +125,8 @@ func (b *EncryptBackend) Put(hash string, rawData []byte) (err error) {
 	b.Lock()
 	b.index[hash] = encHash
 	defer b.Unlock()
-	blobsUploaded.Add(fmt.Sprintf("%v", b.dest), 1)
-	bytesUploaded.Add(fmt.Sprintf("%v", b.dest), int64(len(out.Bytes())))
+	blobsUploaded.Add(b.dest.String(), 1)
+	bytesUploaded.Add(b.dest.String(), int64(len(out.Bytes())))
 	return
 }
 
@@ -176,8 +180,8 @@ func (b *EncryptBackend) Get(hash string) (data []byte, err error) {
 	if err != nil {
 		return data, fmt.Errorf("failed to decode blob %v/%v", hash, ref)
 	}
-	blobsDownloaded.Add(fmt.Sprintf("%v", b.dest), 1)
-	bytesDownloaded.Add(fmt.Sprintf("%v", b.dest), int64(len(enc)))
+	blobsDownloaded.Add(b.dest.String(), 1)
+	bytesDownloaded.Add(b.dest.String(), int64(len(enc)))
 	return 
 }
 
