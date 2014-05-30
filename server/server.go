@@ -16,11 +16,21 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"net/http"
 )
+
+func handler(w http.ResponseWriter, r *http.Request) {
+    fmt.Fprintf(w, "")
+}
 
 var (
 	ErrInvalidDB = errors.New("redeo: invalid DB index")
 	ErrSomethingWentWrong = errors.New("redeo: something went wrong")
+)
+
+// Hash of an empty file
+var (
+	emptyHash = "7a85f4764bbd6daf1c3545efbbf0f279a6dc0beb"
 )
 
 type ServerCtx struct {
@@ -431,11 +441,6 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		if err != nil {
 			return err
 		}
-		// Handle empty blob
-		if req.Args[0] == "da39a3ee5e6b4b0d3255bfef95601890afd80709" {
-			out.WriteString("")
-			return nil
-		}
 		blob, err  := blobBackend.Get(req.Args[0])
 		if err != nil {
 			log.Printf("Error bget %v: %v", req.Args[0], err)
@@ -449,11 +454,6 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		err := CheckArgs(req, 1)
 		if err != nil {
 			return err
-		}
-		// Handle empty blob
-		if req.Args[0] == "da39a3ee5e6b4b0d3255bfef95601890afd80709" {
-			out.WriteInt(1)
-			return nil
 		}
 		exists := blobBackend.Exists(req.Args[0])
 		res := 0
@@ -493,7 +493,6 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
-		log.Printf("ladd done")
 		out.WriteOK()
 		return nil
 	})
@@ -727,6 +726,10 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		out.WriteOK()
 		return nil
 	})
+
+	log.Printf("server: http server listening on http://0.0.0.0:9737")
+	http.HandleFunc("/", handler)
+    go http.ListenAndServe("0.0.0.0:9737", nil)
 
 	log.Printf("server: listening on tcp://%s", srv.Addr())
 	//log.Fatal(srv.ListenAndServe())

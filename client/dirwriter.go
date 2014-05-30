@@ -77,6 +77,9 @@ func (client *Client) DirWriterNode(txID string, node *node) {
 				cnode.cond.Wait()
 			}
 			node.wr.Add(cnode.wr)
+			if cnode.meta.Hash == "" {
+				panic(fmt.Errorf("bad cnode in DirWriterNode %q: %q", node, cnode))
+			}
 			hashes = append(hashes, cnode.meta.Hash)
 			cnode.mu.Unlock()
 		}
@@ -165,6 +168,9 @@ func (client *Client) PutDir(txID, path string) (meta *Meta, wr *WriteResult, er
 				node.mu.Lock()
 				defer node.mu.Unlock()
 				node.meta, node.wr, node.err = client.PutFile(txID, node.path)
+				if node.err != nil {
+					panic(fmt.Errorf("Error PutFile with node %q", node))
+				}
 				node.cond.Signal()
 			}(f)
 		}
@@ -181,6 +187,9 @@ func (client *Client) PutDir(txID, path string) (meta *Meta, wr *WriteResult, er
 					<-dirSem
 				}()
 				client.DirWriterNode(txID, node)
+				if node.err != nil {
+					panic(fmt.Errorf("Error DirWriterNode with node %q", node))	
+				}
 				// TODO(tsileo) check that r.wr is up to date.
 			}(d)
 		}

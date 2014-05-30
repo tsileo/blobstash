@@ -21,6 +21,7 @@ package blobsfile
 
 import (
 	"os"
+	"expvar"
 	"syscall"
 	"sync"
 	"fmt"
@@ -33,6 +34,10 @@ import (
 )
 
 const maxBlobsFileSize = 256 << 20; // 256MB
+
+var (
+	openFdsVar  = expvar.NewMap("blobsfile-open-fds")
+)
 
 type BlobsFileBackend struct {
 	Directory string
@@ -120,6 +125,7 @@ func (backend *BlobsFileBackend) wopen(n int) error {
 	// Close the already opened file if any
 	if backend.current != nil {
 		if err := backend.current.Close(); err != nil {
+			openFdsVar.Add(backend.Directory, 1)
 			return err
 		}
 	}
@@ -161,6 +167,7 @@ func (backend *BlobsFileBackend) ropen(n int) error {
 		return err
 	}
 	backend.files[n] = f
+	openFdsVar.Add(backend.Directory, 1)
 	return nil
 }
 

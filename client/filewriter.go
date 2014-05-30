@@ -16,6 +16,11 @@ import (
 	
 )
 
+// Hash of an empty file
+var (
+	emptyHash = "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+)
+
 // FileWriter reads the file byte and byte and upload it,
 // chunk by chunk, it also constructs the file index .
 func (client *Client) FileWriter(txID, key, path string) (*WriteResult, error) {
@@ -103,13 +108,14 @@ func (client *Client) PutFile(txID, path string) (meta *Meta, wr *WriteResult, e
 	sha := FullSHA1(path)
 	con := client.Pool.Get()
 	defer con.Close()
+
 	// First we check if the file isn't already uploaded,
 	// if so we skip it.
 	cnt, err := redis.Int(con.Do("LLEN", sha))
 	if err != nil {
 		return
 	}
-	if cnt > 0 {
+	if cnt > 0 || sha == emptyHash {
 		wr = &WriteResult{}
 		wr.Hash = sha
 		wr.AlreadyExists = true

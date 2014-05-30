@@ -15,6 +15,7 @@ Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com
 - Client only query the server and send blobs to it (the client take care of chunking/building blobs).
 - Read-only FUSE file system to navigate backups/snapshots
 - Encryption using [go.crypto/nacl secretbox](http://godoc.org/code.google.com/p/go.crypto/nacl)
+- Take snapshot automatically every x minutes, using a separate client-side daemon (provides Arq/time machine like backup)
 
 ## How it works
 
@@ -118,7 +119,6 @@ A hash contains the backup parts reference, an ordered list of the files hash bl
 - Follow .gitignore file
 - Add a **drop** directory to support upload via FUSE
 - Master/slave replication of metadatas
-- Periodic snapshot/snapshots monitoring
 - A special cold storage backed (using AWS Glacier, can't use glacier since storing blobs with Glacier would cost too much, according to [this article](http://alestic.com/2012/12/s3-glacier-costs)) that would put one archive per snapshots, and keep track of stored blob (incremental backups).
 
 ## Supported storages
