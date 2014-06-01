@@ -68,6 +68,11 @@ func (m *Meta) Save(txID string, pool *redis.Pool) error {
 	return err
 }
 
+func (m *Meta) ComputeHash() {
+	m.Hash = metaKey(m.Name, m.Ref)
+	return
+}
+
 // IsFile returns true if the Meta is a file.
 func (m *Meta) IsFile() bool {
 	if m.Type == "file" {

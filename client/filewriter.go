@@ -143,6 +143,8 @@ func (client *Client) PutFile(txID, path string) (meta *Meta, wr *WriteResult, e
 	// TODO(tsileo) load if it already exits ?
 	if cnt == 0 {
 		err = meta.Save(txID, client.Pool)	
+	} else {
+		meta.ComputeHash()
 	}
 	return
 }

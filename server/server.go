@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"expvar"
 	"sync"
+	"io"
 	"crypto/sha1"
 	"crypto/rand"
+	"time"
 	"net"
 	"errors"
 	"strconv"
@@ -18,11 +20,35 @@ import (
 	"os/signal"
 	"strings"
 	"net/http"
+	"github.com/bitly/go-notify"
 )
 
 func handler(w http.ResponseWriter, r *http.Request) {
     fmt.Fprintf(w, "")
 }
+
+func monitor(w http.ResponseWriter, r *http.Request) {
+	log.Printf("server: starting HTTP monitoring %v", r.RemoteAddr)
+	notifier := w.(http.CloseNotifier).CloseNotify()
+	f, _ := w.(http.Flusher)
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	newCmd := make(chan interface{})
+	notify.Start("monitor_cmd", newCmd)
+	var ls interface{}
+	for {
+		select {
+		case ls = <-newCmd:
+			io.WriteString(w, fmt.Sprintf("data: %v\n\n", ls.(string)))
+			f.Flush()
+		case <-notifier:
+			log.Printf("server: HTTP monitoring %v disconnected", r.RemoteAddr)
+			break
+		}
+	}
+}
+
 
 var (
 	ErrInvalidDB = errors.New("redeo: invalid DB index")
@@ -31,6 +57,8 @@ var (
 
 var (
 	commandStatsVar  = expvar.NewMap("server-command-stats")
+	serverStartedAtVar = expvar.NewString("server-started-at")
+	totalConnectionsReceivedVar = expvar.NewInt("server-total-connections-received")
 )
 
 // Hash of an empty file
@@ -83,17 +111,22 @@ func SetUpCtx(req *redeo.Request) {
 	client := req.Client().RemoteAddr
 	reqName := strings.ToLower(req.Name)
 	if req.Client().Ctx == nil {
-		log.Printf("server: new connection from: %+v", client)
+		totalConnectionsReceivedVar.Add(1)
+		log.Printf("server: new connection from %+v", client)
 		req.Client().Ctx = &ServerCtx{"default", "", dbmanager}
 	}
 
 	commandStatsVar.Add(req.Name, 1)
 	
+	// Send raw cmd over SSE
+	var mCmd string
 	if !strings.HasPrefix(reqName, "b") {
-		log.Printf("server: %+v command  with args %+v from client: %v\n", req.Name, req.Args, client)
+		mCmd = fmt.Sprintf("%+v command  with args %+v from client: %v", req.Name, req.Args, client)
 	} else {
-		log.Printf("server: %+v command from client: %v\n", req.Name, client)
+		mCmd = fmt.Sprintf("%+v command from client: %v", req.Name, client)
 	}
+	go notify.Post("monitor_cmd", mCmd)
+
 	bufferedCmd := map[string]bool{"sadd": true, "hmset": true, "hset": true, "ladd": true, "set": true}
 	// TODO(tsileo) disable writing for these command, just keep them in the buffer
 	_, buffered := bufferedCmd[reqName]
@@ -735,8 +768,10 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		return nil
 	})
 
+	serverStartedAtVar.Set(time.Now().UTC().Format(time.RFC822Z))
 	log.Printf("server: http server listening on http://0.0.0.0:9737")
 	http.HandleFunc("/", handler)
+	http.HandleFunc("/debug/monitor", monitor)
     go http.ListenAndServe("0.0.0.0:9737", nil)
 
 	log.Printf("server: listening on tcp://%s", srv.Addr())
