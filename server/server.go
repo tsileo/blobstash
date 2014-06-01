@@ -116,7 +116,7 @@ func SetUpCtx(req *redeo.Request) {
 	}
 
 	commandStatsVar.Add(req.Name, 1)
-	
+
 	// Send raw cmd over SSE
 	var mCmd string
 	if !strings.HasPrefix(reqName, "b") {

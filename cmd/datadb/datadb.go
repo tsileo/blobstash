@@ -5,6 +5,7 @@ import (
 	"github.com/codegangsta/cli"
 	"github.com/tsileo/datadatabase/client"
 	"github.com/tsileo/datadatabase/fs"
+	"github.com/tsileo/datadatabase/daemon"
 	"fmt"
 )
 
@@ -45,6 +46,16 @@ func main() {
 	    Usage:     "Mount the read-only filesystem to the given path",
 	    Action: func(c *cli.Context) {
 	    	fs.Mount(c.Args().First())
+	    },
+	  },
+	  {
+	    Name:      "daemon",
+	    ShortName: "daemon",
+	    Usage:     "Snapshot daemon",
+	    Action: func(c *cli.Context) {
+	    	client, _ := client.NewClient(ignoredFiles)
+	    	d := daemon.New(client)
+	    	d.Run()
 	    },
 	  },
 	}
