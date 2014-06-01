@@ -109,6 +109,7 @@ type Config struct {
 }
 
 type Job struct {
+	daemonConfig *Config
 	config *ConfigEntry
 	sched cron.Schedule
 	Prev time.Time
@@ -117,6 +118,20 @@ type Job struct {
 
 func NewJob(conf *ConfigEntry, sched cron.Schedule) *Job {
 	return &Job{config: conf, sched: sched}
+}
+
+func (job *Job) ComputeNext(now time.Time) time.Time {
+	if GetConfig().AnacronMode {
+		elapsed := now.Sub(job.Prev)
+		// If AnacronMode is enabled and the elapsed time
+		// since the last run is greater than the scheduled delay,
+		// the job next run is scheduled right now.
+		if !job.Prev.IsZero() && elapsed > job.sched.Delay {
+			job.Next = now
+		}
+	}
+	job.Next = job.sched.Next(now)
+	return
 }
 
 func (j *Job) Key() string {
@@ -186,7 +201,7 @@ func (d *Daemon) Stop() {
 func (d *Daemon) Run() {
 	log.Println("Running...")
 	d.updateJobs()
-	now := time.Now()
+	now := time.Now().UTC()
 	d.running = true
 	var checkTime time.Time
 	for {
@@ -207,7 +222,7 @@ func (d *Daemon) Run() {
 				go job.Run()
 				time.Sleep(1 * time.Second)
 				job.Prev = job.Next
-				job.Next = job.sched.Next(now)
+				job.ComputeNext(now)
 				continue
 			}
 		case <- d.stop:
@@ -233,11 +248,11 @@ func (d *Daemon) updateJobs() {
 		job := NewJob(&snap, spec)
 		_, exists := d.jobsIndex[job.Key()]
 		if !exists {
-			prev := time.Now()
+			prev := time.Now().UTC()
 			if !job.Prev.IsZero() {
 				prev = job.Prev
 			}
-			job.Next = job.sched.Next(prev)
+			job.Next = job.ComputeNext(prev)
 			d.jobsIndex[job.Key()] = job
 			d.jobs = append(d.jobs, job)
 		}
