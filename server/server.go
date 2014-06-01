@@ -29,6 +29,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 func monitor(w http.ResponseWriter, r *http.Request) {
 	log.Printf("server: starting HTTP monitoring %v", r.RemoteAddr)
+	activeMonitorClient.Add(1)
 	notifier := w.(http.CloseNotifier).CloseNotify()
 	f, _ := w.(http.Flusher)
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -44,6 +45,7 @@ func monitor(w http.ResponseWriter, r *http.Request) {
 			f.Flush()
 		case <-notifier:
 			log.Printf("server: HTTP monitoring %v disconnected", r.RemoteAddr)
+			activeMonitorClient.Add(-1)
 			break
 		}
 	}
@@ -59,6 +61,7 @@ var (
 	commandStatsVar  = expvar.NewMap("server-command-stats")
 	serverStartedAtVar = expvar.NewString("server-started-at")
 	totalConnectionsReceivedVar = expvar.NewInt("server-total-connections-received")
+	activeMonitorClient = expvar.NewInt("server-active-monitor-client")
 )
 
 // Hash of an empty file
@@ -782,7 +785,11 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		panic(err)
 	}
 	cs := make(chan os.Signal, 1)
-	signal.Notify(cs, os.Interrupt)
+	signal.Notify(cs, os.Interrupt,
+		syscall.SIGHUP,
+	    syscall.SIGINT,
+	    syscall.SIGTERM,
+	    syscall.SIGQUIT)
 	if stop != nil {
 		go func() {
 			for {
