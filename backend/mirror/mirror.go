@@ -55,9 +55,9 @@ func (backend *MirrorBackend) Put(hash string, data []byte) (err error) {
 		if err := b.Put(hash, data); err != nil {
 			return err
 		}
-		bytesUploaded.Add("total", len(data))
+		bytesUploaded.Add("total", int64(len(data)))
 		blobsUploaded.Add("total", 1)
-		bytesUploaded.Add(b.String(), len(data))
+		bytesUploaded.Add(b.String(), int64(len(data)))
 		blobsUploaded.Add(b.String(), 1)
 	}
 	return
@@ -75,9 +75,9 @@ func (backend *MirrorBackend) Get(hash string) (data []byte, err error) {
 		data, err = b.Get(hash)
 		if err == nil {
 			blobsDownloaded.Add("total", 1)
-			bytesDownloaded.Add("total", len(data))
+			bytesDownloaded.Add("total", int64(len(data)))
 			blobsDownloaded.Add(b.String(), 1)
-			bytesDownloaded.Add(b.String(), len(data))
+			bytesDownloaded.Add(b.String(), int64(len(data)))
 			return
 		} else {
 			log.Printf("MirrorBackend: error fetching blob %v from backend %b", hash, b.String())

@@ -6,14 +6,34 @@ import (
 
 	"github.com/tsileo/datadatabase/backend/blobsfile"
 	"github.com/tsileo/datadatabase/backend/encrypt"
+	"github.com/tsileo/datadatabase/backend/s3"
+	"github.com/tsileo/datadatabase/backend/mirror"
 
 	"github.com/bitly/go-simplejson"
 )
+
+const defaultS3Location = "us-east-1"
 
 // TODO move this into another package and move the new from config here
 
 func NewEncryptFromConfig(conf *simplejson.Json) backend.BlobHandler {
 	return encrypt.New(conf.Get("key-path").MustString(), NewFromConfig(conf.Get("dest")))
+}
+
+func NewS3FromConfig(conf *simplejson.Json) backend.BlobHandler {
+	bucket := conf.Get("bucket").MustString()
+	if bucket == "" {
+		panic(fmt.Errorf("no bucket specified for S3Backend"))
+	}
+	return s3.New(bucket, conf.Get("location").MustString(defaultS3Location))
+}
+
+func NewMirrorFromConfig(conf *simplejson.Json) backend.BlobHandler {
+	backends := []backend.BlobHandler{}
+	for _, b := range conf.Get("backends").MustArray() {
+		backends = append(backends, NewFromConfig(b.(*simplejson.Json)))
+	}
+	return mirror.New(backends...)
 }
 
 func NewFromConfig(conf *simplejson.Json) backend.BlobHandler {
@@ -30,6 +50,10 @@ func NewFromConfig(conf *simplejson.Json) backend.BlobHandler {
 		return blobsfile.NewFromConfig(backendArgs)
 	case backendType == "encrypt":
 		return NewEncryptFromConfig(backendArgs)
+	case backendType == "s3":
+		return NewS3FromConfig(backendArgs)
+	case backendType == "mirror":
+		return NewMirrorFromConfig(backendArgs)
 	default:
 		panic(fmt.Errorf("backend %v unknown", backendType))
 	}
