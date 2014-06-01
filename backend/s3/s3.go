@@ -67,6 +67,10 @@ func New(bucket, location string) *S3Backend {
 		SecretKey: os.Getenv("S3_SECRET_KEY"),
 	}
 
+	if keys.AccessKey == "" || keys.SecretKey == "" {
+		panic("S3_ACCESS_KEY or S3_SECRET_KEY not set")
+	}
+
 	s3util.DefaultConfig.AccessKey = keys.AccessKey
 	s3util.DefaultConfig.SecretKey = keys.SecretKey
 	backend := &S3Backend{Bucket: bucket, Location: location, keys: &keys}
@@ -156,7 +160,7 @@ func (backend *S3Backend) load() error {
 	}
 	burl, err := backend.bucketLocation(backend.Bucket)
 	if err != nil {
-		return err
+		return fmt.Errorf("can't find bucket location: %v", err)
 	}
 	backend.BucketURL = burl
 	return nil

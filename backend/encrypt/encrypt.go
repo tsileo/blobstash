@@ -63,13 +63,15 @@ type EncryptBackend struct {
 // [encrypted data]
 //
 func New(keyPath string, dest backend.BlobHandler) *EncryptBackend {
-	log.Println("EncryptBackend: starting")
+	log.Printf("EncryptBackend: starting with dest %v", dest.String())
 	if err := LoadKey(keyPath); err != nil {
 		panic(err)
 	}
 	log.Printf("EncryptBackend: loaded key at %v", keyPath)
 	b := &EncryptBackend{dest: dest, index:make(map[string]string), key:&Key}
+	log.Printf("EncryptBackend: backend id => %v", b.String())
 	log.Println("EncryptBackend: scanning blobs to discover plain-text blobs hashes")
+	blobsCnt := 0
 	// Scan the blobs to discover the plain text blob hashes and build the in-memory index
 	hashes := make(chan string)
 	errs := make(chan error)
@@ -85,11 +87,13 @@ func New(keyPath string, dest backend.BlobHandler) *EncryptBackend {
 			//return errors.New(fmt.Sprintf("Error reading plain hash from %v, %v", hash, err))
 		}
 		b.index[plainHash] = hash
+		blobsCnt++
 	}
 	if err := <-errs; err != nil {
 		panic(err)
 		//return err
 	}
+	log.Printf("EncryptBackend: %v blobs successfully scanned", blobsCnt)
 	return b
 }
 
