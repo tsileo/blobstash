@@ -1,3 +1,22 @@
+/*
+
+Package daemon implements a cron using robfig/cron parser [1]
+designed to perform snapshots.
+
+Configuration is "hot reloaded" so the daemon doesn't need to be restarted to load the new config.
+
+It stores the last run time in a kv database [2].
+
+The daemon support an "anacron mode" [3] (intended for laptop users)
+where a job will be run if the delay has been exceeded.
+
+Links
+
+	[1]: https://github.com/robfig/cron
+	[2]: https://github.com/cznic/kv
+	[3]: http://anacron.sourceforge.net/
+
+*/
 package daemon
 
 import (
@@ -85,6 +104,7 @@ type ConfigEntry struct {
 }
 
 type Config struct {
+	AnacronMode bool `json:"anacron_mode"`
 	Snapshots []ConfigEntry `json:"snapshots"`
 }
 
@@ -101,6 +121,11 @@ func NewJob(conf *ConfigEntry, sched cron.Schedule) *Job {
 
 func (j *Job) Key() string {
 	return fmt.Sprintf("%v-%v", j.config.Path, j.config.Spec)
+}
+
+func (j *Job) Run() error {
+	log.Printf("Running job %+v", j)
+	return nil
 }
 
 func opts() *kv.Options {
@@ -159,14 +184,12 @@ func (d *Daemon) Stop() {
 }
 
 func (d *Daemon) Run() {
-	log.Println("Run")
-	log.Printf("Initial conf: %+v", GetConfig())
+	log.Println("Running...")
 	d.updateJobs()
 	now := time.Now()
 	d.running = true
 	var checkTime time.Time
 	for {
-		log.Printf("for:")
 		sort.Sort(byTime(d.jobs))
 		if len(d.jobs) == 0 {
 			// Sleep for 5 years until the config change
@@ -177,12 +200,11 @@ func (d *Daemon) Run() {
 		}
 		select {
 		case now = <- time.After(checkTime.Sub(now)):
-			log.Printf("CHECK %+v/now %v", d.jobs[0], now)
 			for _, job := range d.jobs {
-				if job.Next.Equal(now) {
+				if now.Sub(job.Next) < 0 {
 					break
 				}
-				log.Printf("Running job %+v", job)
+				go job.Run()
 				time.Sleep(1 * time.Second)
 				job.Prev = job.Next
 				job.Next = job.sched.Next(now)
@@ -192,7 +214,7 @@ func (d *Daemon) Run() {
 			d.running = false
 			return
 		case <- configUpdated:
-			log.Println("configUpdated")
+			log.Println("config updated")
 			d.updateJobs()
 		}
 	}
