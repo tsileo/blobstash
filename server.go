@@ -13,7 +13,6 @@ import (
 func main() {
 	stop := make(chan bool)
 
-	//keyPath := "/home/thomas/genkey/datadb_key"
 	dat, err := ioutil.ReadFile("config.json")
 	if err != nil {
 		panic(fmt.Errorf("can't read config file: %v", err))

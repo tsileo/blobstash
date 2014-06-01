@@ -15,26 +15,37 @@ import (
 type node struct {
 	// root of the snapshot
 	root bool
-	
+
 	// File path/FileInfo
 	path string
 	fi       os.FileInfo
 
 	// Children (if the node is a directory)
 	children []*node
-	
+
 	// Upload result is stored in the node
 	wr *WriteResult
 	meta *Meta
 	err error
-	
+
 	// Used to sync access to the WriteResult/Meta
 	mu sync.Mutex
 	cond sync.Cond
 }
 
+// excluded returns true if the base path match one of the defined shell pattern
+func (client *Client) excluded(path string) bool {
+	for _, ignoredFile := range client.ignoredFiles {
+		matched, _ := filepath.Match(ignoredFile, filepath.Base(path))
+		if matched {
+			return true
+		}
+	}
+	return false
+}
+
 // Recursively read the directory and
-// send/route the files/directories to the according channel for processing  
+// send/route the files/directories to the according channel for processing
 func (client *Client) DirExplorer(path string, pnode *node, files chan<- *node, result chan<- *node) {
 	pnode.mu.Lock()
 	defer pnode.mu.Unlock()
@@ -52,11 +63,14 @@ func (client *Client) DirExplorer(path string, pnode *node, files chan<- *node, 
 			pnode.children = append(pnode.children, n)
 		} else {
 			if fi.Mode() & os.ModeSymlink == 0 {
-				files <- n
-				pnode.children = append(pnode.children, n)
+				if client.excluded(abspath) {
+					log.Printf("DirExplorer: file %v excluded", abspath)
+				} else {
+					files <- n
+					pnode.children = append(pnode.children, n)
+				}
 			}
 		}
-		
 	}
 	pnode.cond.Signal()
 	return
@@ -95,7 +109,7 @@ func (client *Client) DirWriterNode(txID string, node *node) {
 			node.err = err
 			return
 		}
-		// Check if the directory meta already exists 
+		// Check if the directory meta already exists
 		cnt, err := redis.Int(con.Do("SCARD", node.wr.Hash))
 		if err != nil {
 			node.err = err
@@ -144,7 +158,7 @@ func (client *Client) PutDir(txID, path string) (meta *Meta, wr *WriteResult, er
 	}
 	files := make(chan *node)
 	directories := make(chan *node)
-	dirSem := make(chan struct{}, 25)
+	dirSem := make(chan struct{}, 50)
 	fi, _ := os.Stat(abspath)
 	n := &node{root: true, path: abspath, fi: fi}
 	n.cond.L = &n.mu

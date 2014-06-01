@@ -77,7 +77,6 @@ func New(keyPath string, dest backend.BlobHandler) *EncryptBackend {
 	errs := make(chan error)
 	go func() {
 		errs <- b.dest.Enumerate(hashes)
-	
 	}()
 	for hash := range hashes {
 		scanner := b.scanner(hash)

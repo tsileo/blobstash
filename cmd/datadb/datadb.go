@@ -9,6 +9,7 @@ import (
 )
 
 func main() {
+	ignoredFiles := []string{"*~", "*.py[cod]", "*.nohup", "*.log", "tmp_*"}
   	app := cli.NewApp()
   	app.Name = "datadb"
  	app.Usage = "DataDB client"
@@ -22,7 +23,7 @@ func main() {
 	    ShortName: "put",
 	    Usage:     "put a file/directory",
 	    Action: func(c *cli.Context) {
-	    	client, _ := client.NewClient()
+	    	client, _ := client.NewClient(ignoredFiles)
 	    	b, m, wr, err := client.Put(c.Args().First())
 	    	fmt.Printf("b:%+v,m:%+v,wr:%+v,err:%v\n", b, m, wr, err)
 	    },
@@ -32,7 +33,7 @@ func main() {
 	    ShortName: "ls",
 	    Usage:     "List backups",
 	    Action: func(c *cli.Context) {
-	    	client, _ := client.NewClient()
+	    	client, _ := client.NewClient(ignoredFiles)
 	    	metas, _ := client.List()
 	    	for _, m := range metas {
 	    		fmt.Printf("%+v\n", m)

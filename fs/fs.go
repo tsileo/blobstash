@@ -35,7 +35,7 @@ func Mount(mountpoint string) {
 	}
 	defer c.Close()
 	log.Printf("Mounting read-only filesystem on %v\nCtrl+C to unmount.", mountpoint)
-	
+
 	cs := make(chan os.Signal, 1)
 	signal.Notify(cs, os.Interrupt)
 	go func() {
@@ -69,7 +69,7 @@ type FS struct {
 func NewFS() (fs *FS) {
 	// Override supported time format
 	now.TimeFormats = []string{"2006-1-2T15:4:5", "2006-1-2T15:4", "2006-1-2T15", "2006-1-2", "2006-1", "2006"}
-	client, _ := client.NewClient()
+	client, _ := client.NewClient([]string{})
 	fs = &FS{Client: client}
 	return
 }

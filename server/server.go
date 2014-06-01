@@ -122,7 +122,14 @@ func SetUpCtx(req *redeo.Request) {
 	if !strings.HasPrefix(reqName, "b") {
 		mCmd = fmt.Sprintf("%+v command  with args %+v from client: %v", req.Name, req.Args, client)
 	} else {
-		mCmd = fmt.Sprintf("%+v command from client: %v", req.Name, client)
+		switch {
+		case strings.ToLower(reqName) == "bput":
+			mCmd = fmt.Sprintf("%+v (blob len:%v) command from client: %v", req.Name, len(req.Args[0]), client)
+		case strings.ToLower(reqName) == "bexists" || strings.ToLower(reqName) == "bget":
+			mCmd = fmt.Sprintf("%+v (sha:%v) command from client: %v", req.Name, req.Args[0], client)
+		default:
+			mCmd = fmt.Sprintf("%+v command from client: %v", req.Name, client)
+		}
 	}
 	go notify.Post("monitor_cmd", mCmd)
 
@@ -462,7 +469,6 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 			return err
 		}
 		blob := []byte(req.Args[0])
-		log.Printf("server: BPUT blob len: %v", len(blob))
 		sha := SHA1(blob)
 		err  = blobBackend.Put(sha, blob)
 		if err != nil {

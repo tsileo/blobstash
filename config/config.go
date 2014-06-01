@@ -2,14 +2,14 @@ package config
 
 import (
 	"fmt"
-	"github.com/tsileo/datadatabase/backend"
 
+	"github.com/bitly/go-simplejson"
+
+	"github.com/tsileo/datadatabase/backend"
 	"github.com/tsileo/datadatabase/backend/blobsfile"
 	"github.com/tsileo/datadatabase/backend/encrypt"
 	"github.com/tsileo/datadatabase/backend/s3"
 	"github.com/tsileo/datadatabase/backend/mirror"
-
-	"github.com/bitly/go-simplejson"
 )
 
 const defaultS3Location = "us-east-1"
@@ -30,8 +30,8 @@ func NewS3FromConfig(conf *simplejson.Json) backend.BlobHandler {
 
 func NewMirrorFromConfig(conf *simplejson.Json) backend.BlobHandler {
 	backends := []backend.BlobHandler{}
-	for _, b := range conf.Get("backends").MustArray() {
-		backends = append(backends, NewFromConfig(b.(*simplejson.Json)))
+	for index, _ := range conf.Get("backends").MustArray() {
+		backends = append(backends, NewFromConfig(conf.Get("backends").GetIndex(index)))
 	}
 	return mirror.New(backends...)
 }

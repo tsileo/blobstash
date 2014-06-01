@@ -2,6 +2,8 @@ package client
 
 import (
 	"time"
+	"fmt"
+	"path/filepath"
 	"github.com/garyburd/redigo/redis"
 	"github.com/tsileo/datadatabase/lru"
 	"github.com/tsileo/datadatabase/disklru"
@@ -35,9 +37,10 @@ type Client struct {
 	Dirs DirFetcher
 	Metas MetaFetcher
 	uploader chan struct{}
+	ignoredFiles []string
 }
 
-func NewClient() (*Client, error) {
+func NewClient(ignoredFiles []string) (*Client, error) {
 	pool, err := GetDbPool()
 	if err != nil {
 		return nil, err
@@ -46,6 +49,13 @@ func NewClient() (*Client, error) {
 	c.Blobs, err = disklru.New("./tmp_blobs_lru", c.FetchBlob, 536870912)
 	c.Dirs = lru.New(c.FetchDir, 512)
 	c.Metas = lru.New(c.FetchMeta, 512)
+	for _, ignoredFile := range ignoredFiles {
+		_, err := filepath.Match(ignoredFile, "check")
+		if err != nil {
+			return nil, fmt.Errorf("bad ignoredFiles pattern: %v", ignoredFile)
+		}
+	}
+	c.ignoredFiles = ignoredFiles
 	return c, err
 }
 
