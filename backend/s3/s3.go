@@ -77,6 +77,7 @@ func New(bucket, location string) *S3Backend {
 	if err := backend.load(); err != nil {
 		panic(fmt.Errorf("Error loading %T: %v", backend, err))
 	}
+	log.Printf("S3Backend: backend id => %v", backend.String())
 	return backend
 }
 

@@ -13,6 +13,7 @@ import (
 	"crypto/rand"
 	"time"
 	"net"
+	"syscall"
 	"errors"
 	"strconv"
 	"path/filepath"
@@ -62,11 +63,6 @@ var (
 	serverStartedAtVar = expvar.NewString("server-started-at")
 	totalConnectionsReceivedVar = expvar.NewInt("server-total-connections-received")
 	activeMonitorClient = expvar.NewInt("server-active-monitor-client")
-)
-
-// Hash of an empty file
-var (
-	emptyHash = "7a85f4764bbd6daf1c3545efbbf0f279a6dc0beb"
 )
 
 type ServerCtx struct {

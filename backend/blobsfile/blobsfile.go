@@ -72,6 +72,7 @@ func New(dir string) *BlobsFileBackend {
 	if err := backend.load(); err != nil {
 		panic(fmt.Errorf("Error loading %T: %v", backend, err))
 	}
+	log.Printf("BlobsFileBackend: backend id => %v", backend.String())
 	return backend
 }
 

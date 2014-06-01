@@ -1,27 +1,22 @@
 package main
 
 import (
-	_ "io/ioutil"
+	"io/ioutil"
 	"github.com/tsileo/datadatabase/server"
 	
-	_ "github.com/bitly/go-simplejson"
+	"github.com/bitly/go-simplejson"
 
-	_ "github.com/tsileo/datadatabase/config"
-	_ "github.com/tsileo/datadatabase/backend/blobsfile"
-	"github.com/tsileo/datadatabase/backend/s3"
-	"github.com/tsileo/datadatabase/backend/encrypt"
-)
+	"github.com/tsileo/datadatabase/config"
+	"github.com/tsileo/datadatabase/backend/blobsfile"
+	)
 
 func main() {
 	stop := make(chan bool)
 
-	keyPath := "/home/thomas/genkey/datadb_key"
-	blobBackend := encrypt.New(keyPath, s3.New("thomassileodatadbblobst", "eu-west-1"))
-	metaBackend := encrypt.New(keyPath, s3.New("thomassileodatadbmetat", "eu-west-1"))
-	
-	//dat, _ := ioutil.ReadFile("config.json")
-	//conf, _ := simplejson.NewJson(dat)
-	//blobBackend := config.NewFromConfig(conf)
-	//metaBackend := blobsfile.New("/box/blobstoremetas")
+	//keyPath := "/home/thomas/genkey/datadb_key"
+	dat, _ := ioutil.ReadFile("config.json")
+	conf, _ := simplejson.NewJson(dat)
+	blobBackend := config.NewFromConfig(conf)
+	metaBackend := blobsfile.New("/box/blobstoremetas")
 	server.New("127.0.0.1:9736", "./tmp_db", blobBackend, metaBackend, stop)
 }
