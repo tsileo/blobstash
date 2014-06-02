@@ -126,6 +126,6 @@ A hash contains the backup parts reference, an ordered list of the files hash bl
 - Local
 - S3
 - A remote DataDB instance
-- Mirror
+- Mirror (not started yet)
 - Glacier (not started yet)
 - Submit a pull request!

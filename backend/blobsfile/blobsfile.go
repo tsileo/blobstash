@@ -107,6 +107,10 @@ func (backend *BlobsFileBackend) Close() {
 }
 
 func (backend *BlobsFileBackend) Done() error {
+	if backend.writeOnly {
+		// Switch file and delete older file
+		return nil
+	}
 	return nil
 }
 
