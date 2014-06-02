@@ -53,6 +53,8 @@ func (backend *GlacierBackend) Done() error {
 	return nil
 }
 
+// TODO a way to restore
+
 func (backend *GlacierBackend) Put(hash string, data []byte) (err error) {
 	if err := backend.cache.Put(hash, data); err != nil {
 		return err

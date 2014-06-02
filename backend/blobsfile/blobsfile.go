@@ -83,6 +83,7 @@ func New(dir string, compression, writeOnly bool) *BlobsFileBackend {
 	}
 	backend := &BlobsFileBackend{Directory: dir, snappyCompression: compression,
 		index: index, files: make(map[int]*os.File), writeOnly: writeOnly}
+
 	loader := backend.load
 	if backend.writeOnly {
 		loader = backend.loadWriteOnly
