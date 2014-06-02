@@ -8,7 +8,9 @@ Configuration is "hot reloaded" so the daemon doesn't need to be restarted to lo
 It stores the last run time in a kv database [2].
 
 The daemon support an "anacron mode" [3] (intended for laptop users)
-where a job will be run if the delay has been exceeded.
+where a job will be run if the delay has been exceeded (for simple recurring cycle
+like "@every 24h") of if the next schedule is over (for con-like spec,
+but the next schedule will follow the spec).
 
 Links
 
@@ -21,7 +23,9 @@ package daemon
 
 import (
 	"os"
+	"os/signal"
 	"log"
+	"syscall"
 	"sync"
 	"sort"
 	"io/ioutil"
@@ -120,17 +124,36 @@ func NewJob(conf *ConfigEntry, sched cron.Schedule) *Job {
 	return &Job{config: conf, sched: sched}
 }
 
-func (job *Job) ComputeNext(now time.Time) time.Time {
+func (job *Job) ComputeNext(now time.Time) {
+	nowUTC := time.Now().UTC()
+	elapsed := nowUTC.Sub(job.Next)
 	if GetConfig().AnacronMode {
-		elapsed := now.Sub(job.Prev)
-		// If AnacronMode is enabled and the elapsed time
-		// since the last run is greater than the scheduled delay,
-		// the job next run is scheduled right now.
-		if !job.Prev.IsZero() && elapsed > job.sched.Delay {
-			job.Next = now
+		csd, ok := job.sched.(cron.ConstantDelaySchedule)
+		if !ok {
+			// If a job.Next exists check that it isn't over,
+			// if so, trigger the job now.
+			if !job.Next.IsZero() {
+				if elapsed > 0 {
+					job.Next = nowUTC
+				} else {
+
+				}
+				return
+			}
+		} else {
+			elapsed := now.Sub(job.Prev)
+			// If AnacronMode is enabled and the elapsed time
+			// since the last run is greater than the scheduled delay,
+			// the job next run is scheduled right now.
+			if !job.Prev.IsZero() && elapsed > csd.Delay {
+				job.Next = now
+				return
+			}
 		}
 	}
-	job.Next = job.sched.Next(now)
+	if elapsed > 0 {
+		job.Next = job.sched.Next(now).UTC()
+	}
 	return
 }
 
@@ -141,6 +164,41 @@ func (j *Job) Key() string {
 func (j *Job) Run() error {
 	log.Printf("Running job %+v", j)
 	return nil
+}
+
+func (j *Job) String() string {
+	return fmt.Sprintf("Job %v:%v/prev:%v/next:%v)",
+		j.config.Path, j.config.Spec, j.Prev, j.Next)
+}
+
+func (j *Job) Value() string {
+	prev := "0"
+	next := "0"
+	if !j.Prev.IsZero() {
+		prev = j.Prev.Format(time.RFC3339)
+	}
+	if !j.Next.IsZero() {
+		next = j.Next.Format(time.RFC3339)
+	}
+	return fmt.Sprintf("%v %v", prev, next)
+}
+
+func ScanJob(job *Job, s string) (err error) {
+	var prev, next string
+	fmt.Sscan(s, &prev, &next)
+	if prev != "0" {
+		job.Prev, err = time.Parse(time.RFC3339, prev)
+		if err != nil {
+			return
+		}
+	}
+	if next != "0" {
+		job.Next, err = time.Parse(time.RFC3339, next)
+		if err != nil {
+			return
+		}
+	}
+	return
 }
 
 func opts() *kv.Options {
@@ -154,9 +212,6 @@ func opts() *kv.Options {
 
 // New initialize a new DiskLRU.
 func NewDB(path string) (*kv.DB, error) {
-	if err := os.MkdirAll(path, 0700); err != nil {
-		return nil, err
-	}
 	createOpen := kv.Open
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		createOpen = kv.Create
@@ -168,8 +223,8 @@ type Daemon struct {
 	client *dclient.Client
 	stop chan struct{}
 	running bool
-	jobsIndex map[string]*Job
 	jobs []*Job
+	db *kv.DB
 	sync.Mutex
 }
 
@@ -191,7 +246,12 @@ func (s byTime) Less(i, j int) bool {
 }
 
 func New(client *dclient.Client) *Daemon {
-	return &Daemon{client:client, stop:make(chan struct{}), jobsIndex: make(map[string]*Job), jobs: []*Job{}}
+	db, err := NewDB("db")
+	if err != nil {
+		panic(err)
+	}
+	return &Daemon{client:client, stop:make(chan struct{}),
+		jobs: []*Job{}, db: db}
 }
 
 func (d *Daemon) Stop() {
@@ -200,11 +260,21 @@ func (d *Daemon) Stop() {
 
 func (d *Daemon) Run() {
 	log.Println("Running...")
-	d.updateJobs()
+	defer d.db.Close()
+	cs := make(chan os.Signal, 1)
+	signal.Notify(cs, os.Interrupt,
+		syscall.SIGHUP,
+	    syscall.SIGINT,
+	    syscall.SIGTERM,
+	    syscall.SIGQUIT)
+	if err := d.updateJobs(); err != nil {
+		panic(err)
+	}
 	now := time.Now().UTC()
 	d.running = true
 	var checkTime time.Time
 	for {
+		log.Printf("jobs:%q", d.jobs)
 		sort.Sort(byTime(d.jobs))
 		if len(d.jobs) == 0 {
 			// Sleep for 5 years until the config change
@@ -219,10 +289,14 @@ func (d *Daemon) Run() {
 				if now.Sub(job.Next) < 0 {
 					break
 				}
+				d.Lock()
 				go job.Run()
-				time.Sleep(1 * time.Second)
 				job.Prev = job.Next
 				job.ComputeNext(now)
+				if err := d.db.Set([]byte(job.Key()), []byte(job.Value())); err != nil {
+					panic(err)
+				}
+				d.Unlock()
 				continue
 			}
 		case <- d.stop:
@@ -231,30 +305,44 @@ func (d *Daemon) Run() {
 		case <- configUpdated:
 			log.Println("config updated")
 			d.updateJobs()
+		case sig := <- cs:
+			log.Printf("captured %v\n", sig)
+			d.db.Close()
+			os.Exit(1)
 		}
 	}
 }
 
-func (d *Daemon) updateJobs() {
+func (d *Daemon) updateJobs() error {
 	d.Lock()
 	defer d.Unlock()
 	conf := GetConfig()
+	d.jobs = []*Job{}
 	for _, snap := range conf.Snapshots {
 		spec, err := cron.Parse(snap.Spec)
 		if err != nil {
 			log.Printf("Bad spec %v: %v\naborting updateJobs", snap.Spec, err)
-			return
+			return err
 		}
 		job := NewJob(&snap, spec)
-		_, exists := d.jobsIndex[job.Key()]
-		if !exists {
+		res, err := d.db.Get(nil, []byte(job.Key()))
+		if res == nil {
 			prev := time.Now().UTC()
 			if !job.Prev.IsZero() {
 				prev = job.Prev
 			}
-			job.Next = job.ComputeNext(prev)
-			d.jobsIndex[job.Key()] = job
-			d.jobs = append(d.jobs, job)
+			job.ComputeNext(prev)
+		} else {
+			if err := ScanJob(job, string(res)); err != nil {
+				log.Printf("error scanning %v", err)
+				return err
+			}
+			job.ComputeNext(job.Prev)
 		}
+		if err := d.db.Set([]byte(job.Key()), []byte(job.Value())); err != nil {
+			return err
+		}
+		d.jobs = append(d.jobs, job)
 	}
+	return nil
 }
