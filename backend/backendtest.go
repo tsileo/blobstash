@@ -30,10 +30,18 @@ func RandomBlob(content []byte) (*BlobTest) {
 }
 
 func Test(t *testing.T, b BlobHandler) {
+	FullTest(t, b, false)
+}
+
+func TestWriteOnly(t *testing.T, b BlobHandler) {
+	FullTest(t, b, true)
+}
+
+func FullTest(t *testing.T, b BlobHandler, writeOnlyMode bool) {
 	t.Logf("Testing backend %T", b)
 	blobs := []*BlobTest{RandomBlob([]byte("foo")), RandomBlob([]byte("testblob")),
 		RandomBlob([]byte("0000")), RandomBlob(nil)}
-	
+
 	if !testing.Short() {
 		for i := 0; i < 50; i++ {
 			blobs = append(blobs, RandomBlob(nil))
@@ -65,16 +73,20 @@ func Test(t *testing.T, b BlobHandler) {
 		}
 	}
 
-	t.Logf("Testing Get")
+	if !writeOnlyMode {
+		t.Logf("Testing Get")
 
-	for i, blob := range blobs {
-		blobData, err := b.Get(blob.Hash)
-		if err != nil {
-			t.Fatalf(fmt.Sprintf("Error get blob %+v: %v", blob, err))
+		for i, blob := range blobs {
+			blobData, err := b.Get(blob.Hash)
+			if err != nil {
+				t.Fatalf(fmt.Sprintf("Error get blob %+v: %v", blob, err))
+			}
+			if !bytes.Equal(blobData, blob.Data) {
+				t.Fatalf(fmt.Sprintf("Error get blob #%v %+v data, got %v, expected %v", i, blob, blobData, blob.Data))
+			}
 		}
-		if !bytes.Equal(blobData, blob.Data) {
-			t.Fatalf(fmt.Sprintf("Error get blob #%v %+v data, got %v, expected %v", i, blob, blobData, blob.Data))
-		}
+	} else {
+		t.Logf("Skipping Get in write-only mode")
 	}
 
 	t.Logf("Testing Exists")

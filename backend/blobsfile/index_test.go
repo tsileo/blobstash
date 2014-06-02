@@ -27,4 +27,19 @@ func TestBlobsIndex(t *testing.T) {
 	if bp.n != bp3.n || bp.offset != bp3.offset || bp.size != bp3.size {
 		t.Errorf("index.GetPos error, expected:%q, got:%q", bp, bp3)
 	}
+
+	err = index.SetN(5)
+	check(err)
+	n2, err := index.GetN()
+	check(err)
+	if n2 != 5 {
+		t.Errorf("Error GetN, got %v, expected 5", n2)
+	}
+	err = index.SetN(100)
+	check(err)
+	n2, err = index.GetN()
+	check(err)
+	if n2 != 100 {
+		t.Errorf("Error GetN, got %v, expected 100", n2)
+	}
 }

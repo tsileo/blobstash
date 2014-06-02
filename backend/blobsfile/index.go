@@ -4,6 +4,7 @@ import (
 	"os"
 	"fmt"
 	"sync"
+	"strconv"
 	"path/filepath"
 	_ "log"
 
@@ -80,13 +81,29 @@ func (index *BlobsIndex) SetPos(hash string, pos BlobPos) error {
 func (index *BlobsIndex) GetPos(hash string) (*BlobPos, error) {
 	index.Lock()
 	defer index.Unlock()
-	data, err := index.db.Get(nil, []byte(hash))	
+	data, err := index.db.Get(nil, []byte(hash))
 	if err != nil {
-		return nil, fmt.Errorf("Error getting BlobPos %v")
+		return nil, fmt.Errorf("error getting BlobPos: %v", err)
 	}
 	if data == nil {
 		return nil, nil
 	}
 	bpos, err := ScanBlobPos(string(data))
 	return &bpos, err
+}
+
+func (index *BlobsIndex) SetN(n int) error {
+	index.Lock()
+	defer index.Unlock()
+	return index.db.Set([]byte("n"), []byte(strconv.Itoa(n)))
+}
+
+func (index *BlobsIndex) GetN() (int, error) {
+	index.Lock()
+	defer index.Unlock()
+	data, err := index.db.Get(nil, []byte("n"))
+	if err != nil || string(data) == "" {
+		return 0, nil
+	}
+	return strconv.Atoi(string(data))
 }
