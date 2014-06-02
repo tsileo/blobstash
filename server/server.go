@@ -742,7 +742,6 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 
 		case len(req.Args) > 1:
 			return ErrSomethingWentWrong
-		
 		}
 		return nil
 	})
@@ -767,6 +766,14 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		rb := req.Client().Ctx.(*ServerCtx).GetReqBuffer(txID)
 		err = rb.Save()
 		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		if err := blobBackend.Done(); err != nil {
+			log.Printf("Error blobBackend %T Done callback: %v", blobBackend, err)
+			return ErrSomethingWentWrong
+		}
+		if err := metaBackend.Done(); err != nil {
+			log.Printf("Error metaBackend %T Done callback: %v", metaBackend, err)
 			return ErrSomethingWentWrong
 		}
 		out.WriteOK()

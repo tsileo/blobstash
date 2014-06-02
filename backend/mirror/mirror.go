@@ -50,6 +50,11 @@ func (backend *MirrorBackend) Close() {
 		b.Close()
 	}
 }
+
+func (backend *MirrorBackend) Done() error {
+	return nil
+}
+
 func (backend *MirrorBackend) Put(hash string, data []byte) (err error) {
 	for _, b := range backend.backends {
 		if err := b.Put(hash, data); err != nil {

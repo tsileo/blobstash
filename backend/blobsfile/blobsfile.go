@@ -106,6 +106,10 @@ func (backend *BlobsFileBackend) Close() {
 	backend.index.Close()
 }
 
+func (backend *BlobsFileBackend) Done() error {
+	return nil
+}
+
 func (backend *BlobsFileBackend) Remove() {
 	backend.index.Remove()
 }

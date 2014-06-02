@@ -94,6 +94,10 @@ func (backend *S3Backend) Close() {
 	return
 }
 
+func (backend *S3Backend) Done() error {
+	return nil
+}
+
 type CreateBucketConfiguration struct {
 	XMLName	xml.Name	`xml:"CreateBucketConfiguration"`
 	Xmlns	string	`xml:"xmlns,attr"`

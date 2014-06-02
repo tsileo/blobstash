@@ -140,6 +140,10 @@ func (b *EncryptBackend) Exists(hash string) bool {
 	return exists
 }
 
+func (b *EncryptBackend) Done() error {
+	return nil
+}
+
 func (b *EncryptBackend) scanner(hash string) *bufio.Scanner {
 	enc, err := b.dest.Get(hash)
 	if err != nil {
