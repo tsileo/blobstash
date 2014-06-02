@@ -185,7 +185,7 @@ func (b *EncryptBackend) Get(hash string) (data []byte, err error) {
 	}
 	blobsDownloaded.Add(b.dest.String(), 1)
 	bytesDownloaded.Add(b.dest.String(), int64(len(enc)))
-	return 
+	return
 }
 
 func (b *EncryptBackend) Enumerate(blobs chan<- string) error {

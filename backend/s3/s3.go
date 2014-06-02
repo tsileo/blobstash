@@ -122,7 +122,6 @@ func newCreateBucketConfiguration(location string) io.Reader {
 func (backend *S3Backend) bucketLocation(bucket string) (string, error) {
 	c := s3util.DefaultConfig
 	r, _ := http.NewRequest("GET", fmt.Sprintf("https://%v.s3.amazonaws.com?location", backend.Bucket), nil)
-	//r.ContentLength = 
 	r.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
 	c.Sign(r, *c.Keys)
 	client := c.Client

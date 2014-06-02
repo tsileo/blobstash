@@ -509,7 +509,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		out.WriteInt(res)
 		return nil
 	})
-	
+
 	srv.HandleFunc("llen", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 1)

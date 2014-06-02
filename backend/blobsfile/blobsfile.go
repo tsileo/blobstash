@@ -2,7 +2,7 @@
 
 Package blobsfile implement the BlobsFile backend for storing blobs.
 
-It stores multiple blobs inside "BlobsFile"/fat file/packed file of 256MB (every new file are "fallocate"d).
+It stores multiple blobs inside "BlobsFile"/fat file/packed file (256MB by default) (every new file are "fallocate"d).
 Blobs are indexed by a kv file.
 
 Blobs are append to the current file, and when the file exceed the limit, a new fie is created.
@@ -11,10 +11,12 @@ Blobs are stored with its size followed by the blob itself, thus allowing re-ind
 
 	Blob size (4 byte, uint32 binary encoded) + Blob data
 
-
 Blobs are indexed by a BlobPos entry (value stored as string):
 
 	Blob Hash => n (BlobFile index) + (space) + offset + (space) + Blob size
+
+The backend also support a writeOnly mode where older blobsfilearen't needed since they won't be loaded
+(used for cold storage, once uploaded, a blobsfile can be removed but are kept in the index).
 
 */
 package blobsfile
@@ -30,6 +32,7 @@ import (
 	"log"
 	"encoding/binary"
 
+	"code.google.com/p/snappy-go/snappy"
 	"github.com/bitly/go-simplejson"
 )
 
@@ -46,7 +49,13 @@ var (
 type BlobsFileBackend struct {
 	Directory string
 
+	// Backend state
 	loaded bool
+
+	// WriteOnly mode (if the precedent blobs are not available yet)
+	writeOnly bool
+
+	snappyCompression bool
 
 	index *BlobsIndex
 
@@ -61,23 +70,25 @@ type BlobsFileBackend struct {
 	sync.Mutex
 }
 
-func New(dir string) *BlobsFileBackend {
-	log.Println("BlobsFileBackend: opening index")
+func New(dir string, compression bool) *BlobsFileBackend {
+	log.Println("BlobsFileBackend: starting, opening index")
 	os.Mkdir(dir, 0744)
 	index, err := NewIndex(dir)
 	if err != nil {
 		panic(err)
 	}
-	backend := &BlobsFileBackend{Directory: dir, index: index, files: make(map[int]*os.File)}
+	backend := &BlobsFileBackend{Directory: dir, snappyCompression: compression,
+		index: index, files: make(map[int]*os.File)}
 	if err := backend.load(); err != nil {
 		panic(fmt.Errorf("Error loading %T: %v", backend, err))
 	}
+	log.Printf("BlobsFileBackend: snappyCompression = %v", backend.snappyCompression)
 	log.Printf("BlobsFileBackend: backend id => %v", backend.String())
 	return backend
 }
 
 func NewFromConfig(conf *simplejson.Json) *BlobsFileBackend {
-	return New(conf.Get("path").MustString("./backend_blobsfile"))
+	return New(conf.Get("path").MustString("./backend_blobsfile"), conf.Get("compression").MustBool(false))
 }
 
 func (backend *BlobsFileBackend) Close() {
@@ -201,12 +212,19 @@ func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
 	}
 	backend.Lock()
 	defer backend.Unlock()
+	if backend.snappyCompression {
+		dataEncoded, err := snappy.Encode(nil, data)
+		if err != nil {
+			return err
+		}
+		data = dataEncoded
+	}
 	size := len(data)
 	blobPos := BlobPos{n: backend.n, offset: int(backend.size), size: int(size)}
 	if err := backend.index.SetPos(hash, blobPos); err != nil {
 		return err
 	}
-	blobEncoded := encodeBlob(size, data)
+	blobEncoded := backend.encodeBlob(size, data)
 	n, err := backend.current.Write(blobEncoded)
 	backend.size += int64(len(blobEncoded))
 	if err != nil || n != len(blobEncoded) {
@@ -239,12 +257,12 @@ func (backend *BlobsFileBackend) Exists(hash string) bool {
 	return false
 }
 
-func decodeBlob(data []byte) (size int, blob []byte) {
+func (backend *BlobsFileBackend) decodeBlob(data []byte) (size int, blob []byte) {
 	size = int(binary.LittleEndian.Uint32(data[0:4]))
 	return size, data[4:]
 }
 
-func encodeBlob(size int, blob []byte) (data []byte) {
+func (backend *BlobsFileBackend) encodeBlob(size int, blob []byte) (data []byte) {
 	data = make([]byte, len(blob) + 4)
 	binary.LittleEndian.PutUint32(data[:], uint32(size))
 	copy(data[4:], blob)
@@ -271,12 +289,19 @@ func (backend *BlobsFileBackend) Get(hash string) ([]byte, error) {
 	if n != blobPos.size + 4 {
 		return nil, fmt.Errorf("Error reading blob %v, read %v, expected %v", hash, n, blobPos.size)
 	}
-	blobSize, blob := decodeBlob(data)
+	blobSize, blob := backend.decodeBlob(data)
 	if blobSize != blobPos.size {
 		return nil, fmt.Errorf("Bad blob %v encoded size, got %v, expected %v", hash, n , blobSize)
 	}
 	bytesDownloaded.Add(backend.Directory, int64(blobSize))
 	blobsUploaded.Add(backend.Directory, 1)
+	if backend.snappyCompression {
+		blobDecoded, err := snappy.Decode(nil, blob)
+		if err != nil {
+			return blob, fmt.Errorf("failed to decode blob %v", hash)
+		}
+		return blobDecoded, nil
+	}
 	return blob, nil
 }
 
