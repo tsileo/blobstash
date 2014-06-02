@@ -28,89 +28,12 @@ import (
 	"syscall"
 	"sync"
 	"sort"
-	"io/ioutil"
 	"fmt"
 	"time"
- 	"encoding/json"
  	dclient "github.com/tsileo/datadatabase/client"
  	"github.com/cznic/kv"
  	"github.com/robfig/cron"
 )
-
-var (
-  config *Config
-  configLock = new(sync.RWMutex)
-  configUpdated = make(chan struct{})
-)
-
-func loadConfig(fail bool){
-  file, err := ioutil.ReadFile("config.json")
-  if err != nil {
-    log.Println("open config: ", err)
-    if fail { os.Exit(1) }
-  }
-
-  temp := new(Config)
-  if err = json.Unmarshal(file, temp); err != nil {
-    log.Println("parse config: ", err)
-    if fail { os.Exit(1) }
-  }
-  configLock.Lock()
-  config = temp
-  configLock.Unlock()
-}
-
-func GetConfig() *Config {
-  configLock.RLock()
-  defer configLock.RUnlock()
-  return config
-}
-
-func watchFile(filePath string) error {
-    initialStat, err := os.Stat(filePath)
-    if err != nil {
-        return err
-    }
-
-    for {
-        stat, err := os.Stat(filePath)
-        if err != nil {
-            return err
-        }
-
-        if stat.Size() != initialStat.Size() || stat.ModTime() != initialStat.ModTime() {
-            break
-        }
-
-        time.Sleep(1 * time.Second)
-    }
-
-    return nil
-}
-
-func init() {
-	loadConfig(true)
-    go func() {
-    	for {
-		    err := watchFile("config.json")
-		    if err != nil {
-		        fmt.Println(err)
-		    }
-		    loadConfig(false)
-		    configUpdated <- struct{}{}
-		}
-	}()
-}
-
-type ConfigEntry struct {
-	Path string `json:"path"`
-	Spec string `json:"spec"`
-}
-
-type Config struct {
-	AnacronMode bool `json:"anacron_mode"`
-	Snapshots []ConfigEntry `json:"snapshots"`
-}
 
 type Job struct {
 	daemonConfig *Config
@@ -120,10 +43,12 @@ type Job struct {
 	Next time.Time
 }
 
+// NewJob initialize a Job
 func NewJob(conf *ConfigEntry, sched cron.Schedule) *Job {
 	return &Job{config: conf, sched: sched}
 }
 
+// ComputeNext determine the next scheduled time for running the Job.
 func (job *Job) ComputeNext(now time.Time) {
 	nowUTC := time.Now().UTC()
 	elapsed := nowUTC.Sub(job.Next)
@@ -157,6 +82,7 @@ func (job *Job) ComputeNext(now time.Time) {
 	return
 }
 
+// Key generate a unique Key for the Job (used as an ID in the DB).
 func (j *Job) Key() string {
 	return fmt.Sprintf("%v-%v", j.config.Path, j.config.Spec)
 }
@@ -171,6 +97,7 @@ func (j *Job) String() string {
 		j.config.Path, j.config.Spec, j.Prev, j.Next)
 }
 
+// Value serialize the job.Prev/job.Next to store as a string in the DB.
 func (j *Job) Value() string {
 	prev := "0"
 	next := "0"
@@ -183,6 +110,7 @@ func (j *Job) Value() string {
 	return fmt.Sprintf("%v %v", prev, next)
 }
 
+// Scan job parse the previously serialized value stored in the DB.
 func ScanJob(job *Job, s string) (err error) {
 	var prev, next string
 	fmt.Sscan(s, &prev, &next)
@@ -210,7 +138,7 @@ func opts() *kv.Options {
 	}
 }
 
-// New initialize a new DiskLRU.
+// New initialize a new KV database.
 func NewDB(path string) (*kv.DB, error) {
 	createOpen := kv.Open
 	if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -254,10 +182,12 @@ func New(client *dclient.Client) *Daemon {
 		jobs: []*Job{}, db: db}
 }
 
+// Stop shutdown the daemon cleanly.
 func (d *Daemon) Stop() {
 	d.stop <- struct{}{}
 }
 
+// Run start the processing of jobs, and listen for config update.
 func (d *Daemon) Run() {
 	log.Println("Running...")
 	defer d.db.Close()
@@ -313,6 +243,7 @@ func (d *Daemon) Run() {
 	}
 }
 
+// updateJobs parse the config and detect the next scheduled job.
 func (d *Daemon) updateJobs() error {
 	d.Lock()
 	defer d.Unlock()
