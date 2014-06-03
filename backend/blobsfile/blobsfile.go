@@ -150,6 +150,33 @@ func (backend *BlobsFileBackend) String() string {
 	return fmt.Sprintf("blobsfile-%v", backend.Directory)
 }
 
+func (backend *BlobsFileBackend) reindex() error {
+	log.Printf("BlobsFileBackend: re-indexing BlobsFiles...")
+	if backend.writeOnly {
+		panic("can't re-index in write-only mode")
+	}
+	n := 0
+	for {
+		err := backend.ropen(n)
+		if os.IsNotExist(err) {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		log.Printf("BlobsFileBackend: %v loaded", backend.filename(n))
+		n++
+	}
+	if n == 0 {
+		log.Println("BlobsFileBackend: no BlobsFiles found for re-indexing")
+		return nil
+	}
+	if err := backend.saveN(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Open all the blobs-XXXXX (read-only) and open the last for write
 func (backend *BlobsFileBackend) load() error {
 	log.Printf("BlobsFileBackend: scanning BlobsFiles...")

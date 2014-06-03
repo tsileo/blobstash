@@ -31,12 +31,37 @@ func TestBlobsFileBackend(t *testing.T) {
 	backend.Test(t, b)
 }
 
+func TestBlobsFileBackendCloseAndReopen(t *testing.T) {
+	b := New("./tmp_blobsfile_test_reopen", 0, false, false)
+	//check(err)
+	defer os.RemoveAll("./tmp_blobsfile_test_reopen")
+	backend.Test(t, b)
+	b.Close()
+	b2 := New("./tmp_blobsfile_test_reopen", 0, false, false)
+	backend.TestReadOnly(t, b2)
+}
+
+func TestBlobsFileBackendWithSmallMaxBlobsFileSize(t *testing.T) {
+	b := New("./tmp_blobsfile_test_small", 512, false, false)
+	//check(err)
+	defer b.Close()
+	defer os.RemoveAll("./tmp_blobsfile_test_small")
+	backend.Test(t, b)
+}
 
 func TestBlobsFileBackendWriteOnly(t *testing.T) {
 	b := New("./tmp_blobsfile_test_wo", 0, false, true)
 	//check(err)
 	defer b.Close()
 	defer os.RemoveAll("./tmp_blobsfile_test_wo")
+	backend.TestWriteOnly(t, b)
+}
+
+func TestBlobsFileBackendWriteOnlyWithSmallMaxBlobsFileSize(t *testing.T) {
+	b := New("./tmp_blobsfile_test_wo_small", 512, false, true)
+	//check(err)
+	defer b.Close()
+	defer os.RemoveAll("./tmp_blobsfile_test_wo_small")
 	backend.TestWriteOnly(t, b)
 }
 

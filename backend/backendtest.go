@@ -30,19 +30,25 @@ func RandomBlob(content []byte) (*BlobTest) {
 }
 
 func Test(t *testing.T, b BlobHandler) {
-	FullTest(t, b, false)
+	FullTest(t, b, false, false)
 }
 
 func TestWriteOnly(t *testing.T, b BlobHandler) {
-	FullTest(t, b, true)
+	FullTest(t, b, true, false)
 }
 
-func FullTest(t *testing.T, b BlobHandler, writeOnlyMode bool) {
+func TestReadOnly(t *testing.T, b BlobHandler) {
+	FullTest(t, b, false, true)
+}
+
+func FullTest(t *testing.T, b BlobHandler, writeOnlyMode, readOnlyMode bool) {
 	t.Logf("Testing backend %T", b)
 	blobs := []*BlobTest{RandomBlob([]byte("foo")), RandomBlob([]byte("testblob")),
-		RandomBlob([]byte("0000")), RandomBlob(nil)}
-
-	if !testing.Short() {
+		RandomBlob([]byte("0000"))}
+	if !readOnlyMode {
+		blobs = append(blobs, RandomBlob(nil))
+	}
+	if !testing.Short() && !readOnlyMode {
 		for i := 0; i < 50; i++ {
 			blobs = append(blobs, RandomBlob(nil))
 		}
@@ -54,25 +60,26 @@ func FullTest(t *testing.T, b BlobHandler, writeOnlyMode bool) {
 	sort.Strings(eblobs)
 	t.Logf("%v test blobs generated", len(blobs))
 
-	t.Logf("Test empty enumerate")
-	rblobs := []string{}
-	cblobs := make(chan string)
-	go b.Enumerate(cblobs)
-	for blobHash := range cblobs {
-		rblobs = append(rblobs, blobHash)
-	}
-	if len(rblobs) != 0 {
-		t.Fatalf("Enumerate should return nothing, got: %q", rblobs)
-	}
+	if !readOnlyMode {
+		t.Logf("Test empty enumerate")
+		rblobs := []string{}
+		cblobs := make(chan string)
+		go b.Enumerate(cblobs)
+		for blobHash := range cblobs {
+			rblobs = append(rblobs, blobHash)
+		}
+		if len(rblobs) != 0 {
+			t.Fatalf("Enumerate should return nothing, got: %q", rblobs)
+		}
 
-	t.Logf("Testing Put")
+		t.Logf("Testing Put")
 
-	for i, blob := range blobs {
-		if err := b.Put(blob.Hash, blob.Data); err != nil {
-			t.Fatalf(fmt.Sprintf("Error put blob #%v %+v: %v", i, blob, err))
+		for i, blob := range blobs {
+			if err := b.Put(blob.Hash, blob.Data); err != nil {
+				t.Fatalf(fmt.Sprintf("Error put blob #%v %+v: %v", i, blob, err))
+			}
 		}
 	}
-
 	if !writeOnlyMode {
 		t.Logf("Testing Get")
 
@@ -99,16 +106,18 @@ func FullTest(t *testing.T, b BlobHandler, writeOnlyMode bool) {
 		t.Fatalf(fmt.Sprintf("Blob %v should exists", eblobs[0]))
 	}
 
-	t.Logf("Testing Enumerate")
+	if !readOnlyMode {
+		t.Logf("Testing Enumerate")
 
-	rblobs = []string{}
-	cblobs = make(chan string)
-	go b.Enumerate(cblobs)
-	for blobHash := range cblobs {
-		rblobs = append(rblobs, blobHash)
-	}
-	sort.Strings(rblobs)
-	if !reflect.DeepEqual(eblobs, rblobs) {
-		t.Fatalf("Error enumerate blobs, got %v, expected %v", rblobs, eblobs)
+		rblobs := []string{}
+		cblobs := make(chan string)
+		go b.Enumerate(cblobs)
+		for blobHash := range cblobs {
+			rblobs = append(rblobs, blobHash)
+		}
+		sort.Strings(rblobs)
+		if !reflect.DeepEqual(eblobs, rblobs) {
+			t.Fatalf("Error enumerate blobs, got %v, expected %v", rblobs, eblobs)
+		}
 	}
 }
