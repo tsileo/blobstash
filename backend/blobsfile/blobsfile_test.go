@@ -16,7 +16,7 @@ func check(e error) {
 }
 
 func TestBlobsFileBackendWithCompression(t *testing.T) {
-	b := New("./tmp_blobsfile_test_compressed", true, false)
+	b := New("./tmp_blobsfile_test_compressed", 0, true, false)
 	//check(err)
 	defer b.Close()
 	defer os.RemoveAll("./tmp_blobsfile_test_compressed")
@@ -24,7 +24,7 @@ func TestBlobsFileBackendWithCompression(t *testing.T) {
 }
 
 func TestBlobsFileBackend(t *testing.T) {
-	b := New("./tmp_blobsfile_test", false, false)
+	b := New("./tmp_blobsfile_test", 0, false, false)
 	//check(err)
 	defer b.Close()
 	defer os.RemoveAll("./tmp_blobsfile_test")
@@ -33,7 +33,7 @@ func TestBlobsFileBackend(t *testing.T) {
 
 
 func TestBlobsFileBackendWriteOnly(t *testing.T) {
-	b := New("./tmp_blobsfile_test_wo", false, true)
+	b := New("./tmp_blobsfile_test_wo", 0, false, true)
 	//check(err)
 	defer b.Close()
 	defer os.RemoveAll("./tmp_blobsfile_test_wo")
@@ -41,7 +41,7 @@ func TestBlobsFileBackendWriteOnly(t *testing.T) {
 }
 
 func TestBlobsFileBlobEncoding(t *testing.T) {
-	b := New("./tmp_blobsfile_test", false, false)
+	b := New("./tmp_blobsfile_test", 0, false, false)
 	//check(err)
 	defer b.Close()
 	defer os.RemoveAll("./tmp_blobsfile_test")

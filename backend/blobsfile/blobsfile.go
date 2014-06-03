@@ -6,7 +6,7 @@ It stores multiple blobs (optionally compressed with Snappy) inside "BlobsFile"/
 (256MB by default) (every new file are "fallocate"d).
 Blobs are indexed by a kv file.
 
-Blobs are append to the current file, and when the file exceed the limit, a new fie is created.
+New blobs are appended to the current file, and when the file exceed the limit, a new fie is created.
 
 Blobs are stored with its size followed by the blob itself, thus allowing re-indexing (not yet implemented).
 
@@ -16,7 +16,9 @@ Blobs are indexed by a BlobPos entry (value stored as string):
 
 	Blob Hash => n (BlobFile index) + (space) + offset + (space) + Blob size
 
-The backend also support a writeOnly mode (Get operation is disabled in this mode)
+Write-only mode
+
+The backend also support a write-only mode (Get operation is disabled in this mode)
 where older blobsfile aren't needed since they won't be loaded (used for cold storage,
 once uploaded, a blobsfile can be removed but are kept in the index, and since no metadata
 is needed for blobs, this format is better than a tar archive).
@@ -39,7 +41,7 @@ import (
 	"github.com/bitly/go-simplejson"
 )
 
-const maxBlobsFileSize = 256 << 20; // 256MB
+const defaultMaxBlobsFileSize = 256 << 20; // 256MB
 
 var (
 	openFdsVar  = expvar.NewMap("blobsfile-open-fds")
@@ -50,7 +52,11 @@ var (
 )
 
 type BlobsFileBackend struct {
+	// Directory which holds the blobsfile
 	Directory string
+
+	// Maximum size for a blobsfile (256MB by default)
+	maxBlobsFileSize int64
 
 	// Backend state
 	loaded bool
@@ -74,15 +80,19 @@ type BlobsFileBackend struct {
 	sync.Mutex
 }
 
-func New(dir string, compression, writeOnly bool) *BlobsFileBackend {
+func New(dir string, maxBlobsFileSize int64, compression, writeOnly bool) *BlobsFileBackend {
 	log.Println("BlobsFileBackend: starting, opening index")
 	os.Mkdir(dir, 0744)
 	index, err := NewIndex(dir)
 	if err != nil {
 		panic(err)
 	}
+	if maxBlobsFileSize == 0 {
+		maxBlobsFileSize = defaultMaxBlobsFileSize
+	}
 	backend := &BlobsFileBackend{Directory: dir, snappyCompression: compression,
-		index: index, files: make(map[int]*os.File), writeOnly: writeOnly}
+		index: index, files: make(map[int]*os.File), writeOnly: writeOnly,
+		maxBlobsFileSize: maxBlobsFileSize}
 
 	loader := backend.load
 	if backend.writeOnly {
@@ -98,6 +108,7 @@ func New(dir string, compression, writeOnly bool) *BlobsFileBackend {
 
 func NewFromConfig(conf *simplejson.Json) *BlobsFileBackend {
 	return New(conf.Get("path").MustString("./backend_blobsfile"),
+			conf.Get("blobsfile-max-size").MustInt64(0),
 			conf.Get("compression").MustBool(false),
 			conf.Get("write-only").MustBool(false))
 }
@@ -256,7 +267,7 @@ func (backend *BlobsFileBackend) ropen(n int) error {
 func (backend *BlobsFileBackend) allocateBlobsFile() error {
 	log.Printf("BlobsFileBackend: running fallocate on BlobsFile %v", backend.filename(backend.n))
 	// fallocate 256MB
-	if err := syscall.Fallocate(int(backend.current.Fd()), 0x01, 0, maxBlobsFileSize); err != nil {
+	if err := syscall.Fallocate(int(backend.current.Fd()), 0x01, 0, backend.maxBlobsFileSize); err != nil {
 		return err
 	}
 	return nil
@@ -296,7 +307,7 @@ func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
 	bytesUploaded.Add(backend.Directory, int64(size))
 	blobsUploaded.Add(backend.Directory, 1)
 
-	if backend.size > maxBlobsFileSize {
+	if backend.size > backend.maxBlobsFileSize {
 		backend.n++
 		log.Printf("BlobsFileBackend: creating a new BlobsFile")
 		if err := backend.wopen(backend.n); err != nil {
@@ -324,7 +335,9 @@ func (backend *BlobsFileBackend) Exists(hash string) bool {
 
 func (backend *BlobsFileBackend) decodeBlob(data []byte) (size int, blob []byte) {
 	size = int(binary.LittleEndian.Uint32(data[0:4]))
-	return size, data[4:]
+	blob = make([]byte, len(data) - 4)
+	copy(blob, data[4:])
+	return
 }
 
 func (backend *BlobsFileBackend) encodeBlob(size int, blob []byte) (data []byte) {
@@ -381,7 +394,7 @@ func (backend *BlobsFileBackend) Enumerate(blobs chan<- string) error {
 	defer backend.Unlock()
 	// TODO(tsileo) send the size along the hashes ?
 	defer close(blobs)
-	enum, _, err := backend.index.db.Seek([]byte(""))
+	enum, _, err := backend.index.db.Seek(formatKey(BlobPosKey, ""))
 	if err != nil {
 		return err
 	}
@@ -390,10 +403,8 @@ func (backend *BlobsFileBackend) Enumerate(blobs chan<- string) error {
 		if err == io.EOF {
 			break
 		}
-		sk := string(k)
-		if sk != "n" {
-			blobs <- sk
-		}
+		// Remove the BlobPosKey prefix byte
+		blobs <- string(k[1:])
 	}
 	return nil
 }

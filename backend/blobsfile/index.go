@@ -11,6 +11,19 @@ import (
 	"github.com/cznic/kv"
 )
 
+const (
+	MetaKey byte = iota
+	BlobPosKey
+)
+
+func formatKey(prefix byte, key string) []byte {
+	bkey := []byte(key)
+	res := make([]byte, len(bkey)+1)
+	res[0] = prefix
+	copy(res[1:], bkey)
+	return res
+}
+
 func opts() *kv.Options {
 	return &kv.Options{
 		VerifyDbBeforeOpen:  true,
@@ -75,13 +88,13 @@ func (index *BlobsIndex) Remove() {
 func (index *BlobsIndex) SetPos(hash string, pos BlobPos) error {
 	index.Lock()
 	defer index.Unlock()
-	return index.db.Set([]byte(hash), []byte(pos.String()))
+	return index.db.Set(formatKey(BlobPosKey, hash), []byte(pos.String()))
 }
 
 func (index *BlobsIndex) GetPos(hash string) (*BlobPos, error) {
 	index.Lock()
 	defer index.Unlock()
-	data, err := index.db.Get(nil, []byte(hash))
+	data, err := index.db.Get(nil, formatKey(BlobPosKey, hash))
 	if err != nil {
 		return nil, fmt.Errorf("error getting BlobPos: %v", err)
 	}
@@ -95,13 +108,13 @@ func (index *BlobsIndex) GetPos(hash string) (*BlobPos, error) {
 func (index *BlobsIndex) SetN(n int) error {
 	index.Lock()
 	defer index.Unlock()
-	return index.db.Set([]byte("n"), []byte(strconv.Itoa(n)))
+	return index.db.Set(formatKey(MetaKey, "n"), []byte(strconv.Itoa(n)))
 }
 
 func (index *BlobsIndex) GetN() (int, error) {
 	index.Lock()
 	defer index.Unlock()
-	data, err := index.db.Get(nil, []byte("n"))
+	data, err := index.db.Get(nil, formatKey(MetaKey, "n"))
 	if err != nil || string(data) == "" {
 		return 0, nil
 	}
