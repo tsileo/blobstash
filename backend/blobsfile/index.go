@@ -6,7 +6,7 @@ import (
 	"sync"
 	"strconv"
 	"path/filepath"
-	_ "log"
+	"log"
 
 	"github.com/cznic/kv"
 )
@@ -82,6 +82,7 @@ func (index *BlobsIndex) Close() {
 
 // Remove remove the kv file
 func (index *BlobsIndex) Remove() {
+	log.Printf("removing path: %v", index.path)
 	os.RemoveAll(index.path)
 }
 

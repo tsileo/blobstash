@@ -10,10 +10,10 @@ import (
 	"bufio"
 	"path/filepath"
 	"errors"
-	
+
 	"github.com/tsileo/silokv/rolling"
 	"github.com/garyburd/redigo/redis"
-	
+
 )
 
 // Hash of an empty file

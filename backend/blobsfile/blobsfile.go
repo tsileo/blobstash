@@ -36,6 +36,7 @@ import (
 	"path/filepath"
 	"log"
 	"encoding/binary"
+	"crypto/sha1"
 
 	"code.google.com/p/snappy-go/snappy"
 	"github.com/bitly/go-simplejson"
@@ -57,6 +58,13 @@ var (
 	blobsDownloaded = expvar.NewMap("blobsfile-blobs-downloaded")
 )
 
+// SHA1 is a helper to quickly compute the SHA1 hash of a []byte.
+func SHA1(data []byte) string {
+	h := sha1.New()
+	h.Write(data)
+	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
 type BlobsFileBackend struct {
 	// Directory which holds the blobsfile
 	Directory string
@@ -66,6 +74,7 @@ type BlobsFileBackend struct {
 
 	// Backend state
 	loaded bool
+	reindexMode bool
 
 	// WriteOnly mode (if the precedent blobs are not available yet)
 	writeOnly bool
@@ -89,6 +98,10 @@ type BlobsFileBackend struct {
 func New(dir string, maxBlobsFileSize int64, compression, writeOnly bool) *BlobsFileBackend {
 	log.Println("BlobsFileBackend: starting, opening index")
 	os.Mkdir(dir, 0744)
+	var reindex bool
+	if _, err := os.Stat(filepath.Join(dir, "blobs-index")); os.IsNotExist(err) {
+		reindex = true
+	}
 	index, err := NewIndex(dir)
 	if err != nil {
 		panic(err)
@@ -98,7 +111,7 @@ func New(dir string, maxBlobsFileSize int64, compression, writeOnly bool) *Blobs
 	}
 	backend := &BlobsFileBackend{Directory: dir, snappyCompression: compression,
 		index: index, files: make(map[int]*os.File), writeOnly: writeOnly,
-		maxBlobsFileSize: maxBlobsFileSize}
+		maxBlobsFileSize: maxBlobsFileSize, reindexMode: reindex}
 
 	loader := backend.load
 	if backend.writeOnly {
@@ -117,6 +130,17 @@ func NewFromConfig(conf *simplejson.Json) *BlobsFileBackend {
 			conf.Get("blobsfile-max-size").MustInt64(0),
 			conf.Get("compression").MustBool(false),
 			conf.Get("write-only").MustBool(false))
+}
+
+// Len compute the number of blobs stored
+func (backend *BlobsFileBackend) Len() int {
+	storedBlobs:= make(chan string)
+	go backend.Enumerate(storedBlobs)
+	cnt := 0
+	for _ = range storedBlobs {
+		cnt++
+	}
+	return cnt
 }
 
 func (backend *BlobsFileBackend) Close() {
@@ -161,6 +185,9 @@ func (backend *BlobsFileBackend) reindex() error {
 	if backend.writeOnly {
 		panic("can't re-index in write-only mode")
 	}
+	if backend.Len() != 0 {
+		panic("can't re-index, an non-empty backend already exists")
+	}
 	n := 0
 	for {
 		err := backend.ropen(n)
@@ -170,7 +197,45 @@ func (backend *BlobsFileBackend) reindex() error {
 		if err != nil {
 			return err
 		}
-		log.Printf("BlobsFileBackend: %v loaded", backend.filename(n))
+		offset := 6
+		blobsfile := backend.files[n]
+		blobsIndexed := 0
+		for {
+			// SCAN
+			blobSizeEncoded := make([]byte, 4)
+			_, err := blobsfile.Read(blobSizeEncoded)
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return err
+			}
+			blobSize := binary.LittleEndian.Uint32(blobSizeEncoded)
+			rawBlob := make([]byte, int(blobSize))
+			read, err := blobsfile.Read(rawBlob)
+			if err != nil || read != int(blobSize) {
+				return fmt.Errorf("error while reading raw blob: %v", err)
+			}
+			blobPos := BlobPos{n: n, offset: offset, size: int(blobSize)}
+			offset += 4
+			offset += int(blobSize)
+			var blob []byte
+			if backend.snappyCompression {
+				blobDecoded, err := snappy.Decode(nil, rawBlob)
+				if err != nil {
+					return fmt.Errorf("failed to decode blob")
+				}
+				blob = blobDecoded
+			} else {
+				blob = rawBlob
+			}
+			hash := SHA1(blob)
+			if err := backend.index.SetPos(hash, blobPos); err != nil {
+				return err
+			}
+			blobsIndexed++
+		}
+		log.Printf("BlobsFileBackend: %v re-indexed (%v blobs)", backend.filename(n), blobsIndexed)
 		n++
 	}
 	if n == 0 {
@@ -221,6 +286,11 @@ func (backend *BlobsFileBackend) load() error {
 		return err
 	}
 	backend.loaded = true
+	if backend.reindexMode {
+		if err := backend.reindex(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -274,7 +344,6 @@ func (backend *BlobsFileBackend) wopen(n int) error {
 		}
 	}
 	backend.size, err = f.Seek(0, os.SEEK_END)
-	log.Printf("backend.size:%v", backend.size)
 	if err != nil {
 		return err
 	}
@@ -289,7 +358,8 @@ func (backend *BlobsFileBackend) ropen(n int) error {
 	}
 	_, alreadyOpen := backend.files[n]
 	if alreadyOpen {
-		return fmt.Errorf("File %v already open", n)
+		log.Printf("BlobsFileBackend: blobsfile %v already open", backend.filename(n))
+		return nil
 	}
 	if n > len(backend.files) {
 		return fmt.Errorf("Trying to open file %v whereas only %v files currently open", n, len(backend.files))
@@ -337,7 +407,6 @@ func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
 		}
 		data = dataEncoded
 	}
-	log.Printf("put offset: %v", backend.size)
 	size := len(data)
 	blobPos := BlobPos{n: backend.n, offset: int(backend.size), size: int(size)}
 	if err := backend.index.SetPos(hash, blobPos); err != nil {
