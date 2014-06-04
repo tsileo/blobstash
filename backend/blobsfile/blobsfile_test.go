@@ -41,6 +41,17 @@ func TestBlobsFileBackendCloseAndReopen(t *testing.T) {
 	backend.TestReadOnly(t, b2)
 }
 
+func TestBlobsFileBackendCloseAndReopenAndReindexCompressed(t *testing.T) {
+	b := New("./tmp_blobsfile_test_reindexc", 0, true, false)
+	//check(err)
+	defer os.RemoveAll("./tmp_blobsfile_test_reindexc")
+	backend.Test(t, b)
+	b.Close()
+	b.Remove()
+	b2 := New("./tmp_blobsfile_test_reindexc", 0, true, false)
+	backend.TestReadOnly(t, b2)
+}
+
 func TestBlobsFileBackendCloseAndReopenAndReindex(t *testing.T) {
 	b := New("./tmp_blobsfile_test_reindex", 0, false, false)
 	//check(err)
