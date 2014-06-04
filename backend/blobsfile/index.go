@@ -1,12 +1,12 @@
 package blobsfile
 
 import (
-	"os"
 	"fmt"
-	"sync"
-	"strconv"
-	"path/filepath"
 	"log"
+	"os"
+	"path/filepath"
+	"strconv"
+	"sync"
 
 	"github.com/cznic/kv"
 )
@@ -34,7 +34,7 @@ func opts() *kv.Options {
 }
 
 type BlobsIndex struct {
-	db *kv.DB
+	db   *kv.DB
 	path string
 	sync.Mutex
 }
@@ -44,7 +44,7 @@ type BlobPos struct {
 	n int
 	// blobs offset/size in the blobs file
 	offset int
-	size int
+	size   int
 }
 
 func (blob BlobPos) String() string {

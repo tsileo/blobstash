@@ -1,31 +1,31 @@
 package server
 
 import (
-	"github.com/bsm/redeo"
-	"github.com/tsileo/datadatabase/db"
-	"github.com/tsileo/datadatabase/backend"
-	"log"
-	"fmt"
-	"expvar"
-	"sync"
-	"io"
-	"crypto/sha1"
 	"crypto/rand"
-	"time"
-	"net"
-	"syscall"
+	"crypto/sha1"
 	"errors"
-	"strconv"
-	"path/filepath"
+	"expvar"
+	"fmt"
+	"github.com/bitly/go-notify"
+	"github.com/bsm/redeo"
+	"github.com/tsileo/datadatabase/backend"
+	"github.com/tsileo/datadatabase/db"
+	"io"
+	"log"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strconv"
 	"strings"
-	"net/http"
-	"github.com/bitly/go-notify"
+	"sync"
+	"syscall"
+	"time"
 )
 
 func handler(w http.ResponseWriter, r *http.Request) {
-    fmt.Fprintf(w, "")
+	fmt.Fprintf(w, "")
 }
 
 func monitor(w http.ResponseWriter, r *http.Request) {
@@ -52,34 +52,33 @@ func monitor(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-
 var (
-	ErrInvalidDB = errors.New("redeo: invalid DB index")
+	ErrInvalidDB          = errors.New("redeo: invalid DB index")
 	ErrSomethingWentWrong = errors.New("redeo: something went wrong")
 )
 
 var (
-	commandStatsVar  = expvar.NewMap("server-command-stats")
-	serverStartedAtVar = expvar.NewString("server-started-at")
+	commandStatsVar             = expvar.NewMap("server-command-stats")
+	serverStartedAtVar          = expvar.NewString("server-started-at")
 	totalConnectionsReceivedVar = expvar.NewInt("server-total-connections-received")
-	activeMonitorClient = expvar.NewInt("server-active-monitor-client")
+	activeMonitorClient         = expvar.NewInt("server-active-monitor-client")
 )
 
 type ServerCtx struct {
-	DB string
+	DB   string
 	TxID string
-	Dbm *DBsManager
+	Dbm  *DBsManager
 }
 
 type DBsManager struct {
-	dbpath string
-	DBs map[string]*db.DB
-	TxManagers map[string]*TxManager
+	dbpath      string
+	DBs         map[string]*db.DB
+	TxManagers  map[string]*TxManager
 	metaBackend backend.BlobHandler
 	sync.Mutex
 }
 
-func (dbm *DBsManager) GetDB(dbname string) *db.DB { 
+func (dbm *DBsManager) GetDB(dbname string) *db.DB {
 	dbm.Lock()
 	defer dbm.Unlock()
 	cdb, exists := dbm.DBs[dbname]
@@ -175,8 +174,9 @@ func NewID() string {
 
 func NewDBsManager(dbpath string, metaBackend backend.BlobHandler) *DBsManager {
 	os.Mkdir(dbpath, 0700)
-	return &DBsManager{dbpath, make(map[string]*db.DB), make(map[string]*TxManager), metaBackend, sync.Mutex{}}	
+	return &DBsManager{dbpath, make(map[string]*db.DB), make(map[string]*TxManager), metaBackend, sync.Mutex{}}
 }
+
 var loadMetaBlobs sync.Once
 var dbmanager *DBsManager
 
@@ -210,7 +210,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 			return ErrSomethingWentWrong
 		}
 		if res != nil {
-			out.WriteString(string(res))	
+			out.WriteString(string(res))
 		} else {
 			out.WriteNil()
 		}
@@ -229,7 +229,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 	//		return ErrSomethingWentWrong
 	//	}
 	//	if res != nil {
-	//		out.WriteString(string(res))	
+	//		out.WriteString(string(res))
 	//	} else {
 	//		out.WriteNil()
 	//	}
@@ -242,7 +242,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 			return err
 		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
-		err  = cdb.Put(req.Args[0], req.Args[1])
+		err = cdb.Put(req.Args[0], req.Args[1])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -332,7 +332,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 			return err
 		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
-		cnt, err  := cdb.Hset(req.Args[0], req.Args[1], req.Args[2])
+		cnt, err := cdb.Hset(req.Args[0], req.Args[1], req.Args[2])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -348,7 +348,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
 		cmdArgs := make([]string, len(req.Args)-1)
 		copy(cmdArgs, req.Args[1:])
-		cnt, err  := cdb.Hmset(req.Args[0], cmdArgs...)
+		cnt, err := cdb.Hmset(req.Args[0], cmdArgs...)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -362,7 +362,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 			return err
 		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
-		cnt, err  := cdb.Hlen(req.Args[0])
+		cnt, err := cdb.Hlen(req.Args[0])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -470,7 +470,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		}
 		blob := []byte(req.Args[0])
 		sha := SHA1(blob)
-		err  = blobBackend.Put(sha, blob)
+		err = blobBackend.Put(sha, blob)
 		if err != nil {
 			log.Printf("server: Error BPUT:%v\nBlob %v:%v", err, sha, blob)
 			return ErrSomethingWentWrong
@@ -487,7 +487,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		if err != nil {
 			return err
 		}
-		blob, err  := blobBackend.Get(req.Args[0])
+		blob, err := blobBackend.Get(req.Args[0])
 		if err != nil {
 			log.Printf("Error bget %v: %v", req.Args[0], err)
 			return ErrSomethingWentWrong
@@ -517,7 +517,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 			return err
 		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
-		card, err  := cdb.Llen(req.Args[0])
+		card, err := cdb.Llen(req.Args[0])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -535,7 +535,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
-		err  = cdb.Ladd(req.Args[0], cindex, req.Args[2])
+		err = cdb.Ladd(req.Args[0], cindex, req.Args[2])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -558,7 +558,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 			return ErrSomethingWentWrong
 		}
 		if res != nil {
-			out.WriteString(string(res))	
+			out.WriteString(string(res))
 		} else {
 			out.WriteNil()
 		}
@@ -580,7 +580,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 			return ErrSomethingWentWrong
 		}
 		if len(kvs) == 0 {
-			out.WriteNil()	
+			out.WriteNil()
 		} else {
 			out.WriteBulkLen(len(kvs))
 			for _, kv := range kvs {
@@ -635,7 +635,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 				return ErrSomethingWentWrong
 			}
 			if len(vals) == 0 {
-				out.WriteNil()	
+				out.WriteNil()
 			} else {
 				out.WriteBulkLen(len(vals))
 				for _, bval := range vals {
@@ -654,7 +654,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 				return ErrSomethingWentWrong
 			}
 			if len(ivs) == 0 {
-				out.WriteNil()	
+				out.WriteNil()
 			} else {
 				out.WriteBulkLen(len(ivs) * 2)
 				for _, iv := range ivs {
@@ -690,7 +690,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 			return ErrSomethingWentWrong
 		}
 		if len(ivs) == 0 {
-			out.WriteNil()	
+			out.WriteNil()
 		} else {
 			out.WriteBulkLen(len(ivs) * 2)
 			for _, iv := range ivs {
@@ -705,7 +705,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		return nil
 	})
 	srv.HandleFunc("shutdown", func(out *redeo.Responder, _ *redeo.Request) error {
-		stop <-true
+		stop <- true
 		out.WriteOK()
 		return nil
 	})
@@ -766,6 +766,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		rb := req.Client().Ctx.(*ServerCtx).GetReqBuffer(txID)
 		err = rb.Save()
 		if err != nil {
+			log.Printf("server: TXCOMMIT error %v/%v", err, txID)
 			return ErrSomethingWentWrong
 		}
 		if err := blobBackend.Done(); err != nil {
@@ -784,7 +785,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 	log.Printf("server: http server listening on http://0.0.0.0:9737")
 	http.HandleFunc("/", handler)
 	http.HandleFunc("/debug/monitor", monitor)
-    go http.ListenAndServe("0.0.0.0:9737", nil)
+	go http.ListenAndServe("0.0.0.0:9737", nil)
 
 	log.Printf("server: listening on tcp://%s", srv.Addr())
 	//log.Fatal(srv.ListenAndServe())
@@ -796,16 +797,16 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 	cs := make(chan os.Signal, 1)
 	signal.Notify(cs, os.Interrupt,
 		syscall.SIGHUP,
-	    syscall.SIGINT,
-	    syscall.SIGTERM,
-	    syscall.SIGQUIT)
+		syscall.SIGINT,
+		syscall.SIGTERM,
+		syscall.SIGQUIT)
 	if stop != nil {
 		go func() {
 			for {
 				select {
 				case _ = <-stop:
 					break
-				case sig := <- cs:
+				case sig := <-cs:
 					log.Printf("server: Captured %v\n", sig)
 					break
 				}

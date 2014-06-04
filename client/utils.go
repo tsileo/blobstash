@@ -1,12 +1,12 @@
 package client
 
 import (
-	"os"
-	"crypto/sha1"
-	"crypto/rand"
 	"bufio"
+	"crypto/rand"
+	"crypto/sha1"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/dustin/go-humanize"
 )
@@ -39,20 +39,20 @@ func FullSHA1(path string) string {
 type WriteResult struct {
 	Hash string
 
-	Size int
-	SizeSkipped int
+	Size         int
+	SizeSkipped  int
 	SizeUploaded int
 
-	BlobsCount int
-	BlobsSkipped int
+	BlobsCount    int
+	BlobsSkipped  int
 	BlobsUploaded int
 
-	FilesCount int
-	FilesSkipped int
+	FilesCount    int
+	FilesSkipped  int
 	FilesUploaded int
 
-	DirsCount int
-	DirsSkipped int
+	DirsCount    int
+	DirsSkipped  int
 	DirsUploaded int
 
 	AlreadyExists bool
@@ -94,16 +94,16 @@ func (wr *WriteResult) Add(wr2 *WriteResult) {
 type ReadResult struct {
 	Hash string
 
-	Size int
+	Size           int
 	SizeDownloaded int
 
-	BlobsCount int
+	BlobsCount      int
 	BlobsDownloaded int
 
-	FilesCount int
+	FilesCount      int
 	FilesDownloaded int
 
-	DirsCount int
+	DirsCount      int
 	DirsDownloaded int
 }
 
@@ -117,7 +117,7 @@ func (rr *ReadResult) Add(rr2 *ReadResult) {
 
 	rr.FilesCount += rr2.FilesCount
 	rr.FilesDownloaded += rr2.FilesDownloaded
-	
+
 	rr.DirsCount += rr2.DirsCount
 	rr.DirsDownloaded += rr2.DirsDownloaded
 }
@@ -125,10 +125,10 @@ func (rr *ReadResult) Add(rr2 *ReadResult) {
 // MatchResult checks if a WriteResult and a ReadResult have the same size.
 func MatchResult(wr *WriteResult, rr *ReadResult) bool {
 	if wr.Hash == rr.Hash &&
-			wr.Size == rr.Size &&
-			wr.FilesCount == rr.FilesCount &&
-			wr.DirsCount == rr.DirsCount {
-	   return true
+		wr.Size == rr.Size &&
+		wr.FilesCount == rr.FilesCount &&
+		wr.DirsCount == rr.DirsCount {
+		return true
 	}
 	return false
 }

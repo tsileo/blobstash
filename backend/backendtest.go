@@ -1,13 +1,13 @@
 package backend
 
 import (
-	"fmt"
-	"testing"
-	"crypto/sha1"
-	"crypto/rand"
 	"bytes"
-	"sort"
+	"crypto/rand"
+	"crypto/sha1"
+	"fmt"
 	"reflect"
+	"sort"
+	"testing"
 )
 
 type BlobTest struct {
@@ -15,7 +15,7 @@ type BlobTest struct {
 	Data []byte
 }
 
-func RandomBlob(content []byte) (*BlobTest) {
+func RandomBlob(content []byte) *BlobTest {
 	var data []byte
 	if content == nil {
 		data = make([]byte, 512)

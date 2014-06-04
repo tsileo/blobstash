@@ -11,7 +11,7 @@ type LocalBackend struct {
 }
 
 func (b *LocalBackend) Put(hash string, data []byte) (err error) {
-	err = ioutil.WriteFile(b.blobPath(hash), data, 0644)	
+	err = ioutil.WriteFile(b.blobPath(hash), data, 0644)
 	return
 }
 

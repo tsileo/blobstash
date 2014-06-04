@@ -8,16 +8,16 @@ The bucket must already exists.
 package s3
 
 import (
-	"os"
-	"bytes"
-	"fmt"
-	"encoding/xml"
-	"io"
 	"bufio"
+	"bytes"
+	"encoding/xml"
+	"fmt"
+	"io"
 	"log"
-	"time"
-	"strings"
 	"net/http"
+	"os"
+	"strings"
+	"time"
 
 	ks3 "github.com/kr/s3"
 	"github.com/kr/s3/s3util"
@@ -30,7 +30,7 @@ func do(verb, url string, body io.Reader, c *s3util.Config) (int, error) {
 	}
 	// TODO(kr): maybe parallel range fetching
 	r, err := http.NewRequest(verb, url, body)
-	//r.ContentLength = 
+	//r.ContentLength =
 	r.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
 	c.Sign(r, *c.Keys)
 	client := c.Client
@@ -52,10 +52,10 @@ func do(verb, url string, body io.Reader, c *s3util.Config) (int, error) {
 }
 
 type S3Backend struct {
-	Bucket string
-	Location string
+	Bucket    string
+	Location  string
 	BucketURL string
-	keys *ks3.Keys
+	keys      *ks3.Keys
 	sync.Mutex
 }
 
@@ -99,9 +99,9 @@ func (backend *S3Backend) Done() error {
 }
 
 type CreateBucketConfiguration struct {
-	XMLName	xml.Name	`xml:"CreateBucketConfiguration"`
-	Xmlns	string	`xml:"xmlns,attr"`
-	LocationConstraint	string	`xml:"LocationConstraint"`
+	XMLName            xml.Name `xml:"CreateBucketConfiguration"`
+	Xmlns              string   `xml:"xmlns,attr"`
+	LocationConstraint string   `xml:"LocationConstraint"`
 }
 
 type LocationConstraint struct {
@@ -150,13 +150,13 @@ func (backend *S3Backend) bucketLocation(bucket string) (string, error) {
 // It also fetch the bucket location.
 func (backend *S3Backend) load() error {
 	log.Println("S3Backend: checking if backend exists")
-	exists, err := do("HEAD", "https://" + backend.Bucket + ".s3.amazonaws.com", nil, nil)
+	exists, err := do("HEAD", "https://"+backend.Bucket+".s3.amazonaws.com", nil, nil)
 	if err != nil {
 		return err
 	}
 	if exists == 404 {
 		log.Printf("S3Backend: creating bucket %v", backend.Bucket)
-		created, err := do("PUT", "https://" + backend.Bucket + ".s3.amazonaws.com", newCreateBucketConfiguration(backend.Location), nil)
+		created, err := do("PUT", "https://"+backend.Bucket+".s3.amazonaws.com", newCreateBucketConfiguration(backend.Location), nil)
 		if created != 200 || err != nil {
 			log.Println("S3Backend: error creating bucket: %v", err)
 			return err
@@ -200,7 +200,7 @@ func (backend *S3Backend) Get(hash string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (backend *S3Backend) Exists(hash string) (bool) {
+func (backend *S3Backend) Exists(hash string) bool {
 	r, err := do("HEAD", backend.bucket(hash), nil, nil)
 	if r == 200 {
 		return true
@@ -212,7 +212,7 @@ func (backend *S3Backend) Exists(hash string) (bool) {
 	return false
 }
 
-func (backend *S3Backend) Delete(hash string) (error) {
+func (backend *S3Backend) Delete(hash string) error {
 	_, err := do("DELETE", backend.bucket(hash), nil, nil)
 	return err
 }

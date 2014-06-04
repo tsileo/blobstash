@@ -3,9 +3,9 @@ package encrypt
 import (
 	"crypto/rand"
 	"errors"
-	"os"
 	"io"
 	"io/ioutil"
+	"os"
 )
 
 // Secret key
@@ -24,7 +24,7 @@ func LoadKey(keyPath string) error {
 	return nil
 }
 
-// GenerateKey generate a new random key and store it at keyPath. 
+// GenerateKey generate a new random key and store it at keyPath.
 func GenerateKey(keyPath string) error {
 	var buf [32]byte
 	if _, err := io.ReadFull(rand.Reader, buf[:]); err != nil {
@@ -32,7 +32,7 @@ func GenerateKey(keyPath string) error {
 	}
 	// Check that a key doesn't exists yet.
 	if _, err := os.Stat(keyPath); err == nil {
-    	return errors.New("A key already exists")
+		return errors.New("A key already exists")
 	}
 	// Write the key
 	if err := ioutil.WriteFile(keyPath, buf[:], 0400); err != nil {

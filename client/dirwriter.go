@@ -1,15 +1,15 @@
 package client
 
 import (
-	"io/ioutil"
-	"path/filepath"
 	"crypto/sha1"
 	"fmt"
-	"os"
-	"log"
-	"sync"
-	"sort"
 	"github.com/garyburd/redigo/redis"
+	"io/ioutil"
+	"log"
+	"os"
+	"path/filepath"
+	"sort"
+	"sync"
 )
 
 type node struct {
@@ -18,18 +18,18 @@ type node struct {
 
 	// File path/FileInfo
 	path string
-	fi       os.FileInfo
+	fi   os.FileInfo
 
 	// Children (if the node is a directory)
 	children []*node
 
 	// Upload result is stored in the node
-	wr *WriteResult
+	wr   *WriteResult
 	meta *Meta
-	err error
+	err  error
 
 	// Used to sync access to the WriteResult/Meta
-	mu sync.Mutex
+	mu   sync.Mutex
 	cond sync.Cond
 }
 
@@ -55,14 +55,14 @@ func (client *Client) DirExplorer(path string, pnode *node, files chan<- *node, 
 	}
 	for _, fi := range dirdata {
 		abspath := filepath.Join(path, fi.Name())
-		n := &node{path:abspath, fi: fi}
+		n := &node{path: abspath, fi: fi}
 		n.cond.L = &n.mu
 		if fi.IsDir() {
 			client.DirExplorer(abspath, n, files, result)
 			result <- n
 			pnode.children = append(pnode.children, n)
 		} else {
-			if fi.Mode() & os.ModeSymlink == 0 {
+			if fi.Mode()&os.ModeSymlink == 0 {
 				if client.excluded(abspath) {
 					log.Printf("DirExplorer: file %v excluded", abspath)
 				} else {
@@ -159,7 +159,7 @@ func (client *Client) PutDir(path string) (meta *Meta, wr *WriteResult, err erro
 	}
 	files := make(chan *node)
 	directories := make(chan *node)
-	dirSem := make(chan struct{}, 50)
+	dirSem := make(chan struct{}, 25)
 	fi, _ := os.Stat(abspath)
 	n := &node{root: true, path: abspath, fi: fi}
 	n.cond.L = &n.mu
@@ -203,7 +203,7 @@ func (client *Client) PutDir(path string) (meta *Meta, wr *WriteResult, err erro
 				}()
 				client.DirWriterNode(node)
 				if node.err != nil {
-					panic(fmt.Errorf("Error DirWriterNode with node %q", node))	
+					panic(fmt.Errorf("Error DirWriterNode with node %q", node))
 				}
 				// TODO(tsileo) check that r.wr is up to date.
 			}(d)

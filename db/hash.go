@@ -1,9 +1,9 @@
 package db
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
-	"bytes"
 )
 
 //
@@ -44,14 +44,14 @@ func decodeKeyHashField(key []byte) []byte {
 	// The first byte is already remove
 	klen := int(binary.LittleEndian.Uint32(key[0:4]))
 	cpos := 4 + klen
-	member := make([]byte, len(key) - cpos)
+	member := make([]byte, len(key)-cpos)
 	copy(member[:], key[cpos:])
 	return member
 }
 
 // Create the key used to index all hashes key
 func keyHashIndex(key []byte) []byte {
-	ikey := make([]byte, len(key) + 2)
+	ikey := make([]byte, len(key)+2)
 	ikey[0] = Meta
 	ikey[1] = HashIndex
 	copy(ikey[2:], key)
@@ -61,14 +61,14 @@ func keyHashIndex(key []byte) []byte {
 // Extract the hash key from the raw key
 func decodeKeyHashIndex(key []byte) []byte {
 	// the Meta byte is already removed from range
-	index := make([]byte, len(key) - 1)
+	index := make([]byte, len(key)-1)
 	copy(index[:], key[1:])
 	return index
 }
 
 // Create the key to retrieve the number of field of the hash
 func hashFieldsCnt(key []byte) []byte {
-	cardkey := make([]byte, len(key) + 1)
+	cardkey := make([]byte, len(key)+1)
 	cardkey[0] = HashFieldsCnt
 	copy(cardkey[1:], key)
 	return cardkey
@@ -101,11 +101,11 @@ func (db *DB) Hset(key, field, value string) (int, error) {
 func (db *DB) Hmset(key string, fieldvalue ...string) (int, error) {
 	bkey := []byte(key)
 	cnt := 0
-	if len(fieldvalue) % 2 != 0 {
+	if len(fieldvalue)%2 != 0 {
 		return cnt, errors.New("Hmset invalid args cnt")
 	}
 	for i := 0; i < len(fieldvalue); i = i + 2 {
-		field := fieldvalue[i] 
+		field := fieldvalue[i]
 		value := fieldvalue[i+1]
 		kfield := keyHashField(bkey, field)
 		cval, _ := db.get(kfield)
@@ -126,8 +126,6 @@ func (db *DB) Hmset(key string, fieldvalue ...string) (int, error) {
 	}
 	return cnt, nil
 }
-
-
 
 // Test for field existence
 func (db *DB) Hexists(key, field string) (int, error) {

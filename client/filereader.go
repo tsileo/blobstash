@@ -1,14 +1,14 @@
 package client
 
 import (
-	"os"
+	"bytes"
+	"crypto/sha1"
+	"errors"
+	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"io"
 	_ "log"
-	"fmt"
-	"crypto/sha1"
-	"bytes"
-	"errors"
+	"os"
 )
 
 type BlobFetcher interface {
@@ -43,7 +43,7 @@ func (client *Client) GetFile(key, path string) (*ReadResult, error) {
 		return readResult, err
 	}
 	h := sha1.New()
-	meta, _ := NewMetaFromDB(client.Pool, key) 
+	meta, _ := NewMetaFromDB(client.Pool, key)
 	ffile := NewFakeFile(client, meta.Ref, meta.Size)
 	ffilreReader := io.TeeReader(ffile, h)
 	io.Copy(buf, ffilreReader)
@@ -63,24 +63,25 @@ func (client *Client) GetFile(key, path string) (*ReadResult, error) {
 // It fetch blobs on the fly.
 type FakeFile struct {
 	client *Client
-	ref string
+	ref    string
 	offset int
-	size int
+	size   int
 }
 
 // Create a new FakeFile instance.
 func NewFakeFile(client *Client, ref string, size int) (f *FakeFile) {
-	f = &FakeFile{client: client, ref:ref, size: size}
+	f = &FakeFile{client: client, ref: ref, size: size}
 	return
 }
+
 // Implement the io.ReaderAt interface
-func (f* FakeFile) ReadAt(p []byte, offset int64) (n int, err error) {
+func (f *FakeFile) ReadAt(p []byte, offset int64) (n int, err error) {
 	if len(p) == 0 {
-    	return 0, nil
-    }
-    if f.offset >= f.size {
-    	return 0, io.EOF
-    }
+		return 0, nil
+	}
+	if f.offset >= f.size {
+		return 0, io.EOF
+	}
 	buf, err := f.read(int(offset), len(p))
 	if err != nil {
 		return
@@ -98,8 +99,8 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 	var buf bytes.Buffer
 	written := 0
 	var indexValueList []struct {
-	    Index int
-	    Value string
+		Index int
+		Value string
 	}
 	con := f.client.Pool.Get()
 	defer con.Close()
@@ -115,22 +116,22 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 			// Compute the starting offset of the blob
 			blobStart := iv.Index - len(bbuf)
 			// and subtract it to get the correct offset
-			foffset =  offset - blobStart
+			foffset = offset - blobStart
 			offset = 0
 		}
 		// If the remaining cnt (cnt - written)
-		// is greater than the blob slice 
-		if cnt - written > len(bbuf) - foffset {
+		// is greater than the blob slice
+		if cnt-written > len(bbuf)-foffset {
 			fwritten, err := buf.Write(bbuf[foffset:])
 			if err != nil {
 				return nil, err
 			}
 			written += fwritten
-			
+
 		} else {
 			// What we need fit in this blob
 			// it should return after this
-			fwritten, err := buf.Write(bbuf[foffset:foffset + cnt - written])
+			fwritten, err := buf.Write(bbuf[foffset : foffset+cnt-written])
 			if err != nil {
 				return nil, err
 			}
@@ -155,11 +156,11 @@ func (f *FakeFile) Reset() {
 // Read implement io.Reader
 func (f *FakeFile) Read(p []byte) (n int, err error) {
 	if len(p) == 0 {
-    	return 0, nil
-    }
-    if f.offset >= f.size {
-    	return 0, io.EOF
-    }
+		return 0, nil
+	}
+	if f.offset >= f.size {
+		return 0, io.EOF
+	}
 	n = 0
 	limit := len(p)
 	if limit > (f.size - f.offset) {

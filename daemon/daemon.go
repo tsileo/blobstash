@@ -22,25 +22,25 @@ Links
 package daemon
 
 import (
+	"fmt"
+	"github.com/cznic/kv"
+	"github.com/robfig/cron"
+	dclient "github.com/tsileo/datadatabase/client"
+	"log"
 	"os"
 	"os/signal"
-	"log"
-	"syscall"
-	"sync"
 	"sort"
-	"fmt"
+	"sync"
+	"syscall"
 	"time"
- 	dclient "github.com/tsileo/datadatabase/client"
- 	"github.com/cznic/kv"
- 	"github.com/robfig/cron"
 )
 
 type Job struct {
 	daemonConfig *Config
-	config *ConfigEntry
-	sched cron.Schedule
-	Prev time.Time
-	Next time.Time
+	config       *ConfigEntry
+	sched        cron.Schedule
+	Prev         time.Time
+	Next         time.Time
 }
 
 // NewJob initialize a Job
@@ -148,11 +148,11 @@ func NewDB(path string) (*kv.DB, error) {
 }
 
 type Daemon struct {
-	client *dclient.Client
-	stop chan struct{}
+	client  *dclient.Client
+	stop    chan struct{}
 	running bool
-	jobs []*Job
-	db *kv.DB
+	jobs    []*Job
+	db      *kv.DB
 	sync.Mutex
 }
 
@@ -178,7 +178,7 @@ func New(client *dclient.Client) *Daemon {
 	if err != nil {
 		panic(err)
 	}
-	return &Daemon{client:client, stop:make(chan struct{}),
+	return &Daemon{client: client, stop: make(chan struct{}),
 		jobs: []*Job{}, db: db}
 }
 
@@ -194,9 +194,9 @@ func (d *Daemon) Run() {
 	cs := make(chan os.Signal, 1)
 	signal.Notify(cs, os.Interrupt,
 		syscall.SIGHUP,
-	    syscall.SIGINT,
-	    syscall.SIGTERM,
-	    syscall.SIGQUIT)
+		syscall.SIGINT,
+		syscall.SIGTERM,
+		syscall.SIGQUIT)
 	if err := d.updateJobs(); err != nil {
 		panic(err)
 	}
@@ -214,7 +214,7 @@ func (d *Daemon) Run() {
 			checkTime = d.jobs[0].Next
 		}
 		select {
-		case now = <- time.After(checkTime.Sub(now)):
+		case now = <-time.After(checkTime.Sub(now)):
 			for _, job := range d.jobs {
 				if now.Sub(job.Next) < 0 {
 					break
@@ -229,13 +229,13 @@ func (d *Daemon) Run() {
 				d.Unlock()
 				continue
 			}
-		case <- d.stop:
+		case <-d.stop:
 			d.running = false
 			return
-		case <- configUpdated:
+		case <-configUpdated:
 			log.Println("config updated")
 			d.updateJobs()
-		case sig := <- cs:
+		case sig := <-cs:
 			log.Printf("captured %v\n", sig)
 			d.db.Close()
 			os.Exit(1)

@@ -1,10 +1,10 @@
 package blobsfile
 
 import (
-	"testing"
 	"bytes"
 	"crypto/rand"
 	"os"
+	"testing"
 
 	"github.com/tsileo/datadatabase/backend"
 )

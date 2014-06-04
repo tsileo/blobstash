@@ -6,9 +6,9 @@ import (
 
 	"github.com/bitly/go-simplejson"
 
-	"github.com/tsileo/datadatabase/server"
 	"github.com/tsileo/datadatabase/config"
-	)
+	"github.com/tsileo/datadatabase/server"
+)
 
 func main() {
 	stop := make(chan bool)

@@ -1,8 +1,8 @@
 package db
 
 import (
-	"testing"
 	"bytes"
+	"testing"
 )
 
 func TestDBSetDataType(t *testing.T) {

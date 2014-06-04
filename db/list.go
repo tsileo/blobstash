@@ -1,8 +1,8 @@
 package db
 
 import (
-	"encoding/binary"
 	"bytes"
+	"encoding/binary"
 	"io"
 )
 
@@ -34,7 +34,7 @@ func keyList(key []byte, index interface{}) []byte {
 		indexbyte = make([]byte, 4)
 		binary.BigEndian.PutUint32(indexbyte[:], uint32(k))
 	}
-	k := make([]byte, len(key) + 9)
+	k := make([]byte, len(key)+9)
 	k[0] = List
 	binary.LittleEndian.PutUint32(k[1:5], uint32(len(key)))
 	cpos := 5 + len(key)
@@ -47,7 +47,7 @@ func keyList(key []byte, index interface{}) []byte {
 func decodeListIndex(key []byte) int {
 	// The first byte is already remove
 	cpos := int(binary.LittleEndian.Uint32(key[0:4])) + 4
-	member := make([]byte, len(key) -  cpos)
+	member := make([]byte, len(key)-cpos)
 	copy(member[:], key[cpos:])
 	index := int(binary.BigEndian.Uint32(member))
 	return index
@@ -63,7 +63,7 @@ func decodeListKey(key []byte) []byte {
 
 // Build the key to retrieve the list length
 func listLen(key []byte) []byte {
-	cardkey := make([]byte, len(key) + 1)
+	cardkey := make([]byte, len(key)+1)
 	cardkey[0] = ListLen
 	copy(cardkey[1:], key)
 	return cardkey
@@ -110,10 +110,10 @@ func (db *DB) Liter(key string) ([][]byte, error) {
 	start := keyList(bkey, []byte{})
 	end := keyList(bkey, "\xff")
 	res := [][]byte{}
-	kvs, err := GetRange(db.db, start, end, 0) 
+	kvs, err := GetRange(db.db, start, end, 0)
 	if err != nil {
 		return res, err
-	}	
+	}
 	for _, kv := range kvs {
 		res = append(res, []byte(kv.Value))
 		//res = append(res,  decodeListIndex([]byte(kv.Key)))
@@ -126,12 +126,12 @@ func (db *DB) LiterWithIndex(key string) (ivs []*IndexValue, err error) {
 	bkey := []byte(key)
 	start := keyList(bkey, []byte{})
 	end := keyList(bkey, "\xff")
-	kvs, err := GetRange(db.db, start, end, 0) 
+	kvs, err := GetRange(db.db, start, end, 0)
 	if err != nil {
 		return
-	}	
+	}
 	for _, skv := range kvs {
-		ivs = append(ivs, &IndexValue{Index:decodeListIndex([]byte(skv.Key)), Value:skv.Value})
+		ivs = append(ivs, &IndexValue{Index: decodeListIndex([]byte(skv.Key)), Value: skv.Value})
 	}
 	return
 }
@@ -141,7 +141,7 @@ func (db *DB) Ldel(key string) error {
 	bkey := []byte(key)
 	start := keyList(bkey, []byte{})
 	end := keyList(bkey, "\xff")
-	kvs, err := GetRange(db.db, start, end, 0) 
+	kvs, err := GetRange(db.db, start, end, 0)
 	if err != nil {
 		return err
 	}
@@ -158,7 +158,7 @@ func (db *DB) Ldel(key string) error {
 
 func (db *DB) Lprev(key string, kStart int) string {
 	bkey := []byte(key)
-	enum, _, err := db.db.Seek([]byte(keyList(bkey, kStart + 1)))
+	enum, _, err := db.db.Seek([]byte(keyList(bkey, kStart+1)))
 	if err == io.EOF {
 		return ""
 	}
@@ -173,7 +173,6 @@ func (db *DB) Lprev(key string, kStart int) string {
 	}
 	return ""
 }
-	
 
 // Return a lexicographical range
 func (db *DB) GetListRange(key, kStart string, kEnd string, limit int) (kvs []*KeyValue, err error) {
@@ -197,7 +196,7 @@ func (db *DB) GetListMinRange(key string, kStart, kEnd, limit int) (ivs []*Index
 	skvs, _ := GetMinRange(db.db, keyList(bkey, kStart), keyList(bkey, kEnd), limit)
 	for _, skv := range skvs {
 		if bytes.Equal([]byte(key), decodeListKey([]byte(skv.Key))) {
-			ivs = append(ivs, &IndexValue{Index:decodeListIndex([]byte(skv.Key)), Value:skv.Value})
+			ivs = append(ivs, &IndexValue{Index: decodeListIndex([]byte(skv.Key)), Value: skv.Value})
 		}
 	}
 	return

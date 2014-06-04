@@ -1,12 +1,12 @@
 package client
 
 import (
+	"crypto/sha1"
+	"fmt"
 	"github.com/garyburd/redigo/redis"
+	"log"
 	"os"
 	"path/filepath"
-	"fmt"
-	"log"
-	"crypto/sha1"
 )
 
 // Return a slice of Meta for the directory
@@ -29,7 +29,7 @@ func (client *Client) DirIter(key string) (metas []*Meta, err error) {
 	return
 }
 
-type DirFetcher interface{
+type DirFetcher interface {
 	Get(string) interface{}
 }
 

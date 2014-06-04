@@ -8,18 +8,18 @@ Get/Exists/Enumerate requests are performed on the first BlobHandler.
 package mirror
 
 import (
-	"log"
-	"fmt"
 	"expvar"
+	"fmt"
+	"log"
 	"strings"
 
 	"github.com/tsileo/datadatabase/backend"
 )
 
 var (
-	bytesUploaded = expvar.NewMap("mirror-bytes-uploaded")
+	bytesUploaded   = expvar.NewMap("mirror-bytes-uploaded")
 	bytesDownloaded = expvar.NewMap("mirror-bytes-downloaded")
-	blobsUploaded = expvar.NewMap("mirror-blobs-uploaded")
+	blobsUploaded   = expvar.NewMap("mirror-blobs-uploaded")
 	blobsDownloaded = expvar.NewMap("mirror-blobs-downloaded")
 )
 

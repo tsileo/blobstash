@@ -1,19 +1,18 @@
 package client
 
 import (
-	"os"
+	"bufio"
 	"bytes"
 	"crypto/sha1"
-	"fmt"
-	_ "log"
-	"io"
-	"bufio"
-	"path/filepath"
 	"errors"
+	"fmt"
+	"io"
+	_ "log"
+	"os"
+	"path/filepath"
 
-	"github.com/tsileo/silokv/rolling"
 	"github.com/garyburd/redigo/redis"
-
+	"github.com/tsileo/silokv/rolling"
 )
 
 // Hash of an empty file
@@ -56,7 +55,7 @@ func (client *Client) FileWriter(txID, key, path string) (*WriteResult, error) {
 			i++
 		}
 		onSplit := rs.OnSplit()
-		if (onSplit && (buf.Len() > 64 << 10)) || buf.Len() >= 1 << 20 || eof {
+		if (onSplit && (buf.Len() > 64<<10)) || buf.Len() >= 1<<20 || eof {
 			nsha := SHA1(buf.Bytes())
 			ndata := string(buf.Bytes())
 			fullHash.Write(buf.Bytes())
@@ -100,7 +99,7 @@ func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err err
 	//log.Printf("PutFile %v/%v\n", txID, path)
 	client.StartUpload()
 	defer client.UploadDone()
-	fstat, err := os.Stat(path);
+	fstat, err := os.Stat(path)
 	if os.IsNotExist(err) {
 		return
 	}
@@ -146,7 +145,9 @@ func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err err
 	meta.Size = wr.Size
 	meta.Type = "file"
 	if cnt == 0 {
-		err = meta.Save(txID, client.Pool)
+		if err := meta.Save(txID, client.Pool); err != nil {
+			return meta, wr, fmt.Errorf("Error saving meta %+v: %v", meta, err)
+		}
 	} else {
 		meta.ComputeHash()
 	}

@@ -8,8 +8,8 @@ import (
 	"github.com/tsileo/datadatabase/backend"
 	"github.com/tsileo/datadatabase/backend/blobsfile"
 	"github.com/tsileo/datadatabase/backend/encrypt"
-	"github.com/tsileo/datadatabase/backend/s3"
 	"github.com/tsileo/datadatabase/backend/mirror"
+	"github.com/tsileo/datadatabase/backend/s3"
 )
 
 const defaultS3Location = "us-east-1"

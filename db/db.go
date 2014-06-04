@@ -14,9 +14,9 @@ import (
 	"encoding/binary"
 	_ "fmt"
 	"github.com/cznic/kv"
-	"strconv"
 	"io"
 	"os"
+	"strconv"
 )
 
 //
@@ -153,9 +153,9 @@ func GetMinRange(db *kv.DB, kStart []byte, kEnd []byte, limit int) (values []*Ke
 
 // The key-value database.
 type DB struct {
-	db          *kv.DB
+	db      *kv.DB
 	db_path string
-	mutex        *SlottedMutex
+	mutex   *SlottedMutex
 }
 
 // New creates a new database.

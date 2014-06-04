@@ -1,8 +1,8 @@
 package blobsfile
 
 import (
-	"testing"
 	"os"
+	"testing"
 )
 
 func TestBlobsIndex(t *testing.T) {
@@ -11,7 +11,7 @@ func TestBlobsIndex(t *testing.T) {
 	defer index.Close()
 	defer os.RemoveAll("tmp_test_index")
 
-	bp := &BlobPos{n:1, offset:5, size:10}
+	bp := &BlobPos{n: 1, offset: 5, size: 10}
 	bpString := bp.String()
 	if bpString != "1 5 10" {
 		t.Errorf("Bad BlobPos serialization, expected:%q, got:%q", "1 5 10", bpString)

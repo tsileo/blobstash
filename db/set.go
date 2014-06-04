@@ -25,7 +25,7 @@ func keySetMember(set []byte, key interface{}) []byte {
 	case byte:
 		keybyte = []byte{k}
 	}
-	k := make([]byte, len(keybyte) + len(set) + 5)
+	k := make([]byte, len(keybyte)+len(set)+5)
 	k[0] = Set
 	binary.LittleEndian.PutUint32(k[1:5], uint32(len(set)))
 	cpos := 5 + len(set)
@@ -39,13 +39,13 @@ func keySetMember(set []byte, key interface{}) []byte {
 func decodeKeySetMember(key []byte) []byte {
 	// The first byte is already remove
 	cpos := int(binary.LittleEndian.Uint32(key[0:4])) + 4
-	member := make([]byte, len(key) -  cpos)
+	member := make([]byte, len(key)-cpos)
 	copy(member[:], key[cpos:])
 	return member
 }
 
 func keySetCard(key []byte) []byte {
-	cardkey := make([]byte, len(key) + 1)
+	cardkey := make([]byte, len(key)+1)
 	cardkey[0] = SetCardinality
 	copy(cardkey[1:], key)
 	return cardkey
@@ -60,7 +60,6 @@ func (db *DB) Scard(key string) (int, error) {
 	card, err := db.getUint32(KeyType(cardkey, Meta))
 	return int(card), err
 }
-
 
 func (db *DB) Sadd(key string, members ...string) int {
 	bkey := []byte(key)
@@ -92,10 +91,10 @@ func (db *DB) Smembers(key string) [][]byte {
 	bkey := []byte(key)
 	start := keySetMember(bkey, []byte{})
 	end := keySetMember(bkey, "\xff")
-	kvs, _ := GetRange(db.db, start, end, 0) 
+	kvs, _ := GetRange(db.db, start, end, 0)
 	res := [][]byte{}
 	for _, kv := range kvs {
-		res = append(res,  decodeKeySetMember([]byte(kv.Key)))
+		res = append(res, decodeKeySetMember([]byte(kv.Key)))
 	}
 	return res
 }
@@ -105,13 +104,13 @@ func (db *DB) Sdel(key string) error {
 	bkey := []byte(key)
 	start := keySetMember(bkey, []byte{})
 	end := keySetMember(bkey, "\xff")
-	kvs, _ := GetRange(db.db, start, end, 0) 
+	kvs, _ := GetRange(db.db, start, end, 0)
 	for _, kv := range kvs {
 		db.del([]byte(kv.Key))
 	}
 	cardkey := keySetCard(bkey)
 	db.del(KeyType(cardkey, Meta))
-	return nil	
+	return nil
 }
 
 // func (db *DB) Srange(snapId, kStart string, kEnd string, limit int) [][]byte

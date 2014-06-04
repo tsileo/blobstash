@@ -8,8 +8,8 @@ import (
 func (client *Client) Latest() (backups []*Backup, err error) {
 	//indexValueList
 	var _ []struct {
-	    Index int
-	    Value string
+		Index int
+		Value string
 	}
 	con := client.Pool.Get()
 	defer con.Close()
@@ -42,13 +42,13 @@ func (client *Client) SnapshotIter() (filenames []string, err error) {
 
 type IndexMeta struct {
 	Index int
-	Meta *Meta
+	Meta  *Meta
 }
 
 func (client *Client) Snapshots(filename string) (ivs []*IndexMeta, err error) {
 	var indexValueList []struct {
-	    Index int
-	    Value string
+		Index int
+		Value string
 	}
 	con := client.Pool.Get()
 	defer con.Close()
@@ -69,7 +69,7 @@ func (client *Client) Snapshots(filename string) (ivs []*IndexMeta, err error) {
 		//}
 		ivs = append(ivs, &IndexMeta{iv.Index, meta})
 	}
-	return	
+	return
 }
 
 // Return the ref of the backup that match the given timestamp for the given filename

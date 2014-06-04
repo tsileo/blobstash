@@ -1,20 +1,20 @@
 package client
 
 import (
-	"testing"
-	"os"
-	"io"
-	"io/ioutil"
-	"path/filepath"
-	"sync"
 	"crypto/rand"
-	"log"
-	mrand "math/rand"
 	"github.com/bradfitz/iter"
 	"github.com/garyburd/redigo/redis"
+	"io"
+	"io/ioutil"
+	"log"
+	mrand "math/rand"
+	"os"
+	"path/filepath"
+	"sync"
+	"testing"
 )
 
-const MaxRandomFileSize = 2<<19
+const MaxRandomFileSize = 2 << 19
 
 func NewRandomFile(path string) string {
 	filename := NewRandomName()
@@ -50,7 +50,7 @@ func NewRandomFileWg(path string, wg *sync.WaitGroup) string {
 func CreateRandomTree(t *testing.T, path string, rec, maxrec int) (string, int) {
 	p := NewRandomDir(path)
 	if rec == 0 {
-		log.Printf("Creating a new random tree at %v", p)		
+		log.Printf("Creating a new random tree at %v", p)
 	}
 	nfiles := 0
 	for {
@@ -63,16 +63,16 @@ func CreateRandomTree(t *testing.T, path string, rec, maxrec int) (string, int) 
 	var wg sync.WaitGroup
 	for _ = range iter.N(nfiles) {
 		wg.Add(1)
-    	go NewRandomFileWg(p, &wg)
-    	cnt++
-    	if rec < maxrec && mrand.Intn(10) < 5 {
-    		_, ncnt := CreateRandomTree(t, p, rec+1, maxrec)
-    		cnt += ncnt
-    	}
-    	// Break at 50 to spend less time
-    	if cnt > 30 {
-    		return p, cnt
-    	}
+		go NewRandomFileWg(p, &wg)
+		cnt++
+		if rec < maxrec && mrand.Intn(10) < 5 {
+			_, ncnt := CreateRandomTree(t, p, rec+1, maxrec)
+			cnt += ncnt
+		}
+		// Break at 50 to spend less time
+		if cnt > 30 {
+			return p, cnt
+		}
 	}
 	wg.Wait()
 	if rec == 0 {
@@ -81,7 +81,7 @@ func CreateRandomTree(t *testing.T, path string, rec, maxrec int) (string, int) 
 	return p, cnt
 }
 
-func NewRandomTree(t *testing.T, path string, maxrec int) (string) {
+func NewRandomTree(t *testing.T, path string, maxrec int) string {
 	tpath, _ := CreateRandomTree(t, path, 0, maxrec)
 	return tpath
 }

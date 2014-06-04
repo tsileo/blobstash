@@ -11,16 +11,16 @@ Links
 package encrypt
 
 import (
-	"sync"
-	"errors"
-	"bytes"
-	"fmt"
-	"expvar"
-	"crypto/sha1"
 	"bufio"
-	"log"
-	"io"
+	"bytes"
 	"crypto/rand"
+	"crypto/sha1"
+	"errors"
+	"expvar"
+	"fmt"
+	"io"
+	"log"
+	"sync"
 
 	"github.com/tsileo/datadatabase/backend"
 
@@ -29,9 +29,9 @@ import (
 )
 
 var (
-	bytesUploaded = expvar.NewMap("encrypt-bytes-uploaded")
+	bytesUploaded   = expvar.NewMap("encrypt-bytes-uploaded")
 	bytesDownloaded = expvar.NewMap("encrypt-bytes-downloaded")
-	blobsUploaded = expvar.NewMap("encrypt-blobs-uploaded")
+	blobsUploaded   = expvar.NewMap("encrypt-blobs-uploaded")
 	blobsDownloaded = expvar.NewMap("encrypt-blobs-downloaded")
 )
 
@@ -68,7 +68,7 @@ func New(keyPath string, dest backend.BlobHandler) *EncryptBackend {
 		panic(err)
 	}
 	log.Printf("EncryptBackend: loaded key at %v", keyPath)
-	b := &EncryptBackend{dest: dest, index:make(map[string]string), key:&Key}
+	b := &EncryptBackend{dest: dest, index: make(map[string]string), key: &Key}
 	log.Printf("EncryptBackend: backend id => %v", b.String())
 	log.Println("EncryptBackend: scanning blobs to discover plain-text blobs hashes")
 	blobsCnt := 0
@@ -117,14 +117,14 @@ func (b *EncryptBackend) Put(hash string, rawData []byte) (err error) {
 	var out bytes.Buffer
 	out.WriteString("#datadb/secretbox\n")
 	out.WriteString(fmt.Sprintf("%v\n", hash))
-	encData := make([]byte, len(data) + secretbox.Overhead)
-	secretbox.Seal(encData[0:0], data, &nonce, b.key)	
+	encData := make([]byte, len(data)+secretbox.Overhead)
+	secretbox.Seal(encData[0:0], data, &nonce, b.key)
 	out.Write(nonce[:])
 	out.Write(encData)
 	encSha1 := sha1.New()
 	encSha1.Write(out.Bytes())
 	encHash := fmt.Sprintf("%x", encSha1.Sum(nil))
-	b.dest.Put(encHash ,out.Bytes())
+	b.dest.Put(encHash, out.Bytes())
 	b.Lock()
 	b.index[hash] = encHash
 	defer b.Unlock()
@@ -174,10 +174,10 @@ func (b *EncryptBackend) Get(hash string) (data []byte, err error) {
 	}
 	box := enc[headerSize:]
 	var nonce [24]byte
-	encData := make([]byte, len(box) - 24)
+	encData := make([]byte, len(box)-24)
 	copy(nonce[:], box[:24])
 	copy(encData[:], box[24:])
-	out := make([]byte, len(box) - 24)
+	out := make([]byte, len(box)-24)
 	out, success := secretbox.Open(nil, encData, &nonce, b.key)
 	if !success {
 		return data, fmt.Errorf("failed to decrypt blob %v/%v", hash, ref)

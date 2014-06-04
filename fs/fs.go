@@ -13,8 +13,8 @@ the file/dir (e.g /datadb/mnt/snapshots/writing/2014-05-04T17:42:48+02:00/writin
 package fs
 
 import (
-	"log"
 	"io"
+	"log"
 	"os"
 	"os/signal"
 	"time"
@@ -62,7 +62,7 @@ func Mount(mountpoint string) {
 
 type FS struct {
 	RootDir *Dir
-	Client *client.Client
+	Client  *client.Client
 }
 
 // NewFS initialize a new file system.
@@ -81,9 +81,9 @@ func (fs *FS) Root() (fs.Node, fuse.Error) {
 type Node struct {
 	Name string
 	Mode os.FileMode
-	Ref string
+	Ref  string
 	Size uint64
-	fs *FS
+	fs   *FS
 }
 
 func (n *Node) Attr() fuse.Attr {
@@ -97,15 +97,15 @@ func (n *Node) Setattr(req *fuse.SetattrRequest, resp *fuse.SetattrResponse, int
 
 type Dir struct {
 	Node
-	Root bool
-	Latest bool
-	Snapshots bool
-	SnapshotDir bool
-	FakeDir bool
-	AtRoot bool
-	AtDir bool
+	Root           bool
+	Latest         bool
+	Snapshots      bool
+	SnapshotDir    bool
+	FakeDir        bool
+	AtRoot         bool
+	AtDir          bool
 	FakeDirContent []fuse.Dirent
-	Children map[string]fs.Node
+	Children       map[string]fs.Node
 }
 
 func NewDir(cfs *FS, name, ref string) (d *Dir) {
@@ -254,7 +254,7 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 			}
 		}
 		return out, nil
-	
+
 	case d.Snapshots:
 		d.Children = make(map[string]fs.Node)
 		backups, _ := d.fs.Client.Latest()
@@ -287,7 +287,7 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 		indexmetas, _ := d.fs.Client.Snapshots(d.Name)
 		for _, im := range indexmetas {
 			// TODO the index to dirname => blocked with one Node
-			stime := time.Unix(int64(im.Index), 0) 
+			stime := time.Unix(int64(im.Index), 0)
 			sname := stime.Format(time.RFC3339)
 			meta := im.Meta
 			out = append(out, fuse.Dirent{Name: sname, Type: fuse.DT_Dir})
@@ -331,7 +331,7 @@ func NewFile(fs *FS, name, ref string, size int) *File {
 // TODO(tsileo) handle release request and close FakeFile if needed?
 
 func (f *File) Attr() fuse.Attr {
-	return fuse.Attr{Inode: 2, Mode: 0444, Size:f.Size}
+	return fuse.Attr{Inode: 2, Mode: 0444, Size: f.Size}
 }
 
 func (f *File) Read(req *fuse.ReadRequest, res *fuse.ReadResponse, intr fs.Intr) fuse.Error {

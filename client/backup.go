@@ -1,19 +1,19 @@
 package client
 
 import (
-	"github.com/garyburd/redigo/redis"
-	_ "strings"
-	"fmt"
-	"time"
-	"strconv"
 	"crypto/sha1"
+	"fmt"
+	"github.com/garyburd/redigo/redis"
+	"strconv"
+	_ "strings"
+	"time"
 )
 
 type Backup struct {
 	Name string `redis:"name"`
 	Type string `redis:"type"`
-	Ref string `redis:"ref"`
-	Ts int64 `redis:"ts"`
+	Ref  string `redis:"ref"`
+	Ts   int64  `redis:"ts"`
 	Hash string `redis:"-"`
 }
 

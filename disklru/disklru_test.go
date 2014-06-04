@@ -1,9 +1,9 @@
 package disklru
 
 import (
-	"testing"
-	"os"
 	"bytes"
+	"os"
+	"testing"
 	"time"
 )
 
@@ -17,12 +17,12 @@ func LRUTestFunc(key string) []byte {
 	return []byte(key)
 }
 
-var fakeData = []struct{
-	key string
-	data []byte
+var fakeData = []struct {
+	key     string
+	data    []byte
 	fetched bool
-	size uint32
-	cnt uint32
+	size    uint32
+	cnt     uint32
 }{
 	{"testget", []byte("testget"), true, 7, 1},
 	{"testget", []byte("testget"), false, 7, 1},
@@ -57,6 +57,6 @@ func TestDiskLRU(t *testing.T) {
 			t.Errorf("Bad DiskLRU items count, got:%v, expected:%v", lru.Cnt(), tdata.cnt)
 		}
 		time.Sleep(500 * time.Millisecond)
-	}	
+	}
 
 }

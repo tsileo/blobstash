@@ -1,12 +1,12 @@
 package client
 
 import (
-	"testing"
-	"os"
+	"bytes"
 	"fmt"
 	"io/ioutil"
-	"bytes"
 	"log"
+	"os"
+	"testing"
 
 	"github.com/garyburd/redigo/redis"
 )
@@ -15,8 +15,8 @@ func TestClientFile(t *testing.T) {
 	c, err := NewTestClient()
 	defer c.Close()
 	defer c.RemoveCache()
- 	check(err)
- 	con := c.Pool.Get()
+	check(err)
+	con := c.Pool.Get()
 	defer con.Close()
 	txID, err := redis.String(con.Do("TXINIT"))
 	check(err)
@@ -46,34 +46,34 @@ func TestClientFile(t *testing.T) {
 
 	txID, err = redis.String(con.Do("TXINIT"))
 	check(err)
- 	d1 := []byte("hello world\n")
- 	helloPath := "test_hello_world.txt"
-    err = ioutil.WriteFile(helloPath, d1, 0644)
-    check(err)
-    defer os.Remove(helloPath)
-    _, rw, err := c.PutFile(txID, helloPath)
-    check(err)
-    _, err = con.Do("TXCOMMIT")
+	d1 := []byte("hello world\n")
+	helloPath := "test_hello_world.txt"
+	err = ioutil.WriteFile(helloPath, d1, 0644)
 	check(err)
-    log.Printf("fileput hash: %v", rw.Hash)
-    fakeFile := NewFakeFile(c, rw.Hash, rw.Size)
-    fkr, err := fakeFile.read(0, 5)
-    check(err)
-    if !bytes.Equal(fkr, []byte("hello")) {
-    	t.Errorf("Error Fake file read, expected:hello, got %v", fkr)
-    }
-    fkr, err = fakeFile.read(6, 5)
-    check(err)
-    if !bytes.Equal(fkr, []byte("world")) {
-    	t.Errorf("Error Fake file read, expected:world, got %v", fkr)
-    }
-    d2 := make([]byte, len(d1))
-    n, err := fakeFile.Read(d2)
-    check(err)
-    if n != len(d1) {
-    	t.Error("Error FakeFile reader len")
-    }
-    if !bytes.Equal(d1, d2) {
-    	t.Error("Error FakeFile reader")
-    }
+	defer os.Remove(helloPath)
+	_, rw, err := c.PutFile(txID, helloPath)
+	check(err)
+	_, err = con.Do("TXCOMMIT")
+	check(err)
+	log.Printf("fileput hash: %v", rw.Hash)
+	fakeFile := NewFakeFile(c, rw.Hash, rw.Size)
+	fkr, err := fakeFile.read(0, 5)
+	check(err)
+	if !bytes.Equal(fkr, []byte("hello")) {
+		t.Errorf("Error Fake file read, expected:hello, got %v", fkr)
+	}
+	fkr, err = fakeFile.read(6, 5)
+	check(err)
+	if !bytes.Equal(fkr, []byte("world")) {
+		t.Errorf("Error Fake file read, expected:world, got %v", fkr)
+	}
+	d2 := make([]byte, len(d1))
+	n, err := fakeFile.Read(d2)
+	check(err)
+	if n != len(d1) {
+		t.Error("Error FakeFile reader len")
+	}
+	if !bytes.Equal(d1, d2) {
+		t.Error("Error FakeFile reader")
+	}
 }

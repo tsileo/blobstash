@@ -1,9 +1,9 @@
 package db
 
 import (
-	"testing"
 	"bytes"
 	"reflect"
+	"testing"
 )
 
 func TestDBListDataType(t *testing.T) {

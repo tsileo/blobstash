@@ -2,7 +2,7 @@
 
 Package disklru implements a disk-based LRU cache.
 
-A small key-value store ((powered by kv [1])) keeps track of the keys/size/last access time of each time, and data are stored in files. 
+A small key-value store ((powered by kv [1])) keeps track of the keys/size/last access time of each time, and data are stored in files.
 Eviction is triggered when the cache size exceed a limit,
 it tries to keep the size of the cache under a fixed threshold and remove lest recently used item first.
 
@@ -23,15 +23,15 @@ Links
 package disklru
 
 import (
-	"sync"
-	"os"
+	"bytes"
+	"encoding/binary"
 	"io"
 	"io/ioutil"
-	"bytes"
+	"os"
 	"path/filepath"
-	"encoding/binary"
+	"sync"
 	"time"
-	
+
 	"github.com/cznic/kv"
 )
 
@@ -53,17 +53,17 @@ func opts() *kv.Options {
 }
 
 type DiskLRU struct {
-	Func func(string) []byte
+	Func      func(string) []byte
 	Threshold int64
-	db          *kv.DB
-	path string
+	db        *kv.DB
+	path      string
 	sync.Mutex
 }
 
 type CacheItem struct {
-	Key string
+	Key   string
 	Index uint32
-	Size uint32
+	Size  uint32
 }
 
 // New initialize a new DiskLRU.
@@ -82,7 +82,7 @@ func New(path string, f func(string) []byte, threshold int64) (*DiskLRU, error) 
 
 func NewTest(f func(string) []byte, threshold int64) (*DiskLRU, error) {
 	db, err := kv.CreateMem(&kv.Options{})
-	return &DiskLRU{f, threshold, db, "tmp_test_blobs_lru", sync.Mutex{}}, err	
+	return &DiskLRU{f, threshold, db, "tmp_test_blobs_lru", sync.Mutex{}}, err
 }
 
 // Close cleanly close the kv db.
@@ -243,7 +243,7 @@ func (lru *DiskLRU) Iter(items chan<- *CacheItem) {
 		}
 		rkey, rindex := decodeIndexKey(k)
 		rsize := binary.LittleEndian.Uint32(v)
-		items <- &CacheItem{Key:rkey, Index:rindex, Size:rsize}
+		items <- &CacheItem{Key: rkey, Index: rindex, Size: rsize}
 	}
 }
 

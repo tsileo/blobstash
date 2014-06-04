@@ -12,18 +12,18 @@ Get is disabled since it's a write-only backend.
 package glacier
 
 import (
-	"log"
-	"fmt"
 	"expvar"
+	"fmt"
+	"log"
 	_ "strings"
 
 	"github.com/tsileo/datadatabase/backend"
 )
 
 var (
-	bytesUploaded = expvar.NewMap("glacier-bytes-uploaded")
+	bytesUploaded   = expvar.NewMap("glacier-bytes-uploaded")
 	bytesDownloaded = expvar.NewMap("glacier-bytes-downloaded")
-	blobsUploaded = expvar.NewMap("glacier-blobs-uploaded")
+	blobsUploaded   = expvar.NewMap("glacier-blobs-uploaded")
 	blobsDownloaded = expvar.NewMap("glacier-blobs-downloaded")
 )
 

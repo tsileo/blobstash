@@ -1,8 +1,8 @@
 package db
 
 import (
-	"testing"
 	"reflect"
+	"testing"
 )
 
 func TestDBStringDataType(t *testing.T) {
@@ -41,7 +41,7 @@ func TestDBStringDataType(t *testing.T) {
 		t.Errorf("Range should be 3, got %v", len(kvs))
 	}
 	expected := []*KeyValue{&KeyValue{"foo", "bar"}, &KeyValue{"foo2", "bar2"},
-							&KeyValue{"foo3", "bar3"}}
+		&KeyValue{"foo3", "bar3"}}
 	if !reflect.DeepEqual(expected, kvs) {
 		t.Errorf("Range error, expected:%+v, got: %+v", expected, kvs)
 	}

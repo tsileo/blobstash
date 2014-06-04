@@ -1,9 +1,9 @@
 package client
 
 import (
-	"testing"
-	"reflect"
 	"github.com/garyburd/redigo/redis"
+	"reflect"
+	"testing"
 )
 
 func check(e error) {

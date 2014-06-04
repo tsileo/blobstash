@@ -1,36 +1,36 @@
 package db
 
 import (
-    "testing"
-    "bytes"
-    "sync"
+	"bytes"
+	"sync"
+	"testing"
 )
 
 func check(e error) {
-    if e != nil {
-        panic(e)
-    }
+	if e != nil {
+		panic(e)
+	}
 }
 
 func TestDB(t *testing.T) {
 	db, err := NewMem()
 	if err != nil {
 		t.Fatal("Error creating db")
-	}	
+	}
 
 	err = db.put([]byte("foo"), []byte("bar"))
 	check(err)
 
 	val, err := db.get([]byte("foo"))
 	check(err)
-	
+
 	if !bytes.Equal(val, []byte("bar")) {
 		t.Errorf("Error getting value")
 	}
 
 	valmissing, err := db.get([]byte("foomissing"))
 	check(err)
-	
+
 	if valmissing != nil {
 		t.Errorf("Non existent key should return nil")
 	}
@@ -44,14 +44,14 @@ func TestDB(t *testing.T) {
 
 	val, err = db.get([]byte("foo"))
 	check(err)
-	
+
 	if !bytes.Equal(val, []byte("10")) {
 		t.Errorf("Error getting value")
 	}
 
 	err = db.del([]byte("foo"))
 	check(err)
-		
+
 	val, err = db.get([]byte("foo"))
 	check(err)
 	if val != nil {
@@ -70,7 +70,7 @@ func TestDB(t *testing.T) {
 	// testing low level binary encoded uint32
 	valUint, err := db.getUint32([]byte("foo2"))
 	check(err)
-	
+
 	if valUint != uint32(0) {
 		t.Errorf("Uninitialized uint32 key should return 0")
 	}

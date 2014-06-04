@@ -1,8 +1,8 @@
 package mirror
 
 import (
-	"testing"
 	"os"
+	"testing"
 
 	"github.com/tsileo/datadatabase/backend"
 	"github.com/tsileo/datadatabase/backend/blobsfile"

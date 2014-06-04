@@ -1,19 +1,19 @@
 package client
 
 import (
-	"time"
 	"fmt"
-	"path/filepath"
 	"github.com/garyburd/redigo/redis"
-	"github.com/tsileo/datadatabase/lru"
 	"github.com/tsileo/datadatabase/disklru"
+	"github.com/tsileo/datadatabase/lru"
 	"os"
+	"path/filepath"
+	"time"
 )
 
 func GetDbPool() (pool *redis.Pool, err error) {
 	pool = &redis.Pool{
 		MaxIdle:     250,
-		MaxActive: 250,
+		MaxActive:   250,
 		IdleTimeout: 240 * time.Second,
 		Dial: func() (redis.Conn, error) {
 			c, err := redis.Dial("tcp", "localhost:9736")
@@ -31,11 +31,11 @@ func GetDbPool() (pool *redis.Pool, err error) {
 }
 
 type Client struct {
-	Pool *redis.Pool
-	Blobs BlobFetcher
-	Dirs DirFetcher
-	Metas MetaFetcher
-	uploader chan struct{}
+	Pool         *redis.Pool
+	Blobs        BlobFetcher
+	Dirs         DirFetcher
+	Metas        MetaFetcher
+	uploader     chan struct{}
 	ignoredFiles []string
 }
 
@@ -44,7 +44,7 @@ func NewClient(ignoredFiles []string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &Client{Pool:pool, uploader: make(chan struct{}, 100)}
+	c := &Client{Pool: pool, uploader: make(chan struct{}, 100)}
 	c.Blobs, err = disklru.New("./tmp_blobs_lru", c.FetchBlob, 536870912)
 	c.Dirs = lru.New(c.FetchDir, 512)
 	c.Metas = lru.New(c.FetchMeta, 512)
@@ -63,7 +63,7 @@ func NewTestClient() (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &Client{Pool:pool, uploader: make(chan struct{}, 100)}
+	c := &Client{Pool: pool, uploader: make(chan struct{}, 100)}
 	c.Blobs, err = disklru.NewTest(c.FetchBlob, 536870912)
 	c.Dirs = lru.New(c.FetchDir, 512)
 	c.Metas = lru.New(c.FetchMeta, 512)
@@ -86,7 +86,7 @@ func (client *Client) StartUpload() {
 // Read from the channel to let another upload start
 func (client *Client) UploadDone() {
 	select {
-		case <-client.uploader:
+	case <-client.uploader:
 	default:
 		panic("No upload to wait for")
 	}

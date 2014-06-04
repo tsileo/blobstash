@@ -1,8 +1,8 @@
 package server
 
 import (
-	neturl "net/url"
 	"log"
+	neturl "net/url"
 )
 
 // ParseURL converts db url to usable data
@@ -19,4 +19,3 @@ func ParseURL(url string) error {
 	log.Printf("%+v\n", u.Path)
 	return nil
 }
-	

@@ -1,9 +1,9 @@
 package db
 
 import (
-	"testing"
 	"bytes"
 	"reflect"
+	"testing"
 )
 
 func TestDBHashDataType(t *testing.T) {
@@ -39,7 +39,7 @@ func TestDBHashDataType(t *testing.T) {
 	if cnt != 0 {
 		t.Error("Attribute shouldn't exist")
 	}
-	
+
 	cnt, err = db.Hexists("foo", "attr1")
 	check(err)
 	if cnt != 1 {
@@ -53,7 +53,7 @@ func TestDBHashDataType(t *testing.T) {
 	}
 
 	expected := []*KeyValue{&KeyValue{"attr1", "val1"}, &KeyValue{"attr2", "val2"},
-							&KeyValue{"attr3", "val3"}}
+		&KeyValue{"attr3", "val3"}}
 	kvs, err := db.Hgetall("foo")
 	check(err)
 	if !reflect.DeepEqual(kvs, expected) {
@@ -69,7 +69,7 @@ func TestDBHashDataType(t *testing.T) {
 	if !reflect.DeepEqual(hkeys, hkeysExpected) {
 		t.Errorf("Bad hscan result, got: %+v, expected: %+v", hkeys, hkeysExpected)
 	}
-	
+
 	hlen, err = db.Hlen("foo")
 	check(err)
 	if hlen != 3 {

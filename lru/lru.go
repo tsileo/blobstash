@@ -27,138 +27,138 @@ package lru
 
 // Cache for function Func.
 type LRU struct {
-    Func func(string) interface{}
-    index map[string]int   // index of key in queue
-    queue list
+	Func  func(string) interface{}
+	index map[string]int // index of key in queue
+	queue list
 }
 
 // Create a new LRU cache for function f with the desired capacity.
 func New(f func(string) interface{}, capacity int) *LRU {
-    if capacity < 1 {
-        panic("capacity < 1")
-    }
-    c := &LRU{Func: f, index: make(map[string]int)}
-    c.queue.init(capacity)
-    return c
+	if capacity < 1 {
+		panic("capacity < 1")
+	}
+	c := &LRU{Func: f, index: make(map[string]int)}
+	c.queue.init(capacity)
+	return c
 }
 
 // Fetch value for key in the cache, calling Func to compute it if necessary.
 func (c *LRU) Get(key string) (value interface{}) {
-    i, stored := c.index[key]
-    if stored {
-        value = c.queue.valueAt(i)
-        c.queue.moveToFront(i)
-    } else {
-    	value = c.Func(key)
-        c.insert(key, value)
-    }
-    return value
+	i, stored := c.index[key]
+	if stored {
+		value = c.queue.valueAt(i)
+		c.queue.moveToFront(i)
+	} else {
+		value = c.Func(key)
+		c.insert(key, value)
+	}
+	return value
 }
 
 // Number of items currently in the cache.
 func (c *LRU) Len() int {
-    return len(c.queue.links)
+	return len(c.queue.links)
 }
 
 func (c *LRU) Capacity() int {
-    return cap(c.queue.links)
+	return cap(c.queue.links)
 }
 
 // Iterate over the cache in LRU order. Useful for debugging.
 func (c *LRU) Iter(keys chan string, values chan interface{}) {
-    for i := c.queue.tail; i != -1; {
-        n := c.queue.links[i]
-        keys <- n.key
-        values <- n.value
-        i = n.next
-    }
-    close(keys)
-    close(values)
+	for i := c.queue.tail; i != -1; {
+		n := c.queue.links[i]
+		keys <- n.key
+		values <- n.value
+		i = n.next
+	}
+	close(keys)
+	close(values)
 }
 
 func (c *LRU) insert(key string, value interface{}) {
-    var i int
-    q := &c.queue
-    if q.full() {
-        // evict least recently used item
-        var k string
-        i, k = q.popTail()
-        delete(c.index, k)
-    } else {
-        i = q.grow()
-    }
-    q.putFront(key, value, i)
-    c.index[key] = i
+	var i int
+	q := &c.queue
+	if q.full() {
+		// evict least recently used item
+		var k string
+		i, k = q.popTail()
+		delete(c.index, k)
+	} else {
+		i = q.grow()
+	}
+	q.putFront(key, value, i)
+	c.index[key] = i
 }
 
 // Doubly linked list containing key/value pairs.
 type list struct {
-    front, tail, empty int
-    links []link
+	front, tail, empty int
+	links              []link
 }
 
 type link struct {
-    key string
-    value interface{}
-    prev, next int
+	key        string
+	value      interface{}
+	prev, next int
 }
 
 // Initialize l with capacity c.
 func (l *list) init(c int) {
-    l.front = -1
-    l.tail = -1
-    l.links = make([]link, 0, c)
+	l.front = -1
+	l.tail = -1
+	l.links = make([]link, 0, c)
 }
 
 func (l *list) full() bool {
-    return len(l.links) == cap(l.links)
+	return len(l.links) == cap(l.links)
 }
 
 // Grow list by one element and return its index.
 func (l *list) grow() (i int) {
-    i = len(l.links)
-    l.links = l.links[:i+1]
-    return
+	i = len(l.links)
+	l.links = l.links[:i+1]
+	return
 }
 
 // Make the node at position i the front of the list.
 // Precondition: the list is not empty.
 func (l *list) moveToFront(i int) {
-    nf := &l.links[i]
-    of := &l.links[l.front]
+	nf := &l.links[i]
+	of := &l.links[l.front]
 
-    nf.prev = l.front
-    of.next = i
-    l.front = i
+	nf.prev = l.front
+	of.next = i
+	l.front = i
 }
 
 // Pop the tail off the list and return its index and its key.
 // Precondition: the list is full.
 func (l *list) popTail() (i int, key string) {
-    i = l.tail
-    t := &l.links[i]
-    key = t.key
-    l.links[t.next].prev = -1
-    l.tail = t.next
-    return
+	i = l.tail
+	t := &l.links[i]
+	key = t.key
+	l.links[t.next].prev = -1
+	l.tail = t.next
+	return
 }
 
 // Put (key, value) in position i and make it the front of the list.
 func (l *list) putFront(key string, value interface{}, i int) {
-    f := &l.links[i]
-    f.key = key
-    f.value = value
-    f.prev = l.front
-    f.next = -1
+	f := &l.links[i]
+	f.key = key
+	f.value = value
+	f.prev = l.front
+	f.next = -1
 
-    if l.tail == -1 {
-        l.tail = i
-    } else {
-        l.links[l.front].next = i
-    }
-    l.front = i
+	if l.tail == -1 {
+		l.tail = i
+	} else {
+		l.links[l.front].next = i
+	}
+	l.front = i
 }
 
 func (l *list) valueAt(i int) interface{} {
-    return l.links[i].value
+	return l.links[i].value
 }

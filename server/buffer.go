@@ -29,37 +29,37 @@ Example of what a Meta blob looks like:
 	    {
 	      "args": [
 	        [
-	          "name", 
-	          "writing", 
-	          "type", 
-	          "dir", 
-	          "ref", 
-	          "666d51cc63367a434d8ded9f336b3ac9f7188547", 
-	          "ts", 
+	          "name",
+	          "writing",
+	          "type",
+	          "dir",
+	          "ref",
+	          "666d51cc63367a434d8ded9f336b3ac9f7188547",
+	          "ts",
 	          "1399219126"
 	        ]
-	      ], 
+	      ],
 	      "key": "backup:e23c16bcc4e5ffcfaf81ec9627a7753cb2b55d0a"
 	    }
-	  ], 
+	  ],
 	  "ladd": [
 	    {
 	      "args": [
 	        [
-	          "1399219126", 
+	          "1399219126",
 	          "backup:e23c16bcc4e5ffcfaf81ec9627a7753cb2b55d0a"
 	        ]
-	      ], 
+	      ],
 	      "key": "writing"
 	    }
-	  ], 
+	  ],
 	  "sadd": [
 	    {
 	      "args": [
 	        [
 	          "writing"
 	        ]
-	      ], 
+	      ],
 	      "key": "filenames"
 	    }
 	  ]
@@ -69,35 +69,37 @@ Example of what a Meta blob looks like:
 package server
 
 import (
+	"encoding/json"
+	"fmt"
+	"strconv"
+	"strings"
+	"sync"
+
 	"github.com/tsileo/datadatabase/backend"
 	"github.com/tsileo/datadatabase/db"
-	"sync"
-	"strings"
-	"fmt"
-	"log"
-	"strconv"
-	"encoding/json"
+
+	"github.com/bitly/go-notify"
 )
 
 type TxManager struct {
-	Txs map[string]*ReqBuffer
-	db *db.DB
+	Txs         map[string]*ReqBuffer
+	db          *db.DB
 	blobBackend backend.BlobHandler
 	sync.Mutex
 }
 
 type ReqBuffer struct {
 	blobBackend backend.BlobHandler
-	db *db.DB
+	db          *db.DB
 	*sync.Mutex
-	reqCnt int
-	Reqs map[string][]*ReqArgs
+	reqCnt     int
+	Reqs       map[string][]*ReqArgs
 	ReqsKeyRef map[string]map[string]*ReqArgs
 }
 
 // ReqArgs store the list of args (list of string) for the given key.
 type ReqArgs struct {
-	Key string `json:"key"`
+	Key  string     `json:"key"`
 	Args [][]string `json:"args"`
 }
 
@@ -122,7 +124,7 @@ func (txm *TxManager) GetReqBuffer(name string) *ReqBuffer {
 // NewReqBuffer initialize a new ReqBuffer
 func NewReqBuffer(cdb *db.DB, blobBackend backend.BlobHandler) *ReqBuffer {
 	return &ReqBuffer{blobBackend, cdb, &sync.Mutex{}, 0, make(map[string][]*ReqArgs),
-					make(map[string]map[string]*ReqArgs)}
+		make(map[string]map[string]*ReqArgs)}
 }
 
 // NewReqBufferWithData is a wrapper around NewReqBuffer, it fills the buffer with the given data.
@@ -156,7 +158,7 @@ func (rb *ReqBuffer) Add(reqType, reqKey string, reqArgs []string) (err error) {
 	}
 	_, exists = rb.ReqsKeyRef[reqType][reqKey]
 	if !exists {
-		ra := &ReqArgs{Key: reqKey, Args:[][]string{reqArgs}}
+		ra := &ReqArgs{Key: reqKey, Args: [][]string{reqArgs}}
 		rb.Reqs[reqType] = append(rb.Reqs[reqType], ra)
 		rb.ReqsKeyRef[reqType][reqKey] = ra
 	} else {
@@ -167,6 +169,8 @@ func (rb *ReqBuffer) Add(reqType, reqKey string, reqArgs []string) (err error) {
 
 // Put the blob to Meta BlobHandler.
 func (rb *ReqBuffer) Save() error {
+	rb.Lock()
+	defer rb.Unlock()
 	if rb.reqCnt == 0 {
 		return nil
 	}
@@ -174,10 +178,10 @@ func (rb *ReqBuffer) Save() error {
 	//	return err
 	//}
 	h, d := rb.JSON()
-	log.Printf("server: Meta blob:%v (%v commands, len:%v) written\n", h, rb.reqCnt, len(d))
+	go notify.Post("monitor_cmd", fmt.Sprintf("server: meta blob:%v (len:%v) written\n", h, len(d)))
 	rb.Reset()
 	if err := rb.blobBackend.Put(h, d); err != nil {
-		return err
+		return fmt.Errorf("Error putting blob: %v", err)
 	}
 	if cnt := rb.db.Sadd("_meta", h); cnt != 1 {
 		return fmt.Errorf("Error adding the meta blob %v to _meta list", h)
@@ -187,19 +191,18 @@ func (rb *ReqBuffer) Save() error {
 
 // Enumerate every meta blobs filename and check if the data is already indexed.
 func (rb *ReqBuffer) Load() error {
-	log.Printf("server: scanning meta blobs")
+	go notify.Post("monitor_cmd", "server: scanning meta blobs")
 	//rb.Lock()
 	//defer rb.Unlock()
 	hashes := make(chan string)
 	errs := make(chan error)
 	go func() {
 		errs <- rb.blobBackend.Enumerate(hashes)
-
 	}()
 	for hash := range hashes {
 		cnt := rb.db.Sismember("_meta", hash)
 		if cnt == 0 {
-			log.Printf("server: meta blob %v not loaded", hash)
+			go notify.Post("monitor_cmd", fmt.Sprintf("server: meta blob %v not yet loaded", hash))
 			data, berr := rb.blobBackend.Get(hash)
 			if berr != nil {
 				return berr
@@ -214,14 +217,14 @@ func (rb *ReqBuffer) Load() error {
 			if err := NewReqBufferWithData(rb.db, rb.blobBackend, res).Apply(); err != nil {
 				return err
 			}
-			log.Printf("server: meta blob %v applied", hash)
+			go notify.Post("monitor_cmd", fmt.Sprintf("server: meta blob %v applied", hash))
 		}
 	}
 	if err := <-errs; err != nil {
-		log.Printf("server: aborting scan, err:%v", err)
+		go notify.Post("monitor_cmd", fmt.Sprintf("server: aborting scan, err:%v", err))
 		return err
 	}
-	log.Printf("server: scan done")
+	go notify.Post("monitor_cmd", "server: scan done")
 	return nil
 }
 
@@ -229,7 +232,7 @@ func (rb *ReqBuffer) Load() error {
 func (rb *ReqBuffer) JSON() (string, []byte) {
 	data, _ := json.Marshal(rb.Reqs)
 	sha1 := SHA1(data)
-    return sha1, data
+	return sha1, data
 }
 
 // Return the number of commands stored.
@@ -242,7 +245,7 @@ func (rb *ReqBuffer) Apply() error {
 	commit := false
 	defer func() {
 		if !commit {
-			log.Printf("server: error applying ReqBuffer %+v, rolling back...", rb)
+			go notify.Post("monitor_cmd", fmt.Sprintf("server: error applying ReqBuffer %+v, rolling back...", rb))
 			rb.db.Rollback()
 		}
 	}()
@@ -254,7 +257,7 @@ func (rb *ReqBuffer) Apply() error {
 		case reqCmd == "sadd":
 			for _, req := range reqArgs {
 				for _, args := range req.Args {
-					log.Printf("server: Applying SADD: %+v/%+v", req.Key, args)
+					go notify.Post("monitor_cmd", fmt.Sprintf("server: Applying SADD: %+v/%+v", req.Key, args))
 					// TODO(tsileo) error checking the SADD command
 					rb.db.Sadd(req.Key, args...)
 				}
@@ -263,7 +266,7 @@ func (rb *ReqBuffer) Apply() error {
 		case reqCmd == "hmset" || reqCmd == "hset":
 			for _, req := range reqArgs {
 				for _, args := range req.Args {
-					log.Printf("server: Applying HMSET: %+v/%+v", req.Key, args)
+					go notify.Post("monitor_cmd", fmt.Sprintf("server: Applying HMSET: %+v/%+v", req.Key, args))
 					if _, err := rb.db.Hmset(req.Key, args...); err != nil {
 						return err
 					}
@@ -275,10 +278,10 @@ func (rb *ReqBuffer) Apply() error {
 				for _, args := range req.Args {
 					index, ierr := strconv.Atoi(args[0])
 					if ierr != nil {
-						log.Printf("server: Bad LADD index: %v, err:%v", index, ierr)
+						go notify.Post("monitor_cmd", fmt.Sprintf("server: Bad LADD index: %v, err:%v", index, ierr))
 						return ierr
 					}
-					log.Printf("server: Applying LADD: %+v/%+v", req.Key, args)
+					go notify.Post("monitor_cmd", fmt.Sprintf("server: Applying LADD: %+v/%+v", req.Key, args))
 					if err := rb.db.Ladd(req.Key, index, args[1]); err != nil {
 						return err
 					}
@@ -288,7 +291,7 @@ func (rb *ReqBuffer) Apply() error {
 		case reqCmd == "set":
 			for _, req := range reqArgs {
 				for _, args := range req.Args {
-					log.Printf("server: Applying SET: %+v/%+v", req.Key, args)
+					go notify.Post("monitor_cmd", fmt.Sprintf("server: Applying SET: %+v/%+v", req.Key, args))
 					if err := rb.db.Put(req.Key, args[0]); err != nil {
 						return err
 					}

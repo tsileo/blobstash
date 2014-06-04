@@ -1,10 +1,10 @@
 package client
 
 import (
-	"github.com/garyburd/redigo/redis"
+	"crypto/sha1"
 	"errors"
 	"fmt"
-	"crypto/sha1"
+	"github.com/garyburd/redigo/redis"
 )
 
 var (
@@ -14,8 +14,8 @@ var (
 type Meta struct {
 	Name string `redis:"name"`
 	Type string `redis:"type"`
-	Size int	`redis:"size"`
-	Ref string	`redis:"ref"`
+	Size int    `redis:"size"`
+	Ref  string `redis:"ref"`
 	Hash string `redis:"-"`
 }
 
@@ -40,7 +40,6 @@ func NewMetaFromDB(pool *redis.Pool, key string) (m *Meta, err error) {
 }
 
 func GetAllMeta(pool *redis.Pool) (metas []*Meta, err error) {
-	
 	return
 }
 
@@ -53,26 +52,29 @@ func NewMeta() *Meta {
 func (m *Meta) Save(txID string, pool *redis.Pool) error {
 	con := pool.Get()
 	defer con.Close()
-	if _, err := redis.String(con.Do("TXINIT", txID)); err != nil {
-		return err
-	}
 	m.Hash = metaKey(m.Name, m.Ref)
 	cnt, err := redis.Int(con.Do("HLEN", m.Hash))
 	if err != nil {
-		return err
+		return fmt.Errorf("error HLEN: %v", err)
 	}
 	if cnt != 0 {
 		return nil
 	}
+	if _, err := redis.String(con.Do("TXINIT", txID)); err != nil {
+		return fmt.Errorf("error TXINIT: %v", err)
+	}
 	if _, err := con.Do("HMSET", m.Hash,
-			"name", m.Name,
-			"type", m.Type,
-			"size", m.Size,
-			"ref", m.Ref); err != nil {
-		return err
+		"name", m.Name,
+		"type", m.Type,
+		"size", m.Size,
+		"ref", m.Ref); err != nil {
+		return fmt.Errorf("error HMSET: %v", m, err)
 	}
 
 	_, err = con.Do("TXCOMMIT")
+	if err != nil {
+		return fmt.Errorf("error TXCOMMIT: %+v", err)
+	}
 	return err
 }
 
@@ -97,7 +99,7 @@ func (m *Meta) IsDir() bool {
 	return false
 }
 
-type MetaFetcher interface{
+type MetaFetcher interface {
 	Get(string) interface{}
 }
 

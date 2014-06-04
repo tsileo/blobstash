@@ -27,16 +27,16 @@ is needed for blobs, this format is better than a tar archive).
 package blobsfile
 
 import (
-	"os"
+	"crypto/sha1"
+	"encoding/binary"
 	"expvar"
-	"syscall"
-	"sync"
 	"fmt"
 	"io"
-	"path/filepath"
 	"log"
-	"encoding/binary"
-	"crypto/sha1"
+	"os"
+	"path/filepath"
+	"sync"
+	"syscall"
 
 	"code.google.com/p/snappy-go/snappy"
 	"github.com/bitly/go-simplejson"
@@ -47,14 +47,14 @@ const (
 )
 
 const (
-	defaultMaxBlobsFileSize = 256 << 20; // 256MB
+	defaultMaxBlobsFileSize = 256 << 20 // 256MB
 )
 
 var (
-	openFdsVar  = expvar.NewMap("blobsfile-open-fds")
-	bytesUploaded = expvar.NewMap("blobsfile-bytes-uploaded")
+	openFdsVar      = expvar.NewMap("blobsfile-open-fds")
+	bytesUploaded   = expvar.NewMap("blobsfile-bytes-uploaded")
 	bytesDownloaded = expvar.NewMap("blobsfile-bytes-downloaded")
-	blobsUploaded = expvar.NewMap("blobsfile-blobs-uploaded")
+	blobsUploaded   = expvar.NewMap("blobsfile-blobs-uploaded")
 	blobsDownloaded = expvar.NewMap("blobsfile-blobs-downloaded")
 )
 
@@ -73,7 +73,7 @@ type BlobsFileBackend struct {
 	maxBlobsFileSize int64
 
 	// Backend state
-	loaded bool
+	loaded      bool
 	reindexMode bool
 
 	// WriteOnly mode (if the precedent blobs are not available yet)
@@ -85,7 +85,7 @@ type BlobsFileBackend struct {
 	index *BlobsIndex
 
 	// Current blobs file opened for write
-	n int
+	n       int
 	current *os.File
 	// Size of the current blobs file
 	size int64
@@ -127,14 +127,14 @@ func New(dir string, maxBlobsFileSize int64, compression, writeOnly bool) *Blobs
 
 func NewFromConfig(conf *simplejson.Json) *BlobsFileBackend {
 	return New(conf.Get("path").MustString("./backend_blobsfile"),
-			conf.Get("blobsfile-max-size").MustInt64(0),
-			conf.Get("compression").MustBool(false),
-			conf.Get("write-only").MustBool(false))
+		conf.Get("blobsfile-max-size").MustInt64(0),
+		conf.Get("compression").MustBool(false),
+		conf.Get("write-only").MustBool(false))
 }
 
 // Len compute the number of blobs stored
 func (backend *BlobsFileBackend) Len() int {
-	storedBlobs:= make(chan string)
+	storedBlobs := make(chan string)
 	go backend.Enumerate(storedBlobs)
 	cnt := 0
 	for _ = range storedBlobs {
@@ -165,7 +165,7 @@ func (backend *BlobsFileBackend) saveN() error {
 }
 
 func (backend *BlobsFileBackend) restoreN() error {
-	n ,err := backend.index.GetN()
+	n, err := backend.index.GetN()
 	if err != nil {
 		return err
 	}
@@ -452,13 +452,13 @@ func (backend *BlobsFileBackend) Exists(hash string) bool {
 
 func (backend *BlobsFileBackend) decodeBlob(data []byte) (size int, blob []byte) {
 	size = int(binary.LittleEndian.Uint32(data[0:4]))
-	blob = make([]byte, len(data) - 4)
+	blob = make([]byte, len(data)-4)
 	copy(blob, data[4:])
 	return
 }
 
 func (backend *BlobsFileBackend) encodeBlob(size int, blob []byte) (data []byte) {
-	data = make([]byte, len(blob) + 4)
+	data = make([]byte, len(blob)+4)
 	binary.LittleEndian.PutUint32(data[:], uint32(size))
 	copy(data[4:], blob)
 	return data
@@ -479,17 +479,17 @@ func (backend *BlobsFileBackend) Get(hash string) ([]byte, error) {
 	if blobPos == nil {
 		return nil, fmt.Errorf("Blob %v not found in index", err)
 	}
-	data := make([]byte, blobPos.size + 4)
+	data := make([]byte, blobPos.size+4)
 	n, err := backend.files[blobPos.n].ReadAt(data, int64(blobPos.offset))
 	if err != nil {
 		return nil, fmt.Errorf("Error reading blob: %v / blobsfile: %+v", err, backend.files[blobPos.n])
 	}
-	if n != blobPos.size + 4 {
+	if n != blobPos.size+4 {
 		return nil, fmt.Errorf("Error reading blob %v, read %v, expected %v", hash, n, blobPos.size)
 	}
 	blobSize, blob := backend.decodeBlob(data)
 	if blobSize != blobPos.size {
-		return nil, fmt.Errorf("Bad blob %v encoded size, got %v, expected %v", hash, n , blobSize)
+		return nil, fmt.Errorf("Bad blob %v encoded size, got %v, expected %v", hash, n, blobSize)
 	}
 	bytesDownloaded.Add(backend.Directory, int64(blobSize))
 	blobsUploaded.Add(backend.Directory, 1)

@@ -1,7 +1,6 @@
 package db
 
-import (
-)
+import ()
 
 // Return the number of string key stored
 func (db *DB) GetStringCnt() (uint32, error) {
