@@ -479,6 +479,8 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		cdb.IncrBlobsCnt(1)
 		cdb.IncrBlobsSize(len(blob))
 		out.WriteString(sha)
+		txID := req.Client().Ctx.(*ServerCtx).TxID
+		req.Client().Ctx.(*ServerCtx).GetReqBuffer(txID).AddBlob(sha)
 		return nil
 	})
 	srv.HandleFunc("bget", func(out *redeo.Responder, req *redeo.Request) error {

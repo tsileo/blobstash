@@ -93,6 +93,12 @@ type ReqBuffer struct {
 	reqCnt int
 	Reqs map[string][]*ReqArgs
 	ReqsKeyRef map[string]map[string]*ReqArgs
+	Blobs []string
+}
+
+type SerializedReqBuffer struct {
+	Reqs map[string][]*ReqArgs `json:"reqs"`
+	Blobs []string `json:"blobs"`
 }
 
 // ReqArgs store the list of args (list of string) for the given key.
@@ -122,13 +128,14 @@ func (txm *TxManager) GetReqBuffer(name string) *ReqBuffer {
 // NewReqBuffer initialize a new ReqBuffer
 func NewReqBuffer(cdb *db.DB, blobBackend backend.BlobHandler) *ReqBuffer {
 	return &ReqBuffer{blobBackend, cdb, &sync.Mutex{}, 0, make(map[string][]*ReqArgs),
-					make(map[string]map[string]*ReqArgs)}
+					make(map[string]map[string]*ReqArgs), []string{}}
 }
 
 // NewReqBufferWithData is a wrapper around NewReqBuffer, it fills the buffer with the given data.
-func NewReqBufferWithData(cdb *db.DB, blobBackend backend.BlobHandler, data map[string][]*ReqArgs) *ReqBuffer {
+func NewReqBufferWithData(cdb *db.DB, blobBackend backend.BlobHandler, srb *SerializedReqBuffer) *ReqBuffer {
 	rb := NewReqBuffer(cdb, blobBackend)
-	rb.Reqs = data
+	rb.Reqs = srb.Reqs
+	rb.Blobs = srb.Blobs
 	return rb
 }
 
@@ -165,6 +172,12 @@ func (rb *ReqBuffer) Add(reqType, reqKey string, reqArgs []string) (err error) {
 	return
 }
 
+func (rb *ReqBuffer) AddBlob(hash string) {
+	rb.Lock()
+	defer rb.Unlock()
+	rb.Blobs = append(rb.Blobs, hash)
+}
+
 // Put the blob to Meta BlobHandler.
 func (rb *ReqBuffer) Save() error {
 	if rb.reqCnt == 0 {
@@ -182,6 +195,7 @@ func (rb *ReqBuffer) Save() error {
 	if cnt := rb.db.Sadd("_meta", h); cnt != 1 {
 		return fmt.Errorf("Error adding the meta blob %v to _meta list", h)
 	}
+	rb.db.Sadd(fmt.Sprintf("_meta_%v_blobs", h), rb.Blobs...)
 	return nil
 }
 
@@ -194,7 +208,7 @@ func (rb *ReqBuffer) Load() error {
 	errs := make(chan error)
 	go func() {
 		errs <- rb.blobBackend.Enumerate(hashes)
-	
+
 	}()
 	for hash := range hashes {
 		cnt := rb.db.Sismember("_meta", hash)
@@ -205,12 +219,12 @@ func (rb *ReqBuffer) Load() error {
 				return berr
 			}
 
-			res := make(map[string][]*ReqArgs)
-			
+			res := &SerializedReqBuffer{}
+
 			if err := json.Unmarshal(data, &res); err != nil {
 				return err
 			}
-			
+
 			if err := NewReqBufferWithData(rb.db, rb.blobBackend, res).Apply(); err != nil {
 				return err
 			}
@@ -227,7 +241,11 @@ func (rb *ReqBuffer) Load() error {
 
 // Dump the buffer as JSON.
 func (rb *ReqBuffer) JSON() (string, []byte) {
-	data, _ := json.Marshal(rb.Reqs)
+	srb := &SerializedReqBuffer{Reqs: rb.Reqs, Blobs: rb.Blobs}
+	data, err := json.Marshal(srb)
+	if err != nil {
+		panic(err)
+	}
 	sha1 := SHA1(data)
     return sha1, data
 }
@@ -266,7 +284,7 @@ func (rb *ReqBuffer) Apply() error {
 					log.Printf("server: Applying HMSET: %+v/%+v", req.Key, args)
 					if _, err := rb.db.Hmset(req.Key, args...); err != nil {
 						return err
-					}					
+					}
 				}
 			}
 
@@ -303,6 +321,7 @@ func (rb *ReqBuffer) Apply() error {
 	}
 	hash, _ := rb.JSON()
 	rb.db.Sadd("_meta", hash)
+	rb.db.Sadd(fmt.Sprintf("_meta_%v_blobs", hash), rb.Blobs...)
 	return nil
 }
 
