@@ -41,7 +41,13 @@ import (
 	"github.com/bitly/go-simplejson"
 )
 
-const defaultMaxBlobsFileSize = 256 << 20; // 256MB
+const (
+	magic = "\x00Blobs"
+)
+
+const (
+	defaultMaxBlobsFileSize = 256 << 20; // 256MB
+)
 
 var (
 	openFdsVar  = expvar.NewMap("blobsfile-open-fds")
@@ -244,9 +250,9 @@ func (backend *BlobsFileBackend) wopen(n int) error {
 			return err
 		}
 	}
-	fallocate := false
+	created := false
 	if _, err := os.Stat(backend.filename(n)); os.IsNotExist(err) {
-		fallocate = true
+		created = true
 	}
 	f, err := os.OpenFile(backend.filename(n), os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
@@ -254,12 +260,21 @@ func (backend *BlobsFileBackend) wopen(n int) error {
 	}
 	backend.current = f
 	backend.n = n
-	if fallocate {
+	if created {
 		if ferr := backend.allocateBlobsFile(); ferr != nil {
 			log.Printf("BlobsFileBackend: fallocate file %v error: %v", backend.filename(n), ferr)
 		}
+		// Write the header/magic number
+		_, err := backend.current.Write([]byte(magic))
+		if err != nil {
+			return err
+		}
+		if err = backend.current.Sync(); err != nil {
+			panic(err)
+		}
 	}
 	backend.size, err = f.Seek(0, os.SEEK_END)
+	log.Printf("backend.size:%v", backend.size)
 	if err != nil {
 		return err
 	}
@@ -284,6 +299,11 @@ func (backend *BlobsFileBackend) ropen(n int) error {
 	f, err := os.Open(filename)
 	if err != nil {
 		return err
+	}
+	fmagic := make([]byte, len(magic))
+	_, err = f.Read(fmagic)
+	if err != nil || magic != string(fmagic) {
+		return fmt.Errorf("magic not found in BlobsFile")
 	}
 	backend.files[n] = f
 	openFdsVar.Add(backend.Directory, 1)
@@ -317,6 +337,7 @@ func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
 		}
 		data = dataEncoded
 	}
+	log.Printf("put offset: %v", backend.size)
 	size := len(data)
 	blobPos := BlobPos{n: backend.n, offset: int(backend.size), size: int(size)}
 	if err := backend.index.SetPos(hash, blobPos); err != nil {
@@ -383,7 +404,7 @@ func (backend *BlobsFileBackend) Get(hash string) ([]byte, error) {
 	}
 	blobPos, err := backend.index.GetPos(hash)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error fetching GetPos: %v", err)
 	}
 	//log.Printf("BlobsFileBackend: blobPos:%+v", blobPos)
 	if blobPos == nil {
@@ -392,7 +413,7 @@ func (backend *BlobsFileBackend) Get(hash string) ([]byte, error) {
 	data := make([]byte, blobPos.size + 4)
 	n, err := backend.files[blobPos.n].ReadAt(data, int64(blobPos.offset))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error reading blob: %v / blobsfile: %+v", err, backend.files[blobPos.n])
 	}
 	if n != blobPos.size + 4 {
 		return nil, fmt.Errorf("Error reading blob %v, read %v, expected %v", hash, n, blobPos.size)
