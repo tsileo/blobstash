@@ -117,9 +117,8 @@ A hash contains the backup parts reference, an ordered list of the files hash bl
 ## Roadmap / Ideas
 
 - Follow .gitignore file
-- Add a **drop** directory to support upload via FUSE
-- Master/slave replication of metadatas
 - A special cold storage backed (using AWS Glacier, can't use glacier since storing blobs with Glacier would cost too much, according to [this article](http://alestic.com/2012/12/s3-glacier-costs)) that would put one archive per snapshots, and keep track of stored blob (incremental backups).
+- Garbage collection
 
 ## Supported storages
 

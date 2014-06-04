@@ -77,9 +77,16 @@ func (client *Client) DirExplorer(path string, pnode *node, files chan<- *node, 
 }
 
 // DirWriter reads the directory and upload it.
-func (client *Client) DirWriterNode(txID string, node *node) {
+func (client *Client) DirWriterNode(node *node) {
 	node.mu.Lock()
 	defer node.mu.Unlock()
+	con := client.Pool.Get()
+	defer con.Close()
+	txID, err := redis.String(con.Do("TXINIT"))
+	if err != nil {
+		node.err = err
+		return
+	}
 	node.wr = &WriteResult{}
 	h := sha1.New()
 	hashes := []string{}
@@ -103,12 +110,6 @@ func (client *Client) DirWriterNode(txID string, node *node) {
 			h.Write([]byte(hash))
 		}
 		node.wr.Hash = fmt.Sprintf("%x", h.Sum(nil))
-		con := client.Pool.Get()
-		defer con.Close()
-		if _, err := con.Do("TXINIT", txID); err != nil {
-			node.err = err
-			return
-		}
 		// Check if the directory meta already exists
 		cnt, err := redis.Int(con.Do("SCARD", node.wr.Hash))
 		if err != nil {
@@ -142,7 +143,7 @@ func (client *Client) DirWriterNode(txID string, node *node) {
 	node.meta.Type = "dir"
 	node.meta.Size = node.wr.Size
 	node.meta.Ref = node.wr.Hash
-	err := node.meta.Save(txID, client.Pool)
+	err = node.meta.Save(txID, client.Pool)
 	node.err = err
 	node.cond.Signal()
 	return
@@ -150,7 +151,7 @@ func (client *Client) DirWriterNode(txID string, node *node) {
 
 // PutDir upload a directory, it returns the saved Meta,
 // a WriteResult containing infos about uploaded blobs.
-func (client *Client) PutDir(txID, path string) (meta *Meta, wr *WriteResult, err error) {
+func (client *Client) PutDir(path string) (meta *Meta, wr *WriteResult, err error) {
 	//log.Printf("PutDir %v\n", path)
 	abspath, err := filepath.Abs(path)
 	if err != nil {
@@ -181,7 +182,7 @@ func (client *Client) PutDir(txID, path string) (meta *Meta, wr *WriteResult, er
 			go func(node *node) {
 				node.mu.Lock()
 				defer node.mu.Unlock()
-				node.meta, node.wr, node.err = client.PutFile(txID, node.path)
+				node.meta, node.wr, node.err = client.PutFile(node.path)
 				if node.err != nil {
 					panic(fmt.Errorf("Error PutFile with node %q", node))
 				}
@@ -200,7 +201,7 @@ func (client *Client) PutDir(txID, path string) (meta *Meta, wr *WriteResult, er
 				defer func() {
 					<-dirSem
 				}()
-				client.DirWriterNode(txID, node)
+				client.DirWriterNode(node)
 				if node.err != nil {
 					panic(fmt.Errorf("Error DirWriterNode with node %q", node))	
 				}
@@ -212,6 +213,6 @@ func (client *Client) PutDir(txID, path string) (meta *Meta, wr *WriteResult, er
 	wg.Wait()
 	// Upload the root directory
 	log.Printf("last node")
-	client.DirWriterNode(txID, n)
+	client.DirWriterNode(n)
 	return n.meta, n.wr, n.err
 }

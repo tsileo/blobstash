@@ -96,7 +96,7 @@ func (client *Client) FileWriter(txID, key, path string) (*WriteResult, error) {
 	return writeResult, nil
 }
 
-func (client *Client) PutFile(txID, path string) (meta *Meta, wr *WriteResult, err error) {
+func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err error) {
 	//log.Printf("PutFile %v/%v\n", txID, path)
 	client.StartUpload()
 	defer client.UploadDone()
@@ -108,6 +108,11 @@ func (client *Client) PutFile(txID, path string) (meta *Meta, wr *WriteResult, e
 	sha := FullSHA1(path)
 	con := client.Pool.Get()
 	defer con.Close()
+
+	txID, err := redis.String(con.Do("TXINIT"))
+	if err != nil {
+		return
+	}
 
 	// First we check if the file isn't already uploaded,
 	// if so we skip it.
@@ -129,7 +134,7 @@ func (client *Client) PutFile(txID, path string) (meta *Meta, wr *WriteResult, e
 		wr, err = client.FileWriter(txID, sha, path)
 		if err != nil {
 			return
-		}	
+		}
 	}
 	meta = NewMeta()
 	if sha != wr.Hash {
@@ -140,9 +145,8 @@ func (client *Client) PutFile(txID, path string) (meta *Meta, wr *WriteResult, e
 	meta.Name = filename
 	meta.Size = wr.Size
 	meta.Type = "file"
-	// TODO(tsileo) load if it already exits ?
 	if cnt == 0 {
-		err = meta.Save(txID, client.Pool)	
+		err = meta.Save(txID, client.Pool)
 	} else {
 		meta.ComputeHash()
 	}

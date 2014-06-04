@@ -53,7 +53,7 @@ func NewMeta() *Meta {
 func (m *Meta) Save(txID string, pool *redis.Pool) error {
 	con := pool.Get()
 	defer con.Close()
-	if _, err := con.Do("TXINIT", txID); err != nil {
+	if _, err := redis.String(con.Do("TXINIT", txID)); err != nil {
 		return err
 	}
 	m.Hash = metaKey(m.Name, m.Ref)
@@ -64,7 +64,15 @@ func (m *Meta) Save(txID string, pool *redis.Pool) error {
 	if cnt != 0 {
 		return nil
 	}
-	_, err = con.Do("HMSET", m.Hash, "name", m.Name, "type", m.Type, "size", m.Size, "ref", m.Ref)
+	if _, err := con.Do("HMSET", m.Hash,
+			"name", m.Name,
+			"type", m.Type,
+			"size", m.Size,
+			"ref", m.Ref); err != nil {
+		return err
+	}
+
+	_, err = con.Do("TXCOMMIT")
 	return err
 }
 
@@ -94,7 +102,7 @@ type MetaFetcher interface{
 }
 
 func (client *Client) MetaFromDB(key string) (*Meta, error) {
-	return NewMetaFromDB(client.Pool, key)	
+	return NewMetaFromDB(client.Pool, key)
 }
 
 // Used by the LRU to fetch the Meta for the given dir/file
@@ -104,4 +112,4 @@ func (client *Client) FetchMeta(key string) interface{} {
 		panic(fmt.Sprintf("Error FetchMeta key:%v", key))
 	}
 	return metas
-} 
+}
