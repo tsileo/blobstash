@@ -125,6 +125,7 @@ func New(dir string, maxBlobsFileSize int64, compression, writeOnly bool) *Blobs
 	return backend
 }
 
+// NewFromConfig initialize a BlobsFileBackend from a JSON object.
 func NewFromConfig(conf *simplejson.Json) *BlobsFileBackend {
 	return New(conf.Get("path").MustString("./backend_blobsfile"),
 		conf.Get("blobsfile-max-size").MustInt64(0),
@@ -180,6 +181,7 @@ func (backend *BlobsFileBackend) String() string {
 	return fmt.Sprintf("blobsfile-%v", backend.Directory)
 }
 
+// reindex scans all BlobsFile and reconstruct the index from scratch.
 func (backend *BlobsFileBackend) reindex() error {
 	log.Printf("BlobsFileBackend: re-indexing BlobsFiles...")
 	if backend.writeOnly {
@@ -294,6 +296,7 @@ func (backend *BlobsFileBackend) load() error {
 	return nil
 }
 
+// When the backend is in write-only mode, this function is called instead of load().
 func (backend *BlobsFileBackend) loadWriteOnly() error {
 	log.Println("BlobsFileBackend: write-only mode enabled")
 	if err := backend.restoreN(); err != nil {

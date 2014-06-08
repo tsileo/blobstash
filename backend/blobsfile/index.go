@@ -11,11 +11,13 @@ import (
 	"github.com/cznic/kv"
 )
 
+// MetaKey and BlobPosKey are used to namespace the DB keys.
 const (
 	MetaKey byte = iota
 	BlobPosKey
 )
 
+// Add the prefix byte to the given key
 func formatKey(prefix byte, key string) []byte {
 	bkey := []byte(key)
 	res := make([]byte, len(bkey)+1)
@@ -33,12 +35,14 @@ func opts() *kv.Options {
 	}
 }
 
+// BlobsIndex holds the position of blobs in BlobsFile
 type BlobsIndex struct {
 	db   *kv.DB
 	path string
 	sync.Mutex
 }
 
+// BlobPos is a blob entry in the index
 type BlobPos struct {
 	// bobs-n files
 	n int
@@ -47,6 +51,7 @@ type BlobPos struct {
 	size   int
 }
 
+// String serialize a BlobsPos as string (value: n offset size)
 func (blob BlobPos) String() string {
 	return fmt.Sprintf("%v %v %v", blob.n, blob.offset, blob.size)
 }
@@ -86,12 +91,14 @@ func (index *BlobsIndex) Remove() {
 	os.RemoveAll(index.path)
 }
 
+// SetPos create a new BlobPos entry in the index for the given hash.
 func (index *BlobsIndex) SetPos(hash string, pos BlobPos) error {
 	index.Lock()
 	defer index.Unlock()
 	return index.db.Set(formatKey(BlobPosKey, hash), []byte(pos.String()))
 }
 
+// GetPos retrieve the stored BlobPos for the given hash.
 func (index *BlobsIndex) GetPos(hash string) (*BlobPos, error) {
 	index.Lock()
 	defer index.Unlock()
@@ -106,12 +113,14 @@ func (index *BlobsIndex) GetPos(hash string) (*BlobPos, error) {
 	return &bpos, err
 }
 
+// SetN stores the latest N (blobs-N) to remember the latest BlobsFile opened.
 func (index *BlobsIndex) SetN(n int) error {
 	index.Lock()
 	defer index.Unlock()
 	return index.db.Set(formatKey(MetaKey, "n"), []byte(strconv.Itoa(n)))
 }
 
+// GetN retrieves the latest N (blobs-N) stored.
 func (index *BlobsIndex) GetN() (int, error) {
 	index.Lock()
 	defer index.Unlock()
