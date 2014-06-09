@@ -110,6 +110,7 @@ func (client *Client) Put(path string) (backup *Backup, meta *Meta, wr *WriteRes
 		return
 	}
 	info, err := os.Stat(path)
+
 	if os.IsNotExist(err) {
 		return
 	}

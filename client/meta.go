@@ -15,6 +15,8 @@ type Meta struct {
 	Name string `redis:"name"`
 	Type string `redis:"type"`
 	Size int    `redis:"size"`
+	Mode uint32 `redis:"mode"`
+	ModTime int64 `redis:"mtime"`
 	Ref  string `redis:"ref"`
 	Hash string `redis:"-"`
 }
@@ -67,6 +69,8 @@ func (m *Meta) Save(txID string, pool *redis.Pool) error {
 		"name", m.Name,
 		"type", m.Type,
 		"size", m.Size,
+		"mtime", m.ModTime,
+		"mode", m.Mode,
 		"ref", m.Ref); err != nil {
 		return fmt.Errorf("error HMSET: %v", m, err)
 	}
