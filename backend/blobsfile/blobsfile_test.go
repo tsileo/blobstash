@@ -94,7 +94,7 @@ func TestBlobsFileBlobEncoding(t *testing.T) {
 	defer os.RemoveAll("./tmp_blobsfile_test")
 	blob := make([]byte, 512)
 	rand.Read(blob)
-	data := b.encodeBlob(len(blob), blob)
+	_, data := b.encodeBlob(blob)
 	size, blob2 := b.decodeBlob(data)
 	if size != 512 || !bytes.Equal(blob, blob2) {
 		t.Errorf("Error blob encoding, got size:%v, expected:512, got blob:%v, expected:%v", size, blob2[:10], blob[:10])

@@ -31,7 +31,7 @@ If something has gone wrong, the transaction is discarded. If everything is OK, 
 
 A **backup** represents the state of the file/directory at a given time, it also holds a reference to a **meta**. attached to it.
 
-The hash of a backup is: SHA1(hash + timestamp).
+The hash of a backup is: ``SHA1(hash + timestamp)``.
 
 ### Snapshots
 
@@ -49,7 +49,7 @@ A **meta** (stored as a hash) holds the file/directory metadata, like filename, 
 
 Multiple **backups** may refers to the same **meta** if the content is the same.
 
-The Hash of a meta is: SHA1(filename + file hash).
+The Hash of a meta is: ``SHA1(filename + file hash)``.
 
 ### Databases
 

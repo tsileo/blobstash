@@ -8,9 +8,9 @@ Blobs are indexed by a kv file.
 
 New blobs are appended to the current file, and when the file exceed the limit, a new fie is created.
 
-Blobs are stored with its size followed by the blob itself, thus allowing re-indexing (not yet implemented).
+Blobs are stored with its hash and its size followed by the blob itself, thus allowing re-indexing.
 
-	Blob size (4 byte, uint32 binary encoded) + Blob data
+	Blob hash (20 bytesà + Blob size (4 byte, uint32 binary encoded) + Blob data
 
 Blobs are indexed by a BlobPos entry (value stored as string):
 
@@ -36,6 +36,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"bytes"
 	"syscall"
 
 	"code.google.com/p/snappy-go/snappy"
@@ -48,6 +49,10 @@ const (
 
 const (
 	defaultMaxBlobsFileSize = 256 << 20 // 256MB
+)
+
+const (
+	Overhead = 24 // 24 bytes of meta-data are stored for head bytes
 )
 
 var (
@@ -204,8 +209,13 @@ func (backend *BlobsFileBackend) reindex() error {
 		blobsIndexed := 0
 		for {
 			// SCAN
+			blobHash := make([]byte, sha1.Size)
 			blobSizeEncoded := make([]byte, 4)
-			_, err := blobsfile.Read(blobSizeEncoded)
+			_, err := blobsfile.Read(blobHash)
+			if err == io.EOF {
+				break
+			}
+			_, err = blobsfile.Read(blobSizeEncoded)
 			if err == io.EOF {
 				break
 			}
@@ -219,8 +229,7 @@ func (backend *BlobsFileBackend) reindex() error {
 				return fmt.Errorf("error while reading raw blob: %v", err)
 			}
 			blobPos := BlobPos{n: n, offset: offset, size: int(blobSize)}
-			offset += 4
-			offset += int(blobSize)
+			offset += Overhead+int(blobSize)
 			var blob []byte
 			if backend.snappyCompression {
 				blobDecoded, err := snappy.Decode(nil, rawBlob)
@@ -232,6 +241,9 @@ func (backend *BlobsFileBackend) reindex() error {
 				blob = rawBlob
 			}
 			hash := SHA1(blob)
+			if fmt.Sprintf("%x", blobHash) != hash {
+				return fmt.Errorf("hash doesn't match %v/%v", fmt.Sprintf("%x", blobHash), hash)
+			}
 			if err := backend.index.SetPos(hash, blobPos); err != nil {
 				return err
 			}
@@ -403,28 +415,20 @@ func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
 	}
 	backend.Lock()
 	defer backend.Unlock()
-	if backend.snappyCompression {
-		dataEncoded, err := snappy.Encode(nil, data)
-		if err != nil {
-			return err
-		}
-		data = dataEncoded
-	}
-	size := len(data)
-	blobPos := BlobPos{n: backend.n, offset: int(backend.size), size: int(size)}
+	blobSize, blobEncoded := backend.encodeBlob(data)
+	blobPos := BlobPos{n: backend.n, offset: int(backend.size), size: blobSize}
 	if err := backend.index.SetPos(hash, blobPos); err != nil {
 		return err
 	}
-	blobEncoded := backend.encodeBlob(size, data)
 	n, err := backend.current.Write(blobEncoded)
 	backend.size += int64(len(blobEncoded))
 	if err != nil || n != len(blobEncoded) {
-		return fmt.Errorf("Error writing blob (%v,%v,%v)", err, n, size)
+		return fmt.Errorf("Error writing blob (%v,%v)", err, n)
 	}
 	if err = backend.current.Sync(); err != nil {
 		panic(err)
 	}
-	bytesUploaded.Add(backend.Directory, int64(size))
+	bytesUploaded.Add(backend.Directory, int64(len(blobEncoded)))
 	blobsUploaded.Add(backend.Directory, 1)
 
 	if backend.size > backend.maxBlobsFileSize {
@@ -454,17 +458,41 @@ func (backend *BlobsFileBackend) Exists(hash string) bool {
 }
 
 func (backend *BlobsFileBackend) decodeBlob(data []byte) (size int, blob []byte) {
-	size = int(binary.LittleEndian.Uint32(data[0:4]))
-	blob = make([]byte, len(data)-4)
-	copy(blob, data[4:])
+	size = int(binary.LittleEndian.Uint32(data[sha1.Size:Overhead]))
+	blob = make([]byte, size)
+	copy(blob, data[Overhead:])
+	if backend.snappyCompression {
+		blobDecoded, err := snappy.Decode(nil, blob)
+		if err != nil {
+			panic(fmt.Errorf("Failed to decode blob with Snappy: %v", err))
+		}
+		blob = blobDecoded
+	}
+	h := sha1.New()
+	h.Write(blob)
+	if !bytes.Equal(h.Sum(nil), data[0:sha1.Size]) {
+		panic(fmt.Errorf("Hash doesn't match %x != %x", h.Sum(nil), data[0:sha1.Size]))
+	}
 	return
 }
 
-func (backend *BlobsFileBackend) encodeBlob(size int, blob []byte) (data []byte) {
-	data = make([]byte, len(blob)+4)
-	binary.LittleEndian.PutUint32(data[:], uint32(size))
-	copy(data[4:], blob)
-	return data
+func (backend *BlobsFileBackend) encodeBlob(blob []byte) (size int, data []byte) {
+	h := sha1.New()
+	h.Write(blob)
+
+	if backend.snappyCompression {
+		dataEncoded, err := snappy.Encode(nil, blob)
+		if err != nil {
+			panic(fmt.Errorf("Failed to encode blob with Snappy: %v", err))
+		}
+		blob = dataEncoded
+	}
+	size = len(blob)
+	data = make([]byte, len(blob)+Overhead)
+	copy(data[:], h.Sum(nil))
+	binary.LittleEndian.PutUint32(data[sha1.Size:], uint32(size))
+	copy(data[Overhead:], blob)
+	return
 }
 
 func (backend *BlobsFileBackend) Get(hash string) ([]byte, error) {
@@ -478,17 +506,16 @@ func (backend *BlobsFileBackend) Get(hash string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Error fetching GetPos: %v", err)
 	}
-	//log.Printf("BlobsFileBackend: blobPos:%+v", blobPos)
 	if blobPos == nil {
 		return nil, fmt.Errorf("Blob %v not found in index", err)
 	}
-	data := make([]byte, blobPos.size+4)
+	data := make([]byte, blobPos.size+Overhead)
 	n, err := backend.files[blobPos.n].ReadAt(data, int64(blobPos.offset))
 	if err != nil {
 		return nil, fmt.Errorf("Error reading blob: %v / blobsfile: %+v", err, backend.files[blobPos.n])
 	}
-	if n != blobPos.size+4 {
-		return nil, fmt.Errorf("Error reading blob %v, read %v, expected %v", hash, n, blobPos.size)
+	if n != blobPos.size+Overhead {
+		return nil, fmt.Errorf("Error reading blob %v, read %v, expected %v+%v", hash, n, blobPos.size, Overhead)
 	}
 	blobSize, blob := backend.decodeBlob(data)
 	if blobSize != blobPos.size {
@@ -496,13 +523,6 @@ func (backend *BlobsFileBackend) Get(hash string) ([]byte, error) {
 	}
 	bytesDownloaded.Add(backend.Directory, int64(blobSize))
 	blobsUploaded.Add(backend.Directory, 1)
-	if backend.snappyCompression {
-		blobDecoded, err := snappy.Decode(nil, blob)
-		if err != nil {
-			return blob, fmt.Errorf("failed to decode blob %v", hash)
-		}
-		return blobDecoded, nil
-	}
 	return blob, nil
 }
 
