@@ -173,7 +173,7 @@ func (backend *BlobsFileBackend) Done() error {
 		log.Println("BlobsFileBackend: Done()")
 		// Switch file and delete older file
 		for i, f := range backend.files {
-			fpath := filepath.Join(backend.Directory, f.Name())
+			fpath := f.Name()
 			log.Printf("BlobsFileBackend: removing blobsfile %v", fpath)
 			f.Close()
 			delete(backend.files, i)
@@ -339,7 +339,9 @@ func (backend *BlobsFileBackend) loadWriteOnly() error {
 	if err := backend.restoreN(); err != nil {
 		return err
 	}
-	backend.n++
+	if _, err := os.Stat(backend.filename(backend.n)); os.IsNotExist(err) {
+		backend.n++
+	}
 	if err := backend.wopen(backend.n); err != nil {
 		return err
 	}
