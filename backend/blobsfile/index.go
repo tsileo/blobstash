@@ -6,7 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"encoding/hex"
+	"encoding/binary"
 	"sync"
+	"bytes"
 
 	"github.com/cznic/kv"
 )
@@ -18,8 +21,7 @@ const (
 )
 
 // Add the prefix byte to the given key
-func formatKey(prefix byte, key string) []byte {
-	bkey := []byte(key)
+func formatKey(prefix byte, bkey []byte) []byte {
 	res := make([]byte, len(bkey)+1)
 	res[0] = prefix
 	copy(res[1:], bkey)
@@ -52,15 +54,45 @@ type BlobPos struct {
 }
 
 // String serialize a BlobsPos as string (value: n offset size)
-func (blob BlobPos) String() string {
-	return fmt.Sprintf("%v %v %v", blob.n, blob.offset, blob.size)
+func (blob BlobPos) Value() []byte {
+	bufTmp := make([]byte, 10)
+	var buf bytes.Buffer
+	w := binary.PutUvarint(bufTmp[:], uint64(blob.n))
+	buf.Write(bufTmp[:w])
+	w = binary.PutUvarint(bufTmp[:], uint64(blob.offset))
+	buf.Write(bufTmp[:w])
+	w = binary.PutUvarint(bufTmp[:], uint64(blob.size))
+	buf.Write(bufTmp[:w])
+	//return fmt.Sprintf("%v %v %v", blob.n, blob.offset, blob.size)
+	return buf.Bytes()
 }
 
-func ScanBlobPos(s string) (blob BlobPos, error error) {
-	n, err := fmt.Sscan(s, &blob.n, &blob.offset, &blob.size)
-	if n != 3 || err != nil {
+
+
+func decodeBlobPos(data []byte) (blob BlobPos, error error) {
+	r := bytes.NewBuffer(data)
+	ures, err := binary.ReadUvarint(r)
+	if err != nil {
 		return blob, err
 	}
+	blob.n = int(ures)
+
+	ures, err = binary.ReadUvarint(r)
+	if err != nil {
+		return blob, err
+	}
+	blob.offset = int(ures)
+
+	ures, err = binary.ReadUvarint(r)
+	if err != nil {
+		return blob, err
+	}
+	blob.size = int(ures)
+
+	//n, err := fmt.Sscan(s, &blob.n, &blob.offset, &blob.size)
+	//if n != 3 || err != nil {
+	//	return blob, err
+	//}
 	return blob, nil
 }
 
@@ -92,16 +124,24 @@ func (index *BlobsIndex) Remove() {
 }
 
 // SetPos create a new BlobPos entry in the index for the given hash.
-func (index *BlobsIndex) SetPos(hash string, pos BlobPos) error {
+func (index *BlobsIndex) SetPos(hexHash string, pos *BlobPos) error {
 	index.Lock()
 	defer index.Unlock()
-	return index.db.Set(formatKey(BlobPosKey, hash), []byte(pos.String()))
+	hash, err := hex.DecodeString(hexHash)
+	if err != nil {
+		return err
+	}
+	return index.db.Set(formatKey(BlobPosKey, hash), pos.Value())
 }
 
 // GetPos retrieve the stored BlobPos for the given hash.
-func (index *BlobsIndex) GetPos(hash string) (*BlobPos, error) {
+func (index *BlobsIndex) GetPos(hexHash string) (*BlobPos, error) {
 	index.Lock()
 	defer index.Unlock()
+	hash, err := hex.DecodeString(hexHash)
+	if err != nil {
+		return nil, err
+	}
 	data, err := index.db.Get(nil, formatKey(BlobPosKey, hash))
 	if err != nil {
 		return nil, fmt.Errorf("error getting BlobPos: %v", err)
@@ -109,7 +149,7 @@ func (index *BlobsIndex) GetPos(hash string) (*BlobPos, error) {
 	if data == nil {
 		return nil, nil
 	}
-	bpos, err := ScanBlobPos(string(data))
+	bpos, err := decodeBlobPos(data)
 	return &bpos, err
 }
 
@@ -117,14 +157,14 @@ func (index *BlobsIndex) GetPos(hash string) (*BlobPos, error) {
 func (index *BlobsIndex) SetN(n int) error {
 	index.Lock()
 	defer index.Unlock()
-	return index.db.Set(formatKey(MetaKey, "n"), []byte(strconv.Itoa(n)))
+	return index.db.Set(formatKey(MetaKey, []byte("n")), []byte(strconv.Itoa(n)))
 }
 
 // GetN retrieves the latest N (blobs-N) stored.
 func (index *BlobsIndex) GetN() (int, error) {
 	index.Lock()
 	defer index.Unlock()
-	data, err := index.db.Get(nil, formatKey(MetaKey, "n"))
+	data, err := index.db.Get(nil, formatKey(MetaKey, []byte("n")))
 	if err != nil || string(data) == "" {
 		return 0, nil
 	}

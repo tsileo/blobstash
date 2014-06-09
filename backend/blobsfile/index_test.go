@@ -3,6 +3,8 @@ package blobsfile
 import (
 	"os"
 	"testing"
+	"fmt"
+	"crypto/sha1"
 )
 
 func TestBlobsIndex(t *testing.T) {
@@ -12,18 +14,10 @@ func TestBlobsIndex(t *testing.T) {
 	defer os.RemoveAll("tmp_test_index")
 
 	bp := &BlobPos{n: 1, offset: 5, size: 10}
-	bpString := bp.String()
-	if bpString != "1 5 10" {
-		t.Errorf("Bad BlobPos serialization, expected:%q, got:%q", "1 5 10", bpString)
-	}
-	bp2, err := ScanBlobPos(bpString)
+	h := fmt.Sprintf("%x", sha1.New().Sum([]byte("fakehash")))
+	err = index.SetPos(h, bp)
 	check(err)
-	if bp.n != bp2.n || bp.offset != bp2.offset || bp.size != bp2.size {
-		t.Errorf("BlobPos scan error, expected:%q, got:%q", bp, bp2)
-	}
-	err = index.SetPos("fakehash", bp2)
-	check(err)
-	bp3, err := index.GetPos("fakehash")
+	bp3, err := index.GetPos(h)
 	if bp.n != bp3.n || bp.offset != bp3.offset || bp.size != bp3.size {
 		t.Errorf("index.GetPos error, expected:%q, got:%q", bp, bp3)
 	}

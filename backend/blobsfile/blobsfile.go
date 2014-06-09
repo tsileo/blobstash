@@ -29,6 +29,7 @@ package blobsfile
 import (
 	"crypto/sha1"
 	"encoding/binary"
+	"encoding/hex"
 	"expvar"
 	"fmt"
 	"io"
@@ -228,7 +229,7 @@ func (backend *BlobsFileBackend) reindex() error {
 			if err != nil || read != int(blobSize) {
 				return fmt.Errorf("error while reading raw blob: %v", err)
 			}
-			blobPos := BlobPos{n: n, offset: offset, size: int(blobSize)}
+			blobPos := &BlobPos{n: n, offset: offset, size: int(blobSize)}
 			offset += Overhead+int(blobSize)
 			var blob []byte
 			if backend.snappyCompression {
@@ -416,7 +417,7 @@ func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
 	backend.Lock()
 	defer backend.Unlock()
 	blobSize, blobEncoded := backend.encodeBlob(data)
-	blobPos := BlobPos{n: backend.n, offset: int(backend.size), size: blobSize}
+	blobPos := &BlobPos{n: backend.n, offset: int(backend.size), size: blobSize}
 	if err := backend.index.SetPos(hash, blobPos); err != nil {
 		return err
 	}
@@ -534,7 +535,7 @@ func (backend *BlobsFileBackend) Enumerate(blobs chan<- string) error {
 	defer backend.Unlock()
 	// TODO(tsileo) send the size along the hashes ?
 	defer close(blobs)
-	enum, _, err := backend.index.db.Seek(formatKey(BlobPosKey, ""))
+	enum, _, err := backend.index.db.Seek(formatKey(BlobPosKey, []byte("")))
 	if err != nil {
 		return err
 	}
@@ -544,7 +545,7 @@ func (backend *BlobsFileBackend) Enumerate(blobs chan<- string) error {
 			break
 		}
 		// Remove the BlobPosKey prefix byte
-		blobs <- string(k[1:])
+		blobs <- hex.EncodeToString(k[1:])
 	}
 	return nil
 }
