@@ -37,6 +37,8 @@ The hash of a backup is: ``SHA1(hostname + path + timestamp)``.
 
 Multiple **backups** of the same file/directory form a **snapshot**. If you backup a directory only once, it will create a **snapshot** with 1 **backup** and so on.
 
+The hash of a snapshots groups is ``SHA1(hostname + path)``.
+
 ### Blobs
 
 A **blob** (binary large object) is where chunks are stored. **Blobs** are immutable and stored with the SHA-1 hash as filename.

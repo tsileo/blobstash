@@ -13,10 +13,10 @@ func (client *Client) Latest() (backups []*Backup, err error) {
 	}
 	con := client.Pool.Get()
 	defer con.Close()
-	filenames, err := client.SnapshotIter()
-	for _, filename := range filenames {
+	snapshots, err := client.SnapshotIter()
+	for _, snap := range snapshots {
 		// Get the latest backup for this backup/snapshot
-		key, kerr := redis.String(con.Do("LLAST", filename, "0", "\xff", 0))
+		key, kerr := redis.String(con.Do("LLAST", snap, "0", "\xff", 0))
 		if kerr != nil {
 			return backups, kerr
 		}
@@ -31,10 +31,10 @@ func (client *Client) Latest() (backups []*Backup, err error) {
 }
 
 // SnapshotIter returns a slice of every snapshots keys.
-func (client *Client) SnapshotIter() (filenames []string, err error) {
+func (client *Client) SnapshotIter() (snapshots []string, err error) {
 	con := client.Pool.Get()
 	defer con.Close()
-	filenames, err = redis.Strings(con.Do("SMEMBERS", "filenames"))
+	snapshots, err = redis.Strings(con.Do("SMEMBERS", "snapshots"))
 	return
 }
 
@@ -45,14 +45,14 @@ type IndexMeta struct {
 	Meta  *Meta
 }
 
-func (client *Client) Snapshots(filename string) (ivs []*IndexMeta, err error) {
+func (client *Client) Snapshots(snapKey string) (ivs []*IndexMeta, err error) {
 	var indexValueList []struct {
 		Index int
 		Value string
 	}
 	con := client.Pool.Get()
 	defer con.Close()
-	values, err := redis.Values(con.Do("LITER", filename, "WITH", "INDEX"))
+	values, err := redis.Values(con.Do("LITER", snapKey, "WITH", "INDEX"))
 	if err != nil {
 		return nil, err
 	}
@@ -72,11 +72,11 @@ func (client *Client) Snapshots(filename string) (ivs []*IndexMeta, err error) {
 	return
 }
 
-// Return the ref of the backup that match the given timestamp for the given filename
-func (client *Client) GetAt(filename string, ts int64) (string, error) {
+// GetAt fetch the backup ref that match the given snapshot key/timestamp.
+func (client *Client) GetAt(snapKey string, ts int64) (string, error) {
 	con := client.Pool.Get()
 	defer con.Close()
-	backup, err := redis.String(con.Do("LPREV", filename, ts))
+	backup, err := redis.String(con.Do("LPREV", snapKey, ts))
 	if err != nil {
 		return "", err
 	}

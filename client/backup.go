@@ -38,11 +38,18 @@ func NewBackupFromDB(pool *redis.Pool, key string) (f *Backup, err error) {
 	return
 }
 
-func backupHashkey(hostname, name string, ts int64) string {
+func backupHashkey(hostname, path string, ts int64) string {
 	hash := sha1.New()
 	hash.Write([]byte(hostname))
-	hash.Write([]byte(name))
+	hash.Write([]byte(path))
 	hash.Write([]byte(strconv.Itoa(int(ts))))
+	return fmt.Sprintf("%x", hash.Sum(nil))
+}
+
+func snapshotKey(hostname, path string) string {
+	hash := sha1.New()
+	hash.Write([]byte(hostname))
+	hash.Write([]byte(path))
 	return fmt.Sprintf("%x", hash.Sum(nil))
 }
 
@@ -66,11 +73,12 @@ func (f *Backup) Save(pool *redis.Pool) (string, error) {
 		return rkey, err
 	}
 	// Set/update the latest meta for this filename (snapshot)
-	_, err = con.Do("SADD", "filenames", f.Path)
+	snapKey := snapshotKey(f.Hostname, f.Path)
+	_, err = con.Do("SADD", "snapshots", snapKey)
 	if err != nil {
 		return rkey, err
 	}
-	_, err = con.Do("LADD", f.Path, int(f.Ts), rkey)
+	_, err = con.Do("LADD", snapKey, int(f.Ts), rkey)
 	if err != nil {
 		return rkey, err
 	}
