@@ -53,7 +53,8 @@ type BlobPos struct {
 	size   int
 }
 
-// String serialize a BlobsPos as string (value: n offset size)
+// Value serialize a BlobsPos as string
+// (value is encoded as uvarint: n + offset + size)
 func (blob BlobPos) Value() []byte {
 	bufTmp := make([]byte, 10)
 	var buf bytes.Buffer
@@ -63,36 +64,31 @@ func (blob BlobPos) Value() []byte {
 	buf.Write(bufTmp[:w])
 	w = binary.PutUvarint(bufTmp[:], uint64(blob.size))
 	buf.Write(bufTmp[:w])
-	//return fmt.Sprintf("%v %v %v", blob.n, blob.offset, blob.size)
 	return buf.Bytes()
 }
 
-
-
 func decodeBlobPos(data []byte) (blob BlobPos, error error) {
 	r := bytes.NewBuffer(data)
+	// read blob.n
 	ures, err := binary.ReadUvarint(r)
 	if err != nil {
 		return blob, err
 	}
 	blob.n = int(ures)
 
+	// read blob.offset
 	ures, err = binary.ReadUvarint(r)
 	if err != nil {
 		return blob, err
 	}
 	blob.offset = int(ures)
 
+	// read blob.size
 	ures, err = binary.ReadUvarint(r)
 	if err != nil {
 		return blob, err
 	}
 	blob.size = int(ures)
-
-	//n, err := fmt.Sscan(s, &blob.n, &blob.offset, &blob.size)
-	//if n != 3 || err != nil {
-	//	return blob, err
-	//}
 	return blob, nil
 }
 
