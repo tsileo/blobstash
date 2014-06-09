@@ -124,7 +124,8 @@ func (client *Client) Put(path string) (backup *Backup, meta *Meta, wr *WriteRes
 	if err != nil {
 		return
 	}
-	backup = NewBackup(meta.Name, btype, meta.Hash)
+	hostname, _ := os.Hostname()
+	backup = NewBackup(hostname, path, btype, meta.Hash)
 	if _, err := backup.Save(client.Pool); err != nil {
 		return backup, meta, wr, err
 	}

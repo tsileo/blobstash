@@ -58,6 +58,15 @@ func main() {
 				d.Run()
 			},
 		},
+		{
+			Name:      "test",
+			ShortName: "test",
+			Usage:     "test",
+			Action: func(c *cli.Context) {
+				h, _ := os.Hostname()
+				fmt.Printf("hostname: %v", h)
+			},
+		},
 	}
 	app.Run(os.Args)
 }

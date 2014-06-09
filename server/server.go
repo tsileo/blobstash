@@ -188,6 +188,10 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		out.WriteInlineString("PONG")
 		return nil
 	})
+	srv.HandleFunc("now", func(out *redeo.Responder, _ *redeo.Request) error {
+		out.WriteInlineString(strconv.Itoa(int(time.Now().UTC().Unix())))
+		return nil
+	})
 	srv.HandleFunc("select", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 1)
@@ -196,6 +200,15 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		}
 		req.Client().Ctx.(*ServerCtx).DB = req.Args[0]
 		out.WriteOK()
+		return nil
+	})
+	srv.HandleFunc("hash", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 1)
+		if err != nil {
+			return err
+		}
+		out.WriteString(SHA1([]byte(req.Args[0])))
 		return nil
 	})
 	srv.HandleFunc("get", func(out *redeo.Responder, req *redeo.Request) error {

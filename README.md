@@ -31,7 +31,7 @@ If something has gone wrong, the transaction is discarded. If everything is OK, 
 
 A **backup** represents the state of the file/directory at a given time, it also holds a reference to a **meta**. attached to it.
 
-The hash of a backup is: ``SHA1(hash + timestamp)``.
+The hash of a backup is: ``SHA1(hostname + path + timestamp)``.
 
 ### Snapshots
 

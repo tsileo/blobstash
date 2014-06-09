@@ -169,14 +169,9 @@ func (rb *ReqBuffer) Add(reqType, reqKey string, reqArgs []string) (err error) {
 
 // Put the blob to Meta BlobHandler.
 func (rb *ReqBuffer) Save() error {
-	rb.Lock()
-	defer rb.Unlock()
 	if rb.reqCnt == 0 {
 		return nil
 	}
-	//if err := rb.Apply(); err != nil {
-	//	return err
-	//}
 	h, d := rb.JSON()
 	go notify.Post("monitor_cmd", fmt.Sprintf("server: meta blob:%v (len:%v) written\n", h, len(d)))
 	rb.Reset()
