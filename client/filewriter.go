@@ -3,6 +3,7 @@ package client
 import (
 	"bufio"
 	"bytes"
+	"time"
 	"crypto/sha1"
 	"errors"
 	"fmt"
@@ -142,8 +143,11 @@ func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err err
 	}
 	meta.Ref = wr.Hash
 	meta.Name = filename
+	//if wr.Size != fstat.Size()
 	meta.Size = wr.Size
 	meta.Type = "file"
+	meta.ModTime = fstat.ModTime().Format(time.RFC3339)
+	meta.Mode = uint32(fstat.Mode())
 	if cnt == 0 {
 		if err := meta.Save(txID, client.Pool); err != nil {
 			return meta, wr, fmt.Errorf("Error saving meta %+v: %v", meta, err)

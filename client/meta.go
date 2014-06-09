@@ -16,7 +16,7 @@ type Meta struct {
 	Type string `redis:"type"`
 	Size int    `redis:"size"`
 	Mode uint32 `redis:"mode"`
-	ModTime int64 `redis:"mtime"`
+	ModTime string `redis:"mtime"`
 	Ref  string `redis:"ref"`
 	Hash string `redis:"-"`
 }

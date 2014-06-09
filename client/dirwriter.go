@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+	"time"
 )
 
 type node struct {
@@ -143,6 +144,8 @@ func (client *Client) DirWriterNode(node *node) {
 	node.meta.Type = "dir"
 	node.meta.Size = node.wr.Size
 	node.meta.Ref = node.wr.Hash
+	node.meta.Mode = uint32(node.fi.Mode())
+	node.meta.ModTime = node.fi.ModTime().Format(time.RFC3339)
 	err = node.meta.Save(txID, client.Pool)
 	node.err = err
 	node.cond.Signal()
