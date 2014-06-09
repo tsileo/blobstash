@@ -7,6 +7,8 @@ A backup database (a Content-Addressable Storage and a data structure server) de
 
 Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com/bup/bup) (files are split into multiple blobs using a rolling checksum).
 
+**Only tested on Linux** (should also work on OSX).
+
 ## Features:
 
 - Content addressed, files are split into blobs, and retrieved by hash
@@ -124,9 +126,9 @@ A hash contains the backup parts reference, an ordered list of the files hash bl
 
 ## Supported storages
 
-- Local
-- S3
-- A remote DataDB instance
-- Mirror (not started yet)
-- Glacier (not started yet)
+- BlobsFile (local disk)
+- AWS S3
+- Mirror
+- AWS Glacier
+- A remote DataDB instance? (not started yet)
 - Submit a pull request!

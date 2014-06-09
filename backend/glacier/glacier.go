@@ -21,8 +21,10 @@ import (
 	"github.com/tsileo/datadatabase/backend"
 
 	"github.com/tsileo/datadatabase/backend/blobsfile"
+    _ "github.com/tsileo/datadatabase/backend/glacier/util"
 	"github.com/rdwilliamson/aws/glacier"
 	"github.com/rdwilliamson/aws"
+	_ "github.com/cznic/kv"
 )
 
 var (
@@ -36,6 +38,7 @@ type GlacierBackend struct {
 	Vault string
 	cache backend.BlobHandler
 	con *glacier.Connection
+//	db *kv.DB
 }
 
 func New(vault string, cache backend.BlobHandler) *GlacierBackend {
@@ -46,6 +49,10 @@ func New(vault string, cache backend.BlobHandler) *GlacierBackend {
 		panic("S3_ACCESS_KEY or S3_SECRET_KEY not set")
 	}
 	con := glacier.NewConnection(secretKey, accessKey, aws.EU)
+	//db, err := util.GetDB()
+	//if err != nil {
+	//	panic(fmt.Errorf("Error initializing DB at %v: %v", util.DBPath, err))
+	//}
 	b := &GlacierBackend{vault, cache, con}
 	if err := con.CreateVault(vault); err != nil {
 		panic(fmt.Errorf("Error creating vault: %v", err))
@@ -60,6 +67,7 @@ func (backend *GlacierBackend) String() string {
 
 func (backend *GlacierBackend) Close() {
 	backend.cache.Close()
+	//backend.db.Close()
 }
 
 func (backend *GlacierBackend) Done() error {
