@@ -55,7 +55,7 @@ func New(vault string, cache backend.BlobHandler) *GlacierBackend {
 
 func (backend *GlacierBackend) String() string {
 	// TODO add the vault
-	return fmt.Sprintf("glacier-")
+	return fmt.Sprintf("glacier-%v-%v", backend.Vault, backend.cache.String())
 }
 
 func (backend *GlacierBackend) Close() {
