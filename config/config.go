@@ -10,6 +10,7 @@ import (
 	"github.com/tsileo/datadatabase/backend/encrypt"
 	"github.com/tsileo/datadatabase/backend/mirror"
 	"github.com/tsileo/datadatabase/backend/s3"
+	"github.com/tsileo/datadatabase/backend/glacier"
 )
 
 const defaultS3Location = "us-east-1"
@@ -28,6 +29,15 @@ func NewS3FromConfig(conf *simplejson.Json) backend.BlobHandler {
 	return s3.New(bucket, conf.Get("location").MustString(defaultS3Location))
 }
 
+func NewGlacierFromConfig(conf *simplejson.Json) backend.BlobHandler {
+	vault := conf.Get("vault").MustString()
+	if vault == "" {
+		panic(fmt.Errorf("no vault specified for GalcierBackend"))
+	}
+	cache := NewFromConfig(conf.Get("cache"))
+	return glacier.New(vault, cache)
+}
+
 func NewMirrorFromConfig(conf *simplejson.Json) backend.BlobHandler {
 	backends := []backend.BlobHandler{}
 	for index, _ := range conf.Get("backends").MustArray() {
@@ -39,7 +49,7 @@ func NewMirrorFromConfig(conf *simplejson.Json) backend.BlobHandler {
 func NewFromConfig(conf *simplejson.Json) backend.BlobHandler {
 	backendType := conf.Get("backend-type").MustString("")
 	if backendType == "" {
-		panic(fmt.Errorf("backend-type key missing from backend config"))
+		panic(fmt.Errorf("backend-type key missing from backend config %+v", conf))
 	}
 	backendArgs, ok := conf.CheckGet("backend-args")
 	if !ok {
@@ -48,6 +58,8 @@ func NewFromConfig(conf *simplejson.Json) backend.BlobHandler {
 	switch {
 	case backendType == "blobsfile":
 		return blobsfile.NewFromConfig(backendArgs)
+	case backendType == "glacier":
+		return NewGlacierFromConfig(backendArgs)
 	case backendType == "encrypt":
 		return NewEncryptFromConfig(backendArgs)
 	case backendType == "s3":

@@ -14,10 +14,15 @@ package glacier
 import (
 	"expvar"
 	"fmt"
+	"os"
 	"log"
 	_ "strings"
 
 	"github.com/tsileo/datadatabase/backend"
+
+	"github.com/tsileo/datadatabase/backend/blobsfile"
+	"github.com/rdwilliamson/aws/glacier"
+	"github.com/rdwilliamson/aws"
 )
 
 var (
@@ -28,12 +33,24 @@ var (
 )
 
 type GlacierBackend struct {
+	Vault string
 	cache backend.BlobHandler
+	con *glacier.Connection
 }
 
-func New(cache backend.BlobHandler) *GlacierBackend {
+func New(vault string, cache backend.BlobHandler) *GlacierBackend {
 	log.Println("GlacierBackend: starting")
-	return &GlacierBackend{cache}
+	accessKey := os.Getenv("S3_ACCESS_KEY")
+	secretKey := os.Getenv("S3_SECRET_KEY")
+	if accessKey == "" || secretKey == "" {
+		panic("S3_ACCESS_KEY or S3_SECRET_KEY not set")
+	}
+	con := glacier.NewConnection(secretKey, accessKey, aws.EU)
+	b := &GlacierBackend{vault, cache, con}
+	if err := con.CreateVault(vault); err != nil {
+		panic(fmt.Errorf("Error creating vault: %v", err))
+	}
+	return b
 }
 
 func (backend *GlacierBackend) String() string {
@@ -47,6 +64,20 @@ func (backend *GlacierBackend) Close() {
 
 func (backend *GlacierBackend) Done() error {
 	// TODO handle upload to Glacier
+	log.Printf("GlacierBackend %+v Done()", backend)
+	bfBackend, err := backend.cache.(*blobsfile.BlobsFileBackend)
+	if !err {
+		panic(fmt.Errorf("GlacierBackend cache must be a BlobsFileBackend"))
+	}
+	ofiles := bfBackend.IterOpenFiles()
+	for _, f := range ofiles {
+		f.Seek(0, 0)
+		archiveId, err := backend.con.UploadArchive(backend.Vault, f, f.Name())
+		if err != nil {
+			return fmt.Errorf("Error uploading archive: %v", err)
+		}
+		log.Printf("archiveId: %v", archiveId)
+	}
 	if err := backend.cache.Done(); err != nil {
 		return err
 	}

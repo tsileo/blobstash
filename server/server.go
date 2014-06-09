@@ -782,6 +782,15 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 			log.Printf("server: TXCOMMIT error %v/%v", err, txID)
 			return ErrSomethingWentWrong
 		}
+		out.WriteOK()
+		return nil
+	})
+	srv.HandleFunc("done", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 0)
+		if err != nil {
+			return err
+		}
 		if err := blobBackend.Done(); err != nil {
 			log.Printf("Error blobBackend %T Done callback: %v", blobBackend, err)
 			return ErrSomethingWentWrong
@@ -793,7 +802,6 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		out.WriteOK()
 		return nil
 	})
-
 	serverStartedAtVar.Set(time.Now().UTC().Format(time.RFC822Z))
 	log.Printf("server: http server listening on http://0.0.0.0:9737")
 	http.HandleFunc("/", handler)

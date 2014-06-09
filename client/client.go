@@ -129,5 +129,6 @@ func (client *Client) Put(path string) (backup *Backup, meta *Meta, wr *WriteRes
 	if _, err := backup.Save(client.Pool); err != nil {
 		return backup, meta, wr, err
 	}
+	_, err = con.Do("DONE");
 	return
 }

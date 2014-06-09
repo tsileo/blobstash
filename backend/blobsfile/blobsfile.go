@@ -150,6 +150,19 @@ func (backend *BlobsFileBackend) Len() int {
 	return cnt
 }
 
+func (backend *BlobsFileBackend) IterOpenFiles() (files []*os.File) {
+	for _, f := range backend.files {
+		files = append(files, f)
+	}
+	return files
+}
+
+func (backend *BlobsFileBackend) CloseOpenFiles() {
+	for _, f := range backend.files {
+		f.Close()
+	}
+}
+
 func (backend *BlobsFileBackend) Close() {
 	log.Println("BlobsFileBackend: closing index")
 	backend.index.Close()
@@ -157,7 +170,18 @@ func (backend *BlobsFileBackend) Close() {
 
 func (backend *BlobsFileBackend) Done() error {
 	if backend.writeOnly {
+		log.Println("BlobsFileBackend: Done()")
 		// Switch file and delete older file
+		for i, f := range backend.files {
+			fpath := filepath.Join(backend.Directory, f.Name())
+			log.Printf("BlobsFileBackend: removing blobsfile %v", fpath)
+			f.Close()
+			delete(backend.files, i)
+			os.Remove(fpath)
+		}
+		if err := backend.loadWriteOnly(); err != nil {
+			return err
+		}
 		return nil
 	}
 	return nil
@@ -319,6 +343,9 @@ func (backend *BlobsFileBackend) loadWriteOnly() error {
 	if err := backend.wopen(backend.n); err != nil {
 		return err
 	}
+	if err := backend.ropen(backend.n); err != nil {
+		return err
+	}
 	if err := backend.saveN(); err != nil {
 		return err
 	}
@@ -369,15 +396,12 @@ func (backend *BlobsFileBackend) wopen(n int) error {
 
 // Open a file for read
 func (backend *BlobsFileBackend) ropen(n int) error {
-	if backend.writeOnly {
-		panic("backend is in write-only mode")
-	}
 	_, alreadyOpen := backend.files[n]
 	if alreadyOpen {
 		log.Printf("BlobsFileBackend: blobsfile %v already open", backend.filename(n))
 		return nil
 	}
-	if n > len(backend.files) {
+	if !backend.writeOnly && n > len(backend.files) {
 		return fmt.Errorf("Trying to open file %v whereas only %v files currently open", n, len(backend.files))
 	}
 
@@ -438,10 +462,8 @@ func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
 		if err := backend.wopen(backend.n); err != nil {
 			panic(err)
 		}
-		if !backend.writeOnly {
-			if err := backend.ropen(backend.n); err != nil {
-				panic(err)
-			}
+		if err := backend.ropen(backend.n); err != nil {
+			panic(err)
 		}
 		if err := backend.saveN(); err != nil {
 			panic(err)

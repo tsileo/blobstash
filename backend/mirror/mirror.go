@@ -52,6 +52,11 @@ func (backend *MirrorBackend) Close() {
 }
 
 func (backend *MirrorBackend) Done() error {
+	for _, b := range backend.backends {
+		if err := b.Done(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
