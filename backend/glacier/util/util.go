@@ -1,37 +1,177 @@
 package util
 
 import (
-	"os"
+    "log"
+    "os"
+    "os/signal"
+    "time"
+    "io"
+    "encoding/json"
+    "syscall"
     "path/filepath"
+    "fmt"
+    "sync"
 
-	"github.com/cznic/kv"
+    "github.com/rdwilliamson/aws/glacier"
+    "github.com/rdwilliamson/aws"
 )
 
-func opts() *kv.Options {
-    return &kv.Options{
-        VerifyDbBeforeOpen:  true,
-        VerifyDbAfterOpen:   true,
-        VerifyDbBeforeClose: true,
-        VerifyDbAfterClose:  true,
+const (
+    checkDelay = 30 * time.Second
+)
+
+// GetCon create a new glacier.Connection using environment variables.
+func GetCon() *glacier.Connection {
+    accessKey := os.Getenv("S3_ACCESS_KEY")
+    secretKey := os.Getenv("S3_SECRET_KEY")
+    if accessKey == "" || secretKey == "" {
+        panic("S3_ACCESS_KEY or S3_SECRET_KEY not set")
     }
+    con := glacier.NewConnection(secretKey, accessKey, aws.EU)
+    return con
 }
 
-var (
-    XDGDataHome = filepath.Join(os.Getenv("HOME"), ".local/share")
-    DBPath = filepath.Join(XDGDataHome, "datadb-glacier-db")
-)
-
-func GetDB() (*kv.DB, error) {
-    if err := os.MkdirAll(XDGDataHome, 0700); err != nil {
-        return nil, err
+// RestoreArchive wait for job completion and restore the archive to the given path.
+func RestoreArchive(con *glacier.Connection, vault, jobId, path string, wg *sync.WaitGroup) error {
+    if wg != nil {
+        defer wg.Done()
     }
-    createOpen := kv.Open
-    if _, err := os.Stat(DBPath); os.IsNotExist(err) {
-        createOpen = kv.Create
+    var job *glacier.Job
+    var err error
+    for {
+        job, err = con.DescribeJob(vault, jobId)
+        if err != nil {
+            return err
+        }
+        if job.Completed {
+            log.Printf("Archive %v: job %v completed", job.ArchiveId, jobId)
+            break
+        }
+        time.Sleep(checkDelay)
     }
-    db, err := createOpen(DBPath, opts())
+    r, _, err := con.GetRetrievalJob(vault, jobId, 0, job.ArchiveSizeInBytes-1)
     if err != nil {
-        return nil, err
+        return err
     }
-    return db, nil
+    defer r.Close()
+    if path == "" {
+        path = job.ArchiveId
+    }
+    f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0666)
+    if err != nil {
+        panic(err)
+    }
+    defer f.Close()
+    io.Copy(f, r)
+    log.Printf("Archive %v: restored to %v", job.ArchiveId, path)
+    return nil
+}
+
+func Restore(con *glacier.Connection, db *DB, vault string) (err error) {
+    var wg sync.WaitGroup
+    cs := make(chan os.Signal, 1)
+    signal.Notify(cs, os.Interrupt,
+        syscall.SIGHUP,
+        syscall.SIGINT,
+        syscall.SIGTERM,
+        syscall.SIGQUIT)
+    go func() {
+        <- cs
+        log.Printf("Stopping...")
+        db.kvDB.Close()
+        os.Exit(1)
+    }()
+    jobs := []string{}
+    kvs := make(chan *KeyValue)
+    go db.Iter(kvs, "archive:", "archive:\xff", 0)
+    for kv := range kvs {
+        archive := &glacier.Archive{}
+        if err := json.Unmarshal([]byte(kv.Value), archive); err != nil {
+            return err
+        }
+        var jobId string
+        statusKey := fmt.Sprintf("job:%v", kv.Key)
+        jobId, err = db.Get(statusKey)
+        if err != nil {
+            return err
+        }
+        if jobId == "" {
+            jobId, err = con.InitiateRetrievalJob(vault, archive.ArchiveId, "", "")
+            if err != nil {
+                return err
+            }
+            if err := db.Set(statusKey, jobId); err != nil {
+                return err
+            }
+            log.Printf("Initiated a new job for archive retrieval %v", archive.ArchiveId)
+        }
+        wg.Add(1)
+        go RestoreArchive(con, vault, jobId, filepath.Base(archive.ArchiveDescription), &wg)
+        jobs = append(jobs, jobId)
+    }
+    log.Printf("Waiting for %v jobs to complete, you can safely CTRL+C and re-run this command", len(jobs))
+    wg.Wait()
+    return nil
+}
+
+func Sync(con *glacier.Connection, db *DB, vault string) error {
+    db.Set("inventory-job-id", "UE8PEqILmFE31QTZ5C1DieYpuU8Ccd0bUlVOEIpS4y4ifeqcq2NKCPwL2eHNTEQoeocV7WbOc-W4lcVQ3nJXVjhWgjtH")
+    cs := make(chan os.Signal, 1)
+    signal.Notify(cs, os.Interrupt,
+        syscall.SIGHUP,
+        syscall.SIGINT,
+        syscall.SIGTERM,
+        syscall.SIGQUIT)
+    go func() {
+        <- cs
+        log.Printf("Stopping...")
+        db.kvDB.Close()
+        os.Exit(1)
+    }()
+    var jobId string
+    var err error
+    jobId, err = db.Get("inventory-job-id")
+    if err != nil {
+        return err
+    }
+    if jobId == "" {
+        jobId, err = con.InitiateInventoryJob(vault, "", "")
+        if err != nil {
+            return err
+        }
+        log.Printf("Initiated a new inventory job: %v", jobId)
+        if err := db.Set("inventory-job-id", jobId); err != nil {
+            return err
+        }
+    } else {
+        log.Printf("Checking job %v", jobId)
+    }
+    log.Printf("Waiting for job to complete, you can safely CTRL+C and re-run this command")
+    for {
+        job, err := con.DescribeJob(vault, jobId)
+        if err != nil {
+            return err
+        }
+        if job.Completed {
+            log.Printf("Job %v completed", jobId)
+            break
+        }
+        time.Sleep(checkDelay)
+    }
+    inventory, err := con.GetInventoryJob(vault, jobId)
+    if err != nil {
+        return err
+    }
+    for index, archive := range inventory.ArchiveList {
+        archiveJson, err := json.Marshal(&archive)
+        if err != nil {
+            return err
+        }
+        log.Printf("Saving archive %v", archive.ArchiveId)
+        if err := db.Set(fmt.Sprintf("archive:%v", index), string(archiveJson)); err != nil {
+            return err
+        }
+    }
+    log.Printf("Inventory saved, sync done.")
+    return nil
 }
