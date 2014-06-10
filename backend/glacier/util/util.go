@@ -67,23 +67,26 @@ func RestoreArchive(con *glacier.Connection, vault, jobId, path string, wg *sync
     return nil
 }
 
-func Restore(con *glacier.Connection, db *DB, vault string) (err error) {
-    var wg sync.WaitGroup
+func handleClose(db *DB) {
     cs := make(chan os.Signal, 1)
     signal.Notify(cs, os.Interrupt,
         syscall.SIGHUP,
         syscall.SIGINT,
         syscall.SIGTERM,
         syscall.SIGQUIT)
-    go func() {
-        <- cs
-        log.Printf("Stopping...")
-        db.kvDB.Close()
-        os.Exit(1)
-    }()
+    <- cs
+    log.Printf("Stopping...")
+    db.Close()
+    os.Exit(1)
+}
+
+func Restore(con *glacier.Connection, db *DB, vault string) (err error) {
+    var wg sync.WaitGroup
+    go handleClose(db)
     jobs := []string{}
     kvs := make(chan *KeyValue)
     go db.Iter(kvs, "archive:", "archive:\xff", 0)
+    errch := make(chan error, len(kvs))
     for kv := range kvs {
         archive := &glacier.Archive{}
         if err := json.Unmarshal([]byte(kv.Value), archive); err != nil {
@@ -106,35 +109,61 @@ func Restore(con *glacier.Connection, db *DB, vault string) (err error) {
             log.Printf("Initiated a new job for archive retrieval %v", archive.ArchiveId)
         }
         wg.Add(1)
-        go RestoreArchive(con, vault, jobId, filepath.Base(archive.ArchiveDescription), &wg)
+        go func(archive *glacier.Archive, jobId string) {
+            errch <- RestoreArchive(con, vault, jobId, filepath.Base(archive.ArchiveDescription), &wg)
+        }(archive, jobId)
         jobs = append(jobs, jobId)
     }
-    log.Printf("Waiting for %v jobs to complete, you can safely CTRL+C and re-run this command", len(jobs))
+    if len(jobs) == 0 {
+        log.Printf("Error: no archive in local DB, maybe sync is not done yet?")
+        db.Close()
+        os.Exit(1)
+    }
+    log.Printf("Waiting for %v jobs to complete, you can safely CTRL+C and resume this process", len(jobs))
     wg.Wait()
+    close(errch)
+    for cerr := range errch {
+        if cerr != nil {
+            return cerr
+        }
+    }
+    log.Printf("Restore done, %v archives restored", len(jobs))
     return nil
 }
 
 func Sync(con *glacier.Connection, db *DB, vault string) error {
-    db.Set("inventory-job-id", "UE8PEqILmFE31QTZ5C1DieYpuU8Ccd0bUlVOEIpS4y4ifeqcq2NKCPwL2eHNTEQoeocV7WbOc-W4lcVQ3nJXVjhWgjtH")
-    cs := make(chan os.Signal, 1)
-    signal.Notify(cs, os.Interrupt,
-        syscall.SIGHUP,
-        syscall.SIGINT,
-        syscall.SIGTERM,
-        syscall.SIGQUIT)
-    go func() {
-        <- cs
-        log.Printf("Stopping...")
-        db.kvDB.Close()
-        os.Exit(1)
-    }()
+    go handleClose(db)
+    lastSync, err := db.Get("inventory-last-run")
+    if err != nil {
+        return err
+    }
+    if lastSync == "" {
+        fmt.Printf("WARNING: A successful sync was performed on %v,\n", lastSync)
+        fmt.Printf("if a new sync is started, any previous jobs running won't be tracked anymore.\n")
+        fmt.Printf("Are you sure you want to continue (yes/no)? ")
+        if !askForConfirmation() {
+            log.Printf("Aborting...")
+            db.Close()
+            os.Exit(1)
+        } else {
+            db.Drop()
+        }
+    }
     var jobId string
-    var err error
     jobId, err = db.Get("inventory-job-id")
     if err != nil {
         return err
     }
-    if jobId == "" {
+    var jobExists bool
+    if jobId != "" {
+        jobExists = true
+        _, err := con.DescribeJob(vault, jobId)
+        if err != nil {
+            jobExists = false
+            log.Printf("Job %v isn't available anymore", jobId)
+        }
+    }
+    if jobId == "" || !jobExists {
         jobId, err = con.InitiateInventoryJob(vault, "", "")
         if err != nil {
             return err
@@ -146,7 +175,7 @@ func Sync(con *glacier.Connection, db *DB, vault string) error {
     } else {
         log.Printf("Checking job %v", jobId)
     }
-    log.Printf("Waiting for job to complete, you can safely CTRL+C and re-run this command")
+    log.Printf("Waiting for job to complete, you can safely CTRL+C and resume this process")
     for {
         job, err := con.DescribeJob(vault, jobId)
         if err != nil {
@@ -172,6 +201,9 @@ func Sync(con *glacier.Connection, db *DB, vault string) error {
             return err
         }
     }
-    log.Printf("Inventory saved, sync done.")
+    if err := db.Set("inventory-last-run", time.Now().Format(time.RFC3339)); err != nil {
+        return err
+    }
+    log.Printf("Inventory saved, sync done")
     return nil
 }

@@ -44,6 +44,14 @@ func (db *DB) Close() {
     db.kvDB.Close()
 }
 
+func (db *DB) Drop() {
+    kvs:= make(chan *KeyValue)
+    go db.Iter(kvs, "", "\xff", 0)
+    for kv := range kvs {
+        db.Delete(kv.Key)
+    }
+}
+
 type KeyValue struct {
     Key string
     Value string
