@@ -137,7 +137,7 @@ func Sync(con *glacier.Connection, db *DB, vault string) error {
     if err != nil {
         return err
     }
-    if lastSync == "" {
+    if lastSync != "" {
         fmt.Printf("WARNING: A successful sync was performed on %v,\n", lastSync)
         fmt.Printf("if a new sync is started, any previous jobs running won't be tracked anymore.\n")
         fmt.Printf("Are you sure you want to continue (yes/no)? ")

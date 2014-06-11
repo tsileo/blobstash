@@ -8,7 +8,7 @@ Blobs are indexed by a kv file.
 
 New blobs are appended to the current file, and when the file exceed the limit, a new fie is created.
 
-Blobs are stored with its hash and its size followed by the blob itself, thus allowing re-indexing.
+Blobs are stored with its hash and its size (for a total overhead of 24 bytes) followed by the blob itself, thus allowing re-indexing.
 
 	Blob hash (20 bytesà + Blob size (4 byte, uint32 binary encoded) + Blob data
 

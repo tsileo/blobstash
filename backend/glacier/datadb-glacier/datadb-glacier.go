@@ -2,62 +2,64 @@ package main
 
 import (
     "fmt"
+    "os"
 
-    "github.com/spf13/cobra"
+    "github.com/codegangsta/cli"
     "github.com/tsileo/datadatabase/backend/glacier/util"
 )
 
 func main() {
-    var cmdStatus = &cobra.Command{
-        Use:   "status [vault]",
-        Short: "Display information about the given vault",
-        Long:  "",
-        Run: func(cmd *cobra.Command, args []string) {
-            con := util.GetCon()
-            vault, _ := con.DescribeVault(args[0])
-            fmt.Printf("Vault name:         : %v\n", vault.VaultName)
-            fmt.Printf("Creation date:      : %v\n", vault.CreationDate)
-            fmt.Printf("Last inventory date : %v\n", vault.LastInventoryDate)
-            fmt.Printf("Number of archives  : %v\n", vault.NumberOfArchives)
-            fmt.Printf("Size                : %v\n", vault.SizeInBytes)
+    app := cli.NewApp()
+    app.Name = "datadb-glacier"
+    app.Usage = "DataDB glacier restore tools"
+    app.Version = "0.1.0"
+    app.Commands = []cli.Command{
+        {
+            Name:      "status",
+            ShortName: "status",
+            Usage:     "display information about the given vault",
+            Action: func(c *cli.Context) {
+                con := util.GetCon()
+                vault, _ := con.DescribeVault(c.Args().First())
+                fmt.Printf("Vault name:         : %v\n", vault.VaultName)
+                fmt.Printf("Creation date:      : %v\n", vault.CreationDate)
+                fmt.Printf("Last inventory date : %v\n", vault.LastInventoryDate)
+                fmt.Printf("Number of archives  : %v\n", vault.NumberOfArchives)
+                fmt.Printf("Size                : %v\n", vault.SizeInBytes)
+            },
+        },
+        {
+            Name:      "sync",
+            ShortName: "sync",
+            Usage:     "fetch the latest inventory and sync the local database",
+            Action: func(c *cli.Context) {
+                con := util.GetCon()
+                db, err := util.GetDB()
+                defer db.Close()
+                if err != nil {
+                    panic(err)
+                }
+                if err := util.Sync(con, db, c.Args().First()); err != nil {
+                    panic(err)
+                }
+            },
+        },
+        {
+            Name:      "restore",
+            ShortName: "restore",
+            Usage:     "restore previously synced archives from local database",
+            Action: func(c *cli.Context) {
+                con := util.GetCon()
+                db, err := util.GetDB()
+                defer db.Close()
+                if err != nil {
+                    panic(err)
+                }
+                if err := util.Restore(con, db, c.Args().First()); err != nil {
+                    panic(err)
+                }
+            },
         },
     }
-    var cmdSync = &cobra.Command{
-        Use:   "sync [vault]",
-        Short: "Fetch the latest inventory and sync local DB",
-        Long:  "",
-        Run: func(cmd *cobra.Command, args []string) {
-            con := util.GetCon()
-            db, err := util.GetDB()
-            defer db.Close()
-            if err != nil {
-                panic(err)
-            }
-            if err := util.Sync(con, db, args[0]); err != nil {
-                panic(err)
-            }
-        },
-    }
-    var cmdRestore = &cobra.Command{
-        Use:   "restore [vault]",
-        Short: "Restore previously synced archives from local DB.",
-        Long:  "",
-        Run: func(cmd *cobra.Command, args []string) {
-            con := util.GetCon()
-            db, err := util.GetDB()
-            defer db.Close()
-            if err != nil {
-                panic(err)
-            }
-            if err := util.Restore(con, db, args[0]); err != nil {
-                panic(err)
-            }
-        },
-    }
-
-    var rootCmd = &cobra.Command{Use: "datadb-glacier"}
-    rootCmd.AddCommand(cmdStatus)
-    rootCmd.AddCommand(cmdRestore)
-    rootCmd.AddCommand(cmdSync)
-    rootCmd.Execute()
+    app.Run(os.Args)
 }
