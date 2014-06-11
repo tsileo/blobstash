@@ -86,7 +86,15 @@ func Restore(con *glacier.Connection, db *DB, vault string) (err error) {
     jobs := []string{}
     kvs := make(chan *KeyValue)
     go db.Iter(kvs, "archive:", "archive:\xff", 0)
-    errch := make(chan error, len(kvs))
+    errch := make(chan error)
+    go func() {
+        select {
+        case cerr := <- errch:
+            if cerr != nil {
+                panic(cerr)
+            }
+        }
+    }()
     for kv := range kvs {
         archive := &glacier.Archive{}
         if err := json.Unmarshal([]byte(kv.Value), archive); err != nil {
@@ -110,7 +118,9 @@ func Restore(con *glacier.Connection, db *DB, vault string) (err error) {
         }
         wg.Add(1)
         go func(archive *glacier.Archive, jobId string) {
-            errch <- RestoreArchive(con, vault, jobId, filepath.Base(archive.ArchiveDescription), &wg)
+            if err := RestoreArchive(con, vault, jobId, filepath.Base(archive.ArchiveDescription), &wg); err != nil {
+                errch <- err
+            }
         }(archive, jobId)
         jobs = append(jobs, jobId)
     }
@@ -121,12 +131,7 @@ func Restore(con *glacier.Connection, db *DB, vault string) (err error) {
     }
     log.Printf("Waiting for %v jobs to complete, you can safely CTRL+C and resume this process", len(jobs))
     wg.Wait()
-    close(errch)
-    for cerr := range errch {
-        if cerr != nil {
-            return cerr
-        }
-    }
+    defer close(errch)
     log.Printf("Restore done, %v archives restored", len(jobs))
     return nil
 }
