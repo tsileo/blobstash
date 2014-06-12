@@ -5,7 +5,7 @@ Data Database
 
 A set of backup tools designed to provides a "time machine" like experience:
 
-- a database (content-addressable store + data structure server)
+- a database (content-addressed store + data structure server)
 - a backup scheduler (cron/anacron like)
 - a read-only FUSE file system
 - a command-line client
@@ -30,7 +30,7 @@ Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com
 
 ### Database
 
-**Datadb* is a backup database (a Content-Addressable Storage and a data structure server) designed to efficiently handle snapshots of files/directories, built on top of [LevelDB](http://code.google.com/p/leveldb/) and the [Redis Protocol](http://redis.io/topics/protocol).
+**Datadb** is a backup database (a Content-Addressable Storage and a data structure server) designed to efficiently handle snapshots of files/directories, built on top of [LevelDB](http://code.google.com/p/leveldb/) and the [Redis Protocol](http://redis.io/topics/protocol).
 
 #### Backend
 
@@ -132,7 +132,7 @@ PONG
 You can monitor the database using the Server-Sent Events API:
 
 ```console
-curl http://0.0.0.0:9737/debug/monitor
+$ curl http://0.0.0.0:9737/debug/monitor
 data: hgetall command  with args [2c07e10cd475290b49f5f943315b65f6a16192b5] from client: 127.0.0.1:42179
 
 data: hgetall command  with args [92d430a8dbe6a6ace8db423d231ead6a4bf33634] from client: 127.0.0.1:42179
@@ -221,3 +221,4 @@ A hash contains the backup parts reference, an ordered list of the files hash bl
 - A special cold storage backed (using AWS Glacier, can't use glacier since storing blobs with Glacier would cost too much, according to [this article](http://alestic.com/2012/12/s3-glacier-costs)) that would put one archive per snapshots, and keep track of stored blob (incremental backups).
 - Garbage collection
 - A web interface
+- Fill an issue!
