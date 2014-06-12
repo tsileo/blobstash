@@ -15,13 +15,13 @@ func (client *Client) DirIter(key string) (metas []*Meta, err error) {
 	defer con.Close()
 	members, err := redis.Strings(con.Do("SMEMBERS", key))
 	if err != nil {
-		log.Printf("client: error DirIter SMEMBERS %v", err)
+		log.Printf("client: error DirIter %v SMEMBERS %v", key, err)
 		return
 	}
 	for _, member := range members {
 		meta, merr := NewMetaFromDB(client.Pool, member)
 		if merr != nil {
-			log.Printf("client: error DirIter fetching meta %v", member)
+			log.Printf("client: error DirIter %v fetching meta %v: %v", key, member, merr)
 			continue
 		}
 		metas = append(metas, meta)

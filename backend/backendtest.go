@@ -29,6 +29,16 @@ func RandomBlob(content []byte) *BlobTest {
 	return &BlobTest{hash, data}
 }
 
+func BigRandomBlob() *BlobTest {
+	data := make([]byte, 2097152)
+	rand.Read(data)
+	sha := sha1.New()
+	sha.Write(data)
+	hash := fmt.Sprintf("%x", sha.Sum(nil))
+	return &BlobTest{hash, data}
+}
+
+
 func Test(t *testing.T, b BlobHandler) {
 	FullTest(t, b, false, false)
 }
@@ -52,6 +62,7 @@ func FullTest(t *testing.T, b BlobHandler, writeOnlyMode, readOnlyMode bool) {
 		for i := 0; i < 50; i++ {
 			blobs = append(blobs, RandomBlob(nil))
 		}
+		blobs = append(blobs, []*BlobTest{BigRandomBlob(), BigRandomBlob()}...)
 	}
 	eblobs := []string{}
 	for _, blob := range blobs {

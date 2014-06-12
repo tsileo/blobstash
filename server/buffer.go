@@ -178,8 +178,8 @@ func (rb *ReqBuffer) Save() error {
 	if err := rb.blobBackend.Put(h, d); err != nil {
 		return fmt.Errorf("Error putting blob: %v", err)
 	}
-	if cnt := rb.db.Sadd("_meta", h); cnt != 1 {
-		return fmt.Errorf("Error adding the meta blob %v to _meta list", h)
+	if _, err := rb.db.Sadd("_meta", h); err != nil {
+		return fmt.Errorf("Error adding the meta blob %v to _meta list: %v", h, err)
 	}
 	return nil
 }
@@ -253,8 +253,9 @@ func (rb *ReqBuffer) Apply() error {
 			for _, req := range reqArgs {
 				for _, args := range req.Args {
 					go notify.Post("monitor_cmd", fmt.Sprintf("server: Applying SADD: %+v/%+v", req.Key, args))
-					// TODO(tsileo) error checking the SADD command
-					rb.db.Sadd(req.Key, args...)
+					if _, err := rb.db.Sadd(req.Key, args...); err != nil {
+						return err
+					}
 				}
 			}
 

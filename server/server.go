@@ -296,7 +296,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
 		cmdArgs := make([]string, len(req.Args)-1)
 		copy(cmdArgs, req.Args[1:])
-		cnt := cdb.Sadd(req.Args[0], cmdArgs...)
+		cnt, err := cdb.Sadd(req.Args[0], cmdArgs...)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}

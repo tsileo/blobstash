@@ -84,7 +84,9 @@ func (client *Client) FileWriter(txID, key, path string) (*WriteResult, error) {
 			buf.Reset()
 			writeResult.BlobsCount++
 			// Save the location and the blob hash into a sorted list (with the offset as index)
-			con.Do("LADD", key, writeResult.Size, nsha)
+			if _, err := con.Do("LADD", key, writeResult.Size, nsha); err != nil {
+				panic(fmt.Errorf("DB error LADD %v %v %v: %v", key, writeResult.Size, nsha, err))
+			}
 		}
 		if eof {
 			break

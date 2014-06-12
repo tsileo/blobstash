@@ -61,20 +61,25 @@ func (db *DB) Scard(key string) (int, error) {
 	return int(card), err
 }
 
-func (db *DB) Sadd(key string, members ...string) int {
+func (db *DB) Sadd(key string, members ...string) (int, error) {
 	bkey := []byte(key)
 	cnt := 0
 	for _, member := range members {
 		kmember := keySetMember(bkey, member)
-		cval, _ := db.get(kmember)
+		cval, err := db.get(kmember)
+		if err != nil {
+			return 0, err
+		}
 		if cval == nil {
-			db.put(kmember, []byte{})
+			if err := db.put(kmember, []byte{}); err != nil {
+				return 0, err
+			}
 			cnt++
 		}
 	}
 	cardkey := keySetCard(bkey)
 	db.incrUint32(KeyType(cardkey, Meta), cnt)
-	return cnt
+	return cnt, nil
 }
 
 func (db *DB) Sismember(key, member string) int {

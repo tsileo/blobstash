@@ -198,7 +198,6 @@ func (client *Client) PutDir(path string) (meta *Meta, wr *WriteResult, err erro
 	go func() {
 		defer wg.Done()
 		for d := range directories {
-			//log.Printf("waiting to aquire dir:%q", d)
 			dirSem <- struct{}{}
 			go func(node *node) {
 				defer func() {
@@ -208,7 +207,6 @@ func (client *Client) PutDir(path string) (meta *Meta, wr *WriteResult, err erro
 				if node.err != nil {
 					panic(fmt.Errorf("Error DirWriterNode with node %q", node))
 				}
-				// TODO(tsileo) check that r.wr is up to date.
 			}(d)
 		}
 	}()
