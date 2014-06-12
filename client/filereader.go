@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"io"
-	_ "log"
 	"os"
 )
 
@@ -135,6 +134,7 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 			if err != nil {
 				return nil, err
 			}
+
 			written += fwritten
 			// Check that the total written bytes equals the requested size
 			if written != cnt {
@@ -145,7 +145,10 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 			return buf.Bytes(), nil
 		}
 	}
-	return nil, err
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), err
 }
 
 // Reset the offset to 0

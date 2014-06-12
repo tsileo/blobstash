@@ -3,7 +3,7 @@ Data Database
 
 ## Overview
 
-A backup database (a Content-Addressable Storage and a data structure server) designed to efficiently handle snapshots of files/directories, built on top of [kv](https://github.com/cznic/kv) and the [Redis Protocol](http://redis.io/topics/protocol), bundled with a command-line client and a FUSE file system.
+A backup database (a Content-Addressable Storage and a data structure server) designed to efficiently handle snapshots of files/directories, built on top of [LevelDB](http://code.google.com/p/leveldb/) and the [Redis Protocol](http://redis.io/topics/protocol), bundled with a command-line client and a FUSE file system.
 
 Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com/bup/bup) (files are split into multiple blobs using a rolling checksum).
 
@@ -45,7 +45,7 @@ The hash of a snapshots groups is ``SHA1(hostname + path)``.
 
 A **blob** (binary large object) is where chunks are stored. **Blobs** are immutable and stored with the SHA-1 hash as filename.
 
-**Blobs** are stored in a **database**.
+**Blobs** are stored in a **backend**.
 
 ### Metas
 
@@ -54,12 +54,6 @@ A **meta** (stored as a hash) holds the file/directory metadata, like filename, 
 Multiple **backups** may refers to the same **meta** if the content is the same.
 
 The Hash of a meta is: ``SHA1(filename + file hash)``.
-
-### Databases
-
-**Databases** are actually different kv databases (hold the index), so you can export/import the **meta** data to be backup along with **blobs**.
-
-A **database** is tied to a **backend**.
 
 ### Backend
 
@@ -102,7 +96,7 @@ file1  file2  file3
 
 ### Metadata format
 
-Metadata are stored in kv database and are exposed via a Redis protocol tcp server, with custom Redis-like data type and commands, but implemented using kv lexicographical range queries.
+Metadata are stored in LevelDB and are exposed via a Redis protocol tcp server, with custom Redis-like data type and commands, but implemented using kv lexicographical range queries.
 
 - String data type
 - Hash data type
