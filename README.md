@@ -3,11 +3,15 @@ Data Database
 
 ## Overview
 
-A backup database (a Content-Addressable Storage and a data structure server) designed to efficiently handle snapshots of files/directories, built on top of [LevelDB](http://code.google.com/p/leveldb/) and the [Redis Protocol](http://redis.io/topics/protocol), bundled with a command-line client and a FUSE file system.
+A set of backup tools designed to provides a "time machine" like experience:
 
-Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com/bup/bup) (files are split into multiple blobs using a rolling checksum).
+- a database (content-addressable store + data structure server)
+- a backup scheduler (cron/anacron like)
+- a read-only FUSE file system
+- a command-line client
+- a web application (on the roadmap)
 
-**Only tested on Linux** (should also work on OSX).
+**Designed with Linux in mind**.
 
 ## Features:
 
@@ -18,14 +22,58 @@ Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com
 - Read-only FUSE file system to navigate backups/snapshots
 - Encryption using [go.crypto/nacl secretbox](http://godoc.org/code.google.com/p/go.crypto/nacl)
 - Take snapshot automatically every x minutes, using a separate client-side daemon (provides Arq/time machine like backup)
+- Deletion/garbage collection isn't implemented yet, but it's on the roadmap
+
+Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com/bup/bup) (files are split into multiple blobs using a rolling checksum).
+
+## Components
+
+### Database
+
+**Datadb* is a backup database (a Content-Addressable Storage and a data structure server) designed to efficiently handle snapshots of files/directories, built on top of [LevelDB](http://code.google.com/p/leveldb/) and the [Redis Protocol](http://redis.io/topics/protocol).
+
+#### Backend
+
+- BlobsFile (local disk)
+- AWS S3
+- Mirror
+- AWS Glacier
+- A remote DataDB instance? (not started yet)
+- Submit a pull request!
+
+### Fuse file system
+
+The most convenient way to restore/navigate snapshots is the FUSE file system.
+
+There is three magic directories at the root:
+
+- **latest**: it contains the latest version of every snapshots/backups.
+- **snapshots**: it let you navigate for every snapshots, you can see every versions.
+- **at**: let access directories/files at a given time, it automatically retrieve the closest previous snapshots.
+
+```console
+$ datadb mount /backups
+2014/05/12 17:26:34 Mounting read-only filesystem on /backups
+Ctrl+C to unmount.
+```
+
+```console
+$ ls /backups
+at  latest  snapshots
+$ ls /backups/latest
+writing
+$ ls /backups/snapshots/writing
+2014-05-11T11:01:07+02:00  2014-05-11T18:36:06+02:00  2014-05-12T17:25:47+02:00
+$ ls /backups/at/writing/2014-05-12
+file1  file2  file3
+```
+### Command-line client
+
+### Backup scheduler
+
+The backup scheduler allows you to perform snapshots...
 
 ## How it works
-
-First, a transaction is initiated (if something goes wrong, no stale data will be saved and the transaction will be discarded).
-
-If the source is a directory, it will be uploaded recursively, if it's a file, it will be split into multiple blobs/chunks (blobs will be sent only if it doesn't exists yet), while performing the backup, meta data (size, name, hashes, directory trees) are sent to the server and buffered until the backup is done.
-
-If something has gone wrong, the transaction is discarded. If everything is OK, the transaction is applied and a meta blob will be created.
 
 ## Terminology
 
@@ -66,32 +114,87 @@ A **backend** handle blobs operation (blobsfile/s3/encrypt/mirror/remote).
 
 You can combine backend as you wish, e.g. Mirror( Encrypt( S3() ), BlobsFile() ).
 
-## Getting Started
+## Under the hood
 
-### Fuse file system
+### Talks to the DB with using Redis protocol
 
-The most convenient way to restore/navigate snapshots is the FUSE file system.
-There is three magic directories at the root:
-
-- **latest**: it contains the latest version of every snapshots/backups.
-- **snapshots**: it let you navigate for every snapshots, you can see every versions.
-- **at**: let access directories/files at a given time, it automatically retrieve the closest previous snapshots.
+You can inspect the database with any Redis-compatible client:
 
 ```console
-$ datadb mount /backups
-2014/05/12 17:26:34 Mounting read-only filesystem on /backups
-Ctrl+C to unmount.
+$ redis-cli -p 9736
+127.0.0.1:9736> ping
+PONG
+127.0.0.1:9736> 
 ```
 
+### Monitor commands
+
+You can monitor the database using the Server-Sent Events API:
+
 ```console
-$ ls /backups
-at  latest  snapshots
-$ ls /backups/latest
-writing
-$ ls /backups/snapshots/writing
-2014-05-11T11:01:07+02:00  2014-05-11T18:36:06+02:00  2014-05-12T17:25:47+02:00
-$ ls /backups/at/writing/2014-05-12
-file1  file2  file3
+curl http://0.0.0.0:9737/debug/monitor
+data: hgetall command  with args [2c07e10cd475290b49f5f943315b65f6a16192b5] from client: 127.0.0.1:42179
+
+data: hgetall command  with args [92d430a8dbe6a6ace8db423d231ead6a4bf33634] from client: 127.0.0.1:42179
+
+```
+
+### Debug variables
+
+You can check debug vars via the [expvar](http://golang.org/pkg/expvar/) interface:
+
+```console
+$ curl http://0.0.0.0:9737/debug/vars
+{
+  "blobsfile-blobs-downloaded": {}, 
+  "blobsfile-blobs-uploaded": {
+    "/box/blobsfileconfigcreatedmeta2": 1
+  }, 
+  "blobsfile-bytes-downloaded": {}, 
+  "blobsfile-bytes-uploaded": {
+    "/box/blobsfileconfigcreatedmeta2": 472
+  }, 
+  "blobsfile-open-fds": {
+    "/box/blobsfileconfigcreatedblobs2": 2, 
+    "/box/blobsfileconfigcreatedmeta2": 2
+  }, 
+  "cmdline": [
+    "/tmp/go-build248426472/command-line-arguments/_obj/exe/server"
+  ], 
+  "encrypt-blobs-downloaded": {}, 
+  "encrypt-blobs-uploaded": {}, 
+  "encrypt-bytes-downloaded": {}, 
+  "encrypt-bytes-uploaded": {}, 
+  "glacier-blobs-downloaded": {}, 
+  "glacier-blobs-uploaded": {}, 
+  "glacier-bytes-downloaded": {}, 
+  "glacier-bytes-uploaded": {}, 
+  "memstats": {
+  	[...]
+  }, 
+  "mirror-blobs-downloaded": {}, 
+  "mirror-blobs-uploaded": {}, 
+  "mirror-bytes-downloaded": {}, 
+  "mirror-bytes-uploaded": {}, 
+  "server-active-monitor-client": 0, 
+  "server-command-stats": {
+    "done": 1, 
+    "hgetall": 76, 
+    "hlen": 24, 
+    "hmset": 1, 
+    "init": 1, 
+    "ladd": 1, 
+    "llast": 2, 
+    "llen": 36, 
+    "sadd": 1, 
+    "scard": 20, 
+    "smembers": 4, 
+    "txcommit": 1, 
+    "txinit": 61
+  }, 
+  "server-started-at": "12 Jun 14 20:11 +0000", 
+  "server-total-connections-received": 22
+}
 ```
 
 ### Metadata format
@@ -117,12 +220,4 @@ A hash contains the backup parts reference, an ordered list of the files hash bl
 - Follow .gitignore file
 - A special cold storage backed (using AWS Glacier, can't use glacier since storing blobs with Glacier would cost too much, according to [this article](http://alestic.com/2012/12/s3-glacier-costs)) that would put one archive per snapshots, and keep track of stored blob (incremental backups).
 - Garbage collection
-
-## Supported storages
-
-- BlobsFile (local disk)
-- AWS S3
-- Mirror
-- AWS Glacier
-- A remote DataDB instance? (not started yet)
-- Submit a pull request!
+- A web interface
