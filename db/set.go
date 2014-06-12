@@ -96,7 +96,7 @@ func (db *DB) Smembers(key string) [][]byte {
 	bkey := []byte(key)
 	start := keySetMember(bkey, []byte{})
 	end := keySetMember(bkey, "\xff")
-	kvs, _ := GetRange(db.db, start, end, 0)
+	kvs, _ := GetRange(db.ldb, start, end, 0)
 	res := [][]byte{}
 	for _, kv := range kvs {
 		res = append(res, decodeKeySetMember([]byte(kv.Key)))
@@ -109,7 +109,7 @@ func (db *DB) Sdel(key string) error {
 	bkey := []byte(key)
 	start := keySetMember(bkey, []byte{})
 	end := keySetMember(bkey, "\xff")
-	kvs, _ := GetRange(db.db, start, end, 0)
+	kvs, _ := GetRange(db.ldb, start, end, 0)
 	for _, kv := range kvs {
 		db.del([]byte(kv.Key))
 	}

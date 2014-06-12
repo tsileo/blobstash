@@ -3,7 +3,6 @@ package db
 import (
 	"bytes"
 	"encoding/binary"
-	"io"
 )
 
 //
@@ -110,7 +109,7 @@ func (db *DB) Liter(key string) ([][]byte, error) {
 	start := keyList(bkey, []byte{})
 	end := keyList(bkey, "\xff")
 	res := [][]byte{}
-	kvs, err := GetRange(db.db, start, end, 0)
+	kvs, err := GetRange(db.ldb, start, end, 0)
 	if err != nil {
 		return res, err
 	}
@@ -126,7 +125,7 @@ func (db *DB) LiterWithIndex(key string) (ivs []*IndexValue, err error) {
 	bkey := []byte(key)
 	start := keyList(bkey, []byte{})
 	end := keyList(bkey, "\xff")
-	kvs, err := GetRange(db.db, start, end, 0)
+	kvs, err := GetRange(db.ldb, start, end, 0)
 	if err != nil {
 		return
 	}
@@ -141,7 +140,7 @@ func (db *DB) Ldel(key string) error {
 	bkey := []byte(key)
 	start := keyList(bkey, []byte{})
 	end := keyList(bkey, "\xff")
-	kvs, err := GetRange(db.db, start, end, 0)
+	kvs, err := GetRange(db.ldb, start, end, 0)
 	if err != nil {
 		return err
 	}
@@ -158,18 +157,16 @@ func (db *DB) Ldel(key string) error {
 
 func (db *DB) Lprev(key string, kStart int) string {
 	bkey := []byte(key)
-	enum, _, err := db.db.Seek([]byte(keyList(bkey, kStart+1)))
-	if err == io.EOF {
-		return ""
-	}
-	enum.Prev()
-	k, v, err := enum.Next()
-	if err == io.EOF {
-		return ""
-	}
-	koff := int(binary.LittleEndian.Uint32(k[1:5]))
-	if string(k[5:5+koff]) == key {
-		return string(v)
+	it := db.ldb.NewIterator(ro)
+	defer it.Close()
+	it.Seek([]byte(keyList(bkey, kStart+1)))
+	if it.Valid() {
+		k := it.Key()
+		v := it.Value()
+		koff := int(binary.LittleEndian.Uint32(k[1:5]))
+		if string(k[5:5+koff]) == key {
+			return string(v)
+		}
 	}
 	return ""
 }
@@ -178,7 +175,7 @@ func (db *DB) Lprev(key string, kStart int) string {
 func (db *DB) GetListRange(key, kStart string, kEnd string, limit int) (kvs []*KeyValue, err error) {
 	// TODO(tsileo) make kStart, kEnd int instead of string
 	bkey := []byte(key)
-	kvs, _ = GetRange(db.db, keyList(bkey, kStart), keyList(bkey, kEnd), limit)
+	kvs, _ = GetRange(db.ldb, keyList(bkey, kStart), keyList(bkey, kEnd), limit)
 	return
 }
 
@@ -186,14 +183,14 @@ func (db *DB) GetListRange(key, kStart string, kEnd string, limit int) (kvs []*K
 func (db *DB) GetListRangeLast(key, kStart string, kEnd string, limit int) (kv *KeyValue, err error) {
 	// TODO(tsileo) make kStart, kEnd int instead of string
 	bkey := []byte(key)
-	kv, _ = GetRangeLast(db.db, keyList(bkey, kStart), keyList(bkey, kEnd), limit)
+	kv, _ = GetRangeLast(db.ldb, keyList(bkey, kStart), keyList(bkey, kEnd), limit)
 	return
 }
 
 // Return a lexicographical range (included the previous seeked item, and the index)
 func (db *DB) GetListMinRange(key string, kStart, kEnd, limit int) (ivs []*IndexValue, err error) {
 	bkey := []byte(key)
-	skvs, _ := GetMinRange(db.db, keyList(bkey, kStart), keyList(bkey, kEnd), limit)
+	skvs, _ := GetMinRange(db.ldb, keyList(bkey, kStart), keyList(bkey, kEnd), limit)
 	for _, skv := range skvs {
 		if bytes.Equal([]byte(key), decodeListKey([]byte(skv.Key))) {
 			ivs = append(ivs, &IndexValue{Index: decodeListIndex([]byte(skv.Key)), Value: skv.Value})

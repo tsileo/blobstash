@@ -150,7 +150,7 @@ func (db *DB) Hgetall(key string) ([]*KeyValue, error) {
 	hkvs := []*KeyValue{}
 	start := keyHashField(bkey, []byte{})
 	end := keyHashField(bkey, "\xff")
-	kvs, err := GetRange(db.db, start, end, 0)
+	kvs, err := GetRange(db.ldb, start, end, 0)
 	for _, kv := range kvs {
 		ckv := &KeyValue{string(decodeKeyHashField([]byte(kv.Key))), kv.Value}
 		hkvs = append(hkvs, ckv)
@@ -162,7 +162,7 @@ func (db *DB) Hscan(start, end string, limit int) ([][]byte, error) {
 	hkeys := [][]byte{}
 	kStart := keyHashIndex([]byte(start))
 	kEnd := keyHashIndex([]byte(end))
-	kvs, err := GetRange(db.db, kStart, kEnd, limit)
+	kvs, err := GetRange(db.ldb, kStart, kEnd, limit)
 	for _, kv := range kvs {
 		hkeys = append(hkeys, decodeKeyHashIndex([]byte(kv.Key)))
 	}

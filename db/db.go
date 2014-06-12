@@ -1,10 +1,10 @@
 /*
 
-Package db implements a "data structure" database built on top of kv [1]: strings, hashes, sorted list, and sets.
+Package db implements a "data structure" database built on top of LevelDB [1]: strings, hashes, sorted list, and sets.
 
 Links
 
-	[1] https://github.com/cznic/kv
+	[1] http://code.google.com/p/leveldb/
 
 */
 package db
@@ -13,10 +13,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	_ "fmt"
-	"github.com/cznic/kv"
-	"io"
-	"os"
 	"strconv"
+
+	"github.com/jmhodges/levigo"
 )
 
 //
@@ -48,14 +47,9 @@ const (
 	BlobsSize
 )
 
-func opts() *kv.Options {
-	return &kv.Options{
-		VerifyDbBeforeOpen:  true,
-		VerifyDbAfterOpen:   true,
-		VerifyDbBeforeClose: true,
-		VerifyDbAfterClose:  true,
-	}
-}
+var (
+	ro = levigo.NewReadOptions()
+)
 
 // Format a key (append the given "type" byte).
 func KeyType(key interface{}, kType byte) []byte {
@@ -87,199 +81,200 @@ type IndexValue struct {
 }
 
 // GetRange performs a lexical range query.
-func GetRange(db *kv.DB, kStart []byte, kEnd []byte, limit int) (values []*KeyValue, err error) {
-	enum, _, err := db.Seek(kStart)
+func GetRange(db *levigo.DB, kStart []byte, kEnd []byte, limit int) (values []*KeyValue, err error) {
+	it := db.NewIterator(ro)
+	defer func() {
+		it.Close()
+	}()
+	it.Seek(kStart)
 	endBytes := kEnd
+
 	i := 0
 	for {
-		k, v, err := enum.Next()
-		if err == io.EOF {
-			break
+		if it.Valid() {
+			if bytes.Compare(it.Key(), endBytes) > 0 || (limit != 0 && i > limit) {
+				return
+			}
+			value := it.Value()
+			vstr := string(value[:])
+			key := it.Key()
+			// Drop the meta byte
+			kstr := string(key[1:])
+			values = append(values, &KeyValue{kstr, vstr})
+			it.Next()
+			i++
+		} else {
+			err = it.GetError()
+			return
 		}
-		if bytes.Compare(k, endBytes) > 0 || (limit != 0 && i > limit) {
-			return values, nil
-		}
-		vstr := string(v)
-		kstr := string(k[1:])
-		values = append(values, &KeyValue{kstr, vstr})
-		i++
 	}
+
 	return
 }
 
 // GetRangeLast performs a lexical range query, and return the last key-value pair.
-func GetRangeLast(db *kv.DB, kStart []byte, kEnd []byte, limit int) (kv *KeyValue, err error) {
-	enum, _, err := db.Seek(kStart)
+func GetRangeLast(db *levigo.DB, kStart []byte, kEnd []byte, limit int) (kv *KeyValue, err error) {
+	it := db.NewIterator(ro)
+	defer func() {
+		it.Close()
+	}()
+	it.Seek(kStart)
 	endBytes := kEnd
+
 	i := 0
 	for {
-		k, v, err := enum.Next()
-		if err == io.EOF {
-			break
+		if it.Valid() {
+			if bytes.Compare(it.Key(), endBytes) > 0 || (limit != 0 && i > limit) {
+				return
+			}
+			value := it.Value()
+			vstr := string(value[:])
+			key := it.Key()
+			// Drop the meta byte
+			kstr := string(key[1:])
+			kv = &KeyValue{kstr, vstr}
+			it.Next()
+			i++
+		} else {
+			err = it.GetError()
+			return
 		}
-		if bytes.Compare(k, endBytes) > 0 || (limit != 0 && i > limit) {
-			return kv, nil
-		}
-		vstr := string(v)
-		kstr := string(k[1:])
-		kv = &KeyValue{kstr, vstr}
-		i++
 	}
+
 	return
 }
+
+
 
 // GetMinRange perform a lexico range query but try to return a least two values,
 // even if  if the key is not "greater than or equal to" the given key.
 // For list, the list name will be checked later on.
-func GetMinRange(db *kv.DB, kStart []byte, kEnd []byte, limit int) (values []*KeyValue, err error) {
-	enum, _, err := db.Seek(kStart)
+func GetMinRange(db *levigo.DB, kStart []byte, kEnd []byte, limit int) (values []*KeyValue, err error) {
+	it := db.NewIterator(ro)
+	defer func() {
+		it.Close()
+	}()
+	it.Seek(kStart)
 	endBytes := kEnd
+
 	i := 0
 	for {
-		k, v, err := enum.Next()
-		if err == io.EOF {
-			break
+		if it.Valid() {
+			if (bytes.Compare(it.Key(), endBytes) > 0 && len(values) >= 2) || (limit != 0 && i > limit) {
+				return
+			}
+			value := it.Value()
+			vstr := string(value[:])
+			key := it.Key()
+			// Drop the meta byte
+			kstr := string(key[1:])
+			values = append(values, &KeyValue{kstr, vstr})
+			it.Next()
+			i++
+		} else {
+			err = it.GetError()
+			return
 		}
-		if (bytes.Compare(k, endBytes) > 0 && len(values) >= 2) || (limit != 0 && i > limit) {
-			return values, nil
-		}
-		vstr := string(v)
-		kstr := string(k[1:])
-		values = append(values, &KeyValue{kstr, vstr})
-		i++
 	}
+
 	return
 }
 
 // The key-value database.
 type DB struct {
-	db      *kv.DB
-	db_path string
-	mutex   *SlottedMutex
+	ldb          *levigo.DB
+	ldb_path string
+	mutex        *SlottedMutex
+	wo           *levigo.WriteOptions
+	ro           *levigo.ReadOptions
 }
 
-// New creates a new database.
-func New(db_path string) (*DB, error) {
-	createOpen := kv.Open
-	if _, err := os.Stat(db_path); os.IsNotExist(err) {
-		createOpen = kv.Create
-	}
-	//opts := opts()
-	//action := kv.Open
-	//if _, err := os.Stat(db_path); os.IsNotExist(err) {
-	//	action = kv.Create
-	//}
-	db, err := createOpen(db_path, &kv.Options{})
+// Creates a new database.
+func New(ldb_path string) (*DB, error) {
+	opts := levigo.NewOptions()
+	opts.SetCreateIfMissing(true)
+	filter := levigo.NewBloomFilter(10)
+	opts.SetFilterPolicy(filter)
+	db, err := levigo.Open(ldb_path, opts)
 	mutex := NewSlottedMutex()
-	return &DB{db: db, db_path: db_path, mutex: mutex}, err
+	return &DB{ldb: db, ldb_path: ldb_path, mutex: mutex,
+		wo: levigo.NewWriteOptions(), ro: levigo.NewReadOptions()}, err
 }
 
-// NewMem initialize a in-memory database (used for testing purpose).
-func NewMem() (*DB, error) {
-	db, err := kv.CreateMem(&kv.Options{})
-	mutex := NewSlottedMutex()
-	return &DB{db: db, db_path: "", mutex: mutex}, err
-}
-
-// Destroy remove completely the DB.
 func (db *DB) Destroy() error {
-	if db.db_path != "" {
-		return os.RemoveAll(db.db_path)
-	}
-	return nil
+	opts := levigo.NewOptions()
+	err := levigo.DestroyDatabase(db.ldb_path, opts)
+	return err
 }
 
-// Cleanly close the DB.
+// Cleanly close the DB
 func (db *DB) Close() {
-	db.db.Close()
-}
-
-// BeginTransaction is a shortcut to call cznic/kv BeginTransaction.
-// (it starts a new transaction).
-func (db *DB) BeginTransaction() (err error) {
-	return db.db.BeginTransaction()
-}
-
-// Commit is a shortcut to call cznic/kv Commit
-// (it try commits the current transaction).
-func (db *DB) Commit() (err error) {
-	return db.db.Commit()
-}
-
-// Rollback is a shortcut to call cznic/kv Rollback
-// (it cancels and undoes the current transaction).
-func (db *DB) Rollback() (err error) {
-	return db.db.Rollback()
+	db.wo.Close()
+	db.ro.Close()
+	db.ldb.Close()
 }
 
 // Retrieves the value for a given key.
 func (db *DB) get(key []byte) ([]byte, error) {
 	db.mutex.Lock([]byte(key))
 	defer db.mutex.Unlock([]byte(key))
-	data, err := db.db.Get(nil, key)
-	if data != nil && data[0] == Empty {
-		data = []byte{}
-	}
+	data, err := db.ldb.Get(db.ro, key)
 	return data, err
 }
 
-// Perform an atomic getset (Redis-like).
-func (db *DB) getset(key, value []byte) ([]byte, error) {
+func (db *DB) getset(key []byte, value []byte) ([]byte, error) {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
-	cval, err := db.db.Get(nil, key)
+	cval, err := db.ldb.Get(db.ro, key)
 	if err != nil {
 		return cval, err
 	}
-	err = db.db.Set(key, value)
+	err = db.ldb.Put(db.wo, key, value)
 	return cval, err
 }
 
-// put sets the value for a given key.
-func (db *DB) put(key, value []byte) error {
+// Sets the value for a given key.
+func (db *DB) put(key []byte, value []byte) error {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
-	if len(value) == 0 {
-		value = []byte{Empty}
-	}
-	err := db.db.Set(key, value)
+	err := db.ldb.Put(db.wo, key, value)
 	return err
 }
 
-// del delete the given key.
+// Delete the key
 func (db *DB) del(key []byte) error {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
-	err := db.db.Delete(key)
+	err := db.ldb.Delete(db.wo, key)
 	return err
 }
 
-// Store a uint32 as binary data.
+// Store a uint32 as binary data
 func (db *DB) putUint32(key []byte, value uint32) error {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
 	val := make([]byte, 4)
 	binary.LittleEndian.PutUint32(val[:], value)
-	err := db.db.Set(key, val)
+	err := db.ldb.Put(db.wo, key, val)
 	return err
 }
 
-// Retrieve a binary stored uint32.
+// Retrieve a binary stored uint32
 func (db *DB) getUint32(key []byte) (uint32, error) {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
-	data, err := db.db.Get(nil, key)
+	data, err := db.ldb.Get(db.ro, key)
 	if err != nil || data == nil {
 		return 0, err
 	}
 	return binary.LittleEndian.Uint32(data), nil
 }
 
-// Increment a binary stored uint32.
+// Increment a binary stored uint32
 func (db *DB) incrUint32(key []byte, step int) error {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
-	data, err := db.db.Get(nil, key)
+	data, err := db.ldb.Get(db.ro, key)
 	var value uint32
 	if err != nil {
 		return err
@@ -291,15 +286,15 @@ func (db *DB) incrUint32(key []byte, step int) error {
 	}
 	val := make([]byte, 4)
 	binary.LittleEndian.PutUint32(val[:], value+uint32(step))
-	err = db.db.Set(key, val)
+	err = db.ldb.Put(db.wo, key, val)
 	return err
 }
 
-// Increment the given string key, the key is created is it doesn't exists.
+// Increment the given string key, the key is created is it doesn't exists
 func (db *DB) incrby(key []byte, value int) error {
 	db.mutex.Lock(key)
 	defer db.mutex.Unlock(key)
-	sval, err := db.db.Get(nil, key)
+	sval, err := db.ldb.Get(db.ro, key)
 	if err != nil {
 		return err
 	}
@@ -314,6 +309,6 @@ func (db *DB) incrby(key []byte, value int) error {
 	if err != nil {
 		return err
 	}
-	err = db.db.Set(key, []byte(strconv.Itoa(ival+value)))
+	err = db.ldb.Put(db.wo, key, []byte(strconv.Itoa(ival+value)))
 	return err
 }

@@ -13,7 +13,8 @@ func check(e error) {
 }
 
 func TestDB(t *testing.T) {
-	db, err := NewMem()
+	db, err := New("db_base")
+	defer db.Destroy()
 	if err != nil {
 		t.Fatal("Error creating db")
 	}
@@ -111,7 +112,7 @@ func TestDB(t *testing.T) {
 		t.Errorf("Key foo3 should be set to 10, got %v", valUint)
 	}
 
-	kvs, err := GetRange(db.db, []byte("foo2"), []byte("foo3"), 0)
+	kvs, err := GetRange(db.ldb, []byte("foo2"), []byte("foo3"), 0)
 	check(err)
 	if len(kvs) != 2 {
 		t.Errorf("Range len should be %v, got %v", 2, len(kvs))
