@@ -31,7 +31,7 @@ Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com
 
 ### Database
 
-**Datadb** is a backup database (a Content-Addressable Storage and a data structure server) designed to efficiently handle snapshots of files/directories, built on top of [LevelDB](http://code.google.com/p/leveldb/) and the [Redis Protocol](http://redis.io/topics/protocol).
+**Datadb** is a backup database (a Content-Addressable Storage and a data structure server) designed to efficiently handle snapshots of files/directories, built on top of [kv](https://github.com/cznic/kv) and the [Redis Protocol](http://redis.io/topics/protocol).
 
 #### Backend
 
@@ -200,7 +200,7 @@ $ curl http://0.0.0.0:9737/debug/vars
 
 ### Metadata format
 
-Metadata are stored in LevelDB and are exposed via a Redis protocol tcp server, with custom Redis-like data type and commands, but implemented using kv lexicographical range queries.
+Metadata are stored in in a kv file and are exposed via a Redis protocol tcp server, with custom Redis-like data type and commands, but implemented using kv lexicographical range queries.
 
 - String data type
 - Hash data type

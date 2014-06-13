@@ -2,8 +2,6 @@ package db
 
 import (
 	"encoding/binary"
-
-	"github.com/jmhodges/levigo"
 )
 
 //
@@ -64,8 +62,6 @@ func (db *DB) Scard(key string) (int, error) {
 }
 
 func (db *DB) Sadd(key string, members ...string) (int, error) {
-	wb := levigo.NewWriteBatch()
-	defer wb.Close()
 	bkey := []byte(key)
 	cnt := 0
 	for _, member := range members {
@@ -75,20 +71,14 @@ func (db *DB) Sadd(key string, members ...string) (int, error) {
 			return 0, err
 		}
 		if cval == nil {
-			//wb.Put(kmember, []byte{})
 			if err := db.put(kmember, []byte{}); err != nil {
-				return err
+				return 0, err
 			}
 			cnt++
 		}
 	}
-	//if err := db.ldb.Write(db.wo, wb); err != nil {
-	//	return 0, err
-	//}
 	cardkey := keySetCard(bkey)
-	if err := db.incrUint32(KeyType(cardkey, Meta), cnt); err != nil {
-		return cnt, err
-	}
+	db.incrUint32(KeyType(cardkey, Meta), cnt)
 	return cnt, nil
 }
 
@@ -106,7 +96,7 @@ func (db *DB) Smembers(key string) [][]byte {
 	bkey := []byte(key)
 	start := keySetMember(bkey, []byte{})
 	end := keySetMember(bkey, "\xff")
-	kvs, _ := GetRange(db.ldb, start, end, 0)
+	kvs, _ := GetRange(db.db, start, end, 0)
 	res := [][]byte{}
 	for _, kv := range kvs {
 		res = append(res, decodeKeySetMember([]byte(kv.Key)))
@@ -119,7 +109,7 @@ func (db *DB) Sdel(key string) error {
 	bkey := []byte(key)
 	start := keySetMember(bkey, []byte{})
 	end := keySetMember(bkey, "\xff")
-	kvs, _ := GetRange(db.ldb, start, end, 0)
+	kvs, _ := GetRange(db.db, start, end, 0)
 	for _, kv := range kvs {
 		db.del([]byte(kv.Key))
 	}

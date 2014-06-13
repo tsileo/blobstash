@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-
-	"github.com/jmhodges/levigo"
 )
 
 //
@@ -101,14 +99,11 @@ func (db *DB) Hset(key, field, value string) (int, error) {
 }
 
 func (db *DB) Hmset(key string, fieldvalue ...string) (int, error) {
-	wb := levigo.NewWriteBatch()
-	defer wb.Close()
 	bkey := []byte(key)
 	cnt := 0
 	if len(fieldvalue)%2 != 0 {
 		return cnt, errors.New("Hmset invalid args cnt")
 	}
-	// TODO? local map to check if cnt++ or not
 	for i := 0; i < len(fieldvalue); i = i + 2 {
 		field := fieldvalue[i]
 		value := fieldvalue[i+1]
@@ -117,10 +112,9 @@ func (db *DB) Hmset(key string, fieldvalue ...string) (int, error) {
 		if cval == nil {
 			cnt++
 		}
-		wb.Put(kfield, []byte(value))
-	}
-	if err := db.ldb.Write(db.wo, wb); err != nil {
-		return 0, err
+		if err := db.put(kfield, []byte(value)); err != nil {
+			return 0, err
+		}
 	}
 	cardkey := hashFieldsCnt(bkey)
 	if err := db.incrUint32(KeyType(cardkey, Meta), cnt); err != nil {
@@ -156,7 +150,7 @@ func (db *DB) Hgetall(key string) ([]*KeyValue, error) {
 	hkvs := []*KeyValue{}
 	start := keyHashField(bkey, []byte{})
 	end := keyHashField(bkey, "\xff")
-	kvs, err := GetRange(db.ldb, start, end, 0)
+	kvs, err := GetRange(db.db, start, end, 0)
 	for _, kv := range kvs {
 		ckv := &KeyValue{string(decodeKeyHashField([]byte(kv.Key))), kv.Value}
 		hkvs = append(hkvs, ckv)
@@ -168,7 +162,7 @@ func (db *DB) Hscan(start, end string, limit int) ([][]byte, error) {
 	hkeys := [][]byte{}
 	kStart := keyHashIndex([]byte(start))
 	kEnd := keyHashIndex([]byte(end))
-	kvs, err := GetRange(db.ldb, kStart, kEnd, limit)
+	kvs, err := GetRange(db.db, kStart, kEnd, limit)
 	for _, kv := range kvs {
 		hkeys = append(hkeys, decodeKeyHashIndex([]byte(kv.Key)))
 	}

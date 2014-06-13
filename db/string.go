@@ -45,6 +45,6 @@ func (db *DB) Del(key string) {
 
 // Return a lexicographical range from a snapshot
 func (db *DB) GetStringRange(kStart, kEnd string, limit int) (kvs []*KeyValue, err error) {
-	kvs, _ = GetRange(db.ldb, KeyType(kStart, String), KeyType(kEnd, String), limit)
+	kvs, _ = GetRange(db.db, KeyType(kStart, String), KeyType(kEnd, String), limit)
 	return
 }
