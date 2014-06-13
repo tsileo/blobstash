@@ -1,7 +1,6 @@
 package client
 
 import (
-	"github.com/garyburd/redigo/redis"
 	"reflect"
 	"testing"
 )
@@ -15,15 +14,9 @@ func check(e error) {
 func TestModelsBackup(t *testing.T) {
 	pool, err := GetDbPool()
 	check(err)
-	con := pool.Get()
-	defer con.Close()
-	txId, err := redis.String(con.Do("TXINIT"))
-	check(err)
 	//f := &Backup{Name:"foo", Type:"file", Ref:"bar"}
-	f := NewBackup("foo", "file", "bar")
-	h, err := f.Save(txId, pool)
-	check(err)
-	_, err = con.Do("TXCOMMIT")
+	f := NewBackup("hostname", "foo", "file", "bar")
+	h, err := f.Save(pool)
 	check(err)
 
 	f2, err := NewBackupFromDB(pool, h)

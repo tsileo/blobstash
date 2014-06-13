@@ -100,6 +100,8 @@ func (client *Client) List() (backups []*Backup, err error) {
 		meta, _ := NewBackupFromDB(client.Pool, hkey)
 		backups = append(backups, meta)
 	}
+	_, err = client.GetDir("33338500ec9bd20212d7deec0470c87ad5ddcd31", "/box/ddbrestorecheck")
+	fmt.Printf("%v", err)
 	return
 }
 

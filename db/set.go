@@ -75,13 +75,16 @@ func (db *DB) Sadd(key string, members ...string) (int, error) {
 			return 0, err
 		}
 		if cval == nil {
-			wb.Put(kmember, []byte{})
+			//wb.Put(kmember, []byte{})
+			if err := db.put(kmember, []byte{}); err != nil {
+				return err
+			}
 			cnt++
 		}
 	}
-	if err := db.ldb.Write(db.wo, wb); err != nil {
-		return 0, err
-	}
+	//if err := db.ldb.Write(db.wo, wb); err != nil {
+	//	return 0, err
+	//}
 	cardkey := keySetCard(bkey)
 	if err := db.incrUint32(KeyType(cardkey, Meta), cnt); err != nil {
 		return cnt, err
