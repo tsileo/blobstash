@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+
+	"github.com/jmhodges/levigo"
 )
 
 //
@@ -99,11 +101,14 @@ func (db *DB) Hset(key, field, value string) (int, error) {
 }
 
 func (db *DB) Hmset(key string, fieldvalue ...string) (int, error) {
+	wb := levigo.NewWriteBatch()
+	defer wb.Close()
 	bkey := []byte(key)
 	cnt := 0
 	if len(fieldvalue)%2 != 0 {
 		return cnt, errors.New("Hmset invalid args cnt")
 	}
+	// TODO? local map to check if cnt++ or not
 	for i := 0; i < len(fieldvalue); i = i + 2 {
 		field := fieldvalue[i]
 		value := fieldvalue[i+1]
@@ -112,9 +117,10 @@ func (db *DB) Hmset(key string, fieldvalue ...string) (int, error) {
 		if cval == nil {
 			cnt++
 		}
-		if err := db.put(kfield, []byte(value)); err != nil {
-			return 0, err
-		}
+		wb.Put(kfield, []byte(value))
+	}
+	if err := db.ldb.Write(db.wo, wb); err != nil {
+		return 0, err
 	}
 	cardkey := hashFieldsCnt(bkey)
 	if err := db.incrUint32(KeyType(cardkey, Meta), cnt); err != nil {

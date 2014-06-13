@@ -2,6 +2,8 @@ package db
 
 import (
 	"encoding/binary"
+
+	"github.com/jmhodges/levigo"
 )
 
 //
@@ -62,6 +64,8 @@ func (db *DB) Scard(key string) (int, error) {
 }
 
 func (db *DB) Sadd(key string, members ...string) (int, error) {
+	wb := levigo.NewWriteBatch()
+	defer wb.Close()
 	bkey := []byte(key)
 	cnt := 0
 	for _, member := range members {
@@ -71,14 +75,17 @@ func (db *DB) Sadd(key string, members ...string) (int, error) {
 			return 0, err
 		}
 		if cval == nil {
-			if err := db.put(kmember, []byte{}); err != nil {
-				return 0, err
-			}
+			wb.Put(kmember, []byte{})
 			cnt++
 		}
 	}
+	if err := db.ldb.Write(db.wo, wb); err != nil {
+		return 0, err
+	}
 	cardkey := keySetCard(bkey)
-	db.incrUint32(KeyType(cardkey, Meta), cnt)
+	if err := db.incrUint32(KeyType(cardkey, Meta), cnt); err != nil {
+		return cnt, err
+	}
 	return cnt, nil
 }
 

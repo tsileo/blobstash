@@ -144,8 +144,6 @@ func GetRangeLast(db *levigo.DB, kStart []byte, kEnd []byte, limit int) (kv *Key
 	return
 }
 
-
-
 // GetMinRange perform a lexico range query but try to return a least two values,
 // even if  if the key is not "greater than or equal to" the given key.
 // For list, the list name will be checked later on.
@@ -192,9 +190,10 @@ type DB struct {
 // Creates a new database.
 func New(ldb_path string) (*DB, error) {
 	opts := levigo.NewOptions()
+	opts.SetCache(levigo.NewLRUCache(3<<30))
 	opts.SetCreateIfMissing(true)
-	filter := levigo.NewBloomFilter(10)
-	opts.SetFilterPolicy(filter)
+	//filter := levigo.NewBloomFilter(10)
+	//opts.SetFilterPolicy(filter)
 	db, err := levigo.Open(ldb_path, opts)
 	mutex := NewSlottedMutex()
 	return &DB{ldb: db, ldb_path: ldb_path, mutex: mutex,
@@ -216,8 +215,8 @@ func (db *DB) Close() {
 
 // Retrieves the value for a given key.
 func (db *DB) get(key []byte) ([]byte, error) {
-	db.mutex.Lock([]byte(key))
-	defer db.mutex.Unlock([]byte(key))
+	db.mutex.Lock(key)
+	defer db.mutex.Unlock(key)
 	data, err := db.ldb.Get(db.ro, key)
 	return data, err
 }

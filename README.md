@@ -18,11 +18,12 @@ A set of backup tools designed to provides a "time machine" like experience:
 - Content addressed, files are split into blobs, and retrieved by hash
 - Incremental backups/snapshots thanks to data deduplication
 - Server handles uploading/downloading blobs to/from different storage
-- Client only query the server and send blobs to it (the client take care of chunking/building blobs).
+- Client only query the server and send blobs to it (the client take care of chunking/building blobs)
 - Read-only FUSE file system to navigate backups/snapshots
-- Encryption using [go.crypto/nacl secretbox](http://godoc.org/code.google.com/p/go.crypto/nacl)
+- Optional encryption (using [go.crypto/nacl secretbox](http://godoc.org/code.google.com/p/go.crypto/nacl))
 - Take snapshot automatically every x minutes, using a separate client-side daemon (provides Arq/time machine like backup)
 - Deletion/garbage collection isn't implemented yet, but it's on the roadmap
+- Possibility to archive blobs to AWS Glacier (with a recovery command-line tool)
 
 Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com/bup/bup) (files are split into multiple blobs using a rolling checksum).
 
@@ -219,6 +220,6 @@ A hash contains the backup parts reference, an ordered list of the files hash bl
 
 - Follow .gitignore file
 - A special cold storage backed (using AWS Glacier, can't use glacier since storing blobs with Glacier would cost too much, according to [this article](http://alestic.com/2012/12/s3-glacier-costs)) that would put one archive per snapshots, and keep track of stored blob (incremental backups).
-- Garbage collection
+- Garbage collection (sparse files support for blob files)
 - A web interface
 - Fill an issue!
