@@ -5,9 +5,10 @@ import (
 	"crypto/sha1"
 	"errors"
 	"fmt"
-	"github.com/garyburd/redigo/redis"
 	"io"
 	"os"
+
+	"github.com/garyburd/redigo/redis"
 )
 
 type BlobFetcher interface {
@@ -39,10 +40,13 @@ func (client *Client) GetFile(key, path string) (*ReadResult, error) {
 	buf, err := os.Create(path)
 	defer buf.Close()
 	if err != nil {
-		return readResult, err
+		return nil, err
 	}
 	h := sha1.New()
-	meta, _ := NewMetaFromDB(client.Pool, key)
+	meta, err := NewMetaFromDB(client.Pool, key)
+	if err != nil {
+		return nil, err
+	}
 	ffile := NewFakeFile(client, meta.Ref, meta.Size)
 	ffilreReader := io.TeeReader(ffile, h)
 	io.Copy(buf, ffilreReader)

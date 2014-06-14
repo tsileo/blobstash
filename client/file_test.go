@@ -17,14 +17,14 @@ func TestClientFile(t *testing.T) {
 	rfile := NewRandomFile(".")
 	defer os.Remove(rfile)
 	th := FullSHA1(rfile)
-	_, h, err := c.PutFile(rfile)
+	m, h, err := c.PutFile(rfile)
 	check(err)
 	if h.Hash != th {
 		t.Errorf("File not put successfully")
 	}
 
 	rfile2 := fmt.Sprintf("%v%v", rfile, "_restored")
-	rr, err := c.GetFile(h.Hash, rfile2)
+	rr, err := c.GetFile(m.Hash, rfile2)
 	check(err)
 
 	h2 := FullSHA1(rfile2)
