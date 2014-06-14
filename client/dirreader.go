@@ -58,7 +58,7 @@ func (client *Client) GetDir(key, path string) (rr *ReadResult, err error) {
 	var crr *ReadResult
 	dirsMeta, err := client.DirIter(meta.Ref)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error DirIter meta %+v: %v", meta, err)
 	}
 	for _, meta := range dirsMeta {
 		if meta.Type == "file" {

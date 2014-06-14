@@ -40,6 +40,6 @@ func TestClientDirDeepRecursion(t *testing.T) {
 	defer os.RemoveAll(meta.Name + "_restored")
 	check(err)
 	if !MatchResult(wr, rr) {
-		t.Error("Directory not restored successfully, wr:%+v/rr:%+v", wr, rr)
+		t.Errorf("Directory %+v not restored successfully, wr:%+v/rr:%+v", meta, wr, rr)
 	}
 }

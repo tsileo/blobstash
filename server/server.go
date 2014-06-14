@@ -694,11 +694,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
-		limit, err := strconv.Atoi(req.Args[3])
-		if err != nil {
-			return ErrSomethingWentWrong
-		}
-		ivs, err := cdb.GetListMinRange(req.Args[0], start, end, limit)
+		ivs, err := cdb.Lmrange(req.Args[0], start, end)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}

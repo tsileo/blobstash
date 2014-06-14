@@ -1,19 +1,17 @@
 package db
 
 import (
-	"bytes"
 	"encoding/binary"
 	"io"
 )
 
 //
 // ## List
-// List of strings, but sorted by an uint32 index key instead of insertion order,
-// quite like a zset, but member have no unique constraint.
+// List of strings sorted by an uint32 index key,
 // (quite similar to set (but only indexes are unique), the set member is the index,
 // and instead of an empty value, the value is stored)
 // lists
-//   List + (key length as binary encoded uint32) + list key + index (uint)  => value
+//   List + (key length as binary encoded uint32) + list key + index (uint32)  => value
 // list len
 //   Meta + ListLen + list key => binary encoded uint32
 // the total number of list
@@ -22,35 +20,28 @@ import (
 
 // Format the key to add new element to the list at the given index
 func keyList(key []byte, index interface{}) []byte {
-	var indexbyte []byte
+	indexbyte := make([]byte, 4)
 	switch k := index.(type) {
 	case []byte:
 		indexbyte = k
 	case string:
-		indexbyte = []byte(k)
+		copy(indexbyte, []byte(k))
 	case byte:
-		indexbyte = []byte{k}
+		copy(indexbyte, []byte{k})
 	case int:
-		indexbyte = make([]byte, 4)
-		binary.BigEndian.PutUint32(indexbyte[:], uint32(k))
+		binary.BigEndian.PutUint32(indexbyte, uint32(k))
 	}
 	k := make([]byte, len(key)+9)
 	k[0] = List
 	binary.LittleEndian.PutUint32(k[1:5], uint32(len(key)))
-	cpos := 5 + len(key)
-	copy(k[5:cpos], key)
-	copy(k[cpos:], indexbyte)
+	copy(k[5:], key)
+	copy(k[5+len(key):], indexbyte)
 	return k
 }
 
 // Extract the index from the raw key
 func decodeListIndex(key []byte) int {
-	// The first byte is already remove
-	cpos := int(binary.LittleEndian.Uint32(key[0:4])) + 4
-	member := make([]byte, len(key)-cpos)
-	copy(member[:], key[cpos:])
-	index := int(binary.BigEndian.Uint32(member))
-	return index
+	return int(binary.BigEndian.Uint32(key[len(key)-4:]))
 }
 
 func decodeListKey(key []byte) []byte {
@@ -190,16 +181,20 @@ func (db *DB) GetListRangeLast(key, kStart string, kEnd string, limit int) (kv *
 	return
 }
 
-// Return a lexicographical range (included the previous seeked item, and the index)
-func (db *DB) GetListMinRange(key string, kStart, kEnd, limit int) (ivs []*IndexValue, err error) {
-	bkey := []byte(key)
-	skvs, _ := GetMinRange(db.db, keyList(bkey, kStart), keyList(bkey, kEnd), limit)
-	for _, skv := range skvs {
-		if bytes.Equal([]byte(key), decodeListKey([]byte(skv.Key))) {
-			ivs = append(ivs, &IndexValue{Index: decodeListIndex([]byte(skv.Key)), Value: skv.Value})
+func (db *DB) Lmrange(key string, kStart, kEnd int) (ivs []*IndexValue, err error) {
+	fullIvs, err := db.LiterWithIndex(key)
+	if err != nil {
+		return ivs, err
+	}
+	for _, iv := range fullIvs {
+		if iv.Index > kStart {
+			ivs = append(ivs, iv)
+		}
+		if iv.Index > kEnd {
+			break
 		}
 	}
-	return
+	return ivs, nil
 }
 
 // func (db *DB) Srange(snapId, kStart string, kEnd string, limit int) [][]byte

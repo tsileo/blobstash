@@ -33,7 +33,7 @@ func TestDBListDataType(t *testing.T) {
 	cnt, err = db.Llen("foo")
 	check(err)
 	if cnt != 3 {
-		t.Error("List should have a len of 3")
+		t.Errorf("List should have a len of 3, got %v", cnt)
 	}
 
 	data, err := db.Lindex("foo", 10)
@@ -45,7 +45,7 @@ func TestDBListDataType(t *testing.T) {
 	rdata, err := db.Liter("foo")
 	check(err)
 	if !reflect.DeepEqual(rdata, [][]byte{[]byte("0"), []byte("1"), []byte("10")}) {
-		t.Error("Bad LITER result")
+		t.Errorf("Bad LITER result:%q",rdata)
 	}
 
 	// TODO(tsileo) check Lmrange
