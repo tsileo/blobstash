@@ -39,6 +39,9 @@ func (client *Client) FileWriter(txID, key, path string) (*WriteResult, error) {
 	if _, err := con.Do("TXINIT", txID); err != nil {
 		return nil, fmt.Errorf("error TXINIT %v: %v", txID, err)
 	}
+	if _, err := con.Do("LADD", key, 0, ""); err != nil {
+		panic(fmt.Errorf("DB error LADD %v %v %v: %v", key, 0, "", err))
+	}
 	//log.Printf("FileWriter(%v, %v, %v)", txID, key, path)
 	var buf bytes.Buffer
 	buf.Reset()

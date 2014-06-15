@@ -345,7 +345,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 			return err
 		}
 		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
-		cnt, err := cdb.Hset(req.Args[0], req.Args[1], req.Args[2])
+		cnt, err := cdb.Hmset(req.Args[0], req.Args[1], req.Args[2])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -620,21 +620,21 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		out.WriteString(kv.Value)
 		return nil
 	})
-	srv.HandleFunc("lprev", func(out *redeo.Responder, req *redeo.Request) error {
-		SetUpCtx(req)
-		err := CheckArgs(req, 2)
-		if err != nil {
-			return err
-		}
-		start, err := strconv.Atoi(req.Args[1])
-		if err != nil {
-			return ErrSomethingWentWrong
-		}
-		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
-		res := cdb.Lprev(req.Args[0], start)
-		out.WriteString(res)
-		return nil
-	})
+	//srv.HandleFunc("lprev", func(out *redeo.Responder, req *redeo.Request) error {
+	//	SetUpCtx(req)
+	//	err := CheckArgs(req, 2)
+	//	if err != nil {
+	//		return err
+	//	}
+	//	start, err := strconv.Atoi(req.Args[1])
+	//	if err != nil {
+	//		return ErrSomethingWentWrong
+	//	}
+	//	cdb := req.Client().Ctx.(*ServerCtx).GetDB()
+	//	res := cdb.Lprev(req.Args[0], start)
+	//	out.WriteString(res)
+	//	return nil
+	//})
 	srv.HandleFunc("liter", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckMinArgs(req, 1)

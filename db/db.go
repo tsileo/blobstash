@@ -16,7 +16,6 @@ import (
 	"github.com/cznic/kv"
 	"io"
 	"os"
-	"log"
 	"strconv"
 )
 
@@ -89,20 +88,14 @@ type IndexValue struct {
 
 // GetRange performs a lexical range query.
 func GetRange(db *kv.DB, kStart []byte, kEnd []byte, limit int) (values []*KeyValue, err error) {
-	log.Printf("GetRange %v/%v", kStart, kEnd)
 	enum, _, err := db.Seek(kStart)
-	if err != nil {
-		log.Printf("GetRange %v error: %v", kStart, err)
-	}
 	endBytes := kEnd
 	i := 0
 	for {
 		k, v, err := enum.Next()
 		if err == io.EOF {
-			log.Printf("eof: %v %v %v", k, v, err)
 			break
 		}
-		log.Printf("%v/%v", k, v)
 		if bytes.Compare(k, endBytes) > 0 || (limit != 0 && i > limit) {
 			return values, nil
 		}

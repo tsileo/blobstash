@@ -100,7 +100,10 @@ func (db *DB) Smembers(key string) [][]byte {
 	kvs, _ := GetRange(db.db, start, end, 0)
 	res := [][]byte{}
 	for _, kv := range kvs {
-		res = append(res, decodeKeySetMember([]byte(kv.Key)))
+		member := decodeKeySetMember([]byte(kv.Key))
+		if string(member) != "" {
+			res = append(res, member)
+		}
 	}
 	return res
 }

@@ -56,24 +56,26 @@ func (client *Client) GetDir(key, path string) (rr *ReadResult, err error) {
 		return nil, err
 	}
 	var crr *ReadResult
-	dirsMeta, err := client.DirIter(meta.Ref)
-	if err != nil {
-		return nil, fmt.Errorf("Error DirIter meta %+v: %v", meta, err)
-	}
-	for _, meta := range dirsMeta {
-		if meta.Type == "file" {
-			crr, err = client.GetFile(meta.Hash, filepath.Join(path, meta.Name))
-			if err != nil {
-				return
-			}
-		} else {
-			crr, err = client.GetDir(meta.Hash, filepath.Join(path, meta.Name))
-			if err != nil {
-				return
-			}
+	if meta.Size != 0 {
+		dirsMeta, err := client.DirIter(meta.Ref)
+		if err != nil {
+			return nil, fmt.Errorf("Error DirIter meta %+v: %v", meta, err)
 		}
-		fullHash.Write([]byte(crr.Hash))
-		rr.Add(crr)
+		for _, meta := range dirsMeta {
+			if meta.Type == "file" {
+				crr, err = client.GetFile(meta.Hash, filepath.Join(path, meta.Name))
+				if err != nil {
+					return rr, err
+				}
+			} else {
+				crr, err = client.GetDir(meta.Hash, filepath.Join(path, meta.Name))
+				if err != nil {
+					return rr, err
+				}
+			}
+			fullHash.Write([]byte(crr.Hash))
+			rr.Add(crr)
+		}
 	}
 	// TODO(tsileo) sum the hash and check with the root
 	rr.DirsCount++

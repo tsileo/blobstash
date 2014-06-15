@@ -122,19 +122,27 @@ func (client *Client) DirWriterNode(node *node) {
 		return
 	}
 
-	//cnt, err := redis.Int(con.Do("SCARD", node.wr.Hash))
-	//if err != nil {
-	//	node.err = err
-	//	return
-	//}
-
-	if len(hashes) > 0 {
-		_, err = con.Do("SADD", redis.Args{}.Add(node.wr.Hash).AddFlat(hashes)...)
-		if err != nil {
-			node.err = err
-			return
-		}
+	cnt, err := redis.Int(con.Do("SCARD", node.wr.Hash))
+	if err != nil {
+		node.err = err
+		return
 	}
+	if cnt == 0 {
+		if len(hashes) > 0 {
+			_, err = con.Do("SADD", redis.Args{}.Add(node.wr.Hash).Add("").AddFlat(hashes)...)
+			if err != nil {
+				node.err = err
+				return
+			}
+			node.wr.DirsUploaded++
+			node.wr.DirsCount++
+		}
+	} else {
+		node.wr.AlreadyExists = true
+		node.wr.DirsSkipped++
+		node.wr.DirsCount++
+	}
+
 	//	node.wr.DirsUploaded++
 	//	node.wr.DirsCount++
 	//

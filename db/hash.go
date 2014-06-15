@@ -82,27 +82,15 @@ func (db *DB) Hlen(key string) (int, error) {
 	return int(card), err
 }
 
-// Set field to value
-func (db *DB) Hset(key, field, value string) (int, error) {
-	bkey := []byte(key)
-	cnt := 0
-	kfield := keyHashField(bkey, field)
-	cval, _ := db.get(kfield)
-	if cval == nil {
-		cnt++
-	}
-	db.put(kfield, []byte(value))
-	cardkey := hashFieldsCnt(bkey)
-	db.incrUint32(KeyType(cardkey, Meta), cnt)
-	db.put(keyHashIndex(bkey), []byte{})
-	return cnt, nil
-}
-
 func (db *DB) Hmset(key string, fieldvalue ...string) (int, error) {
 	bkey := []byte(key)
 	cnt := 0
 	if len(fieldvalue)%2 != 0 {
 		return cnt, errors.New("Hmset invalid args cnt")
+	}
+	// Init the hash
+	if err := db.put(keyHashField(bkey, ""), []byte{}); err != nil {
+		return 0, err
 	}
 	for i := 0; i < len(fieldvalue); i = i + 2 {
 		field := fieldvalue[i]
@@ -152,8 +140,10 @@ func (db *DB) Hgetall(key string) ([]*KeyValue, error) {
 	end := keyHashField(bkey, "\xff")
 	kvs, err := GetRange(db.db, start, end, 0)
 	for _, kv := range kvs {
-		ckv := &KeyValue{string(decodeKeyHashField([]byte(kv.Key))), kv.Value}
-		hkvs = append(hkvs, ckv)
+		if kv.Value != "\x00" {
+			ckv := &KeyValue{string(decodeKeyHashField([]byte(kv.Key))), kv.Value}
+			hkvs = append(hkvs, ckv)
+		}
 	}
 	return hkvs, err
 }

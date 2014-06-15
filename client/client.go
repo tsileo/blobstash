@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	uploaders    = 10 // concurrent upload uploaders
-	dirUploaders = 5 // concurrent directory uploaders
+	uploaders    = 25 // concurrent upload uploaders
+	dirUploaders = 25 // concurrent directory uploaders
 )
 
 func GetDbPool() (pool *redis.Pool, err error) {

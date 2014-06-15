@@ -2,7 +2,6 @@ package db
 
 import (
 	"encoding/binary"
-	"io"
 )
 
 //
@@ -106,7 +105,9 @@ func (db *DB) Liter(key string) ([][]byte, error) {
 		return res, err
 	}
 	for _, kv := range kvs {
-		res = append(res, []byte(kv.Value))
+		if kv.Value != "\x00" {
+			res = append(res, []byte(kv.Value))
+		}
 		//res = append(res,  decodeListIndex([]byte(kv.Key)))
 	}
 	return res, nil
@@ -122,7 +123,9 @@ func (db *DB) LiterWithIndex(key string) (ivs []*IndexValue, err error) {
 		return
 	}
 	for _, skv := range kvs {
-		ivs = append(ivs, &IndexValue{Index: decodeListIndex([]byte(skv.Key)), Value: skv.Value})
+		if skv.Value != "\x00" {
+			ivs = append(ivs, &IndexValue{Index: decodeListIndex([]byte(skv.Key)), Value: skv.Value})
+		}
 	}
 	return
 }
@@ -147,24 +150,6 @@ func (db *DB) Ldel(key string) error {
 	return err
 }
 
-func (db *DB) Lprev(key string, kStart int) string {
-	bkey := []byte(key)
-	enum, _, err := db.db.Seek([]byte(keyList(bkey, kStart+1)))
-	if err == io.EOF {
-		return ""
-	}
-	enum.Prev()
-	k, v, err := enum.Next()
-	if err == io.EOF {
-		return ""
-	}
-	koff := int(binary.LittleEndian.Uint32(k[1:5]))
-	if string(k[5:5+koff]) == key {
-		return string(v)
-	}
-	return ""
-}
-
 // Return a lexicographical range
 func (db *DB) GetListRange(key, kStart string, kEnd string, limit int) (kvs []*KeyValue, err error) {
 	// TODO(tsileo) make kStart, kEnd int instead of string
@@ -181,7 +166,7 @@ func (db *DB) GetListRangeLast(key, kStart string, kEnd string, limit int) (kv *
 	return
 }
 
-func (db *DB) Lmrange(key string, kStart, kEnd int) (ivs []*IndexValue, err error) {
+func (db *DB) Lmrange2(key string, kStart, kEnd int) (ivs []*IndexValue, err error) {
 	fullIvs, err := db.LiterWithIndex(key)
 	if err != nil {
 		return ivs, err
@@ -195,6 +180,26 @@ func (db *DB) Lmrange(key string, kStart, kEnd int) (ivs []*IndexValue, err erro
 		}
 	}
 	return ivs, nil
+}
+
+func (db *DB) Lmrange(key string, kStart, kEnd int) (ivs []*IndexValue, err error) {
+	bkey := []byte(key)
+	start := keyList(bkey, kStart)
+	end := keyList(bkey, "\xff")
+	kvs, err := GetRange(db.db, start, end, 0)
+	if err != nil {
+		return
+	}
+	for _, skv := range kvs {
+		if skv.Value != "\x00" {
+			civ := &IndexValue{Index: decodeListIndex([]byte(skv.Key)), Value: skv.Value}
+			ivs = append(ivs, civ)
+			if civ.Index > kEnd {
+				break
+			}
+		}
+	}
+	return
 }
 
 // func (db *DB) Srange(snapId, kStart string, kEnd string, limit int) [][]byte
