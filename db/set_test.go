@@ -22,13 +22,19 @@ func TestDBSetDataType(t *testing.T) {
 		t.Error("Inexistent set should have a cardinality of 0")
 	}
 
-	cnt, err := db.Sadd("foo", "a", "b")
+	cnt, err := db.Sadd("foo", "a", "b", "b", "b")
 	check(err)
 	if cnt != 2 {
 		t.Errorf("only 2 elements should have been inserted, got %v", cnt)
 	}
 
-	cnt, err = db.Sadd("foo", "b", "c")
+	cnt, err = db.Sadd("foo2", "a", "b", "b", "b")
+	check(err)
+	if cnt != 2 {
+		t.Errorf("only 2 elements should have been inserted, got %v", cnt)
+	}
+
+	cnt, err = db.Sadd("foo", "b", "c", "c", "a")
 	check(err)
 	if cnt != 1 {
 		t.Errorf("only 1 elements should have been inserted, got %v", cnt)
@@ -59,7 +65,7 @@ func TestDBSetDataType(t *testing.T) {
 	card, err = db.Scard("foo")
 	check(err)
 	if card != 3 {
-		t.Error("foo set should have a cardinality of 3")
+		t.Errorf("foo set should have a cardinality of 3, got %v", card)
 	}
 
 	err = db.Sdel("foo")

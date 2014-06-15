@@ -55,7 +55,19 @@ func TestDBListDataType(t *testing.T) {
 
 	cnt, err = db.Llen("foo")
 	check(err)
-	if cnt != 0 {
+	if cnt != 0{
 		t.Error("Inexistent list should have a len of 0")
+	}
+
+	err = db.Ladd("46bab8615c83147927e55a28c183b785912ad58c", 1109, "46bab8615c83147927e55a28c183b785912ad58c")
+	cnt, err = db.Llen("46bab8615c83147927e55a28c183b785912ad58c")
+	check(err)
+	if cnt != 1 {
+		t.Errorf("List should have a len of 1, got %v", cnt)
+	}
+	rdata, err = db.Liter("46bab8615c83147927e55a28c183b785912ad58c")
+	check(err)
+	if !reflect.DeepEqual(rdata, [][]byte{[]byte("46bab8615c83147927e55a28c183b785912ad58c")}) {
+		t.Errorf("Bad LITER result:%q",rdata)
 	}
 }

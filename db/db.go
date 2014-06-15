@@ -16,6 +16,7 @@ import (
 	"github.com/cznic/kv"
 	"io"
 	"os"
+	"log"
 	"strconv"
 )
 
@@ -68,7 +69,7 @@ func KeyType(key interface{}, kType byte) []byte {
 	case byte:
 		keybyte = []byte{k}
 	}
-	k := make([]byte, 1+len(keybyte))
+	k := make([]byte, len(keybyte)+1)
 	k[0] = kType
 	copy(k[1:], keybyte)
 	return k
@@ -88,14 +89,20 @@ type IndexValue struct {
 
 // GetRange performs a lexical range query.
 func GetRange(db *kv.DB, kStart []byte, kEnd []byte, limit int) (values []*KeyValue, err error) {
+	log.Printf("GetRange %v/%v", kStart, kEnd)
 	enum, _, err := db.Seek(kStart)
+	if err != nil {
+		log.Printf("GetRange %v error: %v", kStart, err)
+	}
 	endBytes := kEnd
 	i := 0
 	for {
 		k, v, err := enum.Next()
 		if err == io.EOF {
+			log.Printf("eof: %v %v %v", k, v, err)
 			break
 		}
+		log.Printf("%v/%v", k, v)
 		if bytes.Compare(k, endBytes) > 0 || (limit != 0 && i > limit) {
 			return values, nil
 		}

@@ -35,10 +35,12 @@ func main() {
 			Usage:     "List backups",
 			Action: func(c *cli.Context) {
 				client, _ := client.NewClient(ignoredFiles)
-				metas, _ := client.List()
-				for _, m := range metas {
-					fmt.Printf("%+v\n", m)
-				}
+				//metas, _ := client.List()
+				//for _, m := range metas {
+				//	fmt.Printf("%+v\n", m)
+				//}
+				rr, err := client.GetDir(c.Args().First(), "/tmp/testtonalityrestoreomg")
+				fmt.Printf("rr:%+v/err:%v", rr, err)
 			},
 		},
 		{

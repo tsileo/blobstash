@@ -4,6 +4,7 @@ import (
 	"crypto/sha1"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/garyburd/redigo/redis"
 )
@@ -22,10 +23,14 @@ type Meta struct {
 	Hash string `redis:"-"`
 }
 
-func metaKey(filename, hash string) string {
+func (m *Meta) metaKey() string {
 	sha := sha1.New()
-	sha.Write([]byte(filename))
-	sha.Write([]byte(hash))
+	sha.Write([]byte(m.Name))
+	sha.Write([]byte(m.Type))
+	sha.Write([]byte(strconv.Itoa(int(m.Size))))
+	sha.Write([]byte(strconv.Itoa(int(m.Mode))))
+	sha.Write([]byte(m.ModTime))
+	sha.Write([]byte(m.Ref))
 	return fmt.Sprintf("%x", sha.Sum(nil))
 }
 
@@ -55,7 +60,7 @@ func NewMeta() *Meta {
 func (m *Meta) Save(txID string, pool *redis.Pool) error {
 	con := pool.Get()
 	defer con.Close()
-	m.Hash = metaKey(m.Name, m.Ref)
+	m.Hash = m.metaKey()
 	cnt, err := redis.Int(con.Do("HLEN", m.Hash))
 	if err != nil {
 		return fmt.Errorf("error HLEN: %v", err)
@@ -84,7 +89,7 @@ func (m *Meta) Save(txID string, pool *redis.Pool) error {
 }
 
 func (m *Meta) ComputeHash() {
-	m.Hash = metaKey(m.Name, m.Ref)
+	m.Hash = m.metaKey()
 	return
 }
 

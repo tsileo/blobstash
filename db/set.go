@@ -2,6 +2,7 @@ package db
 
 import (
 	"encoding/binary"
+	_ "log"
 )
 
 //
@@ -38,7 +39,7 @@ func keySetMember(set []byte, key interface{}) []byte {
 
 func decodeKeySetMember(key []byte) []byte {
 	// The first byte is already remove
-	cpos := int(binary.LittleEndian.Uint32(key[0:4])) + 4
+	cpos := int(binary.LittleEndian.Uint32(key[0:4]))+4
 	member := make([]byte, len(key)-cpos)
 	copy(member[:], key[cpos:])
 	return member
@@ -57,7 +58,7 @@ func keySetCard(key []byte) []byte {
 func (db *DB) Scard(key string) (int, error) {
 	bkey := []byte(key)
 	cardkey := keySetCard(bkey)
-	card, err := db.getUint32(KeyType(cardkey, Meta))
+	card, err := db.getUint32(cardkey)
 	return int(card), err
 }
 
@@ -78,7 +79,7 @@ func (db *DB) Sadd(key string, members ...string) (int, error) {
 		}
 	}
 	cardkey := keySetCard(bkey)
-	db.incrUint32(KeyType(cardkey, Meta), cnt)
+	db.incrUint32(cardkey, cnt)
 	return cnt, nil
 }
 
@@ -114,7 +115,7 @@ func (db *DB) Sdel(key string) error {
 		db.del([]byte(kv.Key))
 	}
 	cardkey := keySetCard(bkey)
-	db.del(KeyType(cardkey, Meta))
+	db.del(cardkey)
 	return nil
 }
 

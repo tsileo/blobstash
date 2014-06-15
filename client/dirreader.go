@@ -16,7 +16,7 @@ func (client *Client) DirIter(key string) (metas []*Meta, err error) {
 	members, err := redis.Strings(con.Do("SMEMBERS", key))
 	if err != nil {
 		log.Printf("client: error DirIter %v SMEMBERS %v", key, err)
-		return
+		//return
 	}
 	for _, member := range members {
 		meta, merr := NewMetaFromDB(client.Pool, member)

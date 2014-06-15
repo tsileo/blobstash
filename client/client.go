@@ -10,6 +10,11 @@ import (
 	"time"
 )
 
+var (
+	uploaders    = 10 // concurrent upload uploaders
+	dirUploaders = 5 // concurrent directory uploaders
+)
+
 func GetDbPool() (pool *redis.Pool, err error) {
 	pool = &redis.Pool{
 		MaxIdle:     250,
@@ -35,7 +40,8 @@ type Client struct {
 	Blobs        BlobFetcher
 	Dirs         DirFetcher
 	Metas        MetaFetcher
-	uploader     chan struct{}
+	uploaders    chan struct{}
+	dirUploaders chan struct{}
 	ignoredFiles []string
 }
 
@@ -44,7 +50,8 @@ func NewClient(ignoredFiles []string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &Client{Pool: pool, uploader: make(chan struct{}, 100)}
+	c := &Client{Pool: pool, uploaders: make(chan struct{}, uploaders),
+		dirUploaders: make(chan struct{}, dirUploaders)}
 	c.Blobs, err = disklru.New("./tmp_blobs_lru", c.FetchBlob, 536870912)
 	c.Dirs = lru.New(c.FetchDir, 512)
 	c.Metas = lru.New(c.FetchMeta, 512)
@@ -63,7 +70,8 @@ func NewTestClient() (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &Client{Pool: pool, uploader: make(chan struct{}, 100)}
+	c := &Client{Pool: pool, uploaders: make(chan struct{}, uploaders),
+		dirUploaders: make(chan struct{}, dirUploaders)}
 	c.Blobs, err = disklru.NewTest(c.FetchBlob, 536870912)
 	c.Dirs = lru.New(c.FetchDir, 512)
 	c.Metas = lru.New(c.FetchMeta, 512)
@@ -80,13 +88,27 @@ func (client *Client) RemoveCache() {
 
 // Block until the client can start the upload, thus limiting the number of file descriptor used.
 func (client *Client) StartUpload() {
-	client.uploader <- struct{}{}
+	client.uploaders <- struct{}{}
 }
 
 // Read from the channel to let another upload start
 func (client *Client) UploadDone() {
 	select {
-	case <-client.uploader:
+	case <-client.uploaders:
+	default:
+		panic("No upload to wait for")
+	}
+}
+
+// Block until the client can start the upload, thus limiting the number of file descriptor used.
+func (client *Client) StartDirUpload() {
+	client.dirUploaders <- struct{}{}
+}
+
+// Read from the channel to let another upload start
+func (client *Client) DirUploadDone() {
+	select {
+	case <-client.dirUploaders:
 	default:
 		panic("No upload to wait for")
 	}

@@ -94,6 +94,7 @@ func (client *Client) DirWriterNode(node *node) {
 	h := sha1.New()
 	hashes := []string{}
 
+	// Wait for all children node to finish
 	for _, cnode := range node.children {
 		cnode.mu.Lock()
 		for !cnode.done {
@@ -103,6 +104,9 @@ func (client *Client) DirWriterNode(node *node) {
 		hashes = append(hashes, cnode.meta.Hash)
 		cnode.mu.Unlock()
 	}
+
+	client.StartDirUpload()
+	defer client.DirUploadDone()
 
 	sort.Strings(hashes)
 	for _, hash := range hashes {
@@ -118,26 +122,27 @@ func (client *Client) DirWriterNode(node *node) {
 		return
 	}
 
-	cnt, err := redis.Int(con.Do("SCARD", node.wr.Hash))
-	if err != nil {
-		node.err = err
-		return
-	}
-	if cnt == 0 {
-		if len(hashes) > 0 {
-			_, err = con.Do("SADD", redis.Args{}.Add(node.wr.Hash).AddFlat(hashes)...)
-			if err != nil {
-				node.err = err
-				return
-			}
-			node.wr.DirsUploaded++
-			node.wr.DirsCount++
+	//cnt, err := redis.Int(con.Do("SCARD", node.wr.Hash))
+	//if err != nil {
+	//	node.err = err
+	//	return
+	//}
+
+	if len(hashes) > 0 {
+		_, err = con.Do("SADD", redis.Args{}.Add(node.wr.Hash).AddFlat(hashes)...)
+		if err != nil {
+			node.err = err
+			return
 		}
-	} else {
-		node.wr.AlreadyExists = true
-		node.wr.DirsSkipped++
-		node.wr.DirsCount++
 	}
+	//	node.wr.DirsUploaded++
+	//	node.wr.DirsCount++
+	//
+	//	node.wr.AlreadyExists = true
+	//	node.wr.DirsSkipped++
+	//	node.wr.DirsCount++
+	node.wr.DirsCount++
+	node.wr.DirsUploaded++
 	node.meta = NewMeta()
 	node.meta.Name = filepath.Base(node.path)
 	node.meta.Type = "dir"
