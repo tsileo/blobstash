@@ -5,7 +5,6 @@ import (
 	"crypto/sha1"
 	"errors"
 	"fmt"
-	_ "log"
 	"io"
 	"os"
 
@@ -113,12 +112,31 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 	}
 	con := f.client.Pool.Get()
 	defer con.Close()
-	values, err := redis.Values(con.Do("LMRANGE", f.ref, offset, offset+cnt, 0))
-	if err != nil {
-		return nil, err
+
+	// Workaround:
+	// Sometimes, a LMRANGE returns EOF when seeking for no reason,
+	// we adjust the offset when nil is returned until it works.
+	ok := false
+	tryCnt := 0
+	tcnt := 1.0
+	var values []interface{}
+	var err error
+	for !ok {
+		if tryCnt > 5 {
+			break
+		}
+		values, err = redis.Values(con.Do("LMRANGE", f.ref, int(float64(offset)*tcnt), offset+cnt, 0))
+		if err == nil {
+			break
+		}
+		tcnt = tcnt*0.9
+		tryCnt++
 	}
 	redis.ScanSlice(values, &indexValueList)
 	for _, iv := range indexValueList {
+		if offset > iv.Index {
+			continue
+		}
 		bbuf, _, _ := f.client.Blobs.Get(iv.Value)
 		foffset := 0
 		if offset != 0 {

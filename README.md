@@ -102,7 +102,7 @@ A **meta** (stored as a hash) holds the file/directory metadata, like filename, 
 
 Multiple **backups** may refers to the same **meta** if the content is the same.
 
-The Hash of a meta is: ``SHA1(filename + file hash)``.
+The Hash of a meta is: ``SHA1(filename + type (dir or file) + size + mode + mtime + ref)``.
 
 ### Backend
 
