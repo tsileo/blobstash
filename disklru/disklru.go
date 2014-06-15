@@ -2,7 +2,7 @@
 
 Package disklru implements a disk-based LRU cache.
 
-A small key-value store ((powered by kv [1])) keeps track of the keys/size/last access time of each time,
+A small key-value store (powered by kv [1]) keeps track of the keys/size/last access time of each time,
 and data are stored in files (one file per blob, in nested directory like
 "blobs/07/077f2cfed67c84d8785515481766669a3a734bd6".
 
@@ -13,10 +13,10 @@ Index
 
 Data are stored the following way (all the uint32 are binary encoded):
 
-- Index byte + last access time (uint32) + key => size (uint32)
-- Keys byte + key => current access time
-- MetaCnt byte => number of items currently in the cache (uint32)
-- MetaSize byte => total size of the cache (uint32)
+	- Index byte + last access time (uint32) + key => size (uint32)
+	- Keys byte + key => current access time
+	- MetaCnt byte => number of items currently in the cache (uint32)
+	- MetaSize byte => total size of the cache (uint32)
 
 Links
 
