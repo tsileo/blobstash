@@ -77,8 +77,6 @@ import (
 
 	"github.com/tsileo/datadatabase/backend"
 	"github.com/tsileo/datadatabase/db"
-
-	"github.com/bitly/go-notify"
 )
 
 type TxManager struct {
@@ -173,7 +171,7 @@ func (rb *ReqBuffer) Save() error {
 		return nil
 	}
 	h, d := rb.JSON()
-	go notify.Post("monitor_cmd", fmt.Sprintf("server: meta blob:%v (len:%v) written\n", h, len(d)))
+	go SendDebugData(fmt.Sprintf("server: meta blob:%v (len:%v) written\n", h, len(d)))
 	rb.Reset()
 	if err := rb.blobBackend.Put(h, d); err != nil {
 		return fmt.Errorf("Error putting blob: %v", err)
@@ -186,7 +184,7 @@ func (rb *ReqBuffer) Save() error {
 
 // Enumerate every meta blobs filename and check if the data is already indexed.
 func (rb *ReqBuffer) Load() error {
-	go notify.Post("monitor_cmd", "server: scanning meta blobs")
+	go SendDebugData("server: scanning meta blobs")
 	//rb.Lock()
 	//defer rb.Unlock()
 	hashes := make(chan string)
@@ -197,7 +195,7 @@ func (rb *ReqBuffer) Load() error {
 	for hash := range hashes {
 		cnt := rb.db.Sismember("_meta", hash)
 		if cnt == 0 {
-			go notify.Post("monitor_cmd", fmt.Sprintf("server: meta blob %v not yet loaded", hash))
+			go SendDebugData(fmt.Sprintf("server: meta blob %v not yet loaded", hash))
 			data, berr := rb.blobBackend.Get(hash)
 			if berr != nil {
 				return berr
@@ -212,14 +210,14 @@ func (rb *ReqBuffer) Load() error {
 			if err := NewReqBufferWithData(rb.db, rb.blobBackend, res).Apply(); err != nil {
 				return err
 			}
-			go notify.Post("monitor_cmd", fmt.Sprintf("server: meta blob %v applied", hash))
+			go SendDebugData(fmt.Sprintf("server: meta blob %v applied", hash))
 		}
 	}
 	if err := <-errs; err != nil {
-		go notify.Post("monitor_cmd", fmt.Sprintf("server: aborting scan, err:%v", err))
+		go SendDebugData(fmt.Sprintf("server: aborting scan, err:%v", err))
 		return err
 	}
-	go notify.Post("monitor_cmd", "server: scan done")
+	go SendDebugData("server: scan done")
 	return nil
 }
 
@@ -240,7 +238,7 @@ func (rb *ReqBuffer) Apply() error {
 	//commit := false
 	//defer func() {
 	//	if !commit {
-	//		go notify.Post("monitor_cmd", fmt.Sprintf("server: error applying ReqBuffer %+v, rolling back...", rb))
+	//		go SendDebugData(fmt.Sprintf("server: error applying ReqBuffer %+v, rolling back...", rb))
 	//		rb.db.Rollback()
 	//	}
 	//}()
@@ -252,7 +250,7 @@ func (rb *ReqBuffer) Apply() error {
 		case reqCmd == "sadd":
 			for _, req := range reqArgs {
 				for _, args := range req.Args {
-					go notify.Post("monitor_cmd", fmt.Sprintf("server: Applying SADD: %+v/%+v", req.Key, args))
+					go SendDebugData(fmt.Sprintf("server: Applying SADD: %+v/%+v", req.Key, args))
 					if _, err := rb.db.Sadd(req.Key, args...); err != nil {
 						return err
 					}
@@ -262,7 +260,7 @@ func (rb *ReqBuffer) Apply() error {
 		case reqCmd == "hmset" || reqCmd == "hset":
 			for _, req := range reqArgs {
 				for _, args := range req.Args {
-					go notify.Post("monitor_cmd", fmt.Sprintf("server: Applying HMSET: %+v/%+v", req.Key, args))
+					go SendDebugData(fmt.Sprintf("server: Applying HMSET: %+v/%+v", req.Key, args))
 					if _, err := rb.db.Hmset(req.Key, args...); err != nil {
 						return err
 					}
@@ -274,10 +272,10 @@ func (rb *ReqBuffer) Apply() error {
 				for _, args := range req.Args {
 					index, ierr := strconv.Atoi(args[0])
 					if ierr != nil {
-						go notify.Post("monitor_cmd", fmt.Sprintf("server: Bad LADD index: %v, err:%v", index, ierr))
+						go SendDebugData(fmt.Sprintf("server: Bad LADD index: %v, err:%v", index, ierr))
 						return ierr
 					}
-					go notify.Post("monitor_cmd", fmt.Sprintf("server: Applying LADD: %+v/%+v", req.Key, args))
+					go SendDebugData(fmt.Sprintf("server: Applying LADD: %+v/%+v", req.Key, args))
 					if err := rb.db.Ladd(req.Key, index, args[1]); err != nil {
 						return err
 					}
@@ -287,7 +285,7 @@ func (rb *ReqBuffer) Apply() error {
 		case reqCmd == "set":
 			for _, req := range reqArgs {
 				for _, args := range req.Args {
-					go notify.Post("monitor_cmd", fmt.Sprintf("server: Applying SET: %+v/%+v", req.Key, args))
+					go SendDebugData(fmt.Sprintf("server: Applying SET: %+v/%+v", req.Key, args))
 					if err := rb.db.Put(req.Key, args[0]); err != nil {
 						return err
 					}

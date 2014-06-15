@@ -105,6 +105,11 @@ func (ctx *ServerCtx) GetReqBuffer(name string) *ReqBuffer {
 	return txmanager.GetReqBuffer(name)
 }
 
+func SendDebugData(data string) {
+	cmd := fmt.Sprintf("%v: %v", time.Now().UTC().Format(time.RFC3339), data)
+	notify.Post("monitor_cmd", cmd)
+}
+
 func SetUpCtx(req *redeo.Request) {
 	client := req.Client().RemoteAddr
 	reqName := strings.ToLower(req.Name)
@@ -130,7 +135,7 @@ func SetUpCtx(req *redeo.Request) {
 			mCmd = fmt.Sprintf("%+v command from client: %v", req.Name, client)
 		}
 	}
-	go notify.Post("monitor_cmd", mCmd)
+	go SendDebugData(mCmd)
 
 	bufferedCmd := map[string]bool{"sadd": true, "hmset": true, "hset": true, "ladd": true, "set": true}
 	// TODO(tsileo) disable writing for these command, just keep them in the buffer
