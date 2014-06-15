@@ -31,7 +31,7 @@ func TestClientDirDeepRecursion(t *testing.T) {
 	check(err)
 	defer c.Close()
 	defer c.RemoveCache()
-	tdir := NewRandomTree(t, ".", 3)
+	tdir := NewRandomTree(t, ".", 5)
 	defer os.RemoveAll(tdir)
 	meta, wr, err := c.PutDir(tdir)
 	check(err)

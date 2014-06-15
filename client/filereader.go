@@ -5,7 +5,7 @@ import (
 	"crypto/sha1"
 	"errors"
 	"fmt"
-	"log"
+	_ "log"
 	"io"
 	"os"
 
@@ -101,7 +101,7 @@ func (f *FakeFile) ReadAt(p []byte, offset int64) (n int, err error) {
 // Low level read function, read a size from an offset
 // Iterate only the needed blobs
 func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
-	log.Printf("FakeFile %v read(%v, %v)", f.ref, offset, cnt)
+	//log.Printf("FakeFile %v read(%v, %v)", f.ref, offset, cnt)
 	if cnt < 0 || cnt > f.size {
 		cnt = f.size
 	}
@@ -132,7 +132,7 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 		// is greater than the blob slice
 		if cnt-written > len(bbuf)-foffset {
 			fwritten, err := buf.Write(bbuf[foffset:])
-			log.Printf("(1) (cnt:%v/written:%v/foffset:%v/buf len:%v/fwritten:%v)", cnt, written, foffset, len(bbuf), fwritten)
+			//log.Printf("(1) (cnt:%v/written:%v/foffset:%v/buf len:%v/fwritten:%v)", cnt, written, foffset, len(bbuf), fwritten)
 			if err != nil {
 				return nil, err
 			}
@@ -142,7 +142,7 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 			// What we need fit in this blob
 			// it should return after this
 			fwritten, err := buf.Write(bbuf[foffset : foffset+cnt-written])
-			log.Printf("(2) %v-%v (cnt:%v/written:%v/foffset:%v/buf len:%v/fwritten:%v)", foffset, foffset+cnt-written, cnt, written, foffset, len(bbuf), fwritten)
+			//log.Printf("(2) %v-%v (cnt:%v/written:%v/foffset:%v/buf len:%v/fwritten:%v)", foffset, foffset+cnt-written, cnt, written, foffset, len(bbuf), fwritten)
 			if err != nil {
 				return nil, err
 			}

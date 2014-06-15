@@ -3,7 +3,6 @@ package client
 import (
 	"crypto/sha1"
 	"fmt"
-	"github.com/garyburd/redigo/redis"
 	"io/ioutil"
 	"log"
 	"os"
@@ -11,11 +10,15 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/garyburd/redigo/redis"
 )
 
 type node struct {
 	// root of the snapshot
 	root bool
+
+	done bool
 
 	// File path/FileInfo
 	path string
@@ -34,6 +37,10 @@ type node struct {
 	cond sync.Cond
 }
 
+func (node *node) String() string {
+	return fmt.Sprintf("[node %v done=%v, meta=%+v, err=%v]", node.path, node.done, node.meta, node.err)
+}
+
 // excluded returns true if the base path match one of the defined shell pattern
 func (client *Client) excluded(path string) bool {
 	for _, ignoredFile := range client.ignoredFiles {
@@ -47,7 +54,7 @@ func (client *Client) excluded(path string) bool {
 
 // Recursively read the directory and
 // send/route the files/directories to the according channel for processing
-func (client *Client) DirExplorer(path string, pnode *node, files chan<- *node, result chan<- *node) {
+func (client *Client) DirExplorer(path string, pnode *node, nodes chan<- *node) {
 	pnode.mu.Lock()
 	defer pnode.mu.Unlock()
 	dirdata, err := ioutil.ReadDir(path)
@@ -59,21 +66,22 @@ func (client *Client) DirExplorer(path string, pnode *node, files chan<- *node, 
 		n := &node{path: abspath, fi: fi}
 		n.cond.L = &n.mu
 		if fi.IsDir() {
-			client.DirExplorer(abspath, n, files, result)
-			result <- n
+			client.DirExplorer(abspath, n, nodes)
+			nodes <- n
 			pnode.children = append(pnode.children, n)
 		} else {
 			if fi.Mode()&os.ModeSymlink == 0 {
-				if client.excluded(abspath) {
-					log.Printf("DirExplorer: file %v excluded", abspath)
-				} else {
-					files <- n
+				if !client.excluded(abspath) {
+					nodes <- n
 					pnode.children = append(pnode.children, n)
 				}
+				// else {
+				//	log.Printf("DirExplorer: file %v excluded", abspath)
+				//}
 			}
 		}
 	}
-	pnode.cond.Signal()
+	pnode.cond.Broadcast()
 	return
 }
 
@@ -81,6 +89,27 @@ func (client *Client) DirExplorer(path string, pnode *node, files chan<- *node, 
 func (client *Client) DirWriterNode(node *node) {
 	node.mu.Lock()
 	defer node.mu.Unlock()
+
+	node.wr = &WriteResult{}
+	h := sha1.New()
+	hashes := []string{}
+
+	for _, cnode := range node.children {
+		cnode.mu.Lock()
+		for !cnode.done {
+			cnode.cond.Wait()
+		}
+		node.wr.Add(cnode.wr)
+		hashes = append(hashes, cnode.meta.Hash)
+		cnode.mu.Unlock()
+	}
+
+	sort.Strings(hashes)
+	for _, hash := range hashes {
+		h.Write([]byte(hash))
+	}
+	node.wr.Hash = fmt.Sprintf("%x", h.Sum(nil))
+
 	con := client.Pool.Get()
 	defer con.Close()
 	txID, err := redis.String(con.Do("TXINIT"))
@@ -88,56 +117,26 @@ func (client *Client) DirWriterNode(node *node) {
 		node.err = err
 		return
 	}
-	node.wr = &WriteResult{}
-	h := sha1.New()
-	hashes := []string{}
-	dirdatalen := len(node.children)
-	if dirdatalen != 0 {
-		for _, cnode := range node.children {
-			cnode.mu.Lock()
-			if cnode.wr == nil && cnode.err == nil {
-				cnode.cond.Wait()
+
+	cnt, err := redis.Int(con.Do("SCARD", node.wr.Hash))
+	if err != nil {
+		node.err = err
+		return
+	}
+	if cnt == 0 {
+		if len(hashes) > 0 {
+			_, err = con.Do("SADD", redis.Args{}.Add(node.wr.Hash).AddFlat(hashes)...)
+			if err != nil {
+				node.err = err
+				return
 			}
-			node.wr.Add(cnode.wr)
-			if cnode.meta.Hash == "" {
-				panic(fmt.Errorf("bad cnode in DirWriterNode %q: %q", node, cnode))
-			}
-			hashes = append(hashes, cnode.meta.Hash)
-			cnode.mu.Unlock()
-		}
-		// Sort the hashes by lexical order so the hash is deterministic
-		sort.Strings(hashes)
-		for _, hash := range hashes {
-			h.Write([]byte(hash))
-		}
-		node.wr.Hash = fmt.Sprintf("%x", h.Sum(nil))
-		// Check if the directory meta already exists
-		cnt, err := redis.Int(con.Do("SCARD", node.wr.Hash))
-		if err != nil {
-			node.err = err
-			return
-		}
-		if cnt == 0 {
-			if len(hashes) > 0 {
-				_, err = con.Do("SADD", redis.Args{}.Add(node.wr.Hash).AddFlat(hashes)...)
-				if err != nil {
-					node.err = err
-					return
-				}
-				node.wr.DirsUploaded++
-				node.wr.DirsCount++
-			}
-		} else {
-			node.wr.AlreadyExists = true
-			node.wr.DirsSkipped++
+			node.wr.DirsUploaded++
 			node.wr.DirsCount++
 		}
 	} else {
-		// If the directory is empty, hash the filename instead of members
-		// so an empty directory won't invalidate the directory top hash.
-		h.Write([]byte("emptydir:"))
-		h.Write([]byte(filepath.Base(node.path)))
-		node.wr.Hash = fmt.Sprintf("%x", h.Sum(nil))
+		node.wr.AlreadyExists = true
+		node.wr.DirsSkipped++
+		node.wr.DirsCount++
 	}
 	node.meta = NewMeta()
 	node.meta.Name = filepath.Base(node.path)
@@ -146,9 +145,9 @@ func (client *Client) DirWriterNode(node *node) {
 	node.meta.Ref = node.wr.Hash
 	node.meta.Mode = uint32(node.fi.Mode())
 	node.meta.ModTime = node.fi.ModTime().Format(time.RFC3339)
-	err = node.meta.Save(txID, client.Pool)
-	node.err = err
-	node.cond.Signal()
+	node.err = node.meta.Save(txID, client.Pool)
+	node.done = true
+	node.cond.Broadcast()
 	return
 }
 
@@ -160,9 +159,7 @@ func (client *Client) PutDir(path string) (meta *Meta, wr *WriteResult, err erro
 	if err != nil {
 		return
 	}
-	files := make(chan *node)
-	directories := make(chan *node)
-	dirSem := make(chan struct{}, 25)
+	nodes := make(chan *node)
 	fi, _ := os.Stat(abspath)
 	n := &node{root: true, path: abspath, fi: fi}
 	n.cond.L = &n.mu
@@ -173,47 +170,39 @@ func (client *Client) PutDir(path string) (meta *Meta, wr *WriteResult, err erro
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		client.DirExplorer(path, n, files, directories)
-		defer close(files)
-		defer close(directories)
+		client.DirExplorer(path, n, nodes)
+		defer close(nodes)
+		//defer close(directories)
 	}()
 	// Upload discovered files (100 file descriptor at the same time max).
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for f := range files {
+		for f := range nodes {
+			wg.Add(1)
 			go func(node *node) {
-				node.mu.Lock()
-				defer node.mu.Unlock()
-				node.meta, node.wr, node.err = client.PutFile(node.path)
-				if node.err != nil {
-					panic(fmt.Errorf("Error PutFile with node %q", node))
+				defer wg.Done()
+				if node.fi.IsDir() {
+					client.DirWriterNode(node)
+					if node.err != nil {
+						panic(fmt.Errorf("error DirWriterNode with node %v", node))
+					}
+				} else {
+					node.mu.Lock()
+					defer node.mu.Unlock()
+					node.meta, node.wr, node.err = client.PutFile(node.path)
+					if node.err != nil {
+						panic(fmt.Errorf("error PutFile with node %v", node))
+					}
+					node.done = true
+					node.cond.Broadcast()
 				}
-				node.cond.Signal()
 			}(f)
 		}
 	}()
-	// Save directories meta data
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for d := range directories {
-			dirSem <- struct{}{}
-			go func(node *node) {
-				defer func() {
-					<-dirSem
-				}()
-				client.DirWriterNode(node)
-				if node.err != nil {
-					panic(fmt.Errorf("Error DirWriterNode with node %q", node))
-				}
-			}(d)
-		}
-	}()
-
 	wg.Wait()
 	// Upload the root directory
-	log.Printf("last node")
 	client.DirWriterNode(n)
+	log.Printf("last node: %v", n)
 	return n.meta, n.wr, n.err
 }

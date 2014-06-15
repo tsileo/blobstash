@@ -30,14 +30,14 @@ func (client *Client) FileWriter(txID, key, path string) (*WriteResult, error) {
 	f, err := os.Open(path)
 	defer f.Close()
 	if err != nil {
-		return writeResult, err
+		return nil, fmt.Errorf("can't open file %v: %v", path, err)
 	}
 	freader := bufio.NewReader(f)
 	con := client.Pool.Get()
 	defer con.Close()
 	// Set the transaction id.
 	if _, err := con.Do("TXINIT", txID); err != nil {
-		return writeResult, err
+		return nil, fmt.Errorf("error TXINIT %v: %v", txID, err)
 	}
 	//log.Printf("FileWriter(%v, %v, %v)", txID, key, path)
 	var buf bytes.Buffer
@@ -104,7 +104,7 @@ func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err err
 	defer client.UploadDone()
 	fstat, err := os.Stat(path)
 	if os.IsNotExist(err) {
-		return
+		return nil, nil, err
 	}
 	_, filename := filepath.Split(path)
 	sha := FullSHA1(path)
@@ -113,14 +113,14 @@ func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err err
 
 	txID, err := redis.String(con.Do("TXINIT"))
 	if err != nil {
-		return
+		return nil, nil, err
 	}
 
 	// First we check if the file isn't already uploaded,
 	// if so we skip it.
 	cnt, err := redis.Int(con.Do("LLEN", sha))
 	if err != nil {
-		return
+		return nil, nil, fmt.Errorf("error LLEN %v: %v", sha, err)
 	}
 	if cnt > 0 || sha == emptyHash {
 		wr = &WriteResult{}
@@ -135,13 +135,13 @@ func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err err
 	} else {
 		wr, err = client.FileWriter(txID, sha, path)
 		if err != nil {
-			return
+			return nil, nil, fmt.Errorf("FileWriter %v error: %v", path, err)
 		}
 	}
 	meta = NewMeta()
 	if sha != wr.Hash {
 		err = errors.New("initial hash and WriteResult aren't the same")
-		return
+		return nil, nil, err
 	}
 	meta.Ref = wr.Hash
 	meta.Name = filename
@@ -150,12 +150,8 @@ func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err err
 	meta.Type = "file"
 	meta.ModTime = fstat.ModTime().Format(time.RFC3339)
 	meta.Mode = uint32(fstat.Mode())
-	if cnt == 0 {
-		if err := meta.Save(txID, client.Pool); err != nil {
-			return meta, wr, fmt.Errorf("Error saving meta %+v: %v", meta, err)
-		}
-	} else {
-		meta.ComputeHash()
+	if err := meta.Save(txID, client.Pool); err != nil {
+		return nil, nil, fmt.Errorf("Error saving meta %+v: %v", meta, err)
 	}
-	return
+	return meta, wr, nil
 }

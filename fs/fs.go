@@ -345,7 +345,7 @@ func (f *File) Read(req *fuse.ReadRequest, res *fuse.ReadResponse, intr fs.Intr)
 		err = nil
 	}
 	if err != nil {
-		log.Printf("Error reading FakeFile on %v at %d: %v", f.Ref, req.Offset, err)
+		log.Printf("Error reading FakeFile %+v on %v at %d: %v", f, f.Ref, req.Offset, err)
 		return fuse.EIO
 	}
 	res.Data = buf[:n]

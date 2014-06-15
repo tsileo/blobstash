@@ -4,6 +4,7 @@ import (
 	"crypto/sha1"
 	"errors"
 	"fmt"
+
 	"github.com/garyburd/redigo/redis"
 )
 
