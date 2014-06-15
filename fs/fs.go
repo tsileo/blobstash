@@ -27,6 +27,8 @@ import (
 	"github.com/tsileo/datadatabase/client"
 )
 
+var blobClient *client.Client
+
 // Mount the filesystem to the given mountpoint
 func Mount(mountpoint string) {
 	c, err := fuse.Mount(mountpoint)
@@ -40,6 +42,8 @@ func Mount(mountpoint string) {
 	signal.Notify(cs, os.Interrupt)
 	go func() {
 		for _ = range cs {
+			log.Println("Closing client...")
+			blobClient.Blobs.Close()
 			log.Printf("Unmounting %v...\n", mountpoint)
 			err := fuse.Unmount(mountpoint)
 			if err != nil {
@@ -69,8 +73,8 @@ type FS struct {
 func NewFS() (fs *FS) {
 	// Override supported time format
 	now.TimeFormats = []string{"2006-1-2T15:4:5", "2006-1-2T15:4", "2006-1-2T15", "2006-1-2", "2006-1", "2006"}
-	client, _ := client.NewClient([]string{})
-	fs = &FS{Client: client}
+	blobClient, _ = client.NewClient([]string{})
+	fs = &FS{Client: blobClient}
 	return
 }
 

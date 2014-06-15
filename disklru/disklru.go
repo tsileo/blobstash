@@ -2,7 +2,10 @@
 
 Package disklru implements a disk-based LRU cache.
 
-A small key-value store ((powered by kv [1])) keeps track of the keys/size/last access time of each time, and data are stored in files.
+A small key-value store ((powered by kv [1])) keeps track of the keys/size/last access time of each time,
+and data are stored in files (one file per blob, in nested directory like
+"blobs/07/077f2cfed67c84d8785515481766669a3a734bd6".
+
 Eviction is triggered when the cache size exceed a limit,
 it tries to keep the size of the cache under a fixed threshold and remove lest recently used item first.
 
@@ -18,6 +21,7 @@ Data are stored the following way (all the uint32 are binary encoded):
 Links
 
 	[1] https://github.com/cznic/kv
+
 
 */
 package disklru
@@ -35,6 +39,26 @@ import (
 	"github.com/cznic/kv"
 )
 
+func dirsPermutations() []string {
+    arr := make([]string,0)
+    force("01234567890abcdef", 2, "", func(thisString string){
+    	arr = append(arr, thisString)
+    })
+    return arr
+}
+
+// Generate string permutation
+// from https://gist.github.com/sanikeev/6952900
+func force(str string, n int, thisString string,
+           callback func(thisString string)) {
+    if n == 0 {
+        callback(thisString);
+        return;
+    }
+    for _, v := range(str) {
+        force(str, n-1, thisString + string(v), callback)
+    }
+}
 // Namespaces for the DB keys
 const (
 	Keys byte = iota
@@ -75,8 +99,14 @@ func New(path string, f func(string) []byte, threshold int64) (*DiskLRU, error) 
 	createOpen := kv.Open
 	if _, err := os.Stat(db_path); os.IsNotExist(err) {
 		createOpen = kv.Create
+		for _, bucket := range dirsPermutations() {
+			os.MkdirAll(filepath.Join(path, "blobs", bucket), 0700)
+		}
 	}
 	db, err := createOpen(db_path, opts())
+	if err != nil {
+		panic(err)
+	}
 	return &DiskLRU{f, threshold, db, path, sync.Mutex{}}, err
 }
 
@@ -132,7 +162,7 @@ func (lru *DiskLRU) Get(key string) (data []byte, fetched bool, err error) {
 	if lastAccessTime == 0 {
 		fetched = true
 		data = lru.Func(key)
-		if err = ioutil.WriteFile(filepath.Join(lru.path, key), data, 0644); err != nil {
+		if err = ioutil.WriteFile(filepath.Join(lru.path, "blobs", key[:2], key), data, 0644); err != nil {
 			return
 		}
 		// Increments the internal counter (for size and items count)
@@ -144,7 +174,7 @@ func (lru *DiskLRU) Get(key string) (data []byte, fetched bool, err error) {
 		}
 	} else {
 		// Remove the precedent last access time
-		data, err = ioutil.ReadFile(filepath.Join(lru.path, key))
+		data, err = ioutil.ReadFile(filepath.Join(lru.path, "blobs", key[:2], key))
 		if err != nil {
 			return
 		}
