@@ -87,11 +87,14 @@ type Node struct {
 	Mode os.FileMode
 	Ref  string
 	Size uint64
+	ModTime string
+	//Mode uint32
 	fs   *FS
 }
 
 func (n *Node) Attr() fuse.Attr {
-	return fuse.Attr{Mode: n.Mode, Size: n.Size}
+	t, _ := time.Parse(time.RFC3339, n.ModTime)
+	return fuse.Attr{Mode: n.Mode, Size: n.Size, Mtime: t}
 }
 
 func (n *Node) Setattr(req *fuse.SetattrRequest, resp *fuse.SetattrResponse, intr fs.Intr) fuse.Error {
@@ -112,13 +115,15 @@ type Dir struct {
 	Children       map[string]fs.Node
 }
 
-func NewDir(cfs *FS, name, ref string) (d *Dir) {
+func NewDir(cfs *FS, name, ref string, modTime string, mode os.FileMode) (d *Dir) {
 	d = &Dir{}
 	d.Node = Node{}
 	d.Mode = os.ModeDir
 	d.fs = cfs
 	d.Ref = ref
 	d.Name = name
+	d.ModTime = modTime
+	d.Mode = os.FileMode(mode)
 	d.Children = make(map[string]fs.Node)
 	return
 }
@@ -136,10 +141,10 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
 		var dirent fuse.Dirent
 		if meta.Type == "file" {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
-			d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Ref, meta.Size)
+			d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
 		} else {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-			d.Children[meta.Name] = NewDir(d.fs, meta.Name, meta.Ref)
+			d.Children[meta.Name] = NewDir(d.fs, meta.Name, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
 		}
 		out = append(out, dirent)
 	}
@@ -147,21 +152,21 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
 }
 
 func NewRootDir(fs *FS) (d *Dir) {
-	d = NewDir(fs, "root", "")
+	d = NewDir(fs, "root", "", "", os.ModeDir)
 	d.Root = true
 	d.fs = fs
 	return d
 }
 
 func NewLatestDir(fs *FS) (d *Dir) {
-	d = NewDir(fs, "latest", "")
+	d = NewDir(fs, "latest", "", "", os.ModeDir)
 	d.Latest = true
 	d.fs = fs
 	return d
 }
 
 func NewAtRootDir(fs *FS) (d *Dir) {
-	d = NewDir(fs, "at", "")
+	d = NewDir(fs, "at", "", "", os.ModeDir)
 	d.AtRoot = true
 	d.fs = fs
 	return d
@@ -192,14 +197,14 @@ func NewSnapshotDir(cfs *FS, name, ref string) (d *Dir) {
 }
 
 func NewSnapshotsDir(cfs *FS) (d *Dir) {
-	d = NewDir(cfs, "snapshots", "")
+	d = NewDir(cfs, "snapshots", "", "", os.ModeDir)
 	d.fs = cfs
 	d.Snapshots = true
 	return
 }
 
 func NewFakeDir(cfs *FS, name, ref string) (d *Dir) {
-	d = NewDir(cfs, name, ref)
+	d = NewDir(cfs, name, ref, "", os.ModeDir)
 	d.fs = cfs
 	d.Children = make(map[string]fs.Node)
 	d.FakeDir = true
@@ -217,7 +222,7 @@ func (d *Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, err fuse.Error) {
 			ts := t.UTC().Unix()
 			ref, _ := d.fs.Client.GetAt(d.Name, ts)
 			if ref != "" {
-				return NewDir(d.fs, d.Name, ref), nil
+				return NewDir(d.fs, d.Name, ref, d.ModTime, d.Mode), nil
 			}
 		}
 	}
@@ -249,11 +254,11 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 			//meta, _ := backup.Meta(d.fs.Client.Pool)
 			if backup.Type == "file" {
 				dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
-				d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Ref, meta.Size)
+				d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
 				out = append(out, dirent)
 			} else {
 				dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-				d.Children[meta.Name] = NewDir(d.fs, meta.Name, meta.Ref)
+				d.Children[meta.Name] = NewDir(d.fs, meta.Name, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
 				out = append(out, dirent)
 			}
 		}
@@ -305,11 +310,11 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 		meta := d.fs.Client.Metas.Get(d.Ref).(*client.Meta)
 		if meta.Type == "file" {
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
-			d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Ref, meta.Size)
+			d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
 			out = append(out, dirent)
 		} else {
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-			d.Children[meta.Name] = NewDir(d.fs, meta.Name, meta.Ref)
+			d.Children[meta.Name] = NewDir(d.fs, meta.Name, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
 			out = append(out, dirent)
 		}
 		return out, nil
@@ -322,11 +327,13 @@ type File struct {
 	FakeFile *client.FakeFile
 }
 
-func NewFile(fs *FS, name, ref string, size int) *File {
+func NewFile(fs *FS, name, ref string, size int, modTime string, mode os.FileMode) *File {
 	f := &File{}
 	f.Name = name
 	f.Ref = ref
 	f.Size = uint64(size)
+	f.ModTime = modTime
+	f.Mode = mode
 	f.fs = fs
 	f.FakeFile = client.NewFakeFile(f.fs.Client, ref, size)
 	return f
