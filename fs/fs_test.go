@@ -28,6 +28,8 @@ func TestFS(t *testing.T) {
 	stopped := make(chan bool, 1)
 	go Mount(tempDir, stop, stopped)
 	// DO TEST HERE
+	// random tree with client +
+	// test.Diff
 	stop <-true
 	<-stopped
 }

@@ -143,14 +143,6 @@ func (client *Client) DirWriterNode(node *node) {
 		node.wr.DirsCount++
 	}
 
-	//	node.wr.DirsUploaded++
-	//	node.wr.DirsCount++
-	//
-	//	node.wr.AlreadyExists = true
-	//	node.wr.DirsSkipped++
-	//	node.wr.DirsCount++
-	node.wr.DirsCount++
-	node.wr.DirsUploaded++
 	node.meta = NewMeta()
 	node.meta.Name = filepath.Base(node.path)
 	node.meta.Type = "dir"
