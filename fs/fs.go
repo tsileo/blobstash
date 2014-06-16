@@ -30,7 +30,7 @@ import (
 var blobClient *client.Client
 
 // Mount the filesystem to the given mountpoint
-func Mount(mountpoint string) {
+func Mount(mountpoint string, stop <-chan bool, stopped chan<- bool) {
 	c, err := fuse.Mount(mountpoint)
 	if err != nil {
 		log.Fatal(err)
@@ -41,15 +41,20 @@ func Mount(mountpoint string) {
 	cs := make(chan os.Signal, 1)
 	signal.Notify(cs, os.Interrupt)
 	go func() {
-		for _ = range cs {
-			log.Println("Closing client...")
-			blobClient.Blobs.Close()
-			log.Printf("Unmounting %v...\n", mountpoint)
-			err := fuse.Unmount(mountpoint)
-			if err != nil {
-				log.Printf("Error unmounting: %v", err)
-			}
-			defer os.Exit(0)
+		select {
+		case <-cs:
+			break
+		case <-stop:
+			break
+		}
+		log.Println("Closing client...")
+		blobClient.Blobs.Close()
+		log.Printf("Unmounting %v...\n", mountpoint)
+		err := fuse.Unmount(mountpoint)
+		if err != nil {
+			log.Printf("Error unmounting: %v", err)
+		} else {
+			stopped <-true
 		}
 	}()
 
