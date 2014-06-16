@@ -73,11 +73,23 @@ type FakeFile struct {
 	ref    string
 	offset int
 	size   int
+	lmrange []struct {
+		Index int
+		Value string
+	}
 }
+
 
 // Create a new FakeFile instance.
 func NewFakeFile(client *Client, ref string, size int) (f *FakeFile) {
 	f = &FakeFile{client: client, ref: ref, size: size}
+	con := f.client.Pool.Get()
+	defer con.Close()
+	values, err := redis.Values(con.Do("LITER", f.ref, "WITH", "RANGE"))
+	if err != nil {
+		panic(fmt.Errorf("Error [LITER %v WITH RANGE]: %v", f.ref, err))
+	}
+	redis.ScanSlice(values, &f.lmrange)
 	return
 }
 
@@ -105,35 +117,14 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 		cnt = f.size
 	}
 	var buf bytes.Buffer
-	written := 0
-	var indexValueList []struct {
-		Index int
-		Value string
-	}
-	con := f.client.Pool.Get()
-	defer con.Close()
-
-	// Workaround:
-	// Sometimes, a LMRANGE returns EOF when seeking for no reason,
-	// we adjust the offset when nil is returned until it works.
-	ok := false
-	tryCnt := 0
-	tcnt := 1.0
-	var values []interface{}
 	var err error
-	for !ok {
-		if tryCnt > 5 {
-			break
-		}
-		values, err = redis.Values(con.Do("LMRANGE", f.ref, int(float64(offset)*tcnt), offset+cnt, 0))
-		if err == nil {
-			break
-		}
-		tcnt = tcnt*0.9
-		tryCnt++
+	written := 0
+
+	if len(f.lmrange) == 0 {
+		panic(fmt.Errorf("FakeFile %+v lmrange empty", f))
 	}
-	redis.ScanSlice(values, &indexValueList)
-	for _, iv := range indexValueList {
+
+	for _, iv := range f.lmrange {
 		if offset > iv.Index {
 			continue
 		}
