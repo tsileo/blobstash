@@ -24,6 +24,7 @@ A set of backup tools designed to provides a "time machine" like experience:
 - Take snapshot automatically every x minutes, using a separate client-side daemon (provides Arq/time machine like backup)
 - Deletion/garbage collection isn't implemented yet, but it's on the roadmap
 - Possibility to archive blobs to AWS Glacier (with a recovery command-line tool)
+- Strong test suite (unit tests + integration tests)
 
 Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com/bup/bup) (files are split into multiple blobs using a rolling checksum).
 

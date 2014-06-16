@@ -26,7 +26,7 @@ type TestServer struct {
 	err error
 }
 
-// NewTestServer initialize a new test server
+// NewTestServer initialize a new test server.
 func NewTestServer() (*TestServer, error) {
 	gopath := os.Getenv("GOPATH")
 	if gopath == "" {
@@ -53,7 +53,7 @@ func (server *TestServer) BuildServer() (string, error) {
 	log.Print("Running go install to build blobDB...")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("Error building world: %v, %s", err, string(out))
+		return "", fmt.Errorf("Error installing blobdb: %v, %s", err, string(out))
 	}
 	log.Print("Done.")
 	return filepath.Join(server.binDir, "blobdb"), nil

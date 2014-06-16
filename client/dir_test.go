@@ -23,11 +23,12 @@ func TestClientDir(t *testing.T) {
 	check(err)
 
 	rr, err := c.GetDir(meta.Hash, meta.Name+"_restored")
-	defer os.RemoveAll(meta.Name + "_restored")
+	defer os.RemoveAll(meta.Name+"_restored")
 	check(err)
 	if !MatchResult(wr, rr) {
 		t.Errorf("Directory %+v not restored successfully, wr:%+v/rr:%+v", meta, wr, rr)
 	}
+	check(test.Diff(tdir, meta.Name+"_restored"))
 }
 
 func TestClientDirDeepRecursion(t *testing.T) {
@@ -55,4 +56,5 @@ func TestClientDirDeepRecursion(t *testing.T) {
 	if !MatchResult(wr, rr) {
 		t.Errorf("Directory %+v not restored successfully, wr:%+v/rr:%+v", meta, wr, rr)
 	}
+	check(test.Diff(tdir, meta.Name+"_restored"))
 }

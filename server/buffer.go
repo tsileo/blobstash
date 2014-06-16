@@ -2,10 +2,10 @@
 
 Each request that modify the DB is added to the ReqBuffer, the buffered commands are:
 
-- SET
-- HMSET/HSET
-- LADD
-- SADD
+	- SET
+	- HMSET/HSET
+	- LADD
+	- SADD
 
 If an upload fails client-side, no operations will be committed, and no stale date will be saved.
 
