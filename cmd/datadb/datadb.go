@@ -2,11 +2,13 @@ package main
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/codegangsta/cli"
+
 	"github.com/tsileo/datadatabase/client"
 	"github.com/tsileo/datadatabase/daemon"
 	"github.com/tsileo/datadatabase/fs"
-	"os"
 )
 
 func main() {
@@ -21,7 +23,6 @@ func main() {
 	app.Commands = []cli.Command{
 		{
 			Name:      "put",
-			ShortName: "put",
 			Usage:     "put a file/directory",
 			Action: func(c *cli.Context) {
 				client, _ := client.NewClient(ignoredFiles)
@@ -31,15 +32,22 @@ func main() {
 		},
 		{
 			Name:      "ls",
-			ShortName: "ls",
 			Usage:     "List backups",
 			Action: func(c *cli.Context) {
 				client, _ := client.NewClient(ignoredFiles)
-				//metas, _ := client.List()
-				//for _, m := range metas {
-				//	fmt.Printf("%+v\n", m)
-				//}
-				rr, err := client.GetDir(c.Args().First(), "/tmp/testtonalityrestoreomg")
+				metas, _ := client.List()
+				for _, m := range metas {
+					fmt.Printf("%+v\n", m)
+				}
+			},
+		},
+		{
+			Name:      "restore",
+			Usage:     "Restore a meta",
+			Action: func(c *cli.Context) {
+				client, _ := client.NewClient(ignoredFiles)
+				args := c.Args()
+				rr, err := client.GetDir(args[0], args[1])
 				fmt.Printf("rr:%+v/err:%v", rr, err)
 			},
 		},
@@ -47,26 +55,18 @@ func main() {
 			Name:  "mount",
 			Usage: "Mount the read-only filesystem to the given path",
 			Action: func(c *cli.Context) {
-				fs.Mount(c.Args().First())
+				stop := make(chan bool, 1)
+				stopped := make(chan bool, 1)
+				fs.Mount(c.Args().First(), stop, stopped)
 			},
 		},
 		{
 			Name:      "daemon",
-			ShortName: "daemon",
 			Usage:     "Snapshot daemon",
 			Action: func(c *cli.Context) {
 				client, _ := client.NewClient(ignoredFiles)
 				d := daemon.New(client)
 				d.Run()
-			},
-		},
-		{
-			Name:      "test",
-			ShortName: "test",
-			Usage:     "test",
-			Action: func(c *cli.Context) {
-				h, _ := os.Hostname()
-				fmt.Printf("hostname: %v", h)
 			},
 		},
 	}

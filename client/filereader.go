@@ -3,7 +3,6 @@ package client
 import (
 	"bytes"
 	"crypto/sha1"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -193,7 +192,7 @@ func (f *FakeFile) Read(p []byte) (n int, err error) {
 		return 0, io.EOF
 	}
 	if err != nil {
-		return 0, errors.New("failed to read %+v at range %v-%v", f, f.offset, limit)
+		return 0, fmt.Errorf("failed to read %+v at range %v-%v", f, f.offset, limit)
 	}
 	n = copy(p, b)
 	f.offset += n
