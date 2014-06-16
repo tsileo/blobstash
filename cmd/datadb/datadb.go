@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	ignoredFiles := []string{"*~", "*.py[cod]", "*.nohup", "*.log", "tmp_*"}
+	ignoredFiles := []string{"*~", "*.py[cod]", "nohup.out", "*.log", "tmp_*"}
 	app := cli.NewApp()
 	app.Name = "datadb"
 	app.Usage = "DataDB client"

@@ -7,9 +7,17 @@ import (
 	"log"
 	"os"
 	"testing"
+
+	"github.com/tsileo/datadatabase/test"
 )
 
 func TestClientFile(t *testing.T) {
+	s, err := test.NewTestServer()
+	check(err)
+	go s.Start()
+	s.TillReady()
+
+	defer s.Shutdown()
 	c, err := NewTestClient()
 	defer c.Close()
 	defer c.RemoveCache()

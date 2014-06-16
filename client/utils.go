@@ -125,8 +125,8 @@ func (rr *ReadResult) Add(rr2 *ReadResult) {
 // MatchResult checks if a WriteResult and a ReadResult have the same size.
 func MatchResult(wr *WriteResult, rr *ReadResult) bool {
 	if wr.Size == rr.Size &&
-		wr.FilesCount == rr.FilesCount &&
-		wr.DirsCount == rr.DirsCount {
+		wr.FilesCount == rr.FilesCount {
+		//wr.DirsCount == rr.DirsCount {
 		return true
 	}
 	return false

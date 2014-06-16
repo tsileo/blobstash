@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+
+	"github.com/tsileo/datadatabase/test"
 )
 
 const MaxRandomFileSize = 2 << 19
@@ -87,6 +89,11 @@ func NewRandomTree(t *testing.T, path string, maxrec int) string {
 }
 
 func TestModelsMeta(t *testing.T) {
+	s, err := test.NewTestServer()
+	check(err)
+	go s.Start()
+	s.TillReady()
+	defer s.Shutdown()
 	pool, err := GetDbPool()
 	check(err)
 	con := pool.Get()

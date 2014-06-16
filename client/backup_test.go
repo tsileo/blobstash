@@ -3,6 +3,8 @@ package client
 import (
 	"reflect"
 	"testing"
+
+	"github.com/tsileo/datadatabase/test"
 )
 
 func check(e error) {
@@ -12,6 +14,11 @@ func check(e error) {
 }
 
 func TestModelsBackup(t *testing.T) {
+	s, err := test.NewTestServer()
+	check(err)
+	go s.Start()
+	s.TillReady()
+	defer s.Shutdown()
 	pool, err := GetDbPool()
 	check(err)
 	//f := &Backup{Name:"foo", Type:"file", Ref:"bar"}

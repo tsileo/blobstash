@@ -23,7 +23,7 @@ func TestDBHashDataType(t *testing.T) {
 		t.Error("Inexistent hash should have a length of 0")
 	}
 
-	cnt, err := db.Hset("foo", "attr1", "val1")
+	cnt, err := db.Hmset("foo", "attr1", "val1")
 	check(err)
 	if cnt != 1 {
 		t.Error("Bad hset result")
