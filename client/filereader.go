@@ -25,7 +25,7 @@ func (client *Client) FetchBlob(hash string) []byte {
 	var buf bytes.Buffer
 	data, err := redis.String(con.Do("BGET", hash))
 	if err != nil {
-		panic("Error FetchBlob")
+		panic(fmt.Errorf("failed to fetch blob %v", hash))
 	}
 	buf.WriteString(data)
 	return buf.Bytes()
@@ -60,7 +60,7 @@ func (client *Client) GetFile(key, path string) (*ReadResult, error) {
 	readResult.Size = int(fstat.Size())
 	readResult.SizeDownloaded = readResult.Size
 	if readResult.Size != meta.Size {
-		return readResult, fmt.Errorf("File %+v not successfully restored, size:%v/expected size:%v",
+		return readResult, fmt.Errorf("file %+v not successfully restored, size:%v/expected size:%v",
 			meta, readResult.Size, meta.Size)
 	}
 	return readResult, nil
@@ -87,7 +87,7 @@ func NewFakeFile(client *Client, ref string, size int) (f *FakeFile) {
 	defer con.Close()
 	values, err := redis.Values(con.Do("LITER", f.ref, "WITH", "RANGE"))
 	if err != nil {
-		panic(fmt.Errorf("Error [LITER %v WITH RANGE]: %v", f.ref, err))
+		panic(fmt.Errorf("error [LITER %v WITH RANGE]: %v", f.ref, err))
 	}
 	redis.ScanSlice(values, &f.lmrange)
 	return
@@ -141,7 +141,6 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 		// is greater than the blob slice
 		if cnt-written > len(bbuf)-foffset {
 			fwritten, err := buf.Write(bbuf[foffset:])
-			//log.Printf("(1) (cnt:%v/written:%v/foffset:%v/buf len:%v/fwritten:%v)", cnt, written, foffset, len(bbuf), fwritten)
 			if err != nil {
 				return nil, err
 			}
@@ -151,7 +150,6 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 			// What we need fit in this blob
 			// it should return after this
 			fwritten, err := buf.Write(bbuf[foffset : foffset+cnt-written])
-			//log.Printf("(2) %v-%v (cnt:%v/written:%v/foffset:%v/buf len:%v/fwritten:%v)", foffset, foffset+cnt-written, cnt, written, foffset, len(bbuf), fwritten)
 			if err != nil {
 				return nil, err
 			}
@@ -159,7 +157,7 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 			written += fwritten
 			// Check that the total written bytes equals the requested size
 			if written != cnt {
-				panic("Error reading FakeFile")
+				panic("error reading FakeFile")
 			}
 		}
 		if written == cnt {
@@ -195,7 +193,7 @@ func (f *FakeFile) Read(p []byte) (n int, err error) {
 		return 0, io.EOF
 	}
 	if err != nil {
-		return 0, errors.New("datadb: Error reading slice from blobs")
+		return 0, errors.New("failed to read %+v at range %v-%v", f, f.offset, limit)
 	}
 	n = copy(p, b)
 	f.offset += n
