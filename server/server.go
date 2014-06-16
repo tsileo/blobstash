@@ -607,39 +607,6 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		}
 		return nil
 	})
-	srv.HandleFunc("llast", func(out *redeo.Responder, req *redeo.Request) error {
-		SetUpCtx(req)
-		err := CheckArgs(req, 4)
-		if err != nil {
-			return err
-		}
-		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
-		limit, err := strconv.Atoi(req.Args[3])
-		if err != nil {
-			return ErrSomethingWentWrong
-		}
-		kv, err := cdb.GetListRangeLast(req.Args[0], req.Args[1], req.Args[2], limit)
-		if err != nil {
-			return ErrSomethingWentWrong
-		}
-		out.WriteString(kv.Value)
-		return nil
-	})
-	//srv.HandleFunc("lprev", func(out *redeo.Responder, req *redeo.Request) error {
-	//	SetUpCtx(req)
-	//	err := CheckArgs(req, 2)
-	//	if err != nil {
-	//		return err
-	//	}
-	//	start, err := strconv.Atoi(req.Args[1])
-	//	if err != nil {
-	//		return ErrSomethingWentWrong
-	//	}
-	//	cdb := req.Client().Ctx.(*ServerCtx).GetDB()
-	//	res := cdb.Lprev(req.Args[0], start)
-	//	out.WriteString(res)
-	//	return nil
-	//})
 	srv.HandleFunc("liter", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckMinArgs(req, 1)
@@ -684,36 +651,7 @@ func New(addr, dbpath string, blobBackend backend.BlobHandler, metaBackend backe
 		}
 		return ErrSomethingWentWrong
 	})
-	srv.HandleFunc("lmrange", func(out *redeo.Responder, req *redeo.Request) error {
-		SetUpCtx(req)
-		err := CheckArgs(req, 4)
-		if err != nil {
-			return err
-		}
-		cdb := req.Client().Ctx.(*ServerCtx).GetDB()
-		start, err := strconv.Atoi(req.Args[1])
-		if err != nil {
-			return ErrSomethingWentWrong
-		}
-		end, err := strconv.Atoi(req.Args[2])
-		if err != nil {
-			return ErrSomethingWentWrong
-		}
-		ivs, err := cdb.Lmrange(req.Args[0], start, end)
-		if err != nil {
-			return ErrSomethingWentWrong
-		}
-		if len(ivs) == 0 {
-			out.WriteNil()
-		} else {
-			out.WriteBulkLen(len(ivs) * 2)
-			for _, iv := range ivs {
-				out.WriteString(strconv.Itoa(iv.Index))
-				out.WriteString(iv.Value)
-			}
-		}
-		return nil
-	})
+
 	srv.HandleFunc("size", func(out *redeo.Responder, _ *redeo.Request) error {
 		out.WriteInt(0)
 		return nil
