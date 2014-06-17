@@ -25,7 +25,7 @@ import (
 	"fmt"
 	"github.com/cznic/kv"
 	"github.com/robfig/cron"
-	dclient "github.com/tsileo/datadatabase/client"
+	dclient "github.com/tsileo/blobstash/client"
 	"log"
 	"os"
 	"os/signal"

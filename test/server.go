@@ -33,7 +33,7 @@ func NewTestServer() (*TestServer, error) {
 		return nil, fmt.Errorf("GOPATH env variable not set")
 	}
 	binDir := filepath.Join(gopath, "bin")
-	rootDir := filepath.Join(gopath, "src/github.com/tsileo/datadatabase")
+	rootDir := filepath.Join(gopath, "src/github.com/tsileo/blobstash")
 	tempDir, err := ioutil.TempDir("", "blobtools-test-")
 	log.Printf("TempDir: %v", tempDir)
 	if err != nil {

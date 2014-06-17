@@ -3,7 +3,7 @@ package s3
 import (
 	"testing"
 
-	"github.com/tsileo/datadatabase/backend"
+	"github.com/tsileo/blobstash/backend"
 )
 
 func check(e error) {

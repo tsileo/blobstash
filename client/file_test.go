@@ -8,7 +8,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/tsileo/datadatabase/test"
+	"github.com/tsileo/blobstash/test"
 )
 
 func TestClientFile(t *testing.T) {

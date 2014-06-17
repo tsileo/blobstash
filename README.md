@@ -1,19 +1,11 @@
-Data Database
-=============
+BlobStash
+=========
 
-## Overview
-
-A set of backup tools designed to provides a "time machine" like experience:
-
-- a database (content-addressed store + data structure server)
-- a backup scheduler (cron/anacron like)
-- a read-only FUSE file system
-- a command-line client
-- a web application (on the roadmap)
+BlobStash is a snapshot-based backup system, designed to provide "time machine" like features.
 
 **Designed with Linux in mind**.
 
-## Features:
+## Features
 
 - Content addressed, files are split into blobs, and retrieved by hash
 - Incremental backups/snapshots thanks to data deduplication
@@ -22,7 +14,6 @@ A set of backup tools designed to provides a "time machine" like experience:
 - Read-only FUSE file system to navigate backups/snapshots
 - Optional encryption (using [go.crypto/nacl secretbox](http://godoc.org/code.google.com/p/go.crypto/nacl))
 - Take snapshot automatically every x minutes, using a separate client-side daemon (provides Arq/time machine like backup)
-- Deletion/garbage collection isn't implemented yet, but it's on the roadmap
 - Possibility to archive blobs to AWS Glacier (with a recovery command-line tool)
 - Strong test suite (unit tests + integration tests)
 
@@ -209,7 +200,7 @@ Metadata are stored in in a kv file and are exposed via a Redis protocol tcp ser
 - List (sorted by an uint index) data type
 - "Virtual" Blob data type (upload/download from/to storage)
 
-Check [db/buffer.go](https://github.com/tsileo/datadatabase/blob/master/server/buffer.go) for more documentation.
+Check [db/buffer.go](https://github.com/tsileo/blobstash/blob/master/server/buffer.go) for more documentation.
 
 A backup is a set with pointer to hash (either representing a directory or a file, and a directory is also a set of pointer).
 

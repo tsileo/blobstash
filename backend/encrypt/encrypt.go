@@ -22,7 +22,7 @@ import (
 	"log"
 	"sync"
 
-	"github.com/tsileo/datadatabase/backend"
+	"github.com/tsileo/blobstash/backend"
 
 	"code.google.com/p/go.crypto/nacl/secretbox"
 	"code.google.com/p/snappy-go/snappy"

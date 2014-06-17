@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/tsileo/datadatabase/test"
+	"github.com/tsileo/blobstash/test"
 )
 
 func TestClientDir(t *testing.T) {

@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 
 	"github.com/garyburd/redigo/redis"
-	"github.com/tsileo/silokv/rolling"
+	"github.com/tsileo/blobstash/rolling"
 )
 
 // Hash of an empty file

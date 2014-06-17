@@ -75,8 +75,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tsileo/datadatabase/backend"
-	"github.com/tsileo/datadatabase/db"
+	"github.com/tsileo/blobstash/backend"
+	"github.com/tsileo/blobstash/db"
 )
 
 type TxManager struct {

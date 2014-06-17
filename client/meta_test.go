@@ -13,7 +13,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/tsileo/datadatabase/test"
+	"github.com/tsileo/blobstash/test"
 )
 
 const MaxRandomFileSize = 2 << 19

@@ -13,7 +13,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/tsileo/datadatabase/backend"
+	"github.com/tsileo/blobstash/backend"
 )
 
 var (

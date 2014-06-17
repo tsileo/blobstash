@@ -24,7 +24,7 @@ import (
 
 	"github.com/jinzhu/now"
 
-	"github.com/tsileo/datadatabase/client"
+	"github.com/tsileo/blobstash/client"
 )
 
 var blobClient *client.Client

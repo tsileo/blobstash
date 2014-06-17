@@ -6,7 +6,7 @@ import (
 	"io/ioutil"
 	"time"
 
-	"github.com/tsileo/datadatabase/test"
+	"github.com/tsileo/blobstash/test"
 )
 
 func check(e error) {

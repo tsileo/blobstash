@@ -6,9 +6,9 @@ import (
 
 	"github.com/codegangsta/cli"
 
-	"github.com/tsileo/datadatabase/client"
-	"github.com/tsileo/datadatabase/daemon"
-	"github.com/tsileo/datadatabase/fs"
+	"github.com/tsileo/blobstash/client"
+	"github.com/tsileo/blobstash/daemon"
+	"github.com/tsileo/blobstash/fs"
 )
 
 func main() {

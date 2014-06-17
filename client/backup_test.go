@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/tsileo/datadatabase/test"
+	"github.com/tsileo/blobstash/test"
 )
 
 func check(e error) {

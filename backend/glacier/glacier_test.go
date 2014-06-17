@@ -4,8 +4,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/tsileo/datadatabase/backend"
-	"github.com/tsileo/datadatabase/backend/blobsfile"
+	"github.com/tsileo/blobstash/backend"
+	"github.com/tsileo/blobstash/backend/blobsfile"
 )
 
 func TestGlacierBackend(t *testing.T) {

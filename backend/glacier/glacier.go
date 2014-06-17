@@ -18,10 +18,10 @@ import (
 	"log"
 	_ "strings"
 
-	"github.com/tsileo/datadatabase/backend"
+	"github.com/tsileo/blobstash/backend"
 
-	"github.com/tsileo/datadatabase/backend/blobsfile"
-    _ "github.com/tsileo/datadatabase/backend/glacier/util"
+	"github.com/tsileo/blobstash/backend/blobsfile"
+    _ "github.com/tsileo/blobstash/backend/glacier/util"
 	"github.com/rdwilliamson/aws/glacier"
 	"github.com/rdwilliamson/aws"
 	_ "github.com/cznic/kv"

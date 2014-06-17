@@ -5,7 +5,8 @@ import (
     "os"
 
     "github.com/codegangsta/cli"
-    "github.com/tsileo/datadatabase/backend/glacier/util"
+
+    "github.com/tsileo/blobstash/backend/glacier/util"
 )
 
 func main() {

@@ -8,8 +8,8 @@ import (
 	"github.com/bitly/go-simplejson"
 	"github.com/codegangsta/cli"
 
-	"github.com/tsileo/datadatabase/config"
-	"github.com/tsileo/datadatabase/server"
+	"github.com/tsileo/blobstash/config"
+	"github.com/tsileo/blobstash/server"
 )
 
 func main() {

@@ -3,8 +3,8 @@ package client
 import (
 	"fmt"
 	"github.com/garyburd/redigo/redis"
-	"github.com/tsileo/datadatabase/disklru"
-	"github.com/tsileo/datadatabase/lru"
+	"github.com/tsileo/blobstash/disklru"
+	"github.com/tsileo/blobstash/lru"
 	"os"
 	"path/filepath"
 	"time"
