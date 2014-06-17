@@ -53,7 +53,7 @@ const (
 )
 
 const (
-	Overhead = 24 // 24 bytes of meta-data are stored for head bytes
+	Overhead = 24 // 24 bytes of meta-data are stored for each blob
 )
 
 var (
@@ -84,6 +84,7 @@ type BlobsFileBackend struct {
 
 	// WriteOnly mode (if the precedent blobs are not available yet)
 	writeOnly bool
+	blobsUploaded int
 
 	// Compression is disabled by default
 	snappyCompression bool
@@ -171,6 +172,10 @@ func (backend *BlobsFileBackend) Close() {
 func (backend *BlobsFileBackend) Done() error {
 	if backend.writeOnly {
 		log.Println("BlobsFileBackend: Done()")
+		if backend.blobsUploaded > 0 {
+			log.Println("BlobsFileBackend: no new blobs have been uploaded")
+			return nil
+		}
 		// Switch file and delete older file
 		for i, f := range backend.files {
 			fpath := f.Name()
@@ -179,11 +184,13 @@ func (backend *BlobsFileBackend) Done() error {
 			delete(backend.files, i)
 			os.Remove(fpath)
 		}
+		backend.blobsUploaded = 0
 		if err := backend.loadWriteOnly(); err != nil {
 			return err
 		}
 		return nil
 	}
+	backend.blobsUploaded = 0
 	return nil
 }
 
@@ -457,6 +464,7 @@ func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
 	}
 	bytesUploaded.Add(backend.Directory, int64(len(blobEncoded)))
 	blobsUploaded.Add(backend.Directory, 1)
+	backend.blobsUploaded++
 
 	if backend.size > backend.maxBlobsFileSize {
 		backend.n++
