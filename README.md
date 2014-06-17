@@ -14,7 +14,7 @@ BlobStash is a snapshot-based backup system, designed to provide "time machine" 
 - Read-only FUSE file system to navigate backups/snapshots
 - Optional encryption (using [go.crypto/nacl secretbox](http://godoc.org/code.google.com/p/go.crypto/nacl))
 - Take snapshot automatically every x minutes, using a separate client-side daemon (provides Arq/time machine like backup)
-- Possibility to archive blobs to AWS Glacier (with a recovery command-line tool)
+- Possibility to incrementally archive blobs to AWS Glacier (with a recovery command-line tool)
 - Strong test suite (unit tests + integration tests)
 
 Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com/bup/bup) (files are split into multiple blobs using a rolling checksum).
@@ -23,7 +23,7 @@ Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com
 
 ### Database
 
-**Datadb** is a backup database (a Content-Addressable Storage and a data structure server) designed to efficiently handle snapshots of files/directories, built on top of [kv](https://github.com/cznic/kv) and the [Redis Protocol](http://redis.io/topics/protocol).
+**BlobDB** is a backup database (a Content-Addressable Storage and a data structure server) designed to efficiently handle snapshots of files/directories, built on top of [kv](https://github.com/cznic/kv) and the [Redis Protocol](http://redis.io/topics/protocol).
 
 #### Backend
 
@@ -31,7 +31,7 @@ Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com
 - AWS S3
 - Mirror
 - AWS Glacier
-- A remote DataDB instance? (not started yet)
+- A remote BlobDB instance? (not started yet)
 - Submit a pull request!
 
 ### Fuse file system
@@ -45,7 +45,7 @@ There is three magic directories at the root:
 - **at**: let access directories/files at a given time, it automatically retrieve the closest previous snapshots.
 
 ```console
-$ datadb mount /backups
+$ BlobDB mount /backups
 2014/05/12 17:26:34 Mounting read-only filesystem on /backups
 Ctrl+C to unmount.
 ```
@@ -83,7 +83,6 @@ You can combine backend as you wish, e.g. Mirror( Encrypt( S3() ), BlobsFile() )
 
 - an Android app to backup Android devices
 - Follow .gitignore file
-- A special cold storage backed (using AWS Glacier, can't use glacier since storing blobs with Glacier would cost too much, according to [this article](http://alestic.com/2012/12/s3-glacier-costs)) that would put one archive per snapshots, and keep track of stored blob (incremental backups).
 - Garbage collection (sparse files support for blob files)
 - A web interface
 - Fill an issue!
