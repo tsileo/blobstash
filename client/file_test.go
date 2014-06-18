@@ -22,7 +22,7 @@ func TestClientFile(t *testing.T) {
 	defer c.Close()
 	defer c.RemoveCache()
 	check(err)
-	rfile := NewRandomFile(".")
+	rfile := test.NewRandomFile(".")
 	defer os.Remove(rfile)
 	th := FullSHA1(rfile)
 	m, h, err := c.PutFile(rfile)
