@@ -8,7 +8,7 @@ import (
 )
 
 func TestClientDir(t *testing.T) {
-	s, err := test.NewTestServer()
+	s, err := test.NewTestServer(t)
 	check(err)
 	go s.Start()
 	if err := s.TillReady(); err != nil {
@@ -47,10 +47,12 @@ func TestClientDirDeepRecursion(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping TestClientDirDeepRecursion test in short mode.")
 	}
-	s, err := test.NewTestServer()
+	s, err := test.NewTestServer(t)
 	check(err)
 	go s.Start()
-	s.TillReady()
+	if err := s.TillReady(); err != nil {
+		t.Fatalf("server error:\n%v", err)
+	}
 	defer s.Shutdown()
 
 	c, err := NewTestClient()

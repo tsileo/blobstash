@@ -14,10 +14,12 @@ func check(e error) {
 }
 
 func TestModelsSnapshots(t *testing.T) {
-	s, err := test.NewTestServer()
+	s, err := test.NewTestServer(t)
 	check(err)
 	go s.Start()
-	s.TillReady()
+	if err := s.TillReady(); err != nil {
+		t.Fatalf("server error:\n%v", err)
+	}
 	defer s.Shutdown()
 	pool, err := GetDbPool()
 	check(err)

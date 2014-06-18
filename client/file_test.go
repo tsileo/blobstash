@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"testing"
 
@@ -12,10 +11,12 @@ import (
 )
 
 func TestClientFile(t *testing.T) {
-	s, err := test.NewTestServer()
+	s, err := test.NewTestServer(t)
 	check(err)
 	go s.Start()
-	s.TillReady()
+	if err := s.TillReady(); err != nil {
+		t.Fatalf("server error:\n%v", err)
+	}
 
 	defer s.Shutdown()
 	c, err := NewTestClient()
@@ -51,7 +52,7 @@ func TestClientFile(t *testing.T) {
 	defer os.Remove(helloPath)
 	_, rw, err := c.PutFile(helloPath)
 	check(err)
-	log.Printf("fileput hash: %v", rw.Hash)
+	t.Logf("fileput hash: %v", rw.Hash)
 	fakeFile := NewFakeFile(c, rw.Hash, rw.Size)
 	fkr, err := fakeFile.read(0, 5)
 	check(err)

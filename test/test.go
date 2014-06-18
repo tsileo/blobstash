@@ -11,7 +11,6 @@ import (
 	"github.com/bradfitz/iter"
 	"io"
 	"io/ioutil"
-	"log"
 	mrand "math/rand"
 	"os"
 	"fmt"
@@ -64,7 +63,7 @@ func NewRandomFileWg(path string, wg *sync.WaitGroup) string {
 func CreateRandomTree(t *testing.T, path string, rec, maxrec int) (string, int) {
 	p := NewRandomDir(path)
 	if rec == 0 {
-		log.Printf("Creating a new random tree at %v", p)
+		t.Logf("Creating a new random tree at %v", p)
 	}
 	nfiles := 0
 	for {
@@ -90,7 +89,7 @@ func CreateRandomTree(t *testing.T, path string, rec, maxrec int) (string, int) 
 	}
 	wg.Wait()
 	if rec == 0 {
-		log.Printf("Done")
+		t.Log("Random tree created")
 	}
 	return p, cnt
 }

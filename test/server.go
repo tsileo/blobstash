@@ -1,7 +1,6 @@
 package test
 
 import (
-	"log"
 	"os"
 	"io/ioutil"
 	"os/exec"
@@ -9,11 +8,14 @@ import (
 	"bytes"
 	"fmt"
 	"time"
+	"testing"
 
 	"github.com/garyburd/redigo/redis"
 )
 
 type TestServer struct {
+	t *testing.T
+
 	binDir string // Path to the bin/ dir of $GOPATH
 	rootDir string // The root of the repository
 	tempDir string
@@ -27,7 +29,7 @@ type TestServer struct {
 }
 
 // NewTestServer initialize a new test server.
-func NewTestServer() (*TestServer, error) {
+func NewTestServer(t *testing.T) (*TestServer, error) {
 	gopath := os.Getenv("GOPATH")
 	if gopath == "" {
 		return nil, fmt.Errorf("GOPATH env variable not set")
@@ -35,12 +37,12 @@ func NewTestServer() (*TestServer, error) {
 	binDir := filepath.Join(gopath, "bin")
 	rootDir := filepath.Join(gopath, "src/github.com/tsileo/blobstash")
 	tempDir, err := ioutil.TempDir("", "blobtools-test-")
-	log.Printf("TempDir: %v", tempDir)
+	t.Logf("TempDir: %v", tempDir)
 	if err != nil {
 		return nil, err
 	}
 	// test/data/blobdb-config.json
-	server := &TestServer{binDir: binDir, rootDir: rootDir,
+	server := &TestServer{t: t, binDir: binDir, rootDir: rootDir,
 		tempDir: tempDir, donec: make(chan struct{}, 1)}
 	return server, nil
 }
@@ -55,12 +57,12 @@ func (server *TestServer) BuildServer() (string, error) {
 	blobDbDir := filepath.Join(server.rootDir, "cmd/blobdb")
 	cmd := exec.Command("go", "install")
 	cmd.Dir = blobDbDir
-	log.Print("Running go install to build blobDB...")
+	server.t.Log("Running go install to build blobDB...")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("Error installing blobdb: %v, %s", err, string(out))
 	}
-	log.Print("Done.")
+	server.t.Log("Done")
 	return filepath.Join(server.binDir, "blobdb"), nil
 }
 
@@ -78,7 +80,7 @@ func (server *TestServer) Ready() bool {
 }
 
 func (server *TestServer) Shutdown() {
-	log.Println("Server shutdown")
+	server.t.Log("Server shutdown")
 	c, _ := redis.Dial("tcp", ":9735")
 	c.Do("SHUTDOWN")
 	server.Wait()
@@ -92,7 +94,7 @@ func (server *TestServer) TillReady() error {
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	log.Println("Server is ready.")
+	server.t.Log("Server is ready.")
 	return nil
 }
 
@@ -100,7 +102,7 @@ func (server *TestServer) TillReady() error {
 func (server *TestServer) Start() error {
 	bpath, err := server.BuildServer()
 	if err != nil {
-		log.Printf("Error building server")
+		server.t.Log("Error building server")
 		server.err = err
 		return err
 	}
