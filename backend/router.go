@@ -37,11 +37,11 @@ func NewReadRequest(hostname, hash string, metaBlob bool) *Request {
 		MetaBlob :metaBlob}
 }
 
-type RouterConfig struct {
+type Router struct {
 	Rules []*simplejson.Json
 }
 
-func NewRouterConfig(body []byte) (*RouterConfig, error) {
+func NewRouterFromConfig(body []byte) (*Router, error) {
 	json, err := simplejson.NewJson(body)
 	if err != nil {
 		return nil, err
@@ -50,7 +50,7 @@ func NewRouterConfig(body []byte) (*RouterConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse config, body must be an array")
 	}
-	rconf := &RouterConfig{[]*simplejson.Json{}}
+	rconf := &Router{Rules: []*simplejson.Json{}}
 	for i, _ := range rules {
 		rconf.Rules = append(rconf.Rules, json.GetIndex(i))
 	}
@@ -58,13 +58,14 @@ func NewRouterConfig(body []byte) (*RouterConfig, error) {
 }
 
 // Route the request and return the backend key that match the request
-func (router *RouterConfig) Route(req *Request) string {
+func (router *Router) Route(req *Request) string {
 	for _, baseRule := range router.Rules {
-		basicRule, err := baseRule.StringArray()
-		if err == nil {
+		basicRule, err := baseRule.Array()
+		_, basicMode := basicRule[0].(string)
+		if err == nil && basicMode {
 			// Basic rule handling [conf, backend]
-			backend := basicRule[1]
-			rule := basicRule[0]
+			backend := basicRule[1].(string)
+			rule := basicRule[0].(string)
 			if checkRule(rule, req) {
 				return backend
 			}
@@ -108,7 +109,7 @@ func checkRule(rule string, req *Request) bool {
 }
 
 type RequestRouter struct {
-	config *RouterConfig
+	router *Router
 	backends map[string]BlobHandler
 }
 
