@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"io/ioutil"
 	"path/filepath"
+	"log"
 
 	"github.com/tsileo/blobstash/test"
 	"github.com/tsileo/blobstash/client"
@@ -19,12 +20,14 @@ func check(e error) {
 
 func TestFS(t *testing.T) {
 	// Setup server
-	s, err := test.NewTestServer()
+	s, err := test.NewTestServer(t)
 	check(err)
 	go s.Start()
-	s.TillReady()
+	if err := s.TillReady(); err != nil {
+		t.Fatalf("server error:\n%v", err)
+	}
 	defer s.Shutdown()
-
+	log.Println("Server setup done")
 	c, err := client.NewTestClient()
 	defer c.Close()
 	defer c.RemoveCache()
@@ -43,17 +46,19 @@ func TestFS(t *testing.T) {
 
 	tdir := test.NewRandomTree(t, ".", 1)
 	defer os.RemoveAll(tdir)
-	meta, _, err := c.PutDir(tdir)
+	_, meta, _, err := c.Put(tdir)
 	check(err)
 
-	t.Logf("DIFF")
+	hostname, err := os.Hostname()
+	check(err)
 
-	out, err := exec.Command("ls", "-lR", tempDir).CombinedOutput()
+	t.Logf("Testing latest directory")
 
-	t.Logf("ls result (%v): \n%v", err, string(out))
+	out, _ := exec.Command("ls", "-lR", tempDir).CombinedOutput()
 
-	restoredPath := filepath.Join(tempDir, "latest", meta.Name)
+	restoredPath := filepath.Join(tempDir, hostname, "latest", meta.Name)
 	if err := test.Diff(tdir, restoredPath); err != nil {
+		t.Logf("ls result: \n%v", string(out))
 		t.Errorf("failed to diff the FS: %v\nServer output: %v", err, s.Out())
 	}
 

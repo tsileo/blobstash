@@ -96,6 +96,10 @@ func (client *Client) DirWriterNode(node *node) {
 
 	// Wait for all children node to finish
 	for _, cnode := range node.children {
+		if cnode.err != nil {
+			node.err = cnode.err
+			return
+		}
 		cnode.mu.Lock()
 		for !cnode.done {
 			cnode.cond.Wait()
@@ -190,14 +194,16 @@ func (client *Client) PutDir(path string) (meta *Meta, wr *WriteResult, err erro
 				if node.fi.IsDir() {
 					client.DirWriterNode(node)
 					if node.err != nil {
-						panic(fmt.Errorf("error DirWriterNode with node %v", node))
+						n.err = fmt.Errorf("error DirWriterNode with node %v", node)
+						return
 					}
 				} else {
 					node.mu.Lock()
 					defer node.mu.Unlock()
 					node.meta, node.wr, node.err = client.PutFile(node.path)
 					if node.err != nil {
-						panic(fmt.Errorf("error PutFile with node %v", node))
+						n.err = fmt.Errorf("error PutFile with node %v", node)
+						return
 					}
 					node.done = true
 					node.cond.Broadcast()

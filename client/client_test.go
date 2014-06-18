@@ -23,7 +23,7 @@ func TestClient(t *testing.T) {
 	check(err)
 	tdir := test.NewRandomTree(t, ".", 1)
 	defer os.RemoveAll(tdir)
-	_, _, _, err = c.Put(tdir)
+	putSnap, _, _, err := c.Put(tdir)
 	check(err)
 
 	t.Log("Testing client.Hosts()")
@@ -48,14 +48,14 @@ func TestClient(t *testing.T) {
 
 	backup := backups[0]
 	snapshots, err := backup.Snapshots()
+	snap := snapshots[0].Snapshot
 	check(err)
-	if len(snapshots) != 1 {
-		t.Errorf("Snapshots len should be 1, got %v: %q", len(snapshots), snapshots)
+	if len(snapshots) != 1 || !reflect.DeepEqual(putSnap, snap) {
+		t.Errorf("Snapshots len should be 1, got %v and: %q", len(snapshots), snapshots)
 	}
 
 	t.Logf("Testing backup.Last()")
 
-	snap := snapshots[0].Snapshot
 	snap2, err := backup.Last()
 	check(err)
 
