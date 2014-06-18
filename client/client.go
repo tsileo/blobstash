@@ -21,7 +21,7 @@ func GetDbPool() (pool *redis.Pool, err error) {
 		MaxActive:   250,
 		IdleTimeout: 240 * time.Second,
 		Dial: func() (redis.Conn, error) {
-			c, err := redis.Dial("tcp", "localhost:9736")
+			c, err := redis.Dial("tcp", "localhost:9735")
 			if err != nil {
 				return nil, err
 			}
@@ -114,18 +114,18 @@ func (client *Client) DirUploadDone() {
 	}
 }
 
-func (client *Client) List() (backups []*Backup, err error) {
-	con := client.Pool.Get()
-	defer con.Close()
-	hkeys, err := redis.Strings(con.Do("HSCAN", "backup:", "backup:\xff", 0))
-	for _, hkey := range hkeys {
-		meta, _ := NewBackupFromDB(client.Pool, hkey)
-		backups = append(backups, meta)
-	}
-	return
-}
+//func (client *Client) List() (backups []*Backup, err error) {
+//	con := client.Pool.Get()
+//	defer con.Close()
+//	hkeys, err := redis.Strings(con.Do("HSCAN", "backup:", "backup:\xff", 0))
+//	for _, hkey := range hkeys {
+//		meta, _ := NewBackupFromDB(client.Pool, hkey)
+//		backups = append(backups, meta)
+//	}
+//	return
+//}
 
-func (client *Client) Put(path string) (backup *Backup, meta *Meta, wr *WriteResult, err error) {
+func (client *Client) Put(path string) (snapshot *Snapshot, meta *Meta, wr *WriteResult, err error) {
 	con := client.Pool.Get()
 	_, err = con.Do("INIT")
 	if err != nil {
@@ -147,10 +147,13 @@ func (client *Client) Put(path string) (backup *Backup, meta *Meta, wr *WriteRes
 	if err != nil {
 		return
 	}
-	hostname, _ := os.Hostname()
-	backup = NewBackup(hostname, path, btype, meta.Hash)
-	if _, err := backup.Save(client.Pool); err != nil {
-		return backup, meta, wr, err
+	hostname, err := os.Hostname()
+	if err != nil {
+		return snapshot, meta, wr, fmt.Errorf("failed to get hostname: %v", err)
+	}
+	snapshot = NewSnapshot(hostname, path, btype, meta.Hash)
+	if err := snapshot.Save(client.Pool); err != nil {
+		return snapshot, meta, wr, err
 	}
 	_, err = con.Do("DONE");
 	return

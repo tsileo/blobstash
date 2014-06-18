@@ -14,8 +14,8 @@ import (
 func main() {
 	ignoredFiles := []string{"*~", "*.py[cod]", "nohup.out", "*.log", "tmp_*"}
 	app := cli.NewApp()
-	app.Name = "datadb"
-	app.Usage = "DataDB client"
+	app.Name = "blobstash"
+	app.Usage = "BlobStash command-line tool"
 	app.Version = "0.1.0"
 	//  app.Action = func(c *cli.Context) {
 	//    println("Hello friend!")
@@ -30,17 +30,17 @@ func main() {
 				fmt.Printf("b:%+v,m:%+v,wr:%+v,err:%v\n", b, m, wr, err)
 			},
 		},
-		{
-			Name:      "ls",
-			Usage:     "List backups",
-			Action: func(c *cli.Context) {
-				client, _ := client.NewClient(ignoredFiles)
-				metas, _ := client.List()
-				for _, m := range metas {
-					fmt.Printf("%+v\n", m)
-				}
-			},
-		},
+		//{
+		//	Name:      "ls",
+		//	Usage:     "List backups",
+		//	Action: func(c *cli.Context) {
+		//		client, _ := client.NewClient(ignoredFiles)
+		//		metas, _ := client.List()
+		//		for _, m := range metas {
+		//			fmt.Printf("%+v\n", m)
+		//		}
+		//	},
+		//},
 		{
 			Name:      "restore",
 			Usage:     "Restore a meta",

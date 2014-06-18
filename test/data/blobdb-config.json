@@ -7,7 +7,7 @@
                     {
                         "backend-type": "blobsfile",
                         "backend-args": {
-                            "path": "/tmp/blobdb_blobs",
+                            "path": "blobdb_blobs",
                             "compression": true
                         }
                     }
@@ -17,7 +17,7 @@
         "meta": {
             "backend-type": "blobsfile",
             "backend-args": {
-                "path": "/tmp/blobdb_meta"
+                "path": "blobdb_meta"
             }
         }
     }

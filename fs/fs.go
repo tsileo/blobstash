@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/signal"
 	"time"
+	"fmt"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
@@ -43,8 +44,10 @@ func Mount(mountpoint string, stop <-chan bool, stopped chan<- bool) {
 	go func() {
 		select {
 		case <-cs:
+			log.Printf("got signal")
 			break
 		case <-stop:
+			log.Printf("got stop")
 			break
 		}
 		log.Println("Closing client...")
@@ -110,6 +113,7 @@ func (n *Node) Setattr(req *fuse.SetattrRequest, resp *fuse.SetattrResponse, int
 type Dir struct {
 	Node
 	Root           bool
+	RootHost       bool
 	Latest         bool
 	Snapshots      bool
 	SnapshotDir    bool
@@ -118,6 +122,8 @@ type Dir struct {
 	AtDir          bool
 	FakeDirContent []fuse.Dirent
 	Children       map[string]fs.Node
+	Host           string
+	SnapKey        string
 }
 
 func NewDir(cfs *FS, name, ref string, modTime string, mode os.FileMode) (d *Dir) {
@@ -163,22 +169,32 @@ func NewRootDir(fs *FS) (d *Dir) {
 	return d
 }
 
-func NewLatestDir(fs *FS) (d *Dir) {
+func NewRootHostDir(fs *FS, host string) (d *Dir) {
+	d = NewDir(fs, host, "", "", os.ModeDir)
+	d.RootHost = true
+	d.fs = fs
+	return d
+}
+
+func NewLatestDir(fs *FS, host string) (d *Dir) {
 	d = NewDir(fs, "latest", "", "", os.ModeDir)
 	d.Latest = true
 	d.fs = fs
+	d.Host = host
 	return d
 }
 
-func NewAtRootDir(fs *FS) (d *Dir) {
+func NewAtRootDir(fs *FS, host string) (d *Dir) {
 	d = NewDir(fs, "at", "", "", os.ModeDir)
 	d.AtRoot = true
 	d.fs = fs
+	d.Host = host
 	return d
 }
 
-func NewAtDir(cfs *FS, name, ref string) (d *Dir) {
+func NewAtDir(cfs *FS, name, ref, snapKey string) (d *Dir) {
 	d = &Dir{}
+	d.SnapKey = snapKey
 	d.Node = Node{}
 	d.Mode = os.ModeDir
 	d.fs = cfs
@@ -189,22 +205,24 @@ func NewAtDir(cfs *FS, name, ref string) (d *Dir) {
 	return
 }
 
-func NewSnapshotDir(cfs *FS, name, ref string) (d *Dir) {
+func NewSnapshotsDir(cfs *FS, host string) (d *Dir) {
+	d = NewDir(cfs, "snapshots", "", "", os.ModeDir)
+	d.fs = cfs
+	d.Snapshots = true
+	d.Host = host
+	return
+}
+
+func NewSnapshotDir(cfs *FS, name, ref, snapKey string) (d *Dir) {
 	d = &Dir{}
 	d.Node = Node{}
 	d.Mode = os.ModeDir
 	d.fs = cfs
 	d.Ref = ref
 	d.Name = name
+	d.SnapKey = snapKey
 	d.Children = make(map[string]fs.Node)
 	d.SnapshotDir = true
-	return
-}
-
-func NewSnapshotsDir(cfs *FS) (d *Dir) {
-	d = NewDir(cfs, "snapshots", "", "", os.ModeDir)
-	d.fs = cfs
-	d.Snapshots = true
 	return
 }
 
@@ -225,9 +243,10 @@ func (d *Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, err fuse.Error) {
 		t, err := now.Parse(name)
 		if err == nil {
 			ts := t.UTC().Unix()
-			ref, _ := d.fs.Client.GetAt(d.Name, ts)
-			if ref != "" {
-				return NewDir(d.fs, d.Name, ref, d.ModTime, d.Mode), nil
+			backup, _ := client.NewBackup(d.fs.Client, d.SnapKey)
+			snap, _ := backup.GetAt(ts)
+			if snap != nil {
+				return NewDir(d.fs, d.Name, snap.Ref, d.ModTime, d.Mode), nil
 			}
 		}
 	}
@@ -240,24 +259,44 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 	switch {
 	case d.Root:
 		d.Children = make(map[string]fs.Node)
+		hosts, err := d.fs.Client.Hosts()
+		if err != nil {
+			panic("failed to fetch hosts")
+		}
+		for _, host := range hosts {
+			dirent := fuse.Dirent{Name: host, Type: fuse.DT_Dir}
+			out = append(out, dirent)
+			d.Children[host] = NewRootHostDir(d.fs, host)
+		}
+		return out, err
+	case d.RootHost:
+		d.Children = make(map[string]fs.Node)
 		dirent := fuse.Dirent{Name: "latest", Type: fuse.DT_Dir}
 		out = append(out, dirent)
-		d.Children["latest"] = NewLatestDir(d.fs)
+		d.Children["latest"] = NewLatestDir(d.fs, d.Name)
 		dirent = fuse.Dirent{Name: "snapshots", Type: fuse.DT_Dir}
 		out = append(out, dirent)
-		d.Children["snapshots"] = NewSnapshotsDir(d.fs)
+		d.Children["snapshots"] = NewSnapshotsDir(d.fs, d.Name)
 		dirent = fuse.Dirent{Name: "at", Type: fuse.DT_Dir}
 		out = append(out, dirent)
-		d.Children["at"] = NewAtRootDir(d.fs)
+		d.Children["at"] = NewAtRootDir(d.fs, d.Name)
 		return
 
 	case d.Latest:
 		d.Children = make(map[string]fs.Node)
-		backups, _ := d.fs.Client.Latest()
+		backups, err := d.fs.Client.Backups(d.Host)
+		if err != nil {
+			panic(fmt.Errorf("failed to fetch backups list: %v", err))
+		}
 		for _, backup := range backups {
-			meta := d.fs.Client.Metas.Get(backup.Ref).(*client.Meta)
+			log.Printf("backup: %+v", backup)
+			snap, err := backup.Last()
+			if err != nil {
+				panic(fmt.Errorf("error fetching latest snapshot for backup %v", backup.SnapKey))
+			}
+			meta := d.fs.Client.Metas.Get(snap.Ref).(*client.Meta)
 			//meta, _ := backup.Meta(d.fs.Client.Pool)
-			if backup.Type == "file" {
+			if snap.Type == "file" {
 				dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
 				d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
 				out = append(out, dirent)
@@ -271,24 +310,38 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 
 	case d.Snapshots:
 		d.Children = make(map[string]fs.Node)
-		backups, _ := d.fs.Client.Latest()
+		backups, err := d.fs.Client.Backups(d.Host)
+		if err != nil {
+			panic(fmt.Errorf("failed to fetch backups list: %v", err))
+		}
 		for _, backup := range backups {
-			meta := d.fs.Client.Metas.Get(backup.Ref).(*client.Meta)
+			snap, err := backup.Last()
+			if err != nil {
+				panic(fmt.Errorf("error fetching latest snapshot for backup %v", backup.SnapKey))
+			}
+			meta := d.fs.Client.Metas.Get(snap.Ref).(*client.Meta)
 			//meta, _ := backup.Meta(d.fs.Client.Pool)
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-			d.Children[meta.Name] = NewSnapshotDir(d.fs, meta.Name, meta.Ref)
+			d.Children[meta.Name] = NewSnapshotDir(d.fs, meta.Name, meta.Ref, backup.SnapKey)
 			out = append(out, dirent)
 		}
 		return out, nil
 
 	case d.AtRoot:
 		d.Children = make(map[string]fs.Node)
-		backups, _ := d.fs.Client.Latest()
+		backups, err := d.fs.Client.Backups(d.Host)
+		if err != nil {
+			panic(fmt.Errorf("failed to fetch backups list: %v", err))
+		}
 		for _, backup := range backups {
-			meta := d.fs.Client.Metas.Get(backup.Ref).(*client.Meta)
+			snap, err := backup.Last()
+			if err != nil {
+				panic(fmt.Errorf("error fetching latest snapshot for backup %v", backup.SnapKey))
+			}
+			meta := d.fs.Client.Metas.Get(snap.Ref).(*client.Meta)
 			//meta, _ := backup.Meta(d.fs.Client.Pool)
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-			d.Children[meta.Name] = NewAtDir(d.fs, meta.Name, meta.Ref)
+			d.Children[meta.Name] = NewAtDir(d.fs, meta.Name, meta.Ref, backup.SnapKey)
 			out = append(out, dirent)
 		}
 		return out, nil
@@ -298,14 +351,16 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 
 	case d.SnapshotDir:
 		d.Children = make(map[string]fs.Node)
-		indexmetas, _ := d.fs.Client.Snapshots(d.Name)
-		for _, im := range indexmetas {
+		//indexmetas, _ := d.fs.Client.Snapshots(d.Name)
+		backup, _ := client.NewBackup(d.fs.Client, d.SnapKey)
+		snaphots, _ := backup.Snapshots()
+		for _, im := range snaphots {
 			// TODO the index to dirname => blocked with one Node
 			stime := time.Unix(int64(im.Index), 0)
 			sname := stime.Format(time.RFC3339)
-			meta := im.Meta
+			meta := d.fs.Client.Metas.Get(im.Snapshot.Ref).(*client.Meta)
 			out = append(out, fuse.Dirent{Name: sname, Type: fuse.DT_Dir})
-			d.Children[sname] = NewFakeDir(d.fs, meta.Name, meta.Ref)
+			d.Children[sname] = NewFakeDir(d.fs, meta.Name, meta.Hash)
 		}
 		return out, nil
 

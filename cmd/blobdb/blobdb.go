@@ -46,5 +46,5 @@ func start(config_path string) {
 	}
 	blobBackend := config.NewFromConfig(conf.GetPath("backends", "blobs"))
 	metaBackend := config.NewFromConfig(conf.GetPath("backends", "meta"))
-	server.New("127.0.0.1:9736", "./tmp_db", blobBackend, metaBackend, stop)
+	server.New("127.0.0.1:9735", "./tmp_db", blobBackend, metaBackend, stop)
 }

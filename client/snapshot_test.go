@@ -13,7 +13,7 @@ func check(e error) {
 	}
 }
 
-func TestModelsBackup(t *testing.T) {
+func TestModelsSnapshots(t *testing.T) {
 	s, err := test.NewTestServer()
 	check(err)
 	go s.Start()
@@ -21,12 +21,12 @@ func TestModelsBackup(t *testing.T) {
 	defer s.Shutdown()
 	pool, err := GetDbPool()
 	check(err)
-	//f := &Backup{Name:"foo", Type:"file", Ref:"bar"}
-	f := NewBackup("hostname", "foo", "file", "bar")
-	h, err := f.Save(pool)
+	// NewSnapshot(hostname, path, type, ref)
+	f := NewSnapshot("hostname", "foo", "file", "bar")
+	err = f.Save(pool)
 	check(err)
 
-	f2, err := NewBackupFromDB(pool, h)
+	f2, err := NewSnapshotFromDB(pool, f.Hash)
 	check(err)
 	if !reflect.DeepEqual(f, f2) {
 		t.Errorf("Error retrieving file from DB, expected %+v, get %+v", f, f2)

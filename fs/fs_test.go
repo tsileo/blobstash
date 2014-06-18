@@ -3,9 +3,9 @@ package fs
 import (
 	"testing"
 	"os"
+	"os/exec"
 	"io/ioutil"
 	"path/filepath"
-	"time"
 
 	"github.com/tsileo/blobstash/test"
 	"github.com/tsileo/blobstash/client"
@@ -25,14 +25,9 @@ func TestFS(t *testing.T) {
 	s.TillReady()
 	defer s.Shutdown()
 
-	// Setup client
 	c, err := client.NewTestClient()
 	defer c.Close()
 	defer c.RemoveCache()
-	check(err)
-	tdir := test.NewRandomTree(t, ".", 1)
-	defer os.RemoveAll(tdir)
-	meta, _, err := c.PutDir(tdir)
 	check(err)
 
 	// Setup FS
@@ -45,10 +40,22 @@ func TestFS(t *testing.T) {
 	// DO TEST HERE
 	// random tree with client +
 	// test.Diff
-	time.Sleep(30*time.Second)
+
+	tdir := test.NewRandomTree(t, ".", 1)
+	defer os.RemoveAll(tdir)
+	meta, _, err := c.PutDir(tdir)
+	check(err)
+
+	t.Logf("DIFF")
+
+	out, err := exec.Command("ls", "-lR", tempDir).CombinedOutput()
+
+	t.Logf("ls result (%v): \n%v", err, string(out))
 
 	restoredPath := filepath.Join(tempDir, "latest", meta.Name)
-	check(test.Diff(tdir, restoredPath))
+	if err := test.Diff(tdir, restoredPath); err != nil {
+		t.Errorf("failed to diff the FS: %v\nServer output: %v", err, s.Out())
+	}
 
 	stop <-true
 	<-stopped

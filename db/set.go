@@ -65,6 +65,10 @@ func (db *DB) Scard(key string) (int, error) {
 func (db *DB) Sadd(key string, members ...string) (int, error) {
 	bkey := []byte(key)
 	cnt := 0
+	// Init the set
+	if err := db.put(keySetMember(bkey, []byte{}), []byte{}); err != nil {
+		return 0, err
+	}
 	for _, member := range members {
 		kmember := keySetMember(bkey, member)
 		cval, err := db.get(kmember)

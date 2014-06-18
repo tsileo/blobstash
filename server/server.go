@@ -6,10 +6,6 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
-	"github.com/bitly/go-notify"
-	"github.com/bsm/redeo"
-	"github.com/tsileo/blobstash/backend"
-	"github.com/tsileo/blobstash/db"
 	"io"
 	"log"
 	"net"
@@ -22,6 +18,12 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/bitly/go-notify"
+	"github.com/bsm/redeo"
+
+	"github.com/tsileo/blobstash/backend"
+	"github.com/tsileo/blobstash/db"
 )
 
 func handler(w http.ResponseWriter, r *http.Request) {

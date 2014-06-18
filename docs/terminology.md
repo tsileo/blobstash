@@ -1,22 +1,22 @@
 # Terminology
 
+## Snapshot
+
+A **snapshot** is the state of the directory/file at a given time, it holds a reference to a **meta**.
+
+The hash of a snapshot is: ``SHA-1(hostname + absolute path + unix timestamp)``.
+
 ## Backup
 
-A **backup** represents the state of the file/directory at a given time, it also holds a reference to a **meta**. attached to it.
-
-The hash of a backup is: ``SHA1(hostname + path + timestamp)``.
-
-## Snapshots
-
-Multiple **backups** of the same file/directory form a **snapshot**. If you backup a directory only once, it will create a **snapshot** with 1 **backup** and so on.
-
-The hash of a snapshots groups is ``SHA1(hostname + path)``.
+A **backup** is a set of snapshot that share the same hostname and absolute path.
 
 ## Blobs
 
-A **blob** (binary large object) is where chunks are stored. **Blobs** are immutable and stored with the SHA-1 hash as filename.
+Files are split into multiple chunks and are stored as **blob** (binary large object) in **backend**.
 
-**Blobs** are stored in a **backend**.
+**Blobs** are immutable and identified with the SHA-1 hash of the chunk.
+
+## Backend
 
 ## Metas
 

@@ -45,6 +45,11 @@ func NewTestServer() (*TestServer, error) {
 	return server, nil
 }
 
+// Out returns the server Stdout/Stderr
+func (server *TestServer) Out() string {
+	return server.buf.String()
+}
+
 // BuildServer build the "blobdb" binary and return its path
 func (server *TestServer) BuildServer() (string, error) {
 	blobDbDir := filepath.Join(server.rootDir, "cmd/blobdb")
@@ -61,7 +66,7 @@ func (server *TestServer) BuildServer() (string, error) {
 
 // Ready try to ping the server
 func (server *TestServer) Ready() bool {
-	c, err := redis.Dial("tcp", ":9736")
+	c, err := redis.Dial("tcp", ":9735")
 	if err != nil {
 		return false
 	}
@@ -74,27 +79,28 @@ func (server *TestServer) Ready() bool {
 
 func (server *TestServer) Shutdown() {
 	log.Println("Server shutdown")
-	c, _ := redis.Dial("tcp", ":9736")
+	c, _ := redis.Dial("tcp", ":9735")
 	c.Do("SHUTDOWN")
 	server.Wait()
 }
 
 // TillReady block until the server is ready
-func (server *TestServer) TillReady() {
-	if server.err != nil {
-		return
-	}
+func (server *TestServer) TillReady() error {
 	for !server.Ready() {
+		if server.err != nil {
+			return server.err
+		}
 		time.Sleep(500 * time.Millisecond)
 	}
 	log.Println("Server is ready.")
-	return
+	return nil
 }
 
 // Start actuallty start the server
 func (server *TestServer) Start() error {
 	bpath, err := server.BuildServer()
 	if err != nil {
+		log.Printf("Error building server")
 		server.err = err
 		return err
 	}

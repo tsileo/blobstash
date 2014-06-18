@@ -11,7 +11,9 @@ func TestClientDir(t *testing.T) {
 	s, err := test.NewTestServer()
 	check(err)
 	go s.Start()
-	s.TillReady()
+	if err := s.TillReady(); err != nil {
+		t.Fatalf("server error:\n%v", err)
+	}
 	defer s.Shutdown()
 	c, err := NewTestClient()
 	defer c.Close()
@@ -21,6 +23,16 @@ func TestClientDir(t *testing.T) {
 	defer os.RemoveAll(tdir)
 	meta, wr, err := c.PutDir(tdir)
 	check(err)
+
+	// Move this to test client
+	//hostname, err := os.Hostname()
+	//check(err)
+
+	//hosts, err := c.Hosts()
+	//check(err)
+	//if len(hosts) != 1 || hosts[0] != hostname {
+	//	t.Errorf("Hosts() should return [%v], got %q", hostname, hosts)
+	//}
 
 	rr, err := c.GetDir(meta.Hash, meta.Name+"_restored")
 	defer os.RemoveAll(meta.Name+"_restored")

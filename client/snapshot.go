@@ -1,87 +1,102 @@
 package client
 
 import (
+	"crypto/sha1"
+	"fmt"
+	"strconv"
+	"time"
+
 	"github.com/garyburd/redigo/redis"
 )
 
-// Returns a list of Backup, the latest for each filename/snapshot
-func (client *Client) Latest() (backups []*Backup, err error) {
-	//indexValueList
-	var _ []struct {
-		Index int
-		Value string
-	}
-	con := client.Pool.Get()
-	defer con.Close()
-	snapshots, err := client.SnapshotIter()
-	for _, snap := range snapshots {
-		// Get the latest backup for this backup/snapshot
-		key, kerr := redis.String(con.Do("LLAST", snap, "0", "\xff", 0))
-		if kerr != nil {
-			return backups, kerr
-		}
-		backup, berr := NewBackupFromDB(client.Pool, key)
-		if berr != nil {
-			return backups, berr
-		}
-		backups = append(backups, backup)
-	}
-	return
-
+type Snapshot struct {
+	Type string `redis:"type"`
+	Ref  string `redis:"ref"`
+	Ts   int64  `redis:"ts"`
+	Hostname string `redis:"hostname"`
+	Description string `redis:"description"`
+	Path string `redis:"path"`
+	Hash string `redis:"-"`
 }
 
-// SnapshotIter returns a slice of every snapshots keys.
-func (client *Client) SnapshotIter() (snapshots []string, err error) {
-	con := client.Pool.Get()
-	defer con.Close()
-	snapshots, err = redis.Strings(con.Do("SMEMBERS", "snapshots"))
-	return
+func NewSnapshot(bhostname, bpath, btype, bref string) (s *Snapshot) {
+	return &Snapshot{Path: bpath,
+		Type: btype,
+		Ref: bref,
+		Ts: time.Now().UTC().Unix(),
+		Hostname: bhostname}
 }
 
-// TODO(tsileo) add a LRU for snapshots queries
-
-type IndexMeta struct {
-	Index int
-	Meta  *Meta
-}
-
-func (client *Client) Snapshots(snapKey string) (ivs []*IndexMeta, err error) {
-	var indexValueList []struct {
-		Index int
-		Value string
-	}
-	con := client.Pool.Get()
+func NewSnapshotFromDB(pool *redis.Pool, key string) (s *Snapshot, err error) {
+	s = &Snapshot{}
+	con := pool.Get()
 	defer con.Close()
-	values, err := redis.Values(con.Do("LITER", snapKey, "WITH", "INDEX"))
+	reply, err := redis.Values(con.Do("HGETALL", key))
 	if err != nil {
-		return nil, err
+		return
 	}
-	redis.ScanSlice(values, &indexValueList)
-	for _, iv := range indexValueList {
-		backup, berr := NewBackupFromDB(client.Pool, iv.Value)
-		if berr != nil {
-			return nil, berr
-		}
-		meta := client.Metas.Get(backup.Ref).(*Meta)
-		//meta, merr := backup.Meta(client.Pool)
-		//if merr != nil {
-		//	return nil, merr
-		//}
-		ivs = append(ivs, &IndexMeta{iv.Index, meta})
-	}
+	err = redis.ScanStruct(reply, s)
+	s.computeHash()
 	return
 }
 
-// GetAt fetch the backup ref that match the given snapshot key/timestamp.
-func (client *Client) GetAt(snapKey string, ts int64) (string, error) {
-	con := client.Pool.Get()
+// computeHash compute and set the snapshot hash
+// computed as follow:
+// SHA1(hostname + path + timestamp)
+func (s *Snapshot) computeHash() {
+	hash := sha1.New()
+	hash.Write([]byte(s.Hostname))
+	hash.Write([]byte(s.Path))
+	hash.Write([]byte(strconv.Itoa(int(s.Ts))))
+	s.Hash = fmt.Sprintf("%x", hash.Sum(nil))
+}
+
+// snapshotKey compute the snapshot key
+// computed as follow:
+// SHA1(hostname + path)
+func backupKey(hostname, path string) string {
+	hash := sha1.New()
+	hash.Write([]byte(hostname))
+	hash.Write([]byte(path))
+	return fmt.Sprintf("%x", hash.Sum(nil))
+}
+
+// Save the backup to DB
+func (s *Snapshot) Save(pool *redis.Pool) (error) {
+	con := pool.Get()
 	defer con.Close()
-	backup, err := redis.String(con.Do("LPREV", snapKey, ts))
+	s.computeHash()
+	if _, err := redis.String(con.Do("TXINIT")); err != nil {
+		return err
+	}
+	_, err := con.Do("HMSET", s.Hash,
+					"path", s.Path,
+					"type", s.Type,
+					"ref", s.Ref,
+					"ts", s.Ts,
+					"hostname", s.Hostname)
 	if err != nil {
-		return "", err
+		return err
 	}
-	if backup != "" {
-		return redis.String(con.Do("HGET", backup, "ref"))
+	// Set/update the latest meta for this filename (snapshot)
+	snapKey := backupKey(s.Hostname, s.Path)
+	// Index the host
+	if _, err := con.Do("SADD", "_hosts", s.Hostname); err != nil {
+		return err
 	}
-	return "", nil
+	// Index the snapshot
+	if _, err := con.Do("SADD", fmt.Sprintf("_backups:%v", s.Hostname), snapKey); err != nil {
+		return err
+	}
+	if _, err := con.Do("LADD", snapKey, int(s.Ts), s.Hash); err != nil {
+		return err
+	}
+	// Trigger creation a meta blob by calling TXCOMMIT
+	_, err = con.Do("TXCOMMIT")
+	return err
+}
+
+// Meta fetch the associated Meta
+func (s *Snapshot) Meta(pool *redis.Pool) (m *Meta, err error) {
+	return NewMetaFromDB(pool, s.Ref)
 }
