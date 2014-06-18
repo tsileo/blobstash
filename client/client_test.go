@@ -63,6 +63,9 @@ func TestClient(t *testing.T) {
 		t.Errorf("backup.Last() expected %+v, got %+v", snap, snap2)
 	}
 
+	// t.Logf("Testing backup.GetAt(%v)", ts)
+	// TODO test backup.GetAt
+
 	//rr, err := c.GetDir(meta.Hash, meta.Name+"_restored")
 	//defer os.RemoveAll(meta.Name+"_restored")
 	//check(err)
