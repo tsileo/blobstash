@@ -58,7 +58,7 @@ type EncryptBackend struct {
 // At startup it scan encrypted blobs to discover the plain hash (the hash of the plain-text/unencrypted data).
 // Blobs are stored in the following format:
 //
-// #datadb/secretbox\n
+// #blobstash/secretbox\n
 // [plain hash]\n
 // [encrypted data]
 //
@@ -101,7 +101,7 @@ func (backend *EncryptBackend) String() string {
 }
 
 func (b *EncryptBackend) Put(hash string, rawData []byte) (err error) {
-	// #datadb/secretbox\n
+	// #blobstash/secretbox\n
 	// data hash\n
 	// data
 	var nonce [24]byte
@@ -115,7 +115,7 @@ func (b *EncryptBackend) Put(hash string, rawData []byte) (err error) {
 		return
 	}
 	var out bytes.Buffer
-	out.WriteString("#datadb/secretbox\n")
+	out.WriteString("#blobstash/secretbox\n")
 	out.WriteString(fmt.Sprintf("%v\n", hash))
 	encData := make([]byte, len(data)+secretbox.Overhead)
 	secretbox.Seal(encData[0:0], data, &nonce, b.key)
@@ -157,7 +157,7 @@ func scanHash(scanner *bufio.Scanner) (hash string, err error) {
 	if !scanner.Scan() {
 		return "", errors.New("No line to read")
 	}
-	if scanner.Text() != "#datadb/secretbox" {
+	if scanner.Text() != "#blobstash/secretbox" {
 		return "", errors.New("bad header")
 	}
 	if !scanner.Scan() {

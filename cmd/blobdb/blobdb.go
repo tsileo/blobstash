@@ -9,6 +9,7 @@ import (
 	"github.com/codegangsta/cli"
 
 	"github.com/tsileo/blobstash/config"
+	"github.com/tsileo/blobstash/backend"
 	"github.com/tsileo/blobstash/server"
 )
 
@@ -44,7 +45,12 @@ func start(config_path string) {
 	if !exists {
 		panic(fmt.Errorf("missing top-level key \"backends\" from config file"))
 	}
-	blobBackend := config.NewFromConfig(conf.GetPath("backends", "blobs"))
-	metaBackend := config.NewFromConfig(conf.GetPath("backends", "meta"))
-	server.New("127.0.0.1:9735", "./tmp_db", blobBackend, metaBackend, stop)
+	blobRouter, err := backend.NewRouterFromConfig(conf.Get("router"))
+	if err != nil {
+		panic(err)
+	}
+	for _, backendKey := range blobRouter.ResolveBackends() {
+		blobRouter.Backends[backendKey] = config.NewFromConfig(conf.GetPath("backends", backendKey))
+	}
+	server.New("127.0.0.1:9735", "./tmp_db", blobRouter,stop)
 }

@@ -71,6 +71,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"bytes"
 	"strconv"
 	"strings"
 	"sync"
@@ -79,15 +80,20 @@ import (
 	"github.com/tsileo/blobstash/db"
 )
 
+var (
+	MetaBlobHeader = "#blobstash/meta\n"
+	MetaBlobOverhead = len(MetaBlobHeader)
+)
+
 type TxManager struct {
 	Txs         map[string]*ReqBuffer
 	db          *db.DB
-	blobBackend backend.BlobHandler
+	blobBackend *backend.Router
 	sync.Mutex
 }
 
 type ReqBuffer struct {
-	blobBackend backend.BlobHandler
+	blobBackend *backend.Router
 	db          *db.DB
 	*sync.Mutex
 	reqCnt     int
@@ -102,7 +108,7 @@ type ReqArgs struct {
 }
 
 // NewTxManager initialize a new TxManager for the given db.
-func NewTxManager(cdb *db.DB, blobBackend backend.BlobHandler) *TxManager {
+func NewTxManager(cdb *db.DB, blobBackend *backend.Router) *TxManager {
 	return &TxManager{make(map[string]*ReqBuffer), cdb, blobBackend, sync.Mutex{}}
 }
 
@@ -120,13 +126,13 @@ func (txm *TxManager) GetReqBuffer(name string) *ReqBuffer {
 }
 
 // NewReqBuffer initialize a new ReqBuffer
-func NewReqBuffer(cdb *db.DB, blobBackend backend.BlobHandler) *ReqBuffer {
+func NewReqBuffer(cdb *db.DB, blobBackend *backend.Router) *ReqBuffer {
 	return &ReqBuffer{blobBackend, cdb, &sync.Mutex{}, 0, make(map[string][]*ReqArgs),
 		make(map[string]map[string]*ReqArgs)}
 }
 
 // NewReqBufferWithData is a wrapper around NewReqBuffer, it fills the buffer with the given data.
-func NewReqBufferWithData(cdb *db.DB, blobBackend backend.BlobHandler, data map[string][]*ReqArgs) *ReqBuffer {
+func NewReqBufferWithData(cdb *db.DB, blobBackend *backend.Router, data map[string][]*ReqArgs) *ReqBuffer {
 	rb := NewReqBuffer(cdb, blobBackend)
 	rb.Reqs = data
 	return rb
@@ -173,7 +179,7 @@ func (rb *ReqBuffer) Save() error {
 	h, d := rb.JSON()
 	go SendDebugData(fmt.Sprintf("server: meta blob:%v (len:%v) written\n", h, len(d)))
 	rb.Reset()
-	if err := rb.blobBackend.Put(h, d); err != nil {
+	if err := rb.blobBackend.MetaPut(h, d); err != nil {
 		return fmt.Errorf("Error putting blob: %v", err)
 	}
 	if _, err := rb.db.Sadd("_meta", h); err != nil {
@@ -188,22 +194,26 @@ func (rb *ReqBuffer) Load() error {
 	//rb.Lock()
 	//defer rb.Unlock()
 	hashes := make(chan string)
-	errs := make(chan error)
+	errc := make(chan error, 1)
 	go func() {
-		errs <- rb.blobBackend.Enumerate(hashes)
+		errc <- rb.blobBackend.MetaEnumerate(hashes)
 	}()
 	for hash := range hashes {
 		cnt := rb.db.Sismember("_meta", hash)
 		if cnt == 0 {
-			go SendDebugData(fmt.Sprintf("server: meta blob %v not yet loaded", hash))
-			data, berr := rb.blobBackend.Get(hash)
+			blob, berr := rb.blobBackend.MetaGet(hash)
 			if berr != nil {
 				return berr
 			}
+			if !bytes.Equal(blob[0:MetaBlobOverhead], []byte(MetaBlobHeader)) {
+				go SendDebugData(fmt.Sprintf("server: blob %v is not a valid meta blob, skipping", hash))
+				continue
+			}
+			go SendDebugData(fmt.Sprintf("server: meta blob %v not yet loaded", hash))
 
 			res := make(map[string][]*ReqArgs)
 
-			if err := json.Unmarshal(data, &res); err != nil {
+			if err := json.Unmarshal(blob[MetaBlobOverhead:], &res); err != nil {
 				return err
 			}
 
@@ -213,7 +223,7 @@ func (rb *ReqBuffer) Load() error {
 			go SendDebugData(fmt.Sprintf("server: meta blob %v applied", hash))
 		}
 	}
-	if err := <-errs; err != nil {
+	if err := <-errc; err != nil {
 		go SendDebugData(fmt.Sprintf("server: aborting scan, err:%v", err))
 		return err
 	}
@@ -223,9 +233,12 @@ func (rb *ReqBuffer) Load() error {
 
 // Dump the buffer as JSON.
 func (rb *ReqBuffer) JSON() (string, []byte) {
+	var blob bytes.Buffer
+	blob.WriteString(MetaBlobHeader)
 	data, _ := json.Marshal(rb.Reqs)
-	sha1 := SHA1(data)
-	return sha1, data
+	blob.Write(data)
+	sha1 := SHA1(blob.Bytes())
+	return sha1, blob.Bytes()
 }
 
 // Return the number of commands stored.

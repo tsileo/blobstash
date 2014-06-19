@@ -1,13 +1,13 @@
 /*
 
-Package daemon implements a cron using robfig/cron parser [1]
+Package scheduler implements a cron using robfig/cron parser [1]
 designed to perform snapshots.
 
-Configuration is "hot reloaded" so the daemon doesn't need to be restarted to load the new config.
+Configuration is "hot reloaded" so the scheduler doesn't need to be restarted to load the new config.
 
 It stores the last run time in a kv database [2].
 
-The daemon support an "anacron mode" [3] (intended for laptop users)
+The scheduler support an "anacron mode" [3] (intended for laptop users)
 where a job will be run if the delay has been exceeded (for simple recurring cycle
 like "@every 24h") of if the next schedule is over (for con-like spec,
 but the next schedule will follow the spec).
@@ -19,7 +19,7 @@ Links
 	[3]: http://anacron.sourceforge.net/
 
 */
-package daemon
+package scheduler
 
 import (
 	"fmt"

@@ -2,6 +2,8 @@ package backend
 
 import (
 	"testing"
+
+	"github.com/bitly/go-simplejson"
 )
 
 func check(err error) {
@@ -21,8 +23,10 @@ var testConfData1 = []struct{
 	req *Request
 	expectedBackend string
 }{
-	{NewReadRequest("tomt0m", "hashtoread", false), "customHandler"},
-	{NewReadRequest("tomt0m", "hashtoread", true), "customHandler2"},
+	{&Request{Read, false, "tomt0m"}, "customHandler"},
+	{&Request{Read, true, "tomt0m"}, "customHandler2"},
+	{&Request{Read, true, "homeserver"}, "metaHandler"},
+	{&Request{Read, false, "homeserver"}, "blobHandler"},
 }
 
 var testConf2 = `[
@@ -33,11 +37,13 @@ var testConfData2 = []struct{
 	req *Request
 	expectedBackend string
 }{
-	{NewReadRequest("tomt0m", "hashtoread", false), "blobHandler"},
+	{&Request{Read, false, "homeserver"}, "blobHandler"},
 }
 
 func TestRouter(t *testing.T) {
-	routerConfig, err := NewRouterFromConfig([]byte(testConf1))
+	tConf1, err := simplejson.NewJson([]byte(testConf1))
+	check(err)
+	routerConfig, err := NewRouterFromConfig(tConf1)
 	check(err)
 	for _, tdata := range testConfData1 {
 		backend := routerConfig.Route(tdata.req)
@@ -45,7 +51,9 @@ func TestRouter(t *testing.T) {
 			t.Errorf("Bad routing result for req %+v, expected:%v, got:%v", tdata.req, tdata.expectedBackend, backend)
 		}
 	}
-	routerConfig, err = NewRouterFromConfig([]byte(testConf2))
+	tConf2, err := simplejson.NewJson([]byte(testConf2))
+	check(err)
+	routerConfig, err = NewRouterFromConfig(tConf2)
 	check(err)
 	for _, tdata := range testConfData2 {
 		backend := routerConfig.Route(tdata.req)

@@ -1,4 +1,4 @@
-package daemon
+package scheduler
 
 import (
 	"encoding/json"

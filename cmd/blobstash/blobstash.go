@@ -7,7 +7,7 @@ import (
 	"github.com/codegangsta/cli"
 
 	"github.com/tsileo/blobstash/client"
-	"github.com/tsileo/blobstash/daemon"
+	"github.com/tsileo/blobstash/scheduler"
 	"github.com/tsileo/blobstash/fs"
 )
 
@@ -65,7 +65,7 @@ func main() {
 			Usage:     "Snapshot daemon",
 			Action: func(c *cli.Context) {
 				client, _ := client.NewClient(ignoredFiles)
-				d := daemon.New(client)
+				d := scheduler.New(client)
 				d.Run()
 			},
 		},
