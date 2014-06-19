@@ -40,6 +40,8 @@ Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com
 
 You can define rules to specify where blobs should be stored, depending on whether it's a meta blob or not, or depending on the host it come from.
 
+**Blobs are routed to the first matching rule backend, rules order is important.**
+
 ```json
 [
     [["if-host-tomt0m", "if-meta"], "customHandler2"],
