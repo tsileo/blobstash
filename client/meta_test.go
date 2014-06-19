@@ -15,7 +15,7 @@ func TestModelsMeta(t *testing.T) {
 		t.Fatalf("server error:\n%v", err)
 	}
 	defer s.Shutdown()
-	c, err := NewTestClient()
+	c, err := NewTestClient("")
 	check(err)
 	defer c.Close()
 	con := c.Pool.Get()

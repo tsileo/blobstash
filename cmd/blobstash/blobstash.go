@@ -25,7 +25,7 @@ func main() {
 			Name:      "put",
 			Usage:     "put a file/directory",
 			Action: func(c *cli.Context) {
-				client, _ := client.NewClient(ignoredFiles)
+				client, _ := client.NewClient("", ignoredFiles)
 				b, m, wr, err := client.Put(c.Args().First())
 				fmt.Printf("b:%+v,m:%+v,wr:%+v,err:%v\n", b, m, wr, err)
 			},
@@ -34,7 +34,7 @@ func main() {
 		//	Name:      "ls",
 		//	Usage:     "List backups",
 		//	Action: func(c *cli.Context) {
-		//		client, _ := client.NewClient(ignoredFiles)
+		//		client, _ := client.NewClient("", ignoredFiles)
 		//		metas, _ := client.List()
 		//		for _, m := range metas {
 		//			fmt.Printf("%+v\n", m)
@@ -45,7 +45,7 @@ func main() {
 			Name:      "restore",
 			Usage:     "Restore a snapshot",
 			Action: func(c *cli.Context) {
-				client, _ := client.NewClient(ignoredFiles)
+				client, _ := client.NewClient("", ignoredFiles)
 				args := c.Args()
 				snap, meta, rr, err := client.Get(args[0], args[1])
 				fmt.Printf("snap:%+v,meta:%+v,rr:%+v/err:%v", snap, meta, rr, err)
@@ -64,7 +64,7 @@ func main() {
 			Name:      "daemon",
 			Usage:     "Snapshot daemon",
 			Action: func(c *cli.Context) {
-				client, _ := client.NewClient(ignoredFiles)
+				client, _ := client.NewClient("", ignoredFiles)
 				d := scheduler.New(client)
 				d.Run()
 			},

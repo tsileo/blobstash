@@ -15,7 +15,7 @@ func TestClientDir(t *testing.T) {
 		t.Fatalf("server error:\n%v", err)
 	}
 	defer s.Shutdown()
-	c, err := NewTestClient()
+	c, err := NewTestClient("")
 	defer c.Close()
 	defer c.RemoveCache()
 	check(err)
@@ -55,7 +55,7 @@ func TestClientDirDeepRecursion(t *testing.T) {
 	}
 	defer s.Shutdown()
 
-	c, err := NewTestClient()
+	c, err := NewTestClient("")
 	check(err)
 	defer c.Close()
 	defer c.RemoveCache()

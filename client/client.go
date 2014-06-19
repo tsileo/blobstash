@@ -27,10 +27,13 @@ type Client struct {
 	ignoredFiles []string
 }
 
-func NewClient(ignoredFiles []string) (*Client, error) {
-	hostname, err := os.Hostname()
-	if err != nil {
-		return nil, err
+func NewClient(hostname string, ignoredFiles []string) (*Client, error) {
+	var err error
+	if hostname == "" {
+		hostname, err = os.Hostname()
+		if err != nil {
+			return nil, err
+		}
 	}
 	// TODO custom hostname
 	c := &Client{Hostname: hostname, uploaders: make(chan struct{}, uploaders),
@@ -76,10 +79,13 @@ func (client *Client) SetupPool() error {
 	return nil
 }
 
-func NewTestClient() (*Client, error) {
-	hostname, err := os.Hostname()
-	if err != nil {
-		return nil, err
+func NewTestClient(hostname string) (*Client, error) {
+	var err error
+	if hostname == "" {
+		hostname, err = os.Hostname()
+		if err != nil {
+			return nil, err
+		}
 	}
 	c := &Client{Hostname: hostname,
 		uploaders: make(chan struct{}, uploaders),

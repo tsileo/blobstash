@@ -81,7 +81,7 @@ type FS struct {
 func NewFS() (fs *FS) {
 	// Override supported time format
 	now.TimeFormats = []string{"2006-1-2T15:4:5", "2006-1-2T15:4", "2006-1-2T15", "2006-1-2", "2006-1", "2006"}
-	blobClient, _ = client.NewClient([]string{})
+	blobClient, _ = client.NewClient("", []string{})
 	fs = &FS{Client: blobClient}
 	return
 }

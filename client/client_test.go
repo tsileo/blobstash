@@ -17,7 +17,7 @@ func TestClient(t *testing.T) {
 	}
 	defer s.Shutdown()
 
-	c, err := NewTestClient()
+	c, err := NewTestClient("")
 	defer c.Close()
 	defer c.RemoveCache()
 	check(err)

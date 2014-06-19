@@ -447,10 +447,13 @@ func New(addr, dbpath string, blobRouter *backend.Router, stop chan bool) {
 		sha := SHA1(blob)
 		err = BlobRouter.Put(&backend.Request{Host: ctx.Hostname, MetaBlob: true}, sha, blob)
 		if err != nil {
-			log.Printf("server: Error BPUT:%v\nBlob %v:%v", err, sha, blob)
+			log.Printf("server: Error MBPUT:%v\nBlob %v:%v", err, sha, blob)
 			return ErrSomethingWentWrong
 		}
-		// TODO try to apply it
+		if err := req.Client().Ctx.(*ServerCtx).GetReqBuffer("").LoadIncomingBlob(ctx.Hostname, sha, blob); err != nil {
+			log.Printf("server: Error MBPUT:%v\nBlob %v:%v", err, sha, string(blob))
+			return ErrSomethingWentWrong
+		}
 		out.WriteString(sha)
 		return nil
 	})

@@ -184,6 +184,30 @@ func (rb *ReqBuffer) Save(hostname string) error {
 	return nil
 }
 
+// LoadIncomingBlob try to decode/load and apply a ReqBuffer from the raw blob
+func (rb *ReqBuffer) LoadIncomingBlob(hostname, hash string, blob []byte) error {
+	go SendDebugData(fmt.Sprintf("server: load incoming blob from %v", hostname))
+	cnt := rb.db.Sismember("_meta", hash)
+	if cnt == 0 {
+		if !bytes.Equal(blob[0:MetaBlobOverhead], []byte(MetaBlobHeader)) {
+			return fmt.Errorf("blob %v from %v is not a valid meta blob", hash, hostname)
+		}
+		go SendDebugData(fmt.Sprintf("server: meta blob %v not yet loaded", hash))
+
+		res := make(map[string][]*ReqArgs)
+
+		if err := json.Unmarshal(blob[MetaBlobOverhead:], &res); err != nil {
+			return err
+		}
+
+		if err := NewReqBufferWithData(rb.db, rb.blobBackend, res).Apply(); err != nil {
+			return err
+		}
+		go SendDebugData(fmt.Sprintf("server: meta blob %v applied", hash))
+	}
+	return nil
+}
+
 // Enumerate every meta blobs filename and check if the data is already indexed.
 func (rb *ReqBuffer) Load(hostname string) error {
 	go SendDebugData("server: scanning meta blobs")
