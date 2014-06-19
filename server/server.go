@@ -21,6 +21,7 @@ import (
 	"github.com/bsm/redeo"
 
 	"github.com/tsileo/blobstash/backend"
+	"github.com/tsileo/blobstash/pubsub"
 	"github.com/tsileo/blobstash/db"
 )
 
@@ -130,6 +131,7 @@ func NewID() string {
 }
 
 func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan bool) {
+	glacierPubSub := pubsub.NewPubSub("glacier")
 	log.Println("server: starting...")
 	BlobRouter = blobRouter
 	SetupDB(dbpath)
@@ -140,6 +142,24 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 	})
 	srv.HandleFunc("now", func(out *redeo.Responder, _ *redeo.Request) error {
 		out.WriteInlineString(strconv.Itoa(int(time.Now().UTC().Unix())))
+		return nil
+	})
+
+	srv.HandleFunc("signal", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 2)
+		if err != nil {
+			return err
+		}
+		channel := req.Args[0]
+		switch {
+		case channel == "glacier":
+			glacierPubSub.Publish(req.Args[1])
+		default:
+			log.Printf("server: invalid channel %v", channel)
+			return ErrSomethingWentWrong
+		}
+		out.WriteOK()
 		return nil
 	})
 	//srv.HandleFunc("select", func(out *redeo.Responder, req *redeo.Request) error {
