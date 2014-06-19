@@ -1,24 +1,12 @@
 {
     "backends": {
         "blobs": {
-            "backend-type": "mirror",
-            "backend-args": {
-                "backends": [
-                    {
-                        "backend-type": "blobsfile",
-                        "backend-args": {
-                            "path": "blobdb_blobs",
-                            "compression": true
-                        }
-                    }
-                ]
-            }
-        },
-        "meta": {
             "backend-type": "blobsfile",
             "backend-args": {
-                "path": "blobdb_meta"
+                "path": "blobdb_blobs",
+                "compression": true
             }
         }
-    }
+    },
+    "router": [["default", "blobs"]]
 }
