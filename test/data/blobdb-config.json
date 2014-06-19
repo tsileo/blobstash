@@ -6,7 +6,17 @@
                 "path": "blobdb_blobs",
                 "compression": true
             }
+        },
+        "blobs2": {
+            "backend-type": "blobsfile",
+            "backend-args": {
+                "path": "blobdb_blobs_2",
+                "compression": true
+            }
         }
     },
-    "router": [["default", "blobs"]]
+    "router": [
+        ["if-host-tomt0m2", "blobs2"],
+        ["default", "blobs"]
+    ]
 }

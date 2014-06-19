@@ -8,6 +8,47 @@ import (
 	"github.com/tsileo/blobstash/test"
 )
 
+func TestMultipleClientDifferentHosts(t *testing.T) {
+	s, err := test.NewTestServer(t)
+	check(err)
+	go s.Start()
+	if err := s.TillReady(); err != nil {
+		t.Fatalf("server error:\n%v", err)
+	}
+	defer s.Shutdown()
+	c, err := NewTestClient("")
+	t.Logf("Testing with host=%v", c.Hostname)
+	defer c.Close()
+	defer c.RemoveCache()
+	check(err)
+	tdir := test.NewRandomTree(t, ".", 1)
+	defer os.RemoveAll(tdir)
+	snap, meta, wr, err := c.Put(tdir)
+	check(err)
+	_, _, rr, err := c.Get(snap.Hash, meta.Name+"_restored")
+	defer os.RemoveAll(meta.Name+"_restored")
+	check(err)
+	if !MatchResult(wr, rr) {
+		t.Errorf("Directory %+v not restored successfully, wr:%+v/rr:%+v", meta, wr, rr)
+	}
+	check(test.Diff(tdir, meta.Name+"_restored"))
+
+	t.Logf("Testing with host=tomt0m2")
+
+	c2, err := NewTestClient("tomt0m2")
+	defer c2.Close()
+	defer c2.RemoveCache()
+	check(err)
+	tdir2 := test.NewRandomTree(t, ".", 1)
+	defer os.RemoveAll(tdir2)
+	snap, meta, _, err = c2.Put(tdir2)
+	check(err)
+	_, _, _, err = c2.Get(snap.Hash, meta.Name+"_restored")
+	defer os.RemoveAll(meta.Name+"_restored")
+	check(err)
+	check(test.Diff(tdir2, meta.Name+"_restored"))
+}
+
 func TestClient(t *testing.T) {
 	s, err := test.NewTestServer(t)
 	check(err)
