@@ -73,7 +73,6 @@ import (
 	"fmt"
 	"bytes"
 	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/tsileo/blobstash/backend"
@@ -149,9 +148,6 @@ func (rb *ReqBuffer) Reset() {
 
 // Add a server request to the Buffer, requests are factorized to reduce blob size.
 func (rb *ReqBuffer) Add(reqType, reqKey string, reqArgs []string) (err error) {
-	if strings.HasPrefix(reqKey, "_") {
-		return
-	}
 	rb.Lock()
 	defer rb.Unlock()
 	rb.reqCnt++

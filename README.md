@@ -16,6 +16,8 @@ BlobStash is a snapshot-based backup system, designed to provide "time machine" 
 - Take snapshot automatically every x minutes, using a separate client-side daemon (provides Arq/time machine like backup)
 - Possibility to incrementally archive blobs to AWS Glacier (with a recovery command-line tool)
 - Strong test suite (unit tests + integration tests)
+- Support for backing-up multiple hosts (you can force a different host to split backups into "different buckets")
+- Backed routing, you can define rules to specify where blobs should be stored ("if-meta", "if-host-myhost"...)
 
 Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com/bup/bup) (files are split into multiple blobs using a rolling checksum).
 
@@ -34,9 +36,40 @@ Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com
 - A remote BlobDB instance? (not started yet)
 - Submit a pull request!
 
+##### Router
+
+You can define rules to specify where blobs should be stored, depending on whether it's a meta blob or not, or depending on the host it come from.
+
+```json
+[
+    [
+        ["if-host-tomt0m", "if-meta"], "customHandler2"
+    ],
+    [
+        "if-host-tomt0m", "customHandler"
+    ],
+    [
+        "if-meta", "metaHandler"
+    ],
+    [
+        "default", "blobHandler"
+    ]
+]
+```
+
+The minimal router config is:
+
+```json
+[
+    [
+        "default", "blobHandler"
+    ]
+]
+```
+
 ### Fuse file system
 
-The most convenient way to restore/navigate snapshots is the FUSE file system.
+**BlobFS** is the most convenient way to restore/navigate snapshots is the FUSE file system.
 
 There is three magic directories at the root:
 
@@ -61,6 +94,8 @@ $ ls /backups/at/writing/2014-05-12
 file1  file2  file3
 ```
 ### Command-line client
+
+**blobstash** is the command-line client to perform/restore snapshots/backups.
 
 ### Backup scheduler
 

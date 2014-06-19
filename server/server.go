@@ -74,7 +74,7 @@ func SetUpCtx(req *redeo.Request) {
 
 	// Send raw cmd over SSE
 	var mCmd string
-	if !strings.HasPrefix(reqName, "b") {
+	if !strings.HasPrefix(reqName, "b") &&  !strings.HasPrefix(reqName, "mb") {
 		mCmd = fmt.Sprintf("%+v command  with args %+v from client: %v", req.Name, req.Args, client)
 	} else {
 		switch {
@@ -384,6 +384,8 @@ func New(addr, dbpath string, blobRouter *backend.Router, stop chan bool) {
 		}
 		return nil
 	})
+
+	// Blob related commands
 	srv.HandleFunc("bput", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 1)
@@ -429,6 +431,54 @@ func New(addr, dbpath string, blobRouter *backend.Router, stop chan bool) {
 		return nil
 	})
 
+	// Meta blob related commands
+	srv.HandleFunc("mbput", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 1)
+		if err != nil {
+			return err
+		}
+		blob := []byte(req.Args[0])
+		sha := SHA1(blob)
+		err = BlobRouter.MetaPut(sha, blob)
+		if err != nil {
+			log.Printf("server: Error BPUT:%v\nBlob %v:%v", err, sha, blob)
+			return ErrSomethingWentWrong
+		}
+		// TODO try to apply it
+		out.WriteString(sha)
+		return nil
+	})
+	srv.HandleFunc("mbget", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 1)
+		if err != nil {
+			return err
+		}
+		blob, err := BlobRouter.MetaGet(req.Args[0])
+		if err != nil {
+			log.Printf("Error bget %v: %v", req.Args[0], err)
+			return ErrSomethingWentWrong
+		}
+		out.WriteString(string(blob))
+		return nil
+	})
+	srv.HandleFunc("mbexists", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 1)
+		if err != nil {
+			return err
+		}
+		exists := BlobRouter.MetaExists(req.Args[0])
+		res := 0
+		if exists {
+			res = 1
+		}
+		out.WriteInt(res)
+		return nil
+	})
+
+	// List related command
 	srv.HandleFunc("llen", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 1)
