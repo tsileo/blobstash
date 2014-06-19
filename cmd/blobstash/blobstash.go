@@ -14,6 +14,9 @@ import (
 func main() {
 	ignoredFiles := []string{"*~", "*.py[cod]", "nohup.out", "*.log", "tmp_*"}
 	app := cli.NewApp()
+	commonFlags := []cli.Flag{
+  		cli.StringFlag{"host", "", "override the real hostname"},
+	}
 	app.Name = "blobstash"
 	app.Usage = "BlobStash command-line tool"
 	app.Version = "0.1.0"
@@ -24,8 +27,9 @@ func main() {
 		{
 			Name:      "put",
 			Usage:     "put a file/directory",
+			Flags:     commonFlags,
 			Action: func(c *cli.Context) {
-				client, _ := client.NewClient("", ignoredFiles)
+				client, _ := client.NewClient(c.String("host"), ignoredFiles)
 				b, m, wr, err := client.Put(c.Args().First())
 				fmt.Printf("b:%+v,m:%+v,wr:%+v,err:%v\n", b, m, wr, err)
 			},
@@ -61,10 +65,12 @@ func main() {
 			},
 		},
 		{
-			Name:      "daemon",
-			Usage:     "Snapshot daemon",
+			Name:      "scheduler",
+			ShortName: "sched",
+			Usage:     "Start the backup scheduler",
+			Flags:     commonFlags,
 			Action: func(c *cli.Context) {
-				client, _ := client.NewClient("", ignoredFiles)
+				client, _ := client.NewClient(c.String("host"), ignoredFiles)
 				d := scheduler.New(client)
 				d.Run()
 			},

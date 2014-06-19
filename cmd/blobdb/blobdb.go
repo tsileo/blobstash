@@ -52,5 +52,5 @@ func start(config_path string) {
 	for _, backendKey := range blobRouter.ResolveBackends() {
 		blobRouter.Backends[backendKey] = config.NewFromConfig(conf.GetPath("backends", backendKey))
 	}
-	server.New("127.0.0.1:9735", "./tmp_db", blobRouter,stop)
+	server.New(conf.Get("addr").MustString(":9735"), conf.Get("web-addr").MustString(":9736"), conf.MustString("blobdb_db"), blobRouter,stop)
 }

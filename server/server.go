@@ -129,7 +129,7 @@ func NewID() string {
 	return SHA1(data)
 }
 
-func New(addr, dbpath string, blobRouter *backend.Router, stop chan bool) {
+func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan bool) {
 	log.Println("server: starting...")
 	BlobRouter = blobRouter
 	SetupDB(dbpath)
@@ -706,10 +706,10 @@ func New(addr, dbpath string, blobRouter *backend.Router, stop chan bool) {
 		return nil
 	})
 	serverStartedAtVar.Set(time.Now().UTC().Format(time.RFC822Z))
-	log.Printf("server: http server listening on http://0.0.0.0:9737")
+	log.Printf("server: http server listening on http://%v", webAddr)
 	http.HandleFunc("/", handler)
 	http.HandleFunc("/debug/monitor", monitor)
-	go http.ListenAndServe("0.0.0.0:9737", nil)
+	go http.ListenAndServe(webAddr, nil)
 
 	log.Printf("server: listening on tcp://%s", srv.Addr())
 	//log.Fatal(srv.ListenAndServe())
