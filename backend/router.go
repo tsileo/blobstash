@@ -8,14 +8,14 @@ import (
 )
 
 const (
-	Read byte = iota
+	Read int = iota
 	Write
 )
 
 // Request is used for Put/Get operations
 type Request struct {
 	// The following fields are used for routing
-	Type byte // Whether this is a Put/Read/Exists request
+	Type int // Whether this is a Put/Read/Exists request
 	MetaBlob bool // Whether the blob is a meta blob
 	Host string
 }
@@ -51,10 +51,8 @@ func (router *Router) ResolveBackends() []string {
 
 // TODO a way to set host
 
-func (router *Router) put(metaBlob bool, hash string, data []byte) error {
-	req := &Request{Host: router.Host,
-		Type: Write,
-		MetaBlob: metaBlob}
+func (router *Router) Put(req *Request, hash string, data []byte) error {
+	req.Type = Write
 	key := router.Route(req)
 	backend, exists := router.Backends[key]
 	if !exists {
@@ -63,18 +61,8 @@ func (router *Router) put(metaBlob bool, hash string, data []byte) error {
 	return backend.Put(hash, data)
 }
 
-func (router *Router) Put(hash string, data []byte) error {
-	return router.put(false, hash, data)
-}
-
-func (router *Router) MetaPut(hash string, data []byte) error {
-	return router.put(true, hash, data)
-}
-
-func (router *Router) exists(metaBlob bool, hash string) bool {
-	req := &Request{Host: router.Host,
-		Type: Read,
-		MetaBlob: metaBlob}
+func (router *Router) Exists(req *Request, hash string) bool {
+	req.Type = Read
 	key := router.Route(req)
 	backend, exists := router.Backends[key]
 	if !exists {
@@ -83,18 +71,8 @@ func (router *Router) exists(metaBlob bool, hash string) bool {
 	return backend.Exists(hash)
 }
 
-func (router *Router) Exists(hash string) bool {
-	return router.exists(false, hash)
-}
-
-func (router *Router) MetaExists(hash string) bool {
-	return router.exists(true, hash)
-}
-
-func (router *Router) get(metaBlob bool, hash string) (data []byte, err error) {
-	req := &Request{Host: router.Host,
-		Type: Read,
-		MetaBlob: metaBlob}
+func (router *Router) Get(req *Request, hash string) (data []byte, err error) {
+	req.Type = Read
 	key := router.Route(req)
 	backend, exists := router.Backends[key]
 	if !exists {
@@ -103,32 +81,14 @@ func (router *Router) get(metaBlob bool, hash string) (data []byte, err error) {
 	return backend.Get(hash)
 }
 
-func (router *Router) Get(hash string) (data []byte, err error) {
-	return router.get(false, hash)
-}
-
-func (router *Router) MetaGet(hash string) (data []byte, err error) {
-	return router.get(true, hash)
-}
-
-func (router *Router) enumerate(metaBlob bool, res chan<- string) error {
-	req := &Request{Host: router.Host,
-		Type: Read,
-		MetaBlob: metaBlob}
+func (router *Router) Enumerate(req *Request, res chan<- string) error {
+	req.Type = Read
 	key := router.Route(req)
 	backend, exists := router.Backends[key]
 	if !exists {
 		panic(fmt.Errorf("backend %v is not registered", key))
 	}
 	return backend.Enumerate(res)
-}
-
-func (router *Router) Enumerate(res chan<- string) error {
-	return router.enumerate(false, res)
-}
-
-func (router *Router) MetaEnumerate(res chan<- string) error {
-	return router.enumerate(true, res)
 }
 
 func (router *Router) Close() {

@@ -21,14 +21,15 @@ func TestModelsSnapshots(t *testing.T) {
 		t.Fatalf("server error:\n%v", err)
 	}
 	defer s.Shutdown()
-	pool, err := GetDbPool()
+	c, err := NewTestClient()
 	check(err)
+	defer c.Close()
 	// NewSnapshot(hostname, path, type, ref)
 	f := NewSnapshot("hostname", "foo", "file", "bar")
-	err = f.Save(pool)
+	err = f.Save(c.Pool)
 	check(err)
 
-	f2, err := NewSnapshotFromDB(pool, f.Hash)
+	f2, err := NewSnapshotFromDB(c.Pool, f.Hash)
 	check(err)
 	if !reflect.DeepEqual(f, f2) {
 		t.Errorf("Error retrieving file from DB, expected %+v, get %+v", f, f2)

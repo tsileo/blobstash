@@ -15,28 +15,10 @@ var (
 	dirUploaders = 25 // concurrent directory uploaders
 )
 
-func GetDbPool() (pool *redis.Pool, err error) {
-	pool = &redis.Pool{
-		MaxIdle:     250,
-		MaxActive:   250,
-		IdleTimeout: 240 * time.Second,
-		Dial: func() (redis.Conn, error) {
-			c, err := redis.Dial("tcp", "localhost:9735")
-			if err != nil {
-				return nil, err
-			}
-			return c, err
-		},
-		TestOnBorrow: func(c redis.Conn, t time.Time) error {
-			_, err := c.Do("PING")
-			return err
-		},
-	}
-	return
-}
 
 type Client struct {
 	Pool         *redis.Pool
+	Hostname string
 	Blobs        BlobFetcher
 	Dirs         DirFetcher
 	Metas        MetaFetcher
@@ -46,12 +28,16 @@ type Client struct {
 }
 
 func NewClient(ignoredFiles []string) (*Client, error) {
-	pool, err := GetDbPool()
+	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, err
 	}
-	c := &Client{Pool: pool, uploaders: make(chan struct{}, uploaders),
+	// TODO custom hostname
+	c := &Client{Hostname: hostname, uploaders: make(chan struct{}, uploaders),
 		dirUploaders: make(chan struct{}, dirUploaders)}
+	if err := c.SetupPool(); err != nil {
+		return nil, err
+	}
 	c.Blobs, err = disklru.New("./tmp_blobs_lru", c.FetchBlob, 536870912)
 	c.Dirs = lru.New(c.FetchDir, 512)
 	c.Metas = lru.New(c.FetchMeta, 512)
@@ -65,16 +51,39 @@ func NewClient(ignoredFiles []string) (*Client, error) {
 	return c, err
 }
 
-func NewTestClient() (*Client, error) {
-	pool, err := GetDbPool()
-	if err != nil {
-		return nil, err
+
+func (client *Client) SetupPool() error {
+	client.Pool = &redis.Pool{
+		MaxIdle:     250,
+		MaxActive:   250,
+		IdleTimeout: 240 * time.Second,
+		Dial: func() (redis.Conn, error) {
+			c, err := redis.Dial("tcp", "localhost:9735")
+			if err != nil {
+				return nil, err
+			}
+			_, err = c.Do("HOSTNAME", client.Hostname)
+			return c, err
+		},
+		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			_, err := c.Do("PING")
+			if err != nil {
+				return err
+			}
+			return err
+		},
 	}
-	c := &Client{Pool: pool, uploaders: make(chan struct{}, uploaders),
+	return nil
+}
+
+func NewTestClient() (*Client, error) {
+	var err error
+	c := &Client{uploaders: make(chan struct{}, uploaders),
 		dirUploaders: make(chan struct{}, dirUploaders)}
 	c.Blobs, err = disklru.NewTest(c.FetchBlob, 536870912)
 	c.Dirs = lru.New(c.FetchDir, 512)
 	c.Metas = lru.New(c.FetchMeta, 512)
+	c.SetupPool()
 	return c, err
 }
 

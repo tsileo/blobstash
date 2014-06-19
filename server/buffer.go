@@ -168,14 +168,14 @@ func (rb *ReqBuffer) Add(reqType, reqKey string, reqArgs []string) (err error) {
 }
 
 // Put the blob to Meta BlobHandler.
-func (rb *ReqBuffer) Save() error {
+func (rb *ReqBuffer) Save(hostname string) error {
 	if rb.reqCnt == 0 {
 		return nil
 	}
 	h, d := rb.JSON()
 	go SendDebugData(fmt.Sprintf("server: meta blob:%v (len:%v) written\n", h, len(d)))
 	rb.Reset()
-	if err := rb.blobBackend.MetaPut(h, d); err != nil {
+	if err := rb.blobBackend.Put(&backend.Request{Host: hostname, MetaBlob: true}, h, d); err != nil {
 		return fmt.Errorf("Error putting blob: %v", err)
 	}
 	if _, err := rb.db.Sadd("_meta", h); err != nil {
@@ -185,19 +185,19 @@ func (rb *ReqBuffer) Save() error {
 }
 
 // Enumerate every meta blobs filename and check if the data is already indexed.
-func (rb *ReqBuffer) Load() error {
+func (rb *ReqBuffer) Load(hostname string) error {
 	go SendDebugData("server: scanning meta blobs")
 	//rb.Lock()
 	//defer rb.Unlock()
 	hashes := make(chan string)
 	errc := make(chan error, 1)
 	go func() {
-		errc <- rb.blobBackend.MetaEnumerate(hashes)
+		errc <- rb.blobBackend.Enumerate(&backend.Request{Host: hostname, MetaBlob: true}, hashes)
 	}()
 	for hash := range hashes {
 		cnt := rb.db.Sismember("_meta", hash)
 		if cnt == 0 {
-			blob, berr := rb.blobBackend.MetaGet(hash)
+			blob, berr := rb.blobBackend.Get(&backend.Request{Host: hostname, MetaBlob: true}, hash)
 			if berr != nil {
 				return berr
 			}

@@ -44,6 +44,7 @@ var (
 
 type ServerCtx struct {
 	TxID string
+	Hostname string
 	TxManager *TxManager
 }
 //	dbm.TxManagers[dbname] = NewTxManager(newdb, dbm.metaBackend)
@@ -67,7 +68,7 @@ func SetUpCtx(req *redeo.Request) {
 	if req.Client().Ctx == nil {
 		totalConnectionsReceivedVar.Add(1)
 		log.Printf("server: new connection from %+v", client)
-		req.Client().Ctx = &ServerCtx{"", NewTxManager(DB, BlobRouter)}
+		req.Client().Ctx = &ServerCtx{"", "", NewTxManager(DB, BlobRouter)}
 	}
 
 	commandStatsVar.Add(req.Name, 1)
@@ -388,13 +389,14 @@ func New(addr, dbpath string, blobRouter *backend.Router, stop chan bool) {
 	// Blob related commands
 	srv.HandleFunc("bput", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
+		ctx := req.Client().Ctx.(*ServerCtx)
 		err := CheckArgs(req, 1)
 		if err != nil {
 			return err
 		}
 		blob := []byte(req.Args[0])
 		sha := SHA1(blob)
-		err = BlobRouter.Put(sha, blob)
+		err = BlobRouter.Put(&backend.Request{Host: ctx.Hostname, MetaBlob: false}, sha, blob)
 		if err != nil {
 			log.Printf("server: Error BPUT:%v\nBlob %v:%v", err, sha, blob)
 			return ErrSomethingWentWrong
@@ -404,11 +406,12 @@ func New(addr, dbpath string, blobRouter *backend.Router, stop chan bool) {
 	})
 	srv.HandleFunc("bget", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
+		ctx := req.Client().Ctx.(*ServerCtx)
 		err := CheckArgs(req, 1)
 		if err != nil {
 			return err
 		}
-		blob, err := BlobRouter.Get(req.Args[0])
+		blob, err := BlobRouter.Get(&backend.Request{Host: ctx.Hostname, MetaBlob: false}, req.Args[0])
 		if err != nil {
 			log.Printf("Error bget %v: %v", req.Args[0], err)
 			return ErrSomethingWentWrong
@@ -418,11 +421,12 @@ func New(addr, dbpath string, blobRouter *backend.Router, stop chan bool) {
 	})
 	srv.HandleFunc("bexists", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
+		ctx := req.Client().Ctx.(*ServerCtx)
 		err := CheckArgs(req, 1)
 		if err != nil {
 			return err
 		}
-		exists := BlobRouter.Exists(req.Args[0])
+		exists := BlobRouter.Exists(&backend.Request{Host: ctx.Hostname, MetaBlob: false}, req.Args[0])
 		res := 0
 		if exists {
 			res = 1
@@ -434,13 +438,14 @@ func New(addr, dbpath string, blobRouter *backend.Router, stop chan bool) {
 	// Meta blob related commands
 	srv.HandleFunc("mbput", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
+		ctx := req.Client().Ctx.(*ServerCtx)
 		err := CheckArgs(req, 1)
 		if err != nil {
 			return err
 		}
 		blob := []byte(req.Args[0])
 		sha := SHA1(blob)
-		err = BlobRouter.MetaPut(sha, blob)
+		err = BlobRouter.Put(&backend.Request{Host: ctx.Hostname, MetaBlob: true}, sha, blob)
 		if err != nil {
 			log.Printf("server: Error BPUT:%v\nBlob %v:%v", err, sha, blob)
 			return ErrSomethingWentWrong
@@ -451,11 +456,12 @@ func New(addr, dbpath string, blobRouter *backend.Router, stop chan bool) {
 	})
 	srv.HandleFunc("mbget", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
+		ctx := req.Client().Ctx.(*ServerCtx)
 		err := CheckArgs(req, 1)
 		if err != nil {
 			return err
 		}
-		blob, err := BlobRouter.MetaGet(req.Args[0])
+		blob, err := BlobRouter.Get(&backend.Request{Host: ctx.Hostname, MetaBlob: true}, req.Args[0])
 		if err != nil {
 			log.Printf("Error bget %v: %v", req.Args[0], err)
 			return ErrSomethingWentWrong
@@ -465,11 +471,12 @@ func New(addr, dbpath string, blobRouter *backend.Router, stop chan bool) {
 	})
 	srv.HandleFunc("mbexists", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
+		ctx := req.Client().Ctx.(*ServerCtx)
 		err := CheckArgs(req, 1)
 		if err != nil {
 			return err
 		}
-		exists := BlobRouter.MetaExists(req.Args[0])
+		exists := BlobRouter.Exists(&backend.Request{Host: ctx.Hostname, MetaBlob: true}, req.Args[0])
 		res := 0
 		if exists {
 			res = 1
@@ -615,7 +622,8 @@ func New(addr, dbpath string, blobRouter *backend.Router, stop chan bool) {
 			return err
 		}
 		txID := req.Client().Ctx.(*ServerCtx).TxID
-		if err := req.Client().Ctx.(*ServerCtx).GetReqBuffer(txID).Load(); err != nil {
+		hostname := req.Client().Ctx.(*ServerCtx).Hostname
+		if err := req.Client().Ctx.(*ServerCtx).GetReqBuffer(txID).Load(hostname); err != nil {
 			return ErrSomethingWentWrong
 		}
 		out.WriteOK()
@@ -661,12 +669,23 @@ func New(addr, dbpath string, blobRouter *backend.Router, stop chan bool) {
 			return err
 		}
 		txID := req.Client().Ctx.(*ServerCtx).TxID
+		hostname := req.Client().Ctx.(*ServerCtx).Hostname
 		rb := req.Client().Ctx.(*ServerCtx).GetReqBuffer(txID)
-		err = rb.Save()
+		err = rb.Save(hostname)
 		if err != nil {
 			log.Printf("server: TXCOMMIT error %v/%v", err, txID)
 			return ErrSomethingWentWrong
 		}
+		out.WriteOK()
+		return nil
+	})
+	srv.HandleFunc("hostname", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 1)
+		if err != nil {
+			return err
+		}
+		req.Client().Ctx.(*ServerCtx).Hostname = req.Args[0]
 		out.WriteOK()
 		return nil
 	})
