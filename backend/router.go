@@ -2,10 +2,18 @@ package backend
 
 import (
 	"fmt"
+	"time"
 	"strings"
 
 	"github.com/bitly/go-simplejson"
+	"github.com/bitly/go-notify"
 )
+
+
+func SendDebugData(data string) {
+	cmd := fmt.Sprintf("%v: %v", time.Now().UTC().Format(time.RFC3339), data)
+	notify.Post("monitor_cmd", cmd)
+}
 
 const (
 	Read int = iota
@@ -26,9 +34,6 @@ func (req *Request) String() string {
 
 type Router struct {
 	Rules []*simplejson.Json
-
-	Host string // Host used for rules checking
-
 	Backends map[string]BlobHandler
 }
 
@@ -128,6 +133,7 @@ func (router *Router) Route(req *Request) string {
 			backend := basicRule[1].(string)
 			rule := basicRule[0].(string)
 			if checkRule(rule, req) {
+				SendDebugData(fmt.Sprintf("routed blob req %v to %v", req, backend))
 				return backend
 			}
 		} else {
@@ -143,10 +149,12 @@ func (router *Router) Route(req *Request) string {
 				}
 			}
 			if match {
+				SendDebugData(fmt.Sprintf("routed blob req %v to %v", req, backend))
 				return backend
 			}
 		}
 	}
+	SendDebugData(fmt.Sprintf("router failed to route blob req %v", req))
 	return ""
 }
 

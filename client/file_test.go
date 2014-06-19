@@ -33,7 +33,7 @@ func TestClientFile(t *testing.T) {
 	}
 
 	rfile2 := fmt.Sprintf("%v%v", rfile, "_restored")
-	rr, err := c.GetFile(m.Hash, rfile2)
+	rr, err := c.GetFile(c.Hostname, m.Hash, rfile2)
 	check(err)
 
 	h2 := FullSHA1(rfile2)
@@ -53,7 +53,7 @@ func TestClientFile(t *testing.T) {
 	_, rw, err := c.PutFile(helloPath)
 	check(err)
 	t.Logf("fileput hash: %v", rw.Hash)
-	fakeFile := NewFakeFile(c, rw.Hash, rw.Size)
+	fakeFile := NewFakeFile(c, c.Hostname, rw.Hash, rw.Size)
 	fkr, err := fakeFile.read(0, 5)
 	check(err)
 	if !bytes.Equal(fkr, []byte("hello")) {

@@ -34,7 +34,7 @@ func TestClientDir(t *testing.T) {
 	//	t.Errorf("Hosts() should return [%v], got %q", hostname, hosts)
 	//}
 
-	rr, err := c.GetDir(meta.Hash, meta.Name+"_restored")
+	rr, err := c.GetDir(c.Hostname, meta.Hash, meta.Name+"_restored")
 	defer os.RemoveAll(meta.Name+"_restored")
 	check(err)
 	if !MatchResult(wr, rr) {
@@ -64,7 +64,7 @@ func TestClientDirDeepRecursion(t *testing.T) {
 	meta, wr, err := c.PutDir(tdir)
 	check(err)
 
-	rr, err := c.GetDir(meta.Hash, meta.Name+"_restored")
+	rr, err := c.GetDir(c.Hostname, meta.Hash, meta.Name+"_restored")
 	defer os.RemoveAll(meta.Name + "_restored")
 	check(err)
 	if !MatchResult(wr, rr) {

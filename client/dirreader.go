@@ -44,7 +44,7 @@ func (client *Client) FetchDir(key string) interface{} {
 }
 
 // Reconstruct a directory given its hash to path
-func (client *Client) GetDir(key, path string) (rr *ReadResult, err error) {
+func (client *Client) GetDir(host, key, path string) (rr *ReadResult, err error) {
 	fullHash := sha1.New()
 	rr = &ReadResult{}
 	err = os.Mkdir(path, 0700)
@@ -63,12 +63,12 @@ func (client *Client) GetDir(key, path string) (rr *ReadResult, err error) {
 		}
 		for _, meta := range dirsMeta {
 			if meta.Type == "file" {
-				crr, err = client.GetFile(meta.Hash, filepath.Join(path, meta.Name))
+				crr, err = client.GetFile(host, meta.Hash, filepath.Join(path, meta.Name))
 				if err != nil {
 					return rr, err
 				}
 			} else {
-				crr, err = client.GetDir(meta.Hash, filepath.Join(path, meta.Name))
+				crr, err = client.GetDir(host, meta.Hash, filepath.Join(path, meta.Name))
 				if err != nil {
 					return rr, err
 				}

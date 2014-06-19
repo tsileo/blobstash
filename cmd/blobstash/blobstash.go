@@ -43,12 +43,12 @@ func main() {
 		//},
 		{
 			Name:      "restore",
-			Usage:     "Restore a meta",
+			Usage:     "Restore a snapshot",
 			Action: func(c *cli.Context) {
 				client, _ := client.NewClient(ignoredFiles)
 				args := c.Args()
-				rr, err := client.GetDir(args[0], args[1])
-				fmt.Printf("rr:%+v/err:%v", rr, err)
+				snap, meta, rr, err := client.Get(args[0], args[1])
+				fmt.Printf("snap:%+v,meta:%+v,rr:%+v/err:%v", snap, meta, rr, err)
 			},
 		},
 		{

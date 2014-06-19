@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+	"sync"
 )
 
 var (
@@ -25,6 +26,7 @@ type Client struct {
 	uploaders    chan struct{}
 	dirUploaders chan struct{}
 	ignoredFiles []string
+	sync.Mutex
 }
 
 func NewClient(ignoredFiles []string) (*Client, error) {
@@ -66,7 +68,7 @@ func (client *Client) SetupPool() error {
 			return c, err
 		},
 		TestOnBorrow: func(c redis.Conn, t time.Time) error {
-			_, err := c.Do("PING")
+			_, err := c.Do("HOSTNAME", client.Hostname)
 			if err != nil {
 				return err
 			}
@@ -134,7 +136,49 @@ func (client *Client) DirUploadDone() {
 //	return
 //}
 
+func (client *Client) Get(hash, path string) (snapshot *Snapshot, meta *Meta, rr *ReadResult, err error) {
+	client.Lock()
+	defer client.Unlock()
+	con := client.Pool.Get()
+	_, err = con.Do("INIT")
+	if err != nil {
+		return
+	}
+	snapshot, err = NewSnapshotFromDB(client.Pool, hash)
+	if err != nil {
+		return
+	}
+	client.Hostname = snapshot.Hostname
+	meta, err = snapshot.Meta(client.Pool)
+	if err != nil {
+		return
+	}
+	switch {
+	case snapshot.Type == "dir":
+		rr, err = client.GetDir(snapshot.Hostname, snapshot.Ref, path)
+ 		if err != nil {
+ 			return
+ 		}
+	case snapshot.Type == "file":
+ 		rr, err = client.GetFile(snapshot.Hostname, snapshot.Ref, path)
+ 		if err != nil {
+ 			return
+ 		}
+	default:
+		err = fmt.Errorf("unknow meta type %v for snapshot %+v", snapshot.Type, snapshot)
+		return
+	}
+	return
+}
+
 func (client *Client) Put(path string) (snapshot *Snapshot, meta *Meta, wr *WriteResult, err error) {
+	client.Lock()
+	defer client.Unlock()
+	hostname, err := os.Hostname()
+	if err != nil {
+		return
+	}
+	client.Hostname = hostname
 	con := client.Pool.Get()
 	_, err = con.Do("INIT")
 	if err != nil {
@@ -155,10 +199,6 @@ func (client *Client) Put(path string) (snapshot *Snapshot, meta *Meta, wr *Writ
 	}
 	if err != nil {
 		return
-	}
-	hostname, err := os.Hostname()
-	if err != nil {
-		return snapshot, meta, wr, fmt.Errorf("failed to get hostname: %v", err)
 	}
 	snapshot = NewSnapshot(hostname, path, btype, meta.Hash)
 	if err := snapshot.Save(client.Pool); err != nil {

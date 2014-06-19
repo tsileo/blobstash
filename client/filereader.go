@@ -31,7 +31,7 @@ func (client *Client) FetchBlob(hash string) []byte {
 }
 
 // Download a file by its hash to path
-func (client *Client) GetFile(key, path string) (*ReadResult, error) {
+func (client *Client) GetFile(host, key, path string) (*ReadResult, error) {
 	// TODO(ts) make io.Copy ?
 	readResult := &ReadResult{}
 	con := client.Pool.Get()
@@ -46,7 +46,8 @@ func (client *Client) GetFile(key, path string) (*ReadResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	ffile := NewFakeFile(client, meta.Ref, meta.Size)
+	ffile := NewFakeFile(client, host, meta.Ref, meta.Size)
+	defer ffile.Close()
 	ffilreReader := io.TeeReader(ffile, h)
 	io.Copy(buf, ffilreReader)
 	readResult.Hash = fmt.Sprintf("%x", h.Sum(nil))
@@ -69,6 +70,7 @@ func (client *Client) GetFile(key, path string) (*ReadResult, error) {
 // It fetch blobs on the fly.
 type FakeFile struct {
 	client *Client
+	oldHost string
 	ref    string
 	offset int
 	size   int
@@ -80,8 +82,11 @@ type FakeFile struct {
 
 
 // Create a new FakeFile instance.
-func NewFakeFile(client *Client, ref string, size int) (f *FakeFile) {
-	f = &FakeFile{client: client, ref: ref, size: size}
+func NewFakeFile(client *Client, host, ref string, size int) (f *FakeFile) {
+	// Needed for the blob routing
+	oldHost := client.Hostname
+	client.Hostname = host
+	f = &FakeFile{client: client, oldHost: oldHost, ref: ref, size: size}
 	con := f.client.Pool.Get()
 	defer con.Close()
 	values, err := redis.Values(con.Do("LITER", f.ref, "WITH", "RANGE"))
@@ -90,6 +95,11 @@ func NewFakeFile(client *Client, ref string, size int) (f *FakeFile) {
 	}
 	redis.ScanSlice(values, &f.lmrange)
 	return
+}
+
+func (f *FakeFile) Close() error {
+	f.client.Hostname = f.oldHost
+	return nil
 }
 
 // Implement the io.ReaderAt interface

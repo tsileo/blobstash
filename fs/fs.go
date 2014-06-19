@@ -124,10 +124,12 @@ type Dir struct {
 	Children       map[string]fs.Node
 	Host           string
 	SnapKey        string
+	Hostname string
 }
 
-func NewDir(cfs *FS, name, ref string, modTime string, mode os.FileMode) (d *Dir) {
+func NewDir(cfs *FS, name, host, ref string, modTime string, mode os.FileMode) (d *Dir) {
 	d = &Dir{}
+	d.Hostname = host
 	d.Node = Node{}
 	d.Mode = os.ModeDir
 	d.fs = cfs
@@ -152,10 +154,10 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
 		var dirent fuse.Dirent
 		if meta.Type == "file" {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
-			d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
+			d.Children[meta.Name] = NewFile(d.fs, meta.Name, d.Hostname, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
 		} else {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-			d.Children[meta.Name] = NewDir(d.fs, meta.Name, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
+			d.Children[meta.Name] = NewDir(d.fs, meta.Name, d.Hostname, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
 		}
 		out = append(out, dirent)
 	}
@@ -163,21 +165,21 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
 }
 
 func NewRootDir(fs *FS) (d *Dir) {
-	d = NewDir(fs, "root", "", "", os.ModeDir)
+	d = NewDir(fs, "root", "", "", "", os.ModeDir)
 	d.Root = true
 	d.fs = fs
 	return d
 }
 
 func NewRootHostDir(fs *FS, host string) (d *Dir) {
-	d = NewDir(fs, host, "", "", os.ModeDir)
+	d = NewDir(fs, host, "", "", "", os.ModeDir)
 	d.RootHost = true
 	d.fs = fs
 	return d
 }
 
 func NewLatestDir(fs *FS, host string) (d *Dir) {
-	d = NewDir(fs, "latest", "", "", os.ModeDir)
+	d = NewDir(fs, "latest", "", "", "", os.ModeDir)
 	d.Latest = true
 	d.fs = fs
 	d.Host = host
@@ -185,7 +187,7 @@ func NewLatestDir(fs *FS, host string) (d *Dir) {
 }
 
 func NewAtRootDir(fs *FS, host string) (d *Dir) {
-	d = NewDir(fs, "at", "", "", os.ModeDir)
+	d = NewDir(fs, "at", "", "", "", os.ModeDir)
 	d.AtRoot = true
 	d.fs = fs
 	d.Host = host
@@ -206,7 +208,7 @@ func NewAtDir(cfs *FS, name, ref, snapKey string) (d *Dir) {
 }
 
 func NewSnapshotsDir(cfs *FS, host string) (d *Dir) {
-	d = NewDir(cfs, "snapshots", "", "", os.ModeDir)
+	d = NewDir(cfs, "snapshots", "", "", "", os.ModeDir)
 	d.fs = cfs
 	d.Snapshots = true
 	d.Host = host
@@ -226,8 +228,8 @@ func NewSnapshotDir(cfs *FS, name, ref, snapKey string) (d *Dir) {
 	return
 }
 
-func NewFakeDir(cfs *FS, name, ref string) (d *Dir) {
-	d = NewDir(cfs, name, ref, "", os.ModeDir)
+func NewFakeDir(cfs *FS, name, host, ref string) (d *Dir) {
+	d = NewDir(cfs, name, host, ref, "", os.ModeDir)
 	d.fs = cfs
 	d.Children = make(map[string]fs.Node)
 	d.FakeDir = true
@@ -246,7 +248,7 @@ func (d *Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, err fuse.Error) {
 			backup, _ := client.NewBackup(d.fs.Client, d.SnapKey)
 			snap, _ := backup.GetAt(ts)
 			if snap != nil {
-				return NewDir(d.fs, d.Name, snap.Ref, d.ModTime, d.Mode), nil
+				return NewDir(d.fs, d.Name, snap.Hostname, snap.Ref, d.ModTime, d.Mode), nil
 			}
 		}
 	}
@@ -298,11 +300,11 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 			//meta, _ := backup.Meta(d.fs.Client.Pool)
 			if snap.Type == "file" {
 				dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
-				d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
+				d.Children[meta.Name] = NewFile(d.fs, meta.Name, snap.Hostname, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
 				out = append(out, dirent)
 			} else {
 				dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-				d.Children[meta.Name] = NewDir(d.fs, meta.Name, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
+				d.Children[meta.Name] = NewDir(d.fs, meta.Name, snap.Hostname, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
 				out = append(out, dirent)
 			}
 		}
@@ -360,7 +362,7 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 			sname := stime.Format(time.RFC3339)
 			meta := d.fs.Client.Metas.Get(im.Snapshot.Ref).(*client.Meta)
 			out = append(out, fuse.Dirent{Name: sname, Type: fuse.DT_Dir})
-			d.Children[sname] = NewFakeDir(d.fs, meta.Name, meta.Hash)
+			d.Children[sname] = NewFakeDir(d.fs, meta.Name, im.Snapshot.Hostname, meta.Hash)
 		}
 		return out, nil
 
@@ -370,11 +372,11 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 		meta := d.fs.Client.Metas.Get(d.Ref).(*client.Meta)
 		if meta.Type == "file" {
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
-			d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
+			d.Children[meta.Name] = NewFile(d.fs, meta.Name, d.Hostname, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
 			out = append(out, dirent)
 		} else {
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-			d.Children[meta.Name] = NewDir(d.fs, meta.Name, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
+			d.Children[meta.Name] = NewDir(d.fs, meta.Name, d.Hostname, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
 			out = append(out, dirent)
 		}
 		return out, nil
@@ -384,18 +386,19 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 
 type File struct {
 	Node
+	Host string
 	FakeFile *client.FakeFile
 }
 
-func NewFile(fs *FS, name, ref string, size int, modTime string, mode os.FileMode) *File {
+func NewFile(fs *FS, name, host, ref string, size int, modTime string, mode os.FileMode) *File {
 	f := &File{}
+	f.Host = host
 	f.Name = name
 	f.Ref = ref
 	f.Size = uint64(size)
 	f.ModTime = modTime
 	f.Mode = mode
 	f.fs = fs
-	f.FakeFile = client.NewFakeFile(f.fs.Client, ref, size)
 	return f
 }
 
@@ -404,7 +407,16 @@ func NewFile(fs *FS, name, ref string, size int, modTime string, mode os.FileMod
 func (f *File) Attr() fuse.Attr {
 	return fuse.Attr{Inode: 2, Mode: 0444, Size: f.Size}
 }
-
+func (f *File) Open(req *fuse.OpenRequest, res *fuse.OpenResponse, intr fs.Intr) (fs.Handle, fuse.Error) {
+	f.fs.Client.Lock()
+	f.FakeFile = client.NewFakeFile(f.fs.Client, f.Host, f.Ref, int(f.Size))
+	return f, nil
+}
+func (f *File) Release(req *fuse.ReleaseRequest, intr fs.Intr) fuse.Error {
+	f.fs.Client.Unlock()
+	f.FakeFile.Close()
+	return nil
+}
 func (f *File) Read(req *fuse.ReadRequest, res *fuse.ReadResponse, intr fs.Intr) fuse.Error {
 	//log.Printf("Read %+v", f)
 	if req.Offset >= int64(f.Size) {
