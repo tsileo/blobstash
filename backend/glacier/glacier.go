@@ -65,7 +65,7 @@ func New(vault string, cache backend.BlobHandler) *GlacierBackend {
 	glacierPubSub.Listen()
 	go func(b *GlacierBackend) {
 		for {
-			<-glacierPubSub.Msgc
+			<-b.pubsub.Msgc
 			log.Println("GlacierBackend: Upload triggered")
 			if err := b.Upload(); err != nil {
 				panic(fmt.Errorf("failed to upload %v", err))
@@ -82,6 +82,7 @@ func (backend *GlacierBackend) String() string {
 
 func (backend *GlacierBackend) Close() {
 	backend.cache.Close()
+	backend.pubsub.Close()
 	//backend.db.Close()
 }
 
