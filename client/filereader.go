@@ -10,21 +10,18 @@ import (
 	"github.com/garyburd/redigo/redis"
 )
 
-type BlobFetcher interface {
-	Get(string) ([]byte, bool, error)
-	Close()
-	Remove()
-}
-
 // FetchBlob is used by the client level blobs LRU
 // Return the data for the given hash
-func (client *Client) FetchBlob(hash string) []byte {
+func (client *Client) FetchBlob(host, hash string) []byte {
 	con := client.Pool.Get()
 	defer con.Close()
+	if _, err := con.Do("HOSTNAME", host); err != nil {
+		panic(fmt.Errorf("failed to fetch blob %v (%v)", hash, err))
+	}
 	var buf bytes.Buffer
 	data, err := redis.String(con.Do("BGET", hash))
 	if err != nil {
-		panic(fmt.Errorf("failed to fetch blob %v", hash))
+		panic(fmt.Errorf("failed to fetch blob %v (%v)", hash, err))
 	}
 	buf.WriteString(data)
 	return buf.Bytes()
@@ -47,7 +44,6 @@ func (client *Client) GetFile(host, key, path string) (*ReadResult, error) {
 		return nil, err
 	}
 	ffile := NewFakeFile(client, host, meta.Ref, meta.Size)
-	defer ffile.Close()
 	ffilreReader := io.TeeReader(ffile, h)
 	io.Copy(buf, ffilreReader)
 	readResult.Hash = fmt.Sprintf("%x", h.Sum(nil))
@@ -70,7 +66,7 @@ func (client *Client) GetFile(host, key, path string) (*ReadResult, error) {
 // It fetch blobs on the fly.
 type FakeFile struct {
 	client *Client
-	oldHost string
+	host string
 	ref    string
 	offset int
 	size   int
@@ -84,9 +80,7 @@ type FakeFile struct {
 // Create a new FakeFile instance.
 func NewFakeFile(client *Client, host, ref string, size int) (f *FakeFile) {
 	// Needed for the blob routing
-	oldHost := client.Hostname
-	client.Hostname = host
-	f = &FakeFile{client: client, oldHost: oldHost, ref: ref, size: size}
+	f = &FakeFile{client: client, host: host, ref: ref, size: size}
 	con := f.client.Pool.Get()
 	defer con.Close()
 	values, err := redis.Values(con.Do("LITER", f.ref, "WITH", "RANGE"))
@@ -95,11 +89,6 @@ func NewFakeFile(client *Client, host, ref string, size int) (f *FakeFile) {
 	}
 	redis.ScanSlice(values, &f.lmrange)
 	return
-}
-
-func (f *FakeFile) Close() error {
-	f.client.Hostname = f.oldHost
-	return nil
 }
 
 // Implement the io.ReaderAt interface
@@ -137,7 +126,7 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 		if offset > iv.Index {
 			continue
 		}
-		bbuf, _, _ := f.client.Blobs.Get(iv.Value)
+		bbuf, _, _ := f.client.Blobs.Get(f.host, iv.Value)
 		foffset := 0
 		if offset != 0 {
 			// Compute the starting offset of the blob

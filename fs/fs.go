@@ -408,13 +408,11 @@ func (f *File) Attr() fuse.Attr {
 	return fuse.Attr{Inode: 2, Mode: 0444, Size: f.Size}
 }
 func (f *File) Open(req *fuse.OpenRequest, res *fuse.OpenResponse, intr fs.Intr) (fs.Handle, fuse.Error) {
-	f.fs.Client.Lock()
 	f.FakeFile = client.NewFakeFile(f.fs.Client, f.Host, f.Ref, int(f.Size))
 	return f, nil
 }
 func (f *File) Release(req *fuse.ReleaseRequest, intr fs.Intr) fuse.Error {
-	f.fs.Client.Unlock()
-	f.FakeFile.Close()
+	f.FakeFile = nil
 	return nil
 }
 func (f *File) Read(req *fuse.ReadRequest, res *fuse.ReadResponse, intr fs.Intr) fuse.Error {

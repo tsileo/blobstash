@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-	"sync"
 )
 
 var (
@@ -20,13 +19,12 @@ var (
 type Client struct {
 	Pool         *redis.Pool
 	Hostname string
-	Blobs        BlobFetcher
+	Blobs        *disklru.DiskLRU
 	Dirs         DirFetcher
 	Metas        MetaFetcher
 	uploaders    chan struct{}
 	dirUploaders chan struct{}
 	ignoredFiles []string
-	sync.Mutex
 }
 
 func NewClient(ignoredFiles []string) (*Client, error) {
@@ -79,8 +77,12 @@ func (client *Client) SetupPool() error {
 }
 
 func NewTestClient() (*Client, error) {
-	var err error
-	c := &Client{uploaders: make(chan struct{}, uploaders),
+	hostname, err := os.Hostname()
+	if err != nil {
+		return nil, err
+	}
+	c := &Client{Hostname: hostname,
+		uploaders: make(chan struct{}, uploaders),
 		dirUploaders: make(chan struct{}, dirUploaders)}
 	c.Blobs, err = disklru.NewTest(c.FetchBlob, 536870912)
 	c.Dirs = lru.New(c.FetchDir, 512)
@@ -137,8 +139,6 @@ func (client *Client) DirUploadDone() {
 //}
 
 func (client *Client) Get(hash, path string) (snapshot *Snapshot, meta *Meta, rr *ReadResult, err error) {
-	client.Lock()
-	defer client.Unlock()
 	con := client.Pool.Get()
 	_, err = con.Do("INIT")
 	if err != nil {
@@ -148,7 +148,6 @@ func (client *Client) Get(hash, path string) (snapshot *Snapshot, meta *Meta, rr
 	if err != nil {
 		return
 	}
-	client.Hostname = snapshot.Hostname
 	meta, err = snapshot.Meta(client.Pool)
 	if err != nil {
 		return
@@ -172,13 +171,6 @@ func (client *Client) Get(hash, path string) (snapshot *Snapshot, meta *Meta, rr
 }
 
 func (client *Client) Put(path string) (snapshot *Snapshot, meta *Meta, wr *WriteResult, err error) {
-	client.Lock()
-	defer client.Unlock()
-	hostname, err := os.Hostname()
-	if err != nil {
-		return
-	}
-	client.Hostname = hostname
 	con := client.Pool.Get()
 	_, err = con.Do("INIT")
 	if err != nil {
@@ -200,7 +192,7 @@ func (client *Client) Put(path string) (snapshot *Snapshot, meta *Meta, wr *Writ
 	if err != nil {
 		return
 	}
-	snapshot = NewSnapshot(hostname, path, btype, meta.Hash)
+	snapshot = NewSnapshot(client.Hostname, path, btype, meta.Hash)
 	if err := snapshot.Save(client.Pool); err != nil {
 		return snapshot, meta, wr, err
 	}
