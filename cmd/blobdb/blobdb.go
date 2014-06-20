@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/bitly/go-simplejson"
 	"github.com/codegangsta/cli"
 
+	"github.com/tsileo/blobstash/db"
 	"github.com/tsileo/blobstash/config"
 	"github.com/tsileo/blobstash/backend"
 	"github.com/tsileo/blobstash/server"
@@ -49,8 +52,18 @@ func start(config_path string) {
 	if err != nil {
 		panic(err)
 	}
+	// TODO => config backend in BlobRouter
+	dbPath := conf.Get("db-path").MustString("dbs")
+	os.MkdirAll(dbPath, 0700)
 	for _, backendKey := range blobRouter.ResolveBackends() {
-		blobRouter.Backends[backendKey] = config.NewFromConfig(conf.GetPath("backends", backendKey))
+		cbackend := config.NewFromConfig(conf.GetPath("backends", backendKey))
+		blobRouter.Backends[backendKey] = cbackend
+		db, err := db.New(filepath.Join(dbPath, strings.Replace(cbackend.String(), "/", "_", -1)))
+		if err != nil {
+			panic(err)
+		}
+		blobRouter.DBs[backendKey] = db
+		blobRouter.TxManagers[backendKey] = backend.NewTxManager(db, blobRouter)
 	}
 	server.New(conf.Get("addr").MustString(":9735"), conf.Get("web-addr").MustString(":9736"), conf.MustString("blobdb_db"), blobRouter,stop)
 }

@@ -7,6 +7,8 @@ import (
 
 	"github.com/bitly/go-simplejson"
 	"github.com/bitly/go-notify"
+
+	"github.com/tsileo/blobstash/db"
 )
 
 
@@ -23,7 +25,7 @@ const (
 // Request is used for Put/Get operations
 type Request struct {
 	// The following fields are used for routing
-	Type int // Whether this is a Put/Read/Exists request
+	Type int // Whether this is a Put/Read/Exists request (for blob routing only)
 	MetaBlob bool // Whether the blob is a meta blob
 	Host string
 }
@@ -32,9 +34,16 @@ func (req *Request) String() string {
 	return fmt.Sprintf("[request type=%v, meta=%v, hostname=%v]", req.Type, req.MetaBlob, req.Host)
 }
 
+type BackendAndDB struct {
+	Blob BlobHandler
+	DB   *db.DB
+}
+
 type Router struct {
 	Rules []*simplejson.Json
 	Backends map[string]BlobHandler
+	DBs map[string]*db.DB
+	TxManagers map[string]*TxManager
 }
 
 // ResolveBackends construct the list of needed backend key
@@ -54,7 +63,27 @@ func (router *Router) ResolveBackends() []string {
 	return backends
 }
 
-// TODO a way to set host
+func (router *Router) TxManager(req *Request) *TxManager {
+	req.MetaBlob = true
+	// Type and Host must be set
+	key := router.Route(req)
+	txmanager, exists := router.TxManagers[key]
+	if !exists {
+		panic(fmt.Errorf("backend %v is not registered", key))
+	}
+	return txmanager
+}
+
+func (router *Router) DB(req *Request) *db.DB {
+	req.MetaBlob = true
+	// Type and Host must be set
+	key := router.Route(req)
+	db, exists := router.DBs[key]
+	if !exists {
+		panic(fmt.Errorf("backend %v is not registered", key))
+	}
+	return db
+}
 
 func (router *Router) Put(req *Request, hash string, data []byte) error {
 	req.Type = Write
@@ -100,6 +129,9 @@ func (router *Router) Close() {
 	for _, backend := range router.Backends {
 		backend.Close()
 	}
+	for _, db := range router.DBs {
+		db.Close()
+	}
 }
 
 func (router *Router) Done() error {
@@ -116,7 +148,10 @@ func NewRouterFromConfig(json *simplejson.Json) (*Router, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse config, body must be an array")
 	}
-	rconf := &Router{Rules: []*simplejson.Json{}, Backends: make(map[string]BlobHandler)}
+	rconf := &Router{Rules: []*simplejson.Json{},
+		Backends: make(map[string]BlobHandler),
+		DBs: make(map[string]*db.DB),
+		TxManagers: make(map[string]*TxManager)}
 	for i, _ := range rules {
 		rconf.Rules = append(rconf.Rules, json.GetIndex(i))
 	}
