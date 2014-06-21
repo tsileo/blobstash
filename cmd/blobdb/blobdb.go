@@ -63,7 +63,11 @@ func start(config_path string) {
 			panic(err)
 		}
 		blobRouter.DBs[backendKey] = db
-		blobRouter.TxManagers[backendKey] = backend.NewTxManager(db, blobRouter)
+		blobRouter.TxManagers[backendKey] = backend.NewTxManager(db, cbackend)
+	}
+	err = blobRouter.Load()
+	if err != nil {
+		panic(err)
 	}
 	server.New(conf.Get("addr").MustString(":9735"), conf.Get("web-addr").MustString(":9736"), conf.MustString("blobdb_db"), blobRouter,stop)
 }

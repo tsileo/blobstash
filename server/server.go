@@ -55,12 +55,16 @@ type ServerCtx struct {
 //	DB = db
 //}
 
-func (ctx *ServerCtx) GetReqBuffer(name string) *backend.ReqBuffer {
-	//return ctx.TxManager.GetReqBuffer(name)
+func (ctx *ServerCtx) TxManager() *backend.TxManager {
+	return BlobRouter.TxManager(&backend.Request{Host: ctx.Hostname})
+}
+
+func (ctx *ServerCtx) ReqBuffer(name string) *backend.ReqBuffer {
+	//return ctx.TxManager.ReqBuffer(name)
 	return BlobRouter.TxManager(&backend.Request{Host: ctx.Hostname}).GetReqBuffer(name)
 }
 
-func (ctx *ServerCtx) GetDB() *db.DB {
+func (ctx *ServerCtx) DB() *db.DB {
 	return BlobRouter.DB(&backend.Request{Host: ctx.Hostname})
 }
 
@@ -99,7 +103,7 @@ func SetUpCtx(req *redeo.Request) {
 		reqArgs := make([]string, len(req.Args)-1)
 		copy(reqArgs, req.Args[1:])
 		txID := req.Client().Ctx.(*ServerCtx).TxID
-		rb := req.Client().Ctx.(*ServerCtx).GetReqBuffer(txID)
+		rb := req.Client().Ctx.(*ServerCtx).ReqBuffer(txID)
 		rb.Add(reqName, reqKey, reqArgs)
 	}
 }
@@ -188,7 +192,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return err
 		}
 		ctx := req.Client().Ctx.(*ServerCtx)
-		res, err := ctx.GetDB().Get(req.Args[0])
+		res, err := ctx.DB().Get(req.Args[0])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -225,7 +229,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return err
 		}
 		ctx := req.Client().Ctx.(*ServerCtx)
-		err = ctx.GetDB().Put(req.Args[0], req.Args[1])
+		err = ctx.DB().Put(req.Args[0], req.Args[1])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -243,7 +247,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return ErrSomethingWentWrong
 		}
 		ctx := req.Client().Ctx.(*ServerCtx)
-		kvs, err := ctx.GetDB().GetStringRange(req.Args[0], req.Args[1], limit)
+		kvs, err := ctx.DB().GetStringRange(req.Args[0], req.Args[1], limit)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -266,7 +270,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		cmdArgs := make([]string, len(req.Args)-1)
 		copy(cmdArgs, req.Args[1:])
 		ctx := req.Client().Ctx.(*ServerCtx)
-		cnt, err := ctx.GetDB().Sadd(req.Args[0], cmdArgs...)
+		cnt, err := ctx.DB().Sadd(req.Args[0], cmdArgs...)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -280,7 +284,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return err
 		}
 		ctx := req.Client().Ctx.(*ServerCtx)
-		cnt, err := ctx.GetDB().Scard(req.Args[0])
+		cnt, err := ctx.DB().Scard(req.Args[0])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -294,7 +298,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return err
 		}
 		ctx := req.Client().Ctx.(*ServerCtx)
-		members := ctx.GetDB().Smembers(req.Args[0])
+		members := ctx.DB().Smembers(req.Args[0])
 		//if err != nil {
 		//	return ErrSomethingWentWrong
 		//}
@@ -315,7 +319,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return err
 		}
 		ctx := req.Client().Ctx.(*ServerCtx)
-		cnt, err := ctx.GetDB().Hmset(req.Args[0], req.Args[1], req.Args[2])
+		cnt, err := ctx.DB().Hmset(req.Args[0], req.Args[1], req.Args[2])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -331,7 +335,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		cmdArgs := make([]string, len(req.Args)-1)
 		copy(cmdArgs, req.Args[1:])
 		ctx := req.Client().Ctx.(*ServerCtx)
-		cnt, err := ctx.GetDB().Hmset(req.Args[0], cmdArgs...)
+		cnt, err := ctx.DB().Hmset(req.Args[0], cmdArgs...)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -345,7 +349,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return err
 		}
 		ctx := req.Client().Ctx.(*ServerCtx)
-		cnt, err := ctx.GetDB().Hlen(req.Args[0])
+		cnt, err := ctx.DB().Hlen(req.Args[0])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -359,7 +363,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return err
 		}
 		ctx := req.Client().Ctx.(*ServerCtx)
-		res, err := ctx.GetDB().Hget(req.Args[0], req.Args[1])
+		res, err := ctx.DB().Hget(req.Args[0], req.Args[1])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -377,7 +381,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return err
 		}
 		ctx := req.Client().Ctx.(*ServerCtx)
-		kvs, err := ctx.GetDB().Hgetall(req.Args[0])
+		kvs, err := ctx.DB().Hgetall(req.Args[0])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -403,7 +407,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return ErrSomethingWentWrong
 		}
 		ctx := req.Client().Ctx.(*ServerCtx)
-		hkeys, err := ctx.GetDB().Hscan(req.Args[0], req.Args[1], limit)
+		hkeys, err := ctx.DB().Hscan(req.Args[0], req.Args[1], limit)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -482,7 +486,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			log.Printf("server: Error MBPUT:%v\nBlob %v:%v", err, sha, blob)
 			return ErrSomethingWentWrong
 		}
-		if err := req.Client().Ctx.(*ServerCtx).GetReqBuffer("").LoadIncomingBlob(ctx.Hostname, sha, blob); err != nil {
+		if err := req.Client().Ctx.(*ServerCtx).TxManager().LoadIncomingBlob(sha, blob); err != nil {
 			log.Printf("server: Error MBPUT:%v\nBlob %v:%v", err, sha, string(blob))
 			return ErrSomethingWentWrong
 		}
@@ -528,7 +532,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return err
 		}
 		ctx := req.Client().Ctx.(*ServerCtx)
-		card, err := ctx.GetDB().Llen(req.Args[0])
+		card, err := ctx.DB().Llen(req.Args[0])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -546,7 +550,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return ErrSomethingWentWrong
 		}
 		ctx := req.Client().Ctx.(*ServerCtx)
-		err = ctx.GetDB().Ladd(req.Args[0], cindex, req.Args[2])
+		err = ctx.DB().Ladd(req.Args[0], cindex, req.Args[2])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -564,7 +568,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return ErrSomethingWentWrong
 		}
 		ctx := req.Client().Ctx.(*ServerCtx)
-		res, err := ctx.GetDB().Lindex(req.Args[0], cindex)
+		res, err := ctx.DB().Lindex(req.Args[0], cindex)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -586,7 +590,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return ErrSomethingWentWrong
 		}
 		ctx := req.Client().Ctx.(*ServerCtx)
-		kvs, err := ctx.GetDB().GetListRange(req.Args[0], req.Args[1], req.Args[2], limit)
+		kvs, err := ctx.DB().GetListRange(req.Args[0], req.Args[1], req.Args[2], limit)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -608,7 +612,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		}
 		ctx := req.Client().Ctx.(*ServerCtx)
 		if len(req.Args) == 1 {
-			vals, err := ctx.GetDB().Liter(req.Args[0])
+			vals, err := ctx.DB().Liter(req.Args[0])
 			if err != nil {
 				return ErrSomethingWentWrong
 			}
@@ -628,7 +632,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 				return ErrSomethingWentWrong
 			}
 			ctx := req.Client().Ctx.(*ServerCtx)
-			ivs, err := ctx.GetDB().LiterWithIndex(req.Args[0])
+			ivs, err := ctx.DB().LiterWithIndex(req.Args[0])
 			if err != nil {
 				return ErrSomethingWentWrong
 			}
@@ -662,11 +666,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		txID := req.Client().Ctx.(*ServerCtx).TxID
-		hostname := req.Client().Ctx.(*ServerCtx).Hostname
-		if err := req.Client().Ctx.(*ServerCtx).GetReqBuffer(txID).Load(hostname); err != nil {
-			return ErrSomethingWentWrong
-		}
+		// Remove this command ?
 		out.WriteOK()
 		return nil
 	})
@@ -699,7 +699,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return err
 		}
 		txID := req.Client().Ctx.(*ServerCtx).TxID
-		req.Client().Ctx.(*ServerCtx).GetReqBuffer(txID).Reset()
+		req.Client().Ctx.(*ServerCtx).ReqBuffer(txID).Reset()
 		out.WriteOK()
 		return nil
 	})
@@ -710,9 +710,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return err
 		}
 		txID := req.Client().Ctx.(*ServerCtx).TxID
-		hostname := req.Client().Ctx.(*ServerCtx).Hostname
-		rb := req.Client().Ctx.(*ServerCtx).GetReqBuffer(txID)
-		err = rb.Save(hostname)
+		rb := req.Client().Ctx.(*ServerCtx).ReqBuffer(txID)
+		err = rb.Save()
 		if err != nil {
 			log.Printf("server: TXCOMMIT error %v/%v", err, txID)
 			return ErrSomethingWentWrong

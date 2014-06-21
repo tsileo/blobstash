@@ -87,12 +87,12 @@ var (
 type TxManager struct {
 	Txs         map[string]*ReqBuffer
 	db          *db.DB
-	blobBackend *Router
+	blobBackend BlobHandler
 	sync.Mutex
 }
 
 type ReqBuffer struct {
-	blobBackend *Router
+	blobBackend BlobHandler
 	db          *db.DB
 	*sync.Mutex
 	reqCnt     int
@@ -107,7 +107,7 @@ type ReqArgs struct {
 }
 
 // NewTxManager initialize a new TxManager for the given db.
-func NewTxManager(cdb *db.DB, blobBackend *Router) *TxManager {
+func NewTxManager(cdb *db.DB, blobBackend BlobHandler) *TxManager {
 	return &TxManager{make(map[string]*ReqBuffer), cdb, blobBackend, sync.Mutex{}}
 }
 
@@ -124,14 +124,79 @@ func (txm *TxManager) GetReqBuffer(name string) *ReqBuffer {
 	return rb
 }
 
+// LoadIncomingBlob try to decode/load and apply a ReqBuffer from the raw blob
+func (txm *TxManager) LoadIncomingBlob(hash string, blob []byte) error {
+	go SendDebugData(fmt.Sprintf("server: load incoming blob %v", hash))
+	cnt := txm.db.Sismember("_meta", hash)
+	if cnt == 0 {
+		if !bytes.Equal(blob[0:MetaBlobOverhead], []byte(MetaBlobHeader)) {
+			return fmt.Errorf("blob %v from is not a valid meta blob", hash)
+		}
+		go SendDebugData(fmt.Sprintf("server: meta blob %v not yet loaded", hash))
+
+		res := make(map[string][]*ReqArgs)
+
+		if err := json.Unmarshal(blob[MetaBlobOverhead:], &res); err != nil {
+			return err
+		}
+
+		if err := NewReqBufferWithData(txm.db, txm.blobBackend, res).Apply(); err != nil {
+			return err
+		}
+		go SendDebugData(fmt.Sprintf("server: meta blob %v applied", hash))
+	}
+	return nil
+}
+
+// Enumerate every meta blobs filename and check if the data is already indexed.
+func (txm *TxManager) Load() error {
+	go SendDebugData("server: scanning meta blobs")
+	hashes := make(chan string)
+	errc := make(chan error, 1)
+	go func() {
+		errc <- txm.blobBackend.Enumerate(hashes)
+	}()
+	for hash := range hashes {
+		cnt := txm.db.Sismember("_meta", hash)
+		if cnt == 0 {
+			blob, berr := txm.blobBackend.Get(hash)
+			if berr != nil {
+				return berr
+			}
+			if !bytes.Equal(blob[0:MetaBlobOverhead], []byte(MetaBlobHeader)) {
+				go SendDebugData(fmt.Sprintf("server: blob %v is not a valid meta blob, skipping", hash))
+				continue
+			}
+			go SendDebugData(fmt.Sprintf("server: meta blob %v not yet loaded", hash))
+
+			res := make(map[string][]*ReqArgs)
+
+			if err := json.Unmarshal(blob[MetaBlobOverhead:], &res); err != nil {
+				return err
+			}
+
+			if err := NewReqBufferWithData(txm.db, txm.blobBackend, res).Apply(); err != nil {
+				return err
+			}
+			go SendDebugData(fmt.Sprintf("server: meta blob %v applied", hash))
+		}
+	}
+	if err := <-errc; err != nil {
+		go SendDebugData(fmt.Sprintf("server: aborting scan, err:%v", err))
+		return err
+	}
+	go SendDebugData("server: scan done")
+	return nil
+}
+
 // NewReqBuffer initialize a new ReqBuffer
-func NewReqBuffer(cdb *db.DB, blobBackend *Router) *ReqBuffer {
+func NewReqBuffer(cdb *db.DB, blobBackend BlobHandler) *ReqBuffer {
 	return &ReqBuffer{blobBackend, cdb, &sync.Mutex{}, 0, make(map[string][]*ReqArgs),
 		make(map[string]map[string]*ReqArgs)}
 }
 
 // NewReqBufferWithData is a wrapper around NewReqBuffer, it fills the buffer with the given data.
-func NewReqBufferWithData(cdb *db.DB, blobBackend *Router, data map[string][]*ReqArgs) *ReqBuffer {
+func NewReqBufferWithData(cdb *db.DB, blobBackend BlobHandler, data map[string][]*ReqArgs) *ReqBuffer {
 	rb := NewReqBuffer(cdb, blobBackend)
 	rb.Reqs = data
 	return rb
@@ -168,86 +233,19 @@ func (rb *ReqBuffer) Add(reqType, reqKey string, reqArgs []string) (err error) {
 }
 
 // Put the blob to Meta BlobHandler.
-func (rb *ReqBuffer) Save(hostname string) error {
+func (rb *ReqBuffer) Save() error {
 	if rb.reqCnt == 0 {
 		return nil
 	}
 	h, d := rb.JSON()
 	go SendDebugData(fmt.Sprintf("server: meta blob:%v (len:%v) written\n", h, len(d)))
 	rb.Reset()
-	if err := rb.blobBackend.Put(&Request{Host: hostname, MetaBlob: true}, h, d); err != nil {
+	if err := rb.blobBackend.Put(h, d); err != nil {
 		return fmt.Errorf("Error putting blob: %v", err)
 	}
 	if _, err := rb.db.Sadd("_meta", h); err != nil {
 		return fmt.Errorf("Error adding the meta blob %v to _meta list: %v", h, err)
 	}
-	return nil
-}
-
-// LoadIncomingBlob try to decode/load and apply a ReqBuffer from the raw blob
-func (rb *ReqBuffer) LoadIncomingBlob(hostname, hash string, blob []byte) error {
-	go SendDebugData(fmt.Sprintf("server: load incoming blob from %v", hostname))
-	cnt := rb.db.Sismember("_meta", hash)
-	if cnt == 0 {
-		if !bytes.Equal(blob[0:MetaBlobOverhead], []byte(MetaBlobHeader)) {
-			return fmt.Errorf("blob %v from %v is not a valid meta blob", hash, hostname)
-		}
-		go SendDebugData(fmt.Sprintf("server: meta blob %v not yet loaded", hash))
-
-		res := make(map[string][]*ReqArgs)
-
-		if err := json.Unmarshal(blob[MetaBlobOverhead:], &res); err != nil {
-			return err
-		}
-
-		if err := NewReqBufferWithData(rb.db, rb.blobBackend, res).Apply(); err != nil {
-			return err
-		}
-		go SendDebugData(fmt.Sprintf("server: meta blob %v applied", hash))
-	}
-	return nil
-}
-
-// Enumerate every meta blobs filename and check if the data is already indexed.
-func (rb *ReqBuffer) Load(hostname string) error {
-	go SendDebugData("server: scanning meta blobs")
-	//rb.Lock()
-	//defer rb.Unlock()
-	hashes := make(chan string)
-	errc := make(chan error, 1)
-	go func() {
-		errc <- rb.blobBackend.Enumerate(&Request{Host: hostname, MetaBlob: true}, hashes)
-	}()
-	for hash := range hashes {
-		cnt := rb.db.Sismember("_meta", hash)
-		if cnt == 0 {
-			blob, berr := rb.blobBackend.Get(&Request{Host: hostname, MetaBlob: true}, hash)
-			if berr != nil {
-				return berr
-			}
-			if !bytes.Equal(blob[0:MetaBlobOverhead], []byte(MetaBlobHeader)) {
-				go SendDebugData(fmt.Sprintf("server: blob %v is not a valid meta blob, skipping", hash))
-				continue
-			}
-			go SendDebugData(fmt.Sprintf("server: meta blob %v not yet loaded", hash))
-
-			res := make(map[string][]*ReqArgs)
-
-			if err := json.Unmarshal(blob[MetaBlobOverhead:], &res); err != nil {
-				return err
-			}
-
-			if err := NewReqBufferWithData(rb.db, rb.blobBackend, res).Apply(); err != nil {
-				return err
-			}
-			go SendDebugData(fmt.Sprintf("server: meta blob %v applied", hash))
-		}
-	}
-	if err := <-errc; err != nil {
-		go SendDebugData(fmt.Sprintf("server: aborting scan, err:%v", err))
-		return err
-	}
-	go SendDebugData("server: scan done")
 	return nil
 }
 

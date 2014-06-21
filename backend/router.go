@@ -46,6 +46,16 @@ type Router struct {
 	TxManagers map[string]*TxManager
 }
 
+func (router *Router) Load() error {
+	for _, txm := range router.TxManagers {
+		if err := txm.Load(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
 // ResolveBackends construct the list of needed backend key
 // by inspecting the rules
 func (router *Router) ResolveBackends() []string {
