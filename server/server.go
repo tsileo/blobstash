@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -38,7 +37,6 @@ var (
 )
 
 var (
-	DB *db.DB
 	BlobRouter *backend.Router
 	loadMetaBlobs sync.Once
 )
@@ -46,21 +44,24 @@ var (
 type ServerCtx struct {
 	TxID string
 	Hostname string
-	TxManager *TxManager
 }
 //	dbm.TxManagers[dbname] = NewTxManager(newdb, dbm.metaBackend)
+//func SetupDB(path string) {
+//	os.MkdirAll(path, 0700)
+//	db, err := db.New(filepath.Join(path, "blobstash-index"))
+//	if err != nil {
+//		panic(err)
+//	}
+//	DB = db
+//}
 
-func SetupDB(path string) {
-	os.MkdirAll(path, 0700)
-	db, err := db.New(filepath.Join(path, "blobstash-index"))
-	if err != nil {
-		panic(err)
-	}
-	DB = db
+func (ctx *ServerCtx) GetReqBuffer(name string) *backend.ReqBuffer {
+	//return ctx.TxManager.GetReqBuffer(name)
+	return BlobRouter.TxManager(&backend.Request{Host: ctx.Hostname}).GetReqBuffer(name)
 }
 
-func (ctx *ServerCtx) GetReqBuffer(name string) *ReqBuffer {
-	return ctx.TxManager.GetReqBuffer(name)
+func (ctx *ServerCtx) GetDB() *db.DB {
+	return BlobRouter.DB(&backend.Request{Host: ctx.Hostname})
 }
 
 func SetUpCtx(req *redeo.Request) {
@@ -69,7 +70,7 @@ func SetUpCtx(req *redeo.Request) {
 	if req.Client().Ctx == nil {
 		totalConnectionsReceivedVar.Add(1)
 		log.Printf("server: new connection from %+v", client)
-		req.Client().Ctx = &ServerCtx{"", "", NewTxManager(DB, BlobRouter)}
+		req.Client().Ctx = &ServerCtx{"", ""}
 	}
 
 	commandStatsVar.Add(req.Name, 1)
@@ -134,7 +135,6 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 	glacierPubSub := pubsub.NewPubSub("glacier")
 	log.Println("server: starting...")
 	BlobRouter = blobRouter
-	SetupDB(dbpath)
 	srv := redeo.NewServer(&redeo.Config{Addr: addr})
 	srv.HandleFunc("ping", func(out *redeo.Responder, _ *redeo.Request) error {
 		out.WriteInlineString("PONG")
@@ -187,7 +187,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		res, err := DB.Get(req.Args[0])
+		ctx := req.Client().Ctx.(*ServerCtx)
+		res, err := ctx.GetDB().Get(req.Args[0])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -223,7 +224,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		err = DB.Put(req.Args[0], req.Args[1])
+		ctx := req.Client().Ctx.(*ServerCtx)
+		err = ctx.GetDB().Put(req.Args[0], req.Args[1])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -240,7 +242,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
-		kvs, err := DB.GetStringRange(req.Args[0], req.Args[1], limit)
+		ctx := req.Client().Ctx.(*ServerCtx)
+		kvs, err := ctx.GetDB().GetStringRange(req.Args[0], req.Args[1], limit)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -262,7 +265,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		}
 		cmdArgs := make([]string, len(req.Args)-1)
 		copy(cmdArgs, req.Args[1:])
-		cnt, err := DB.Sadd(req.Args[0], cmdArgs...)
+		ctx := req.Client().Ctx.(*ServerCtx)
+		cnt, err := ctx.GetDB().Sadd(req.Args[0], cmdArgs...)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -275,7 +279,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		cnt, err := DB.Scard(req.Args[0])
+		ctx := req.Client().Ctx.(*ServerCtx)
+		cnt, err := ctx.GetDB().Scard(req.Args[0])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -288,7 +293,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		members := DB.Smembers(req.Args[0])
+		ctx := req.Client().Ctx.(*ServerCtx)
+		members := ctx.GetDB().Smembers(req.Args[0])
 		//if err != nil {
 		//	return ErrSomethingWentWrong
 		//}
@@ -308,7 +314,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		cnt, err := DB.Hmset(req.Args[0], req.Args[1], req.Args[2])
+		ctx := req.Client().Ctx.(*ServerCtx)
+		cnt, err := ctx.GetDB().Hmset(req.Args[0], req.Args[1], req.Args[2])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -323,7 +330,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		}
 		cmdArgs := make([]string, len(req.Args)-1)
 		copy(cmdArgs, req.Args[1:])
-		cnt, err := DB.Hmset(req.Args[0], cmdArgs...)
+		ctx := req.Client().Ctx.(*ServerCtx)
+		cnt, err := ctx.GetDB().Hmset(req.Args[0], cmdArgs...)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -336,7 +344,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		cnt, err := DB.Hlen(req.Args[0])
+		ctx := req.Client().Ctx.(*ServerCtx)
+		cnt, err := ctx.GetDB().Hlen(req.Args[0])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -349,7 +358,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		res, err := DB.Hget(req.Args[0], req.Args[1])
+		ctx := req.Client().Ctx.(*ServerCtx)
+		res, err := ctx.GetDB().Hget(req.Args[0], req.Args[1])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -366,7 +376,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		kvs, err := DB.Hgetall(req.Args[0])
+		ctx := req.Client().Ctx.(*ServerCtx)
+		kvs, err := ctx.GetDB().Hgetall(req.Args[0])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -391,7 +402,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
-		hkeys, err := DB.Hscan(req.Args[0], req.Args[1], limit)
+		ctx := req.Client().Ctx.(*ServerCtx)
+		hkeys, err := ctx.GetDB().Hscan(req.Args[0], req.Args[1], limit)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -515,7 +527,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		card, err := DB.Llen(req.Args[0])
+		ctx := req.Client().Ctx.(*ServerCtx)
+		card, err := ctx.GetDB().Llen(req.Args[0])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -532,7 +545,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
-		err = DB.Ladd(req.Args[0], cindex, req.Args[2])
+		ctx := req.Client().Ctx.(*ServerCtx)
+		err = ctx.GetDB().Ladd(req.Args[0], cindex, req.Args[2])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -549,7 +563,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
-		res, err := DB.Lindex(req.Args[0], cindex)
+		ctx := req.Client().Ctx.(*ServerCtx)
+		res, err := ctx.GetDB().Lindex(req.Args[0], cindex)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -570,7 +585,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
-		kvs, err := DB.GetListRange(req.Args[0], req.Args[1], req.Args[2], limit)
+		ctx := req.Client().Ctx.(*ServerCtx)
+		kvs, err := ctx.GetDB().GetListRange(req.Args[0], req.Args[1], req.Args[2], limit)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -590,8 +606,9 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
+		ctx := req.Client().Ctx.(*ServerCtx)
 		if len(req.Args) == 1 {
-			vals, err := DB.Liter(req.Args[0])
+			vals, err := ctx.GetDB().Liter(req.Args[0])
 			if err != nil {
 				return ErrSomethingWentWrong
 			}
@@ -610,7 +627,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			if strings.ToLower(req.Args[1]) != "with" {
 				return ErrSomethingWentWrong
 			}
-			ivs, err := DB.LiterWithIndex(req.Args[0])
+			ctx := req.Client().Ctx.(*ServerCtx)
+			ivs, err := ctx.GetDB().LiterWithIndex(req.Args[0])
 			if err != nil {
 				return ErrSomethingWentWrong
 			}
@@ -754,8 +772,6 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 					log.Printf("server: Captured %v\n", sig)
 					break
 				}
-				log.Println("server: closing DB first...")
-				DB.Close()
 				log.Println("server: closing backends...")
 				BlobRouter.Close()
 				log.Println("server: shutting down...")
