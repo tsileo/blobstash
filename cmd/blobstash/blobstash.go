@@ -29,8 +29,8 @@ func main() {
 			Usage:     "put a file/directory",
 			Flags:     commonFlags,
 			Action: func(c *cli.Context) {
-				client, _ := client.NewClient(c.String("host"), ignoredFiles)
-				b, m, wr, err := client.Put(c.Args().First())
+				cl, _ := client.NewClient(c.String("host"), ignoredFiles)
+				b, m, wr, err := cl.Put(&client.Ctx{Hostname: cl.Hostname}, c.Args().First())
 				fmt.Printf("b:%+v,m:%+v,wr:%+v,err:%v\n", b, m, wr, err)
 			},
 		},

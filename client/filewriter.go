@@ -23,7 +23,7 @@ var (
 
 // FileWriter reads the file byte and byte and upload it,
 // chunk by chunk, it also constructs the file index .
-func (client *Client) FileWriter(txID, key, path string) (*WriteResult, error) {
+func (client *Client) FileWriter(con redis.Conn, key, path string) (*WriteResult, error) {
 	writeResult := &WriteResult{}
 	window := 64
 	rs := rolling.New(window)
@@ -33,12 +33,6 @@ func (client *Client) FileWriter(txID, key, path string) (*WriteResult, error) {
 		return nil, fmt.Errorf("can't open file %v: %v", path, err)
 	}
 	freader := bufio.NewReader(f)
-	con := client.Pool.Get()
-	defer con.Close()
-	// Set the transaction id.
-	if _, err := con.Do("TXINIT", txID); err != nil {
-		return nil, fmt.Errorf("error TXINIT %v: %v", txID, err)
-	}
 	if _, err := con.Do("LADD", key, 0, ""); err != nil {
 		panic(fmt.Errorf("DB error LADD %v %v %v: %v", key, 0, "", err))
 	}
@@ -101,7 +95,7 @@ func (client *Client) FileWriter(txID, key, path string) (*WriteResult, error) {
 	return writeResult, nil
 }
 
-func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err error) {
+func (client *Client) PutFile(ctx *Ctx, path string) (meta *Meta, wr *WriteResult, err error) {
 	//log.Printf("PutFile %v/%v\n", txID, path)
 	client.StartUpload()
 	defer client.UploadDone()
@@ -111,10 +105,10 @@ func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err err
 	}
 	_, filename := filepath.Split(path)
 	sha := FullSHA1(path)
-	con := client.Pool.Get()
+	con := client.Conn()
 	defer con.Close()
 
-	txID, err := redis.String(con.Do("TXINIT"))
+	_, err = redis.String(con.Do("TXINIT", ctx.Args()...))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -136,7 +130,7 @@ func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err err
 		wr.BlobsCount += cnt
 		wr.BlobsSkipped += cnt
 	} else {
-		wr, err = client.FileWriter(txID, sha, path)
+		wr, err = client.FileWriter(con, sha, path)
 		if err != nil {
 			return nil, nil, fmt.Errorf("FileWriter %v error: %v", path, err)
 		}
@@ -153,8 +147,12 @@ func (client *Client) PutFile(path string) (meta *Meta, wr *WriteResult, err err
 	meta.Type = "file"
 	meta.ModTime = fstat.ModTime().Format(time.RFC3339)
 	meta.Mode = uint32(fstat.Mode())
-	if err := meta.Save(txID, client.Pool); err != nil {
+	if err := meta.Save(con); err != nil {
 		return nil, nil, fmt.Errorf("Error saving meta %+v: %v", meta, err)
+	}
+	_, err = con.Do("TXCOMMIT")
+	if err != nil {
+		return nil, nil, fmt.Errorf("error TXCOMMIT: %+v", err)
 	}
 	return meta, wr, nil
 }

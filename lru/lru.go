@@ -25,15 +25,19 @@
 // strategy.
 package lru
 
+import (
+	"github.com/garyburd/redigo/redis"
+)
+
 // Cache for function Func.
 type LRU struct {
-	Func  func(string) interface{}
+	Func  func(redis.Conn, string) interface{}
 	index map[string]int // index of key in queue
 	queue list
 }
 
 // Create a new LRU cache for function f with the desired capacity.
-func New(f func(string) interface{}, capacity int) *LRU {
+func New(f func(redis.Conn, string) interface{}, capacity int) *LRU {
 	if capacity < 1 {
 		panic("capacity < 1")
 	}
@@ -43,13 +47,13 @@ func New(f func(string) interface{}, capacity int) *LRU {
 }
 
 // Fetch value for key in the cache, calling Func to compute it if necessary.
-func (c *LRU) Get(key string) (value interface{}) {
+func (c *LRU) Get(con redis.Conn, key string) (value interface{}) {
 	i, stored := c.index[key]
 	if stored {
 		value = c.queue.valueAt(i)
 		c.queue.moveToFront(i)
 	} else {
-		value = c.Func(key)
+		value = c.Func(con, key)
 		c.insert(key, value)
 	}
 	return value

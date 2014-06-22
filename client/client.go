@@ -18,13 +18,22 @@ var (
 
 type Client struct {
 	Pool         *redis.Pool
-	Hostname string
+	Hostname     string
 	Blobs        *disklru.DiskLRU
-	Dirs         DirFetcher
-	Metas        MetaFetcher
+	Dirs         *lru.LRU
+	Metas        *lru.LRU
 	uploaders    chan struct{}
 	dirUploaders chan struct{}
 	ignoredFiles []string
+}
+
+type Ctx struct {
+	Hostname string
+	Archive  bool
+}
+
+func (ctx *Ctx) Args() redis.Args {
+	return redis.Args{}.Add(ctx.Hostname).Add(ctx.Archive)
 }
 
 func NewClient(hostname string, ignoredFiles []string) (*Client, error) {
@@ -35,7 +44,6 @@ func NewClient(hostname string, ignoredFiles []string) (*Client, error) {
 			return nil, err
 		}
 	}
-	// TODO custom hostname
 	c := &Client{Hostname: hostname, uploaders: make(chan struct{}, uploaders),
 		dirUploaders: make(chan struct{}, dirUploaders)}
 	if err := c.SetupPool(); err != nil {
@@ -57,26 +65,31 @@ func NewClient(hostname string, ignoredFiles []string) (*Client, error) {
 
 func (client *Client) SetupPool() error {
 	client.Pool = &redis.Pool{
-		MaxIdle:     250,
-		MaxActive:   250,
+		MaxIdle:     50,
 		IdleTimeout: 240 * time.Second,
 		Dial: func() (redis.Conn, error) {
 			c, err := redis.Dial("tcp", "localhost:9735")
 			if err != nil {
 				return nil, err
 			}
-			_, err = c.Do("HOSTNAME", client.Hostname)
 			return c, err
 		},
 		TestOnBorrow: func(c redis.Conn, t time.Time) error {
-			_, err := c.Do("HOSTNAME", client.Hostname)
-			if err != nil {
-				return err
-			}
+			_, err := c.Do("PING")
 			return err
 		},
 	}
 	return nil
+}
+
+func (client *Client) Conn() redis.Conn {
+	return client.Pool.Get()
+}
+
+func (client *Client) ConnWithCtx(ctx *Ctx) redis.Conn {
+	con := client.Pool.Get()
+	con.Do("SETCTX", ctx.Args()...)
+	return con
 }
 
 func NewTestClient(hostname string) (*Client, error) {
@@ -145,27 +158,26 @@ func (client *Client) DirUploadDone() {
 //}
 
 func (client *Client) Get(hash, path string) (snapshot *Snapshot, meta *Meta, rr *ReadResult, err error) {
-	con := client.Pool.Get()
-	_, err = con.Do("INIT")
+	con := client.ConnWithCtx(&Ctx{Hostname: client.Hostname})
+	defer con.Close()
+	snapshot, err = NewSnapshotFromDB(con, hash)
 	if err != nil {
 		return
 	}
-	snapshot, err = NewSnapshotFromDB(client.Pool, hash)
-	if err != nil {
-		return
-	}
-	meta, err = snapshot.Meta(client.Pool)
+	// TODO(tsileo) find a better way to handle Ctx on Get
+	ctx := &Ctx{Hostname: snapshot.Hostname}
+	meta, err = snapshot.Meta(con)
 	if err != nil {
 		return
 	}
 	switch {
 	case snapshot.Type == "dir":
-		rr, err = client.GetDir(snapshot.Hostname, snapshot.Ref, path)
+		rr, err = client.GetDir(ctx, snapshot.Ref, path)
  		if err != nil {
  			return
  		}
 	case snapshot.Type == "file":
- 		rr, err = client.GetFile(snapshot.Hostname, snapshot.Ref, path)
+ 		rr, err = client.GetFile(ctx, snapshot.Ref, path)
  		if err != nil {
  			return
  		}
@@ -176,32 +188,31 @@ func (client *Client) Get(hash, path string) (snapshot *Snapshot, meta *Meta, rr
 	return
 }
 
-func (client *Client) Put(path string) (snapshot *Snapshot, meta *Meta, wr *WriteResult, err error) {
-	con := client.Pool.Get()
-	_, err = con.Do("INIT")
-	if err != nil {
-		return
-	}
+func (client *Client) Put(ctx *Ctx, path string) (snapshot *Snapshot, meta *Meta, wr *WriteResult, err error) {
 	info, err := os.Stat(path)
-
 	if os.IsNotExist(err) {
 		return
 	}
 	var btype string
 	if info.IsDir() {
 		btype = "dir"
-		meta, wr, err = client.PutDir(path)
+		meta, wr, err = client.PutDir(ctx, path)
 	} else {
 		btype = "file"
-		meta, wr, err = client.PutFile(path)
+		meta, wr, err = client.PutFile(ctx, path)
 	}
 	if err != nil {
 		return
 	}
+	con := client.Conn()
+	defer con.Close()
+	if _, err = redis.String(con.Do("TXINIT", ctx.Args()...)); err != nil {
+		return
+	}
 	snapshot = NewSnapshot(client.Hostname, path, btype, meta.Hash)
-	if err := snapshot.Save(client.Pool); err != nil {
+	if err := snapshot.Save(con); err != nil {
 		return snapshot, meta, wr, err
 	}
-	_, err = con.Do("DONE");
+	_, err = con.Do("TXCOMMIT")
 	return
 }

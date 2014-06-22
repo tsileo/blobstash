@@ -43,6 +43,7 @@ var (
 
 type ServerCtx struct {
 	TxID string
+	ArchiveMode bool
 	Hostname string
 }
 //	dbm.TxManagers[dbname] = NewTxManager(newdb, dbm.metaBackend)
@@ -74,7 +75,7 @@ func SetUpCtx(req *redeo.Request) {
 	if req.Client().Ctx == nil {
 		totalConnectionsReceivedVar.Add(1)
 		log.Printf("server: new connection from %+v", client)
-		req.Client().Ctx = &ServerCtx{"", ""}
+		req.Client().Ctx = &ServerCtx{}
 	}
 
 	commandStatsVar.Add(req.Name, 1)
@@ -670,7 +671,38 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		out.WriteOK()
 		return nil
 	})
-
+	srv.HandleFunc("debugctx", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		ctx := req.Client().Ctx.(*ServerCtx)
+		out.WriteBulkLen(6)
+		out.WriteString("tx-id")
+		out.WriteString(ctx.TxID)
+		out.WriteString("hostname")
+		out.WriteString(ctx.Hostname)
+		out.WriteString("archive-mode")
+		out.WriteString(strconv.FormatBool(ctx.ArchiveMode))
+		return nil
+	})
+	srv.HandleFunc("setctx", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckMinArgs(req, 0)
+		if err != nil {
+			return err
+		}
+		switch {
+		case len(req.Args) == 2:
+			ctx := req.Client().Ctx.(*ServerCtx)
+			ctx.Hostname = req.Args[0]
+			archiveMode, err := strconv.ParseBool(req.Args[1])
+			if err != nil {
+				ctx.ArchiveMode = archiveMode
+			}
+			out.WriteOK()
+		default:
+			return ErrSomethingWentWrong
+		}
+		return nil
+	})
 	srv.HandleFunc("txinit", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckMinArgs(req, 0)
@@ -678,16 +710,22 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return err
 		}
 		switch {
-		case len(req.Args) == 0:
+		case len(req.Args) == 2:
 			newID := NewID()
-			req.Client().Ctx.(*ServerCtx).TxID = newID
+			ctx := req.Client().Ctx.(*ServerCtx)
+			ctx.TxID = newID
+			ctx.Hostname = req.Args[0]
+			archiveMode, err := strconv.ParseBool(req.Args[1])
+			if err != nil {
+				ctx.ArchiveMode = archiveMode
+			}
 			out.WriteString(newID)
 
 		case len(req.Args) == 1:
 			req.Client().Ctx.(*ServerCtx).TxID = req.Args[0]
 			out.WriteOK()
 
-		case len(req.Args) > 1:
+		default:
 			return ErrSomethingWentWrong
 		}
 		return nil

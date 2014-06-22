@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"github.com/cznic/kv"
+	"github.com/garyburd/redigo/redis"
 )
 
 func dirsPermutations() []string {
@@ -77,7 +78,7 @@ func opts() *kv.Options {
 }
 
 type DiskLRU struct {
-	Func      func(string, string) []byte
+	Func      func(redis.Conn, string) []byte
 	Threshold int64
 	db        *kv.DB
 	path      string
@@ -91,7 +92,7 @@ type CacheItem struct {
 }
 
 // New initialize a new DiskLRU.
-func New(path string, f func(string, string) []byte, threshold int64) (*DiskLRU, error) {
+func New(path string, f func(redis.Conn, string) []byte, threshold int64) (*DiskLRU, error) {
 	db_path := filepath.Join(path, "db")
 	if err := os.MkdirAll(path, 0700); err != nil {
 		return nil, err
@@ -110,7 +111,7 @@ func New(path string, f func(string, string) []byte, threshold int64) (*DiskLRU,
 	return &DiskLRU{f, threshold, db, path, sync.Mutex{}}, err
 }
 
-func NewTest(f func(string, string) []byte, threshold int64) (*DiskLRU, error) {
+func NewTest(f func(redis.Conn, string) []byte, threshold int64) (*DiskLRU, error) {
 	db, err := kv.CreateMem(&kv.Options{})
 	return &DiskLRU{f, threshold, db, "tmp_test_blobs_lru", sync.Mutex{}}, err
 }
@@ -147,7 +148,7 @@ func decodeIndexKey(key []byte) (string, uint32) {
 }
 
 // Get the value for the given key, call Func if the key isn't stored yet.
-func (lru *DiskLRU) Get(host, key string) (data []byte, fetched bool, err error) {
+func (lru *DiskLRU) Get(con redis.Conn, key string) (data []byte, fetched bool, err error) {
 	lru.Lock()
 	defer func() {
 		lru.Unlock()
@@ -161,7 +162,7 @@ func (lru *DiskLRU) Get(host, key string) (data []byte, fetched bool, err error)
 	}
 	if lastAccessTime == 0 {
 		fetched = true
-		data = lru.Func(host, key)
+		data = lru.Func(con, key)
 		if err = ioutil.WriteFile(filepath.Join(lru.path, "blobs", key[:2], key), data, 0644); err != nil {
 			return
 		}

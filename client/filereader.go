@@ -12,12 +12,7 @@ import (
 
 // FetchBlob is used by the client level blobs LRU
 // Return the data for the given hash
-func (client *Client) FetchBlob(host, hash string) []byte {
-	con := client.Pool.Get()
-	defer con.Close()
-	if _, err := con.Do("HOSTNAME", host); err != nil {
-		panic(fmt.Errorf("failed to fetch blob %v (%v)", hash, err))
-	}
+func (client *Client) FetchBlob(con redis.Conn, hash string) []byte {
 	var buf bytes.Buffer
 	data, err := redis.String(con.Do("BGET", hash))
 	if err != nil {
@@ -28,22 +23,23 @@ func (client *Client) FetchBlob(host, hash string) []byte {
 }
 
 // Download a file by its hash to path
-func (client *Client) GetFile(host, key, path string) (*ReadResult, error) {
+func (client *Client) GetFile(ctx *Ctx, key, path string) (*ReadResult, error) {
 	// TODO(ts) make io.Copy ?
 	readResult := &ReadResult{}
-	con := client.Pool.Get()
-	defer con.Close()
 	buf, err := os.Create(path)
 	defer buf.Close()
 	if err != nil {
 		return nil, err
 	}
 	h := sha1.New()
-	meta, err := NewMetaFromDB(client.Pool, key)
+	con := client.ConnWithCtx(ctx)
+	defer con.Close()
+	meta, err := NewMetaFromDB(con, key)
 	if err != nil {
 		return nil, err
 	}
-	ffile := NewFakeFile(client, host, meta.Ref, meta.Size)
+	ffile := NewFakeFile(client, ctx, meta.Ref, meta.Size)
+	defer ffile.Close()
 	ffilreReader := io.TeeReader(ffile, h)
 	io.Copy(buf, ffilreReader)
 	readResult.Hash = fmt.Sprintf("%x", h.Sum(nil))
@@ -66,7 +62,7 @@ func (client *Client) GetFile(host, key, path string) (*ReadResult, error) {
 // It fetch blobs on the fly.
 type FakeFile struct {
 	client *Client
-	host string
+	con redis.Conn
 	ref    string
 	offset int
 	size   int
@@ -78,17 +74,20 @@ type FakeFile struct {
 
 
 // Create a new FakeFile instance.
-func NewFakeFile(client *Client, host, ref string, size int) (f *FakeFile) {
+func NewFakeFile(client *Client, ctx *Ctx, ref string, size int) (f *FakeFile) {
 	// Needed for the blob routing
-	f = &FakeFile{client: client, host: host, ref: ref, size: size}
-	con := f.client.Pool.Get()
-	defer con.Close()
-	values, err := redis.Values(con.Do("LITER", f.ref, "WITH", "RANGE"))
+	f = &FakeFile{client: client, ref: ref, size: size}
+	f.con = f.client.ConnWithCtx(ctx)
+	values, err := redis.Values(f.con.Do("LITER", f.ref, "WITH", "RANGE"))
 	if err != nil {
 		panic(fmt.Errorf("error [LITER %v WITH RANGE]: %v", f.ref, err))
 	}
 	redis.ScanSlice(values, &f.lmrange)
 	return
+}
+
+func (f *FakeFile) Close() error {
+	return f.con.Close()
 }
 
 // Implement the io.ReaderAt interface
@@ -126,7 +125,7 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 		if offset > iv.Index {
 			continue
 		}
-		bbuf, _, _ := f.client.Blobs.Get(f.host, iv.Value)
+		bbuf, _, _ := f.client.Blobs.Get(f.con, iv.Value)
 		foffset := 0
 		if offset != 0 {
 			// Compute the starting offset of the blob

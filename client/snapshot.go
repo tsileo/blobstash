@@ -27,10 +27,8 @@ func NewSnapshot(bhostname, bpath, btype, bref string) (s *Snapshot) {
 		Hostname: bhostname}
 }
 
-func NewSnapshotFromDB(pool *redis.Pool, key string) (s *Snapshot, err error) {
+func NewSnapshotFromDB(con redis.Conn, key string) (s *Snapshot, err error) {
 	s = &Snapshot{}
-	con := pool.Get()
-	defer con.Close()
 	reply, err := redis.Values(con.Do("HGETALL", key))
 	if err != nil {
 		return
@@ -62,13 +60,8 @@ func backupKey(hostname, path string) string {
 }
 
 // Save the backup to DB
-func (s *Snapshot) Save(pool *redis.Pool) (error) {
-	con := pool.Get()
-	defer con.Close()
+func (s *Snapshot) Save(con redis.Conn) (error) {
 	s.computeHash()
-	if _, err := redis.String(con.Do("TXINIT")); err != nil {
-		return err
-	}
 	_, err := con.Do("HMSET", s.Hash,
 					"path", s.Path,
 					"type", s.Type,
@@ -91,12 +84,10 @@ func (s *Snapshot) Save(pool *redis.Pool) (error) {
 	if _, err := con.Do("LADD", snapKey, int(s.Ts), s.Hash); err != nil {
 		return err
 	}
-	// Trigger creation a meta blob by calling TXCOMMIT
-	_, err = con.Do("TXCOMMIT")
-	return err
+	return nil
 }
 
 // Meta fetch the associated Meta
-func (s *Snapshot) Meta(pool *redis.Pool) (m *Meta, err error) {
-	return NewMetaFromDB(pool, s.Ref)
+func (s *Snapshot) Meta(con redis.Conn) (m *Meta, err error) {
+	return NewMetaFromDB(con, s.Ref)
 }

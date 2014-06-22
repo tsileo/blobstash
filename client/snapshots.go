@@ -37,7 +37,7 @@ func (b *Backup) Snapshots() ([]*IndexSnapshot, error) {
 	}
 	redis.ScanSlice(values, &indexValueList)
 	for _, iv := range indexValueList {
-		snap, berr := NewSnapshotFromDB(b.client.Pool, iv.Value)
+		snap, berr := NewSnapshotFromDB(con, iv.Value)
 		if berr != nil {
 			return nil, berr
 		}

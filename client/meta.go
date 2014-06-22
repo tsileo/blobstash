@@ -34,10 +34,8 @@ func (m *Meta) metaKey() string {
 	return fmt.Sprintf("%x", sha.Sum(nil))
 }
 
-func NewMetaFromDB(pool *redis.Pool, key string) (m *Meta, err error) {
+func NewMetaFromDB(con redis.Conn, key string) (m *Meta, err error) {
 	m = &Meta{}
-	con := pool.Get()
-	defer con.Close()
 	reply, err := redis.Values(con.Do("HGETALL", key))
 	if err != nil {
 		return
@@ -47,9 +45,9 @@ func NewMetaFromDB(pool *redis.Pool, key string) (m *Meta, err error) {
 	return
 }
 
-func GetAllMeta(pool *redis.Pool) (metas []*Meta, err error) {
-	return
-}
+//func GetAllMeta(pool *redis.Pool) (metas []*Meta, err error) {
+//	return
+//}
 
 func NewMeta() *Meta {
 	meta := &Meta{}
@@ -57,9 +55,7 @@ func NewMeta() *Meta {
 }
 
 // Save the meta
-func (m *Meta) Save(txID string, pool *redis.Pool) error {
-	con := pool.Get()
-	defer con.Close()
+func (m *Meta) Save(con redis.Conn) error {
 	m.Hash = m.metaKey()
 	cnt, err := redis.Int(con.Do("HLEN", m.Hash))
 	if err != nil {
@@ -67,9 +63,6 @@ func (m *Meta) Save(txID string, pool *redis.Pool) error {
 	}
 	if cnt != 0 {
 		return nil
-	}
-	if _, err := redis.String(con.Do("TXINIT", txID)); err != nil {
-		return fmt.Errorf("error TXINIT: %v", err)
 	}
 	if _, err := con.Do("HMSET", m.Hash,
 		"name", m.Name,
@@ -79,11 +72,6 @@ func (m *Meta) Save(txID string, pool *redis.Pool) error {
 		"mode", m.Mode,
 		"ref", m.Ref); err != nil {
 		return fmt.Errorf("error HMSET: %v", m, err)
-	}
-
-	_, err = con.Do("TXCOMMIT")
-	if err != nil {
-		return fmt.Errorf("error TXCOMMIT: %+v", err)
 	}
 	return err
 }
@@ -114,14 +102,16 @@ type MetaFetcher interface {
 }
 
 func (client *Client) MetaFromDB(key string) (*Meta, error) {
-	return NewMetaFromDB(client.Pool, key)
+	con := client.Conn()
+	defer con.Close()
+	return NewMetaFromDB(con, key)
 }
 
 // Used by the LRU to fetch the Meta for the given dir/file
-func (client *Client) FetchMeta(key string) interface{} {
-	metas, err := client.MetaFromDB(key)
+func (client *Client) FetchMeta(con redis.Conn, key string) interface{} {
+	meta, err := NewMetaFromDB(con, key)
 	if err != nil {
 		panic(fmt.Sprintf("Error FetchMeta key:%v", key))
 	}
-	return metas
+	return meta
 }
