@@ -11,7 +11,6 @@ import (
 	"github.com/tsileo/blobstash/db"
 )
 
-
 func SendDebugData(data string) {
 	cmd := fmt.Sprintf("%v: %v", time.Now().UTC().Format(time.RFC3339), data)
 	notify.Post("monitor_cmd", cmd)
@@ -40,6 +39,7 @@ type BackendAndDB struct {
 }
 
 type Router struct {
+	Index *db.DB
 	Rules []*simplejson.Json
 	Backends map[string]BlobHandler
 	DBs map[string]*db.DB
@@ -54,7 +54,6 @@ func (router *Router) Load() error {
 	}
 	return nil
 }
-
 
 // ResolveBackends construct the list of needed backend key
 // by inspecting the rules
@@ -153,12 +152,13 @@ func (router *Router) Done() error {
 	return nil
 }
 
-func NewRouterFromConfig(json *simplejson.Json) (*Router, error) {
+func NewRouterFromConfig(json *simplejson.Json, index *db.DB) (*Router, error) {
 	rules, err := json.Array()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse config, body must be an array")
 	}
 	rconf := &Router{Rules: []*simplejson.Json{},
+		Index: index,
 		Backends: make(map[string]BlobHandler),
 		DBs: make(map[string]*db.DB),
 		TxManagers: make(map[string]*TxManager)}

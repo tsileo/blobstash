@@ -48,13 +48,17 @@ func start(config_path string) {
 	if !exists {
 		panic(fmt.Errorf("missing top-level key \"backends\" from config file"))
 	}
-	blobRouter, err := backend.NewRouterFromConfig(conf.Get("router"))
+	dbPath := conf.Get("db-path").MustString("dbs")
+	os.MkdirAll(dbPath, 0700)
+	routerDB, err := db.New(filepath.Join(dbPath, "index"))
+	if err != nil {
+		panic(err)
+	}
+	blobRouter, err := backend.NewRouterFromConfig(conf.Get("router"), routerDB)
 	if err != nil {
 		panic(err)
 	}
 	// TODO => config backend in BlobRouter
-	dbPath := conf.Get("db-path").MustString("dbs")
-	os.MkdirAll(dbPath, 0700)
 	for _, backendKey := range blobRouter.ResolveBackends() {
 		cbackend := config.NewFromConfig(conf.GetPath("backends", backendKey))
 		blobRouter.Backends[backendKey] = cbackend
@@ -63,7 +67,7 @@ func start(config_path string) {
 			panic(err)
 		}
 		blobRouter.DBs[backendKey] = db
-		blobRouter.TxManagers[backendKey] = backend.NewTxManager(db, cbackend)
+		blobRouter.TxManagers[backendKey] = backend.NewTxManager(blobRouter.Index, db, cbackend)
 	}
 	err = blobRouter.Load()
 	if err != nil {

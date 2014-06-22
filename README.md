@@ -116,6 +116,7 @@ You can combine backend as you wish, e.g. Mirror( Encrypt( S3() ), BlobsFile() )
 - Follow .gitignore file
 - Garbage collection (sparse files support for blob files)
 - A web interface
+- An S3-like HTTP API to store archive
 - Fill an issue!
 
 ## Donate!

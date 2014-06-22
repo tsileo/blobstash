@@ -73,6 +73,7 @@ import (
 	"fmt"
 	"bytes"
 	"strconv"
+	"strings"
 	"sync"
 	"crypto/sha1"
 
@@ -87,6 +88,7 @@ var (
 type TxManager struct {
 	Txs         map[string]*ReqBuffer
 	db          *db.DB
+	index       *db.DB
 	blobBackend BlobHandler
 	sync.Mutex
 }
@@ -94,10 +96,11 @@ type TxManager struct {
 type ReqBuffer struct {
 	blobBackend BlobHandler
 	db          *db.DB
-	*sync.Mutex
+	index       *db.DB
 	reqCnt     int
 	Reqs       map[string][]*ReqArgs
 	ReqsKeyRef map[string]map[string]*ReqArgs
+	sync.Mutex
 }
 
 // ReqArgs store the list of args (list of string) for the given key.
@@ -107,8 +110,8 @@ type ReqArgs struct {
 }
 
 // NewTxManager initialize a new TxManager for the given db.
-func NewTxManager(cdb *db.DB, blobBackend BlobHandler) *TxManager {
-	return &TxManager{make(map[string]*ReqBuffer), cdb, blobBackend, sync.Mutex{}}
+func NewTxManager(index *db.DB, cdb *db.DB, blobBackend BlobHandler) *TxManager {
+	return &TxManager{make(map[string]*ReqBuffer), cdb, index, blobBackend, sync.Mutex{}}
 }
 
 // GetReqBuffer retrieves an existing ReqBuffer or create it if it doesn't exists yet.
@@ -117,7 +120,7 @@ func (txm *TxManager) GetReqBuffer(name string) *ReqBuffer {
 	defer txm.Unlock()
 	rb, rbExists := txm.Txs[name]
 	if !rbExists {
-		txm.Txs[name] = NewReqBuffer(txm.db, txm.blobBackend)
+		txm.Txs[name] = NewReqBuffer(txm.index, txm.db, txm.blobBackend)
 		//go txm.Txs[name].Load()
 		return txm.Txs[name]
 	}
@@ -140,7 +143,7 @@ func (txm *TxManager) LoadIncomingBlob(hash string, blob []byte) error {
 			return err
 		}
 
-		if err := NewReqBufferWithData(txm.db, txm.blobBackend, res).Apply(); err != nil {
+		if err := NewReqBufferWithData(txm.index, txm.db, txm.blobBackend, res).Apply(); err != nil {
 			return err
 		}
 		go SendDebugData(fmt.Sprintf("server: meta blob %v applied", hash))
@@ -175,7 +178,7 @@ func (txm *TxManager) Load() error {
 				return err
 			}
 
-			if err := NewReqBufferWithData(txm.db, txm.blobBackend, res).Apply(); err != nil {
+			if err := NewReqBufferWithData(txm.index, txm.db, txm.blobBackend, res).Apply(); err != nil {
 				return err
 			}
 			go SendDebugData(fmt.Sprintf("server: meta blob %v applied", hash))
@@ -190,14 +193,19 @@ func (txm *TxManager) Load() error {
 }
 
 // NewReqBuffer initialize a new ReqBuffer
-func NewReqBuffer(cdb *db.DB, blobBackend BlobHandler) *ReqBuffer {
-	return &ReqBuffer{blobBackend, cdb, &sync.Mutex{}, 0, make(map[string][]*ReqArgs),
-		make(map[string]map[string]*ReqArgs)}
+func NewReqBuffer(index *db.DB, cdb *db.DB, blobBackend BlobHandler) *ReqBuffer {
+	return &ReqBuffer{
+		blobBackend: blobBackend,
+		db: cdb,
+		index: index,
+		Reqs: make(map[string][]*ReqArgs),
+		ReqsKeyRef: make(map[string]map[string]*ReqArgs),
+	}
 }
 
 // NewReqBufferWithData is a wrapper around NewReqBuffer, it fills the buffer with the given data.
-func NewReqBufferWithData(cdb *db.DB, blobBackend BlobHandler, data map[string][]*ReqArgs) *ReqBuffer {
-	rb := NewReqBuffer(cdb, blobBackend)
+func NewReqBufferWithData(index *db.DB, cdb *db.DB, blobBackend BlobHandler, data map[string][]*ReqArgs) *ReqBuffer {
+	rb := NewReqBuffer(index, cdb, blobBackend)
 	rb.Reqs = data
 	return rb
 }
@@ -289,6 +297,11 @@ func (rb *ReqBuffer) Apply() error {
 					if _, err := rb.db.Sadd(req.Key, args...); err != nil {
 						return err
 					}
+					if strings.HasPrefix(req.Key, "_") {
+						if _, err := rb.index.Sadd(req.Key, args...); err != nil {
+							return err
+						}
+					}
 				}
 			}
 
@@ -314,6 +327,11 @@ func (rb *ReqBuffer) Apply() error {
 					if err := rb.db.Ladd(req.Key, index, args[1]); err != nil {
 						return err
 					}
+					if strings.HasPrefix(req.Key, "_") {
+						if err := rb.index.Ladd(req.Key, index, args[1]); err != nil {
+							return err
+						}
+					}
 				}
 			}
 
@@ -321,7 +339,7 @@ func (rb *ReqBuffer) Apply() error {
 			for _, req := range reqArgs {
 				for _, args := range req.Args {
 					go SendDebugData(fmt.Sprintf("server: Applying SET: %+v/%+v", req.Key, args))
-					if err := rb.db.Put(req.Key, args[0]); err != nil {
+					if err := rb.index.Put(req.Key, args[0]); err != nil {
 						return err
 					}
 				}

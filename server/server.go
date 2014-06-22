@@ -192,8 +192,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		ctx := req.Client().Ctx.(*ServerCtx)
-		res, err := ctx.DB().Get(req.Args[0])
+		res, err := blobRouter.Index.Get(req.Args[0])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -204,33 +203,13 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		}
 		return nil
 	})
-	// Not needed as for now
-	//srv.HandleFunc("getset", func(out *redeo.Responder, req *redeo.Request) error {
-	//	SetUpCtx(req)
-	//	err := CheckArgs(req, 2)
-	//	if err != nil {
-	//		return err
-	//	}
-	//	cdb := req.Client().Ctx.(*ServerCtx).DB
-	//	res, err := cdb.Getset(req.Args[0], req.Args[1])
-	//	if err != nil {
-	//		return ErrSomethingWentWrong
-	//	}
-	//	if res != nil {
-	//		out.WriteString(string(res))
-	//	} else {
-	//		out.WriteNil()
-	//	}
-	//	return nil
-	//})
 	srv.HandleFunc("set", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 2)
 		if err != nil {
 			return err
 		}
-		ctx := req.Client().Ctx.(*ServerCtx)
-		err = ctx.DB().Put(req.Args[0], req.Args[1])
+		err = blobRouter.Index.Put(req.Args[0], req.Args[1])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -247,8 +226,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
-		ctx := req.Client().Ctx.(*ServerCtx)
-		kvs, err := ctx.DB().GetStringRange(req.Args[0], req.Args[1], limit)
+		kvs, err := blobRouter.Index.GetStringRange(req.Args[0], req.Args[1], limit)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -275,6 +253,12 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
+		// Also write the data in the router index
+		if strings.HasPrefix(req.Args[0], "_") {
+			if _, err := blobRouter.Index.Sadd(req.Args[0], cmdArgs...); err != nil {
+				return ErrSomethingWentWrong
+			}
+		}
 		out.WriteInt(cnt)
 		return nil
 	})
@@ -285,7 +269,12 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return err
 		}
 		ctx := req.Client().Ctx.(*ServerCtx)
-		cnt, err := ctx.DB().Scard(req.Args[0])
+		source := ctx.DB()
+		if strings.HasPrefix(req.Args[0], "_") {
+			// Read from the router index
+			source = blobRouter.Index
+		}
+		cnt, err := source.Scard(req.Args[0])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -299,7 +288,12 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return err
 		}
 		ctx := req.Client().Ctx.(*ServerCtx)
-		members := ctx.DB().Smembers(req.Args[0])
+		source := ctx.DB()
+		if strings.HasPrefix(req.Args[0], "_") {
+			// Read from the router index
+			source = blobRouter.Index
+		}
+		members := source.Smembers(req.Args[0])
 		//if err != nil {
 		//	return ErrSomethingWentWrong
 		//}
@@ -555,6 +549,11 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
+		if strings.HasPrefix(req.Args[0], "_") {
+			if err := blobRouter.Index.Ladd(req.Args[0], cindex, req.Args[2]); err != nil {
+				return ErrSomethingWentWrong
+			}
+		}
 		out.WriteOK()
 		return nil
 	})
@@ -612,8 +611,12 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return err
 		}
 		ctx := req.Client().Ctx.(*ServerCtx)
+		source := ctx.DB()
+		if strings.HasPrefix(req.Args[0], "_") {
+			source = blobRouter.Index
+		}
 		if len(req.Args) == 1 {
-			vals, err := ctx.DB().Liter(req.Args[0])
+			vals, err := source.Liter(req.Args[0])
 			if err != nil {
 				return ErrSomethingWentWrong
 			}
@@ -632,8 +635,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			if strings.ToLower(req.Args[1]) != "with" {
 				return ErrSomethingWentWrong
 			}
-			ctx := req.Client().Ctx.(*ServerCtx)
-			ivs, err := ctx.DB().LiterWithIndex(req.Args[0])
+			ivs, err := source.LiterWithIndex(req.Args[0])
 			if err != nil {
 				return ErrSomethingWentWrong
 			}
