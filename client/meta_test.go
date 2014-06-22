@@ -18,19 +18,20 @@ func TestModelsMeta(t *testing.T) {
 	c, err := NewTestClient("")
 	check(err)
 	defer c.Close()
-	con := c.Pool.Get()
+	con := c.Conn()
 	defer con.Close()
-	txId, err := redis.String(con.Do("TXINIT"))
+	ctx := &Ctx{Hostname: c.Hostname}
+	_, err = redis.String(con.Do("TXINIT", ctx.Args()...))
 	check(err)
 	f := NewMeta()
 	f.Name = "ok"
 	f.Ref = "ok"
-	err = f.Save(txId, c.Pool)
+	err = f.Save(con)
 	check(err)
 	_, err = con.Do("TXCOMMIT")
 	check(err)
 
-	fe, err := NewMetaFromDB(c.Pool, f.Hash)
+	fe, err := NewMetaFromDB(con, f.Hash)
 	check(err)
 	if f.Hash != fe.Hash {
 		t.Errorf("Error retrieving Meta from DB, expected %+v, get %+v", f, fe)

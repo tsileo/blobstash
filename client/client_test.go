@@ -23,7 +23,8 @@ func TestMultipleClientDifferentHosts(t *testing.T) {
 	check(err)
 	tdir := test.NewRandomTree(t, ".", 1)
 	defer os.RemoveAll(tdir)
-	snap, meta, wr, err := c.Put(tdir)
+	ctx := &Ctx{Hostname: c.Hostname}
+	snap, meta, wr, err := c.Put(ctx, tdir)
 	check(err)
 	_, _, rr, err := c.Get(snap.Hash, meta.Name+"_restored")
 	defer os.RemoveAll(meta.Name+"_restored")
@@ -41,7 +42,8 @@ func TestMultipleClientDifferentHosts(t *testing.T) {
 	check(err)
 	tdir2 := test.NewRandomTree(t, ".", 1)
 	defer os.RemoveAll(tdir2)
-	snap, meta, _, err = c2.Put(tdir2)
+	ctx2 := &Ctx{Hostname: "tomt0m2"}
+	snap, meta, _, err = c2.Put(ctx2, tdir2)
 	check(err)
 	_, _, _, err = c2.Get(snap.Hash, meta.Name+"_restored")
 	defer os.RemoveAll(meta.Name+"_restored")
@@ -64,7 +66,8 @@ func TestClient(t *testing.T) {
 	check(err)
 	tdir := test.NewRandomTree(t, ".", 1)
 	defer os.RemoveAll(tdir)
-	putSnap, _, _, err := c.Put(tdir)
+	ctx := &Ctx{Hostname: c.Hostname}
+	putSnap, _, _, err := c.Put(ctx, tdir)
 	check(err)
 
 	t.Log("Testing client.Hosts()")

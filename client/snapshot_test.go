@@ -24,12 +24,14 @@ func TestModelsSnapshots(t *testing.T) {
 	c, err := NewTestClient("")
 	check(err)
 	defer c.Close()
+	con := c.ConnWithCtx(&Ctx{Hostname: c.Hostname})
+	defer con.Close()
 	// NewSnapshot(hostname, path, type, ref)
 	f := NewSnapshot("hostname", "foo", "file", "bar")
-	err = f.Save(c)
+	err = f.Save(con)
 	check(err)
 
-	f2, err := NewSnapshotFromDB(c, f.Hash)
+	f2, err := NewSnapshotFromDB(con, f.Hash)
 	check(err)
 	if !reflect.DeepEqual(f, f2) {
 		t.Errorf("Error retrieving file from DB, expected %+v, get %+v", f, f2)

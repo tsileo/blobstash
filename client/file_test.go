@@ -26,14 +26,14 @@ func TestClientFile(t *testing.T) {
 	rfile := test.NewRandomFile(".")
 	defer os.Remove(rfile)
 	th := FullSHA1(rfile)
-	m, h, err := c.PutFile(rfile)
+	m, h, err := c.PutFile(&Ctx{Hostname: c.Hostname}, rfile)
 	check(err)
 	if h.Hash != th {
 		t.Errorf("File not put successfully")
 	}
 
 	rfile2 := fmt.Sprintf("%v%v", rfile, "_restored")
-	rr, err := c.GetFile(c.Hostname, m.Hash, rfile2)
+	rr, err := c.GetFile(&Ctx{Hostname: c.Hostname}, m.Hash, rfile2)
 	check(err)
 
 	h2 := FullSHA1(rfile2)
@@ -50,10 +50,10 @@ func TestClientFile(t *testing.T) {
 	err = ioutil.WriteFile(helloPath, d1, 0644)
 	check(err)
 	defer os.Remove(helloPath)
-	_, rw, err := c.PutFile(helloPath)
+	_, rw, err := c.PutFile(&Ctx{Hostname: c.Hostname}, helloPath)
 	check(err)
 	t.Logf("fileput hash: %v", rw.Hash)
-	fakeFile := NewFakeFile(c, c.Hostname, rw.Hash, rw.Size)
+	fakeFile := NewFakeFile(c, &Ctx{Hostname: c.Hostname}, rw.Hash, rw.Size)
 	fkr, err := fakeFile.read(0, 5)
 	check(err)
 	if !bytes.Equal(fkr, []byte("hello")) {

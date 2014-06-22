@@ -84,6 +84,9 @@ func (s *Snapshot) Save(con redis.Conn) (error) {
 	if _, err := con.Do("LADD", snapKey, int(s.Ts), s.Hash); err != nil {
 		return err
 	}
+	if _, err := con.Do("SET", s.Hash, s.Hostname); err != nil {
+		return err
+	}
 	return nil
 }
 

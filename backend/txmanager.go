@@ -111,7 +111,12 @@ type ReqArgs struct {
 
 // NewTxManager initialize a new TxManager for the given db.
 func NewTxManager(index *db.DB, cdb *db.DB, blobBackend BlobHandler) *TxManager {
-	return &TxManager{make(map[string]*ReqBuffer), cdb, index, blobBackend, sync.Mutex{}}
+	return &TxManager{
+		Txs: make(map[string]*ReqBuffer),
+		db: cdb,
+		index: index,
+		blobBackend: blobBackend,
+	}
 }
 
 // GetReqBuffer retrieves an existing ReqBuffer or create it if it doesn't exists yet.
@@ -121,7 +126,6 @@ func (txm *TxManager) GetReqBuffer(name string) *ReqBuffer {
 	rb, rbExists := txm.Txs[name]
 	if !rbExists {
 		txm.Txs[name] = NewReqBuffer(txm.index, txm.db, txm.blobBackend)
-		//go txm.Txs[name].Load()
 		return txm.Txs[name]
 	}
 	return rb

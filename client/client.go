@@ -158,14 +158,21 @@ func (client *Client) DirUploadDone() {
 //}
 
 func (client *Client) Get(hash, path string) (snapshot *Snapshot, meta *Meta, rr *ReadResult, err error) {
-	con := client.ConnWithCtx(&Ctx{Hostname: client.Hostname})
+	con := client.Conn()
 	defer con.Close()
+	host, err := redis.String(con.Do("GET", hash))
+	if err != nil {
+		return
+	}
+	ctx := &Ctx{Hostname: host}
+	_, err = con.Do("SETCTX", ctx.Args()...)
+	if err != nil {
+		return
+	}
 	snapshot, err = NewSnapshotFromDB(con, hash)
 	if err != nil {
 		return
 	}
-	// TODO(tsileo) find a better way to handle Ctx on Get
-	ctx := &Ctx{Hostname: snapshot.Hostname}
 	meta, err = snapshot.Meta(con)
 	if err != nil {
 		return

@@ -21,7 +21,7 @@ func TestClientDir(t *testing.T) {
 	check(err)
 	tdir := test.NewRandomTree(t, ".", 1)
 	defer os.RemoveAll(tdir)
-	meta, wr, err := c.PutDir(tdir)
+	meta, wr, err := c.PutDir(&Ctx{Hostname: c.Hostname}, tdir)
 	check(err)
 
 	// Move this to test client
@@ -34,7 +34,7 @@ func TestClientDir(t *testing.T) {
 	//	t.Errorf("Hosts() should return [%v], got %q", hostname, hosts)
 	//}
 
-	rr, err := c.GetDir(c.Hostname, meta.Hash, meta.Name+"_restored")
+	rr, err := c.GetDir(&Ctx{Hostname: c.Hostname}, meta.Hash, meta.Name+"_restored")
 	defer os.RemoveAll(meta.Name+"_restored")
 	check(err)
 	if !MatchResult(wr, rr) {
@@ -61,10 +61,10 @@ func TestClientDirDeepRecursion(t *testing.T) {
 	defer c.RemoveCache()
 	tdir := test.NewRandomTree(t, ".", 5)
 	defer os.RemoveAll(tdir)
-	meta, wr, err := c.PutDir(tdir)
+	meta, wr, err := c.PutDir(&Ctx{Hostname: c.Hostname}, tdir)
 	check(err)
 
-	rr, err := c.GetDir(c.Hostname, meta.Hash, meta.Name+"_restored")
+	rr, err := c.GetDir(&Ctx{Hostname: c.Hostname}, meta.Hash, meta.Name+"_restored")
 	defer os.RemoveAll(meta.Name + "_restored")
 	check(err)
 	if !MatchResult(wr, rr) {
