@@ -217,7 +217,11 @@ func (client *Client) Put(ctx *Ctx, path string) (snapshot *Snapshot, meta *Meta
 		return
 	}
 	snapshot = NewSnapshot(client.Hostname, path, btype, meta.Hash)
-	if err := snapshot.SaveAsArchive(con); err != nil {
+	saver := snapshot.Save
+	if ctx.Archive {
+		saver = snapshot.SaveAsArchive
+	}
+	if err := saver(con); err != nil {
 		return snapshot, meta, wr, err
 	}
 	_, err = con.Do("TXCOMMIT")

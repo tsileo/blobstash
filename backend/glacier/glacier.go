@@ -17,16 +17,13 @@ import (
 	"fmt"
 	"os"
 	"log"
-	_ "strings"
 
 	"github.com/tsileo/blobstash/backend"
 
 	"github.com/tsileo/blobstash/backend/blobsfile"
 	"github.com/tsileo/blobstash/pubsub"
-    _ "github.com/tsileo/blobstash/backend/glacier/util"
+    "github.com/tsileo/blobstash/backend/glacier/util"
 	"github.com/rdwilliamson/aws/glacier"
-	"github.com/rdwilliamson/aws"
-	_ "github.com/cznic/kv"
 )
 
 var (
@@ -51,7 +48,7 @@ func New(vault, region string, cache backend.BlobHandler) *GlacierBackend {
 	if accessKey == "" || secretKey == "" {
 		panic("S3_ACCESS_KEY or S3_SECRET_KEY not set")
 	}
-	con := util.GetCon(secretKey, accessKey, region)
+	con := util.GetCon(region)
 	//db, err := util.GetDB()
 	//if err != nil {
 	//	panic(fmt.Errorf("Error initializing DB at %v: %v", util.DBPath, err))
