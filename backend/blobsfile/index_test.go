@@ -1,10 +1,10 @@
 package blobsfile
 
 import (
+	"crypto/sha1"
+	"fmt"
 	"os"
 	"testing"
-	"fmt"
-	"crypto/sha1"
 )
 
 func TestBlobsIndex(t *testing.T) {

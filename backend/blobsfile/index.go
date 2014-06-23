@@ -1,15 +1,15 @@
 package blobsfile
 
 import (
+	"bytes"
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strconv"
-	"encoding/hex"
-	"encoding/binary"
 	"sync"
-	"bytes"
 
 	"github.com/cznic/kv"
 )

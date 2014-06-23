@@ -27,6 +27,7 @@ is needed for blobs, this format is better than a tar archive).
 package blobsfile
 
 import (
+	"bytes"
 	"crypto/sha1"
 	"encoding/binary"
 	"encoding/hex"
@@ -37,7 +38,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"bytes"
 	"syscall"
 
 	"code.google.com/p/snappy-go/snappy"
@@ -83,7 +83,7 @@ type BlobsFileBackend struct {
 	reindexMode bool
 
 	// WriteOnly mode (if the precedent blobs are not available yet)
-	writeOnly bool
+	writeOnly     bool
 	blobsUploaded int
 
 	// Compression is disabled by default
@@ -116,9 +116,15 @@ func New(dir string, maxBlobsFileSize int64, compression, writeOnly bool) *Blobs
 	if maxBlobsFileSize == 0 {
 		maxBlobsFileSize = defaultMaxBlobsFileSize
 	}
-	backend := &BlobsFileBackend{Directory: dir, snappyCompression: compression,
-		index: index, files: make(map[int]*os.File), writeOnly: writeOnly,
-		maxBlobsFileSize: maxBlobsFileSize, reindexMode: reindex}
+	backend := &BlobsFileBackend{
+		Directory:         dir,
+		snappyCompression: compression,
+		index:             index,
+		files:             make(map[int]*os.File),
+		writeOnly:         writeOnly,
+		maxBlobsFileSize:  maxBlobsFileSize,
+		reindexMode:       reindex,
+	}
 
 	loader := backend.load
 	if backend.writeOnly {
@@ -261,7 +267,7 @@ func (backend *BlobsFileBackend) reindex() error {
 				return fmt.Errorf("error while reading raw blob: %v", err)
 			}
 			blobPos := &BlobPos{n: n, offset: offset, size: int(blobSize)}
-			offset += Overhead+int(blobSize)
+			offset += Overhead + int(blobSize)
 			var blob []byte
 			if backend.snappyCompression {
 				blobDecoded, err := snappy.Decode(nil, rawBlob)
