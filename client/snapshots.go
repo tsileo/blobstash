@@ -8,13 +8,21 @@ import (
 )
 
 type Backup struct {
+	ctx *Ctx
 	client *Client
 	SnapKey string // Hold the backup key
 	snapshots []*IndexSnapshot
 }
 
 func NewBackup(client *Client, snapKey string) (*Backup, error) {
-	backup := &Backup{client: client, SnapKey: snapKey}
+	// TODO put a Ctx as arg
+	con := client.Conn()
+	defer con.Close()
+	host, err := redis.String(con.Do("GET", snapKey))
+	if err != nil {
+		return nil, err
+	}
+	backup := &Backup{ctx: &Ctx{Hostname: host}, client: client, SnapKey: snapKey}
 	return backup, nil
 }
 
@@ -29,7 +37,7 @@ func (b *Backup) Snapshots() ([]*IndexSnapshot, error) {
 		Index int
 		Value string
 	}
-	con := b.client.Pool.Get()
+	con := b.client.ConnWithCtx(b.ctx)
 	defer con.Close()
 	values, err := redis.Values(con.Do("LITER", b.SnapKey, "WITH", "INDEX"))
 	if err != nil {
@@ -77,7 +85,7 @@ func (b *Backup) Last() (*Snapshot, error) {
 
 // Hosts returns the list of hostname
 func (client *Client) Hosts() ([]string, error) {
-	con := client.Pool.Get()
+	con := client.Conn()
 	defer con.Close()
 	return redis.Strings(con.Do("SMEMBERS", "_hosts"))
 }
