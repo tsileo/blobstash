@@ -114,6 +114,7 @@ type Dir struct {
 	Node
 	Root           bool
 	RootHost       bool
+	RootArchives   bool
 	Latest         bool
 	Snapshots      bool
 	SnapshotDir    bool
@@ -168,6 +169,12 @@ func NewRootDir(fs *FS) (d *Dir) {
 func NewRootHostDir(fs *FS, ctx *client.Ctx) (d *Dir) {
 	d = NewDir(fs, ctx.Hostname, ctx, "", "", os.ModeDir)
 	d.RootHost = true
+	return d
+}
+
+func NewArchivesRootDir(fs *FS, ctx *client.Ctx) (d *Dir) {
+	d = NewDir(fs, ctx.Hostname, ctx, "", "", os.ModeDir)
+	d.RootArchives = true
 	return d
 }
 
@@ -268,7 +275,34 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 		dirent = fuse.Dirent{Name: "at", Type: fuse.DT_Dir}
 		out = append(out, dirent)
 		d.Children["at"] = NewAtRootDir(d.fs, d.Ctx)
+		dirent = fuse.Dirent{Name: "archives", Type: fuse.DT_Dir}
+		out = append(out, dirent)
+		d.Children["archives"] = NewArchivesRootDir(d.fs, d.Ctx)
 		return
+
+	case d.RootArchives:
+		d.Children = make(map[string]fs.Node)
+		con := d.fs.Client.ConnWithCtx(d.Ctx)
+		defer con.Close()
+		archives, err := d.fs.Client.Archives(d.Ctx.Hostname)
+		if err != nil {
+			panic(fmt.Errorf("failed to fetch archives list: %v", err))
+		}
+		for _, archive := range archives {
+			//log.Printf("backup: %+v", backup)
+			meta := d.fs.Client.Metas.Get(con, archive.Ref).(*client.Meta)
+			//meta, _ := backup.Meta(d.fs.Client.Pool)
+			if archive.Type == "file" {
+				dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
+				d.Children[meta.Name] = NewFile(d.fs, meta.Name, d.Ctx, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
+				out = append(out, dirent)
+			} else {
+				dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
+				d.Children[meta.Name] = NewDir(d.fs, meta.Name, d.Ctx, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
+				out = append(out, dirent)
+			}
+		}
+		return out, nil
 
 	case d.Latest:
 		d.Children = make(map[string]fs.Node)

@@ -90,6 +90,26 @@ func (client *Client) Hosts() ([]string, error) {
 	return redis.Strings(con.Do("SMEMBERS", "_hosts"))
 }
 
+// Archives return all archives for the given host.
+func (client *Client) Archives(host string) ([]*Snapshot, error) {
+	con := client.ConnWithCtx(&Ctx{Hostname: host, Archive: true})
+	defer con.Close()
+	keys, err := redis.Strings(con.Do("SMEMBERS", fmt.Sprintf("_archives:%v", host)))
+	if err != nil {
+		log.Printf("Failed at [SMEMBERS %v]: %v", fmt.Sprintf("_archives:%v", host), err)
+		return nil, err
+	}
+	snapshots := []*Snapshot{}
+	for _, key := range keys {
+		snap, err := NewSnapshotFromDB(con, key)
+		if err != nil {
+			return nil, err
+		}
+		snapshots = append(snapshots, snap)
+	}
+	return snapshots, nil
+}
+
 // Backups return all backups for the given host.
 func (client *Client) Backups(host string) ([]*Backup, error) {
 	con := client.Pool.Get()

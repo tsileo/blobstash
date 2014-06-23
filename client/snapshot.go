@@ -49,6 +49,13 @@ func (s *Snapshot) computeHash() {
 	s.Hash = fmt.Sprintf("%x", hash.Sum(nil))
 }
 
+func (s *Snapshot) computeArchiveHash() {
+	hash := sha1.New()
+	hash.Write([]byte(s.Hostname))
+	hash.Write([]byte(s.Path))
+	s.Hash = fmt.Sprintf("%x", hash.Sum(nil))
+}
+
 // snapshotKey compute the snapshot key
 // computed as follow:
 // SHA1(hostname + path)
@@ -84,7 +91,37 @@ func (s *Snapshot) Save(con redis.Conn) (error) {
 	if _, err := con.Do("LADD", snapKey, int(s.Ts), s.Hash); err != nil {
 		return err
 	}
+	// TODO save the Ctx instead of just the hostname
 	if _, err := con.Do("SET", snapKey, s.Hostname); err != nil {
+		return err
+	}
+	if _, err := con.Do("SET", s.Hash, s.Hostname); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Save the backup to DB
+func (s *Snapshot) SaveAsArchive(con redis.Conn) (error) {
+	s.computeArchiveHash()
+	_, err := con.Do("HMSET", s.Hash,
+					"path", s.Path,
+					"type", s.Type,
+					"ref", s.Ref,
+					"ts", s.Ts,
+					"hostname", s.Hostname)
+	if err != nil {
+		return err
+	}
+	// Index the host
+	if _, err := con.Do("SADD", "_hosts", s.Hostname); err != nil {
+		return err
+	}
+	// Index the snapshot
+	if _, err := con.Do("SADD", fmt.Sprintf("_archives:%v", s.Hostname), s.Hash); err != nil {
+		return err
+	}
+	if _, err := con.Do("SET", s.Hash, s.Hostname); err != nil {
 		return err
 	}
 	return nil
