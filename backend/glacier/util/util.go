@@ -20,14 +20,23 @@ const (
     checkDelay = 30 * time.Second
 )
 
+func getRegion(name string) *aws.Region {
+    for _, region := range aws.Regions {
+        if name == region.Name {
+            return region
+        }
+    }
+    return aws.USEast
+}
+
 // GetCon create a new glacier.Connection using environment variables.
-func GetCon() *glacier.Connection {
+func GetCon(region string) *glacier.Connection {
     accessKey := os.Getenv("S3_ACCESS_KEY")
     secretKey := os.Getenv("S3_SECRET_KEY")
     if accessKey == "" || secretKey == "" {
         panic("S3_ACCESS_KEY or S3_SECRET_KEY not set")
     }
-    con := glacier.NewConnection(secretKey, accessKey, aws.EU)
+    con := glacier.NewConnection(secretKey, accessKey, getRegion(region))
     return con
 }
 

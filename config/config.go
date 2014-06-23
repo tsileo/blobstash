@@ -34,8 +34,9 @@ func NewGlacierFromConfig(conf *simplejson.Json) backend.BlobHandler {
 	if vault == "" {
 		panic(fmt.Errorf("no vault specified for GalcierBackend"))
 	}
+	region := conf.Get("region").MustString()
 	cache := NewFromConfig(conf.Get("cache"))
-	return glacier.New(vault, cache)
+	return glacier.New(vault, region, cache)
 }
 
 func NewMirrorFromConfig(conf *simplejson.Json) backend.BlobHandler {

@@ -44,14 +44,14 @@ type GlacierBackend struct {
 //	db *kv.DB
 }
 
-func New(vault string, cache backend.BlobHandler) *GlacierBackend {
+func New(vault, region string, cache backend.BlobHandler) *GlacierBackend {
 	log.Println("GlacierBackend: starting")
 	accessKey := os.Getenv("S3_ACCESS_KEY")
 	secretKey := os.Getenv("S3_SECRET_KEY")
 	if accessKey == "" || secretKey == "" {
 		panic("S3_ACCESS_KEY or S3_SECRET_KEY not set")
 	}
-	con := glacier.NewConnection(secretKey, accessKey, aws.EU)
+	con := util.GetCon(secretKey, accessKey, region)
 	//db, err := util.GetDB()
 	//if err != nil {
 	//	panic(fmt.Errorf("Error initializing DB at %v: %v", util.DBPath, err))

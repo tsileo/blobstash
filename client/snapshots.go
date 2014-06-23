@@ -97,7 +97,7 @@ func (client *Client) Archives(host string) ([]*Snapshot, error) {
 	keys, err := redis.Strings(con.Do("SMEMBERS", fmt.Sprintf("_archives:%v", host)))
 	if err != nil {
 		log.Printf("Failed at [SMEMBERS %v]: %v", fmt.Sprintf("_archives:%v", host), err)
-		return nil, err
+		//return nil, err
 	}
 	snapshots := []*Snapshot{}
 	for _, key := range keys {

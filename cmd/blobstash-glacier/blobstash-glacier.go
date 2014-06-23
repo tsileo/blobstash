@@ -20,7 +20,7 @@ func main() {
             ShortName: "status",
             Usage:     "display information about the given vault",
             Action: func(c *cli.Context) {
-                con := util.GetCon()
+                con := util.GetCon("")
                 vault, _ := con.DescribeVault(c.Args().First())
                 fmt.Printf("Vault name:         : %v\n", vault.VaultName)
                 fmt.Printf("Creation date:      : %v\n", vault.CreationDate)
@@ -34,7 +34,7 @@ func main() {
             ShortName: "sync",
             Usage:     "fetch the latest inventory and sync the local database",
             Action: func(c *cli.Context) {
-                con := util.GetCon()
+                con := util.GetCon("")
                 db, err := util.GetDB()
                 defer db.Close()
                 if err != nil {
@@ -50,7 +50,7 @@ func main() {
             ShortName: "restore",
             Usage:     "restore previously synced archives from local database",
             Action: func(c *cli.Context) {
-                con := util.GetCon()
+                con := util.GetCon("")
                 db, err := util.GetDB()
                 defer db.Close()
                 if err != nil {

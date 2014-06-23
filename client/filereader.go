@@ -80,7 +80,7 @@ func NewFakeFile(client *Client, ctx *Ctx, ref string, size int) (f *FakeFile) {
 	f.con = f.client.ConnWithCtx(ctx)
 	values, err := redis.Values(f.con.Do("LITER", f.ref, "WITH", "RANGE"))
 	if err != nil {
-		panic(fmt.Errorf("error [LITER %v WITH RANGE]: %v", f.ref, err))
+		panic(fmt.Errorf("error %+v [LITER %v WITH RANGE]: %v", f, f.ref, err))
 	}
 	redis.ScanSlice(values, &f.lmrange)
 	return
