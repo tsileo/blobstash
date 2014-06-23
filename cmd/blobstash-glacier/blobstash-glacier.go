@@ -11,8 +11,8 @@ import (
 
 func main() {
     app := cli.NewApp()
-    app.Name = "datadb-glacier"
-    app.Usage = "DataDB glacier restore tools"
+    app.Name = "blobstash-glacier"
+    app.Usage = "BlobStash glacier restore tools"
     app.Version = "0.1.0"
     app.Commands = []cli.Command{
         {
