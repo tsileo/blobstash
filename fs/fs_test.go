@@ -28,7 +28,7 @@ func TestFS(t *testing.T) {
 	}
 	defer s.Shutdown()
 	log.Println("Server setup done")
-	c, err := client.NewTestClient()
+	c, err := client.NewTestClient("")
 	defer c.Close()
 	defer c.RemoveCache()
 	check(err)
@@ -46,7 +46,7 @@ func TestFS(t *testing.T) {
 
 	tdir := test.NewRandomTree(t, ".", 1)
 	defer os.RemoveAll(tdir)
-	_, meta, _, err := c.Put(tdir)
+	_, meta, _, err := c.Put(&client.Ctx{Hostname: c.Hostname}, tdir)
 	check(err)
 
 	hostname, err := os.Hostname()

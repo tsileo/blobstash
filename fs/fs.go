@@ -142,15 +142,16 @@ func NewDir(cfs *FS, name, host, ref string, modTime string, mode os.FileMode) (
 }
 
 func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
-	con := d.fs.Client.Pool.Get()
-	defer con.Close()
 	//log.Printf("fs: readDir %v", d.Ref)
 	//d.fs.Client.Dirs.Get(d.Ref).([]*client.Meta)
 	//metas, err := d.fs.Client.DirIter(d.Ref)
 	//if err != nil {
 	//	log.Printf("fs: Error readDir %v", err)
 	//}
-	for _, meta := range d.fs.Client.Dirs.Get(d.Ref).([]*client.Meta) {
+	ctx := &client.Ctx{Hostname: d.Hostname}
+	con := d.fs.Client.ConnWithCtx(ctx)
+	defer con.Close()
+	for _, meta := range d.fs.Client.Dirs.Get(con, d.Ref).([]*client.Meta) {
 		var dirent fuse.Dirent
 		if meta.Type == "file" {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
@@ -286,6 +287,8 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 
 	case d.Latest:
 		d.Children = make(map[string]fs.Node)
+		con := d.fs.Client.ConnWithCtx(&client.Ctx{Hostname: d.Host})
+		defer con.Close()
 		backups, err := d.fs.Client.Backups(d.Host)
 		if err != nil {
 			panic(fmt.Errorf("failed to fetch backups list: %v", err))
@@ -296,7 +299,7 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 			if err != nil {
 				panic(fmt.Errorf("error fetching latest snapshot for backup %v", backup.SnapKey))
 			}
-			meta := d.fs.Client.Metas.Get(snap.Ref).(*client.Meta)
+			meta := d.fs.Client.Metas.Get(con, snap.Ref).(*client.Meta)
 			//meta, _ := backup.Meta(d.fs.Client.Pool)
 			if snap.Type == "file" {
 				dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
@@ -321,7 +324,10 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 			if err != nil {
 				panic(fmt.Errorf("error fetching latest snapshot for backup %v", backup.SnapKey))
 			}
-			meta := d.fs.Client.Metas.Get(snap.Ref).(*client.Meta)
+			con := d.fs.Client.ConnWithCtx(&client.Ctx{Hostname: snap.Hostname})
+			defer con.Close()
+			// TODO(tsileo) Find a way to make the connection only if needed
+			meta := d.fs.Client.Metas.Get(con, snap.Ref).(*client.Meta)
 			//meta, _ := backup.Meta(d.fs.Client.Pool)
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
 			d.Children[meta.Name] = NewSnapshotDir(d.fs, meta.Name, meta.Ref, backup.SnapKey)
@@ -340,7 +346,9 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 			if err != nil {
 				panic(fmt.Errorf("error fetching latest snapshot for backup %v", backup.SnapKey))
 			}
-			meta := d.fs.Client.Metas.Get(snap.Ref).(*client.Meta)
+			con := d.fs.Client.ConnWithCtx(&client.Ctx{Hostname: snap.Hostname})
+			defer con.Close()
+			meta := d.fs.Client.Metas.Get(con, snap.Ref).(*client.Meta)
 			//meta, _ := backup.Meta(d.fs.Client.Pool)
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
 			d.Children[meta.Name] = NewAtDir(d.fs, meta.Name, meta.Ref, backup.SnapKey)
@@ -357,10 +365,12 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 		backup, _ := client.NewBackup(d.fs.Client, d.SnapKey)
 		snaphots, _ := backup.Snapshots()
 		for _, im := range snaphots {
+			con := d.fs.Client.ConnWithCtx(&client.Ctx{Hostname: im.Snapshot.Hostname})
+			defer con.Close()
 			// TODO the index to dirname => blocked with one Node
 			stime := time.Unix(int64(im.Index), 0)
 			sname := stime.Format(time.RFC3339)
-			meta := d.fs.Client.Metas.Get(im.Snapshot.Ref).(*client.Meta)
+			meta := d.fs.Client.Metas.Get(con, im.Snapshot.Ref).(*client.Meta)
 			out = append(out, fuse.Dirent{Name: sname, Type: fuse.DT_Dir})
 			d.Children[sname] = NewFakeDir(d.fs, meta.Name, im.Snapshot.Hostname, meta.Hash)
 		}
@@ -369,7 +379,9 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 	case d.FakeDir:
 		d.Children = make(map[string]fs.Node)
 		//meta, _ := client.NewMetaFromDB(d.fs.Client.Pool, d.Ref)
-		meta := d.fs.Client.Metas.Get(d.Ref).(*client.Meta)
+		con := d.fs.Client.ConnWithCtx(&client.Ctx{Hostname: d.Hostname})
+		defer con.Close()
+		meta := d.fs.Client.Metas.Get(con, d.Ref).(*client.Meta)
 		if meta.Type == "file" {
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
 			d.Children[meta.Name] = NewFile(d.fs, meta.Name, d.Hostname, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
@@ -408,7 +420,7 @@ func (f *File) Attr() fuse.Attr {
 	return fuse.Attr{Inode: 2, Mode: 0444, Size: f.Size}
 }
 func (f *File) Open(req *fuse.OpenRequest, res *fuse.OpenResponse, intr fs.Intr) (fs.Handle, fuse.Error) {
-	f.FakeFile = client.NewFakeFile(f.fs.Client, f.Host, f.Ref, int(f.Size))
+	f.FakeFile = client.NewFakeFile(f.fs.Client, &client.Ctx{Hostname: f.Host}, f.Ref, int(f.Size))
 	return f, nil
 }
 func (f *File) Release(req *fuse.ReleaseRequest, intr fs.Intr) fuse.Error {
