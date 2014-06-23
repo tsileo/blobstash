@@ -88,6 +88,7 @@ func (client *Client) Backups(host string) ([]*Backup, error) {
 	defer con.Close()
 	keys, err := redis.Strings(con.Do("SMEMBERS", fmt.Sprintf("_backups:%v", host)))
 	if err != nil {
+		log.Printf("Failed at [SMEMBERS %v]: %v", fmt.Sprintf("_backups:%v", host), err)
 		return nil, err
 	}
 

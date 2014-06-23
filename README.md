@@ -9,6 +9,7 @@ BlobStash is a snapshot-based backup system, designed to provide "time machine" 
 
 - Content addressed, files are split into blobs, and retrieved by hash
 - Incremental backups/snapshots thanks to data deduplication
+- A special archive mode, for one-time backup/non-snapshotted backup, but still with dedup
 - Server handles uploading/downloading blobs to/from different storage
 - Client only query the server and send blobs to it (the client take care of chunking/building blobs)
 - Read-only FUSE file system to navigate backups/snapshots

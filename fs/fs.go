@@ -122,14 +122,14 @@ type Dir struct {
 	AtDir          bool
 	FakeDirContent []fuse.Dirent
 	Children       map[string]fs.Node
-	Host           string
 	SnapKey        string
-	Hostname string
+	Ctx            *client.Ctx
+
 }
 
-func NewDir(cfs *FS, name, host, ref string, modTime string, mode os.FileMode) (d *Dir) {
+func NewDir(cfs *FS, name string, ctx *client.Ctx, ref string, modTime string, mode os.FileMode) (d *Dir) {
 	d = &Dir{}
-	d.Hostname = host
+	d.Ctx = ctx
 	d.Node = Node{}
 	d.Mode = os.ModeDir
 	d.fs = cfs
@@ -142,23 +142,16 @@ func NewDir(cfs *FS, name, host, ref string, modTime string, mode os.FileMode) (
 }
 
 func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
-	//log.Printf("fs: readDir %v", d.Ref)
-	//d.fs.Client.Dirs.Get(d.Ref).([]*client.Meta)
-	//metas, err := d.fs.Client.DirIter(d.Ref)
-	//if err != nil {
-	//	log.Printf("fs: Error readDir %v", err)
-	//}
-	ctx := &client.Ctx{Hostname: d.Hostname}
-	con := d.fs.Client.ConnWithCtx(ctx)
+	con := d.fs.Client.ConnWithCtx(d.Ctx)
 	defer con.Close()
 	for _, meta := range d.fs.Client.Dirs.Get(con, d.Ref).([]*client.Meta) {
 		var dirent fuse.Dirent
 		if meta.Type == "file" {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
-			d.Children[meta.Name] = NewFile(d.fs, meta.Name, d.Hostname, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
+			d.Children[meta.Name] = NewFile(d.fs, meta.Name, d.Ctx, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
 		} else {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-			d.Children[meta.Name] = NewDir(d.fs, meta.Name, d.Hostname, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
+			d.Children[meta.Name] = NewDir(d.fs, meta.Name, d.Ctx, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
 		}
 		out = append(out, dirent)
 	}
@@ -166,32 +159,27 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
 }
 
 func NewRootDir(fs *FS) (d *Dir) {
-	d = NewDir(fs, "root", "", "", "", os.ModeDir)
+	d = NewDir(fs, "root", &client.Ctx{}, "", "", os.ModeDir)
 	d.Root = true
 	d.fs = fs
 	return d
 }
 
-func NewRootHostDir(fs *FS, host string) (d *Dir) {
-	d = NewDir(fs, host, "", "", "", os.ModeDir)
+func NewRootHostDir(fs *FS, ctx *client.Ctx) (d *Dir) {
+	d = NewDir(fs, ctx.Hostname, ctx, "", "", os.ModeDir)
 	d.RootHost = true
-	d.fs = fs
 	return d
 }
 
-func NewLatestDir(fs *FS, host string) (d *Dir) {
-	d = NewDir(fs, "latest", "", "", "", os.ModeDir)
+func NewLatestDir(fs *FS, ctx *client.Ctx) (d *Dir) {
+	d = NewDir(fs, "latest", ctx, "", "", os.ModeDir)
 	d.Latest = true
-	d.fs = fs
-	d.Host = host
 	return d
 }
 
-func NewAtRootDir(fs *FS, host string) (d *Dir) {
-	d = NewDir(fs, "at", "", "", "", os.ModeDir)
+func NewAtRootDir(fs *FS, ctx *client.Ctx) (d *Dir) {
+	d = NewDir(fs, "at", ctx, "", "", os.ModeDir)
 	d.AtRoot = true
-	d.fs = fs
-	d.Host = host
 	return d
 }
 
@@ -208,11 +196,9 @@ func NewAtDir(cfs *FS, name, ref, snapKey string) (d *Dir) {
 	return
 }
 
-func NewSnapshotsDir(cfs *FS, host string) (d *Dir) {
-	d = NewDir(cfs, "snapshots", "", "", "", os.ModeDir)
-	d.fs = cfs
+func NewSnapshotsDir(cfs *FS, ctx *client.Ctx) (d *Dir) {
+	d = NewDir(cfs, "snapshots", ctx, "", "", os.ModeDir)
 	d.Snapshots = true
-	d.Host = host
 	return
 }
 
@@ -229,9 +215,8 @@ func NewSnapshotDir(cfs *FS, name, ref, snapKey string) (d *Dir) {
 	return
 }
 
-func NewFakeDir(cfs *FS, name, host, ref string) (d *Dir) {
-	d = NewDir(cfs, name, host, ref, "", os.ModeDir)
-	d.fs = cfs
+func NewFakeDir(cfs *FS, name string, ctx *client.Ctx, ref string) (d *Dir) {
+	d = NewDir(cfs, name, ctx, ref, "", os.ModeDir)
 	d.Children = make(map[string]fs.Node)
 	d.FakeDir = true
 	return
@@ -249,7 +234,7 @@ func (d *Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, err fuse.Error) {
 			backup, _ := client.NewBackup(d.fs.Client, d.SnapKey)
 			snap, _ := backup.GetAt(ts)
 			if snap != nil {
-				return NewDir(d.fs, d.Name, snap.Hostname, snap.Ref, d.ModTime, d.Mode), nil
+				return NewDir(d.fs, d.Name, d.Ctx, snap.Ref, d.ModTime, d.Mode), nil
 			}
 		}
 	}
@@ -269,27 +254,27 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 		for _, host := range hosts {
 			dirent := fuse.Dirent{Name: host, Type: fuse.DT_Dir}
 			out = append(out, dirent)
-			d.Children[host] = NewRootHostDir(d.fs, host)
+			d.Children[host] = NewRootHostDir(d.fs, &client.Ctx{Hostname: host})
 		}
 		return out, err
 	case d.RootHost:
 		d.Children = make(map[string]fs.Node)
 		dirent := fuse.Dirent{Name: "latest", Type: fuse.DT_Dir}
 		out = append(out, dirent)
-		d.Children["latest"] = NewLatestDir(d.fs, d.Name)
+		d.Children["latest"] = NewLatestDir(d.fs, d.Ctx)
 		dirent = fuse.Dirent{Name: "snapshots", Type: fuse.DT_Dir}
 		out = append(out, dirent)
-		d.Children["snapshots"] = NewSnapshotsDir(d.fs, d.Name)
+		d.Children["snapshots"] = NewSnapshotsDir(d.fs, d.Ctx)
 		dirent = fuse.Dirent{Name: "at", Type: fuse.DT_Dir}
 		out = append(out, dirent)
-		d.Children["at"] = NewAtRootDir(d.fs, d.Name)
+		d.Children["at"] = NewAtRootDir(d.fs, d.Ctx)
 		return
 
 	case d.Latest:
 		d.Children = make(map[string]fs.Node)
-		con := d.fs.Client.ConnWithCtx(&client.Ctx{Hostname: d.Host})
+		con := d.fs.Client.ConnWithCtx(d.Ctx)
 		defer con.Close()
-		backups, err := d.fs.Client.Backups(d.Host)
+		backups, err := d.fs.Client.Backups(d.Ctx.Hostname)
 		if err != nil {
 			panic(fmt.Errorf("failed to fetch backups list: %v", err))
 		}
@@ -303,11 +288,11 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 			//meta, _ := backup.Meta(d.fs.Client.Pool)
 			if snap.Type == "file" {
 				dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
-				d.Children[meta.Name] = NewFile(d.fs, meta.Name, snap.Hostname, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
+				d.Children[meta.Name] = NewFile(d.fs, meta.Name, d.Ctx, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
 				out = append(out, dirent)
 			} else {
 				dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-				d.Children[meta.Name] = NewDir(d.fs, meta.Name, snap.Hostname, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
+				d.Children[meta.Name] = NewDir(d.fs, meta.Name, d.Ctx, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
 				out = append(out, dirent)
 			}
 		}
@@ -315,7 +300,7 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 
 	case d.Snapshots:
 		d.Children = make(map[string]fs.Node)
-		backups, err := d.fs.Client.Backups(d.Host)
+		backups, err := d.fs.Client.Backups(d.Ctx.Hostname)
 		if err != nil {
 			panic(fmt.Errorf("failed to fetch backups list: %v", err))
 		}
@@ -324,7 +309,7 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 			if err != nil {
 				panic(fmt.Errorf("error fetching latest snapshot for backup %v", backup.SnapKey))
 			}
-			con := d.fs.Client.ConnWithCtx(&client.Ctx{Hostname: snap.Hostname})
+			con := d.fs.Client.ConnWithCtx(d.Ctx)
 			defer con.Close()
 			// TODO(tsileo) Find a way to make the connection only if needed
 			meta := d.fs.Client.Metas.Get(con, snap.Ref).(*client.Meta)
@@ -337,9 +322,9 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 
 	case d.AtRoot:
 		d.Children = make(map[string]fs.Node)
-		backups, err := d.fs.Client.Backups(d.Host)
+		backups, err := d.fs.Client.Backups(d.Ctx.Hostname)
 		if err != nil {
-			panic(fmt.Errorf("failed to fetch backups list: %v", err))
+			panic(fmt.Errorf("failed to fetch backups list for host %v: %v", d.Ctx.Hostname, err))
 		}
 		for _, backup := range backups {
 			snap, err := backup.Last()
@@ -372,23 +357,23 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 			sname := stime.Format(time.RFC3339)
 			meta := d.fs.Client.Metas.Get(con, im.Snapshot.Ref).(*client.Meta)
 			out = append(out, fuse.Dirent{Name: sname, Type: fuse.DT_Dir})
-			d.Children[sname] = NewFakeDir(d.fs, meta.Name, im.Snapshot.Hostname, meta.Hash)
+			d.Children[sname] = NewFakeDir(d.fs, meta.Name, d.Ctx, meta.Hash)
 		}
 		return out, nil
 
 	case d.FakeDir:
 		d.Children = make(map[string]fs.Node)
 		//meta, _ := client.NewMetaFromDB(d.fs.Client.Pool, d.Ref)
-		con := d.fs.Client.ConnWithCtx(&client.Ctx{Hostname: d.Hostname})
+		con := d.fs.Client.ConnWithCtx(d.Ctx)
 		defer con.Close()
 		meta := d.fs.Client.Metas.Get(con, d.Ref).(*client.Meta)
 		if meta.Type == "file" {
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
-			d.Children[meta.Name] = NewFile(d.fs, meta.Name, d.Hostname, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
+			d.Children[meta.Name] = NewFile(d.fs, meta.Name, d.Ctx, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
 			out = append(out, dirent)
 		} else {
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-			d.Children[meta.Name] = NewDir(d.fs, meta.Name, d.Hostname, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
+			d.Children[meta.Name] = NewDir(d.fs, meta.Name, d.Ctx, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
 			out = append(out, dirent)
 		}
 		return out, nil
@@ -398,13 +383,13 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 
 type File struct {
 	Node
-	Host string
+	Ctx *client.Ctx
 	FakeFile *client.FakeFile
 }
 
-func NewFile(fs *FS, name, host, ref string, size int, modTime string, mode os.FileMode) *File {
+func NewFile(fs *FS, name string, ctx *client.Ctx, ref string, size int, modTime string, mode os.FileMode) *File {
 	f := &File{}
-	f.Host = host
+	f.Ctx = ctx
 	f.Name = name
 	f.Ref = ref
 	f.Size = uint64(size)
@@ -420,7 +405,7 @@ func (f *File) Attr() fuse.Attr {
 	return fuse.Attr{Inode: 2, Mode: 0444, Size: f.Size}
 }
 func (f *File) Open(req *fuse.OpenRequest, res *fuse.OpenResponse, intr fs.Intr) (fs.Handle, fuse.Error) {
-	f.FakeFile = client.NewFakeFile(f.fs.Client, &client.Ctx{Hostname: f.Host}, f.Ref, int(f.Size))
+	f.FakeFile = client.NewFakeFile(f.fs.Client, f.Ctx, f.Ref, int(f.Size))
 	return f, nil
 }
 func (f *File) Release(req *fuse.ReleaseRequest, intr fs.Intr) fuse.Error {
