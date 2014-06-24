@@ -12,6 +12,7 @@ import (
 
 	"github.com/tsileo/blobstash/db"
 	"github.com/tsileo/blobstash/config"
+	"github.com/tsileo/blobstash/config/pathutil"
 	"github.com/tsileo/blobstash/backend"
 	"github.com/tsileo/blobstash/server"
 )
@@ -24,7 +25,7 @@ func main() {
     	var path string
     	args := c.Args()
     	if len(args) == 0 {
-    		path = "config.json"
+    		path = ""
     	} else {
     		path = args[0]
     	}
@@ -34,25 +35,31 @@ func main() {
 }
 
 func start(config_path string) {
+	if config_path == "" {
+		config_path = filepath.Join(pathutil.ConfigDir(), "server-config.json")
+	}
 	stop := make(chan bool)
-
 	dat, err := ioutil.ReadFile(config_path)
 	if err != nil {
-		panic(fmt.Errorf("can't read config file: %v", err))
+		panic(fmt.Errorf("failed to read config file: %v", err))
 	}
 	conf, err := simplejson.NewJson(dat)
 	if err != nil {
-		panic(fmt.Errorf("can't decode config file: %v", err))
+		panic(fmt.Errorf("failed decode config file (invalid json): %v", err))
 	}
 	_, exists := conf.CheckGet("backends")
 	if !exists {
 		panic(fmt.Errorf("missing top-level key \"backends\" from config file"))
 	}
-	dbPath := conf.Get("db-path").MustString("dbs")
+	dbPath := pathutil.VarDir()
 	os.MkdirAll(dbPath, 0700)
 	routerDB, err := db.New(filepath.Join(dbPath, "index"))
 	if err != nil {
 		panic(err)
+	}
+	_, exists = conf.CheckGet("router")
+	if !exists {
+		panic(fmt.Errorf("missing top-level key \"router\" from config file"))
 	}
 	blobRouter, err := backend.NewRouterFromConfig(conf.Get("router"), routerDB)
 	if err != nil {
@@ -73,5 +80,5 @@ func start(config_path string) {
 	if err != nil {
 		panic(err)
 	}
-	server.New(conf.Get("addr").MustString(":9735"), conf.Get("web-addr").MustString(":9736"), conf.MustString("blobdb_db"), blobRouter,stop)
+	server.New(conf.Get("listen").MustString(":9735"), conf.Get("web-listen").MustString(":9736"), conf.MustString("blobdb_db"), blobRouter,stop)
 }

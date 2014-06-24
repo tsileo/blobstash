@@ -42,6 +42,8 @@ import (
 
 	"code.google.com/p/snappy-go/snappy"
 	"github.com/bitly/go-simplejson"
+
+	"github.com/tsileo/blobstash/config/pathutil"
 )
 
 const (
@@ -104,7 +106,10 @@ type BlobsFileBackend struct {
 
 func New(dir string, maxBlobsFileSize int64, compression, writeOnly bool) *BlobsFileBackend {
 	log.Println("BlobsFileBackend: starting, opening index")
-	os.Mkdir(dir, 0744)
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(pathutil.VarDir(), dir)
+	}
+	os.MkdirAll(dir, 0700)
 	var reindex bool
 	if _, err := os.Stat(filepath.Join(dir, "blobs-index")); os.IsNotExist(err) {
 		reindex = true

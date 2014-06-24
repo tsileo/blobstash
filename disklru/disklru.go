@@ -38,6 +38,8 @@ import (
 
 	"github.com/cznic/kv"
 	"github.com/garyburd/redigo/redis"
+
+	"github.com/tsileo/blobstash/config/pathutil"
 )
 
 func dirsPermutations() []string {
@@ -91,28 +93,10 @@ type CacheItem struct {
 	Size  uint32
 }
 
-// cacheDir return current user cache directory
-// following XDG Base Directory Specification
-// http://standards.freedesktop.org/basedir-spec/basedir-spec-0.6.html
-// These environment variable are checked in this order:
-// - $BLOBSTASH_CACHE_DIR
-// - $XDG_CACHE_HOME
-// And will fallback to:
-// - $HOME/.cache/
-func cacheDir() string {
-	if dir := os.Getenv("BLOBSTASH_CACHE_DIR"); dir != "" {
-		return dir
-	}
-	if dir := os.Getenv("XDG_CACHE_HOME"); dir != "" {
-		return filepath.Join(dir, "blobstash")
-	}
-	return filepath.Join(os.Getenv("HOME"), ".cache", "blobstash")
-}
-
 // New initialize a new DiskLRU.
 func New(path string, f func(redis.Conn, string) []byte, threshold int64) (*DiskLRU, error) {
 	if path == "" {
-		path = cacheDir()
+		path = pathutil.CacheDir()
 	}
 	if err := os.MkdirAll(path, 0700); err != nil {
 		return nil, err

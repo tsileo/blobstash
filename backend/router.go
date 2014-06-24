@@ -141,6 +141,7 @@ func (router *Router) Close() {
 	for _, db := range router.DBs {
 		db.Close()
 	}
+	router.Index.Close()
 }
 
 func (router *Router) Done() error {
