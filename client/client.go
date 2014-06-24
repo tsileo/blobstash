@@ -49,7 +49,7 @@ func NewClient(hostname string, ignoredFiles []string) (*Client, error) {
 	if err := c.SetupPool(); err != nil {
 		return nil, err
 	}
-	c.Blobs, err = disklru.New("./tmp_blobs_lru", c.FetchBlob, 536870912)
+	c.Blobs, err = disklru.New("", c.FetchBlob, 536870912)
 	c.Dirs = lru.New(c.FetchDir, 512)
 	c.Metas = lru.New(c.FetchMeta, 512)
 	for _, ignoredFile := range ignoredFiles {

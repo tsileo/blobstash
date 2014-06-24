@@ -30,6 +30,7 @@ func main() {
 			Flags:     commonFlags,
 			Action: func(c *cli.Context) {
 				cl, _ := client.NewClient(c.String("host"), ignoredFiles)
+				defer cl.Close()
 				b, m, wr, err := cl.Put(&client.Ctx{Hostname: cl.Hostname}, c.Args().First())
 				fmt.Printf("b:%+v,m:%+v,wr:%+v,err:%v\n", b, m, wr, err)
 			},
@@ -49,9 +50,10 @@ func main() {
 			Name:      "restore",
 			Usage:     "Restore a snapshot",
 			Action: func(c *cli.Context) {
-				client, _ := client.NewClient("", ignoredFiles)
+				cl, _ := client.NewClient("", ignoredFiles)
+				defer cl.Close()
 				args := c.Args()
-				snap, meta, rr, err := client.Get(args[0], args[1])
+				snap, meta, rr, err := cl.Get(args[0], args[1])
 				fmt.Printf("snap:%+v,meta:%+v,rr:%+v/err:%v", snap, meta, rr, err)
 			},
 		},
@@ -70,8 +72,9 @@ func main() {
 			Usage:     "Start the backup scheduler",
 			Flags:     commonFlags,
 			Action: func(c *cli.Context) {
-				client, _ := client.NewClient(c.String("host"), ignoredFiles)
-				d := scheduler.New(client)
+				cl, _ := client.NewClient(c.String("host"), ignoredFiles)
+				defer cl.Close()
+				d := scheduler.New(cl)
 				d.Run()
 			},
 		},
