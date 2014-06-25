@@ -443,6 +443,7 @@ func (f *File) Open(req *fuse.OpenRequest, res *fuse.OpenResponse, intr fs.Intr)
 	return f, nil
 }
 func (f *File) Release(req *fuse.ReleaseRequest, intr fs.Intr) fuse.Error {
+	f.FakeFile.Close()
 	f.FakeFile = nil
 	return nil
 }

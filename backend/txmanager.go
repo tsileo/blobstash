@@ -170,7 +170,7 @@ func (txm *TxManager) Load() error {
 			if berr != nil {
 				return berr
 			}
-			if !bytes.Equal(blob[0:MetaBlobOverhead], []byte(MetaBlobHeader)) {
+			if len(blob) < MetaBlobOverhead || !bytes.Equal(blob[0:MetaBlobOverhead], []byte(MetaBlobHeader)) {
 				go SendDebugData(fmt.Sprintf("server: blob %v is not a valid meta blob, skipping", hash))
 				continue
 			}
