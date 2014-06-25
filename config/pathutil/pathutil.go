@@ -2,6 +2,9 @@
 
 Package pathutil implements helpers to retrieve config/cache/var directories.
 
+Follow XDG Base Directory Specification:
+http://standards.freedesktop.org/basedir-spec/basedir-spec-0.6.html
+
 */
 package pathutil
 

@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	_ "log"
+	"log"
 	"os"
 	"path/filepath"
 
@@ -16,7 +16,11 @@ import (
 	"github.com/tsileo/blobstash/rolling"
 )
 
-// Hash of an empty file
+var (
+	MinBlobSize = 64<<10 // 64Kb
+	MaxBlobSize = 1<<20 // 1MB
+)
+
 var (
 	emptyHash = "da39a3ee5e6b4b0d3255bfef95601890afd80709"
 )
@@ -24,6 +28,7 @@ var (
 // FileWriter reads the file byte and byte and upload it,
 // chunk by chunk, it also constructs the file index .
 func (client *Client) FileWriter(con redis.Conn, key, path string) (*WriteResult, error) {
+	log.Printf("FileWriter %v %v", key, path)
 	writeResult := &WriteResult{}
 	window := 64
 	rs := rolling.New(window)
@@ -53,7 +58,7 @@ func (client *Client) FileWriter(con redis.Conn, key, path string) (*WriteResult
 			i++
 		}
 		onSplit := rs.OnSplit()
-		if (onSplit && (buf.Len() > 64<<10)) || buf.Len() >= 1<<20 || eof {
+		if (onSplit && (buf.Len() > MinBlobSize)) || buf.Len() >= MaxBlobSize || eof {
 			nsha := SHA1(buf.Bytes())
 			ndata := string(buf.Bytes())
 			fullHash.Write(buf.Bytes())
@@ -95,6 +100,58 @@ func (client *Client) FileWriter(con redis.Conn, key, path string) (*WriteResult
 	return writeResult, nil
 }
 
+func (client *Client) SmallFileWriter(con redis.Conn, key, path string) (*WriteResult, error) {
+	log.Printf("SmallFileWriter %v %v", key, path)
+	writeResult := &WriteResult{}
+	f, err := os.Open(path)
+	defer f.Close()
+	if err != nil {
+		return nil, fmt.Errorf("can't open file %v: %v", path, err)
+	}
+	if _, err := con.Do("LADD", key, 0, ""); err != nil {
+		panic(fmt.Errorf("DB error LADD %v %v %v: %v", key, 0, "", err))
+	}
+	//log.Printf("FileWriter(%v, %v, %v)", txID, key, path)
+	// TODO BufPool ?
+	fstat, _ := os.Stat(path)
+	buf2 := make([]byte, fstat.Size())
+	_, err = f.Read(buf2)
+	if err != nil {
+		panic(err)
+	}
+	nsha := SHA1(buf2)
+	ndata := string(buf2)
+	exists, err := redis.Bool(con.Do("BEXISTS", nsha))
+	if err != nil {
+		panic(fmt.Sprintf("DB error: %v", err))
+	}
+	if !exists {
+		rsha, err := redis.String(con.Do("BPUT", ndata))
+		if err != nil {
+			panic(fmt.Sprintf("Error BPUT: %v", err))
+		}
+		writeResult.BlobsUploaded++
+		writeResult.SizeUploaded += len(buf2)
+		// Check if the hash returned correspond to the locally computed hash
+		if rsha != nsha {
+			panic(fmt.Sprintf("Corrupted data: %+v/%+v", rsha, nsha))
+		}
+	} else {
+		writeResult.SizeSkipped += len(buf2)
+		writeResult.BlobsSkipped++
+	}
+	writeResult.Size += len(buf2)
+	writeResult.BlobsCount++
+	// Save the location and the blob hash into a sorted list (with the offset as index)
+	if _, err := con.Do("LADD", key, writeResult.Size, nsha); err != nil {
+		panic(fmt.Errorf("DB error LADD %v %v %v: %v", key, writeResult.Size, nsha, err))
+	}
+	writeResult.Hash = nsha
+	writeResult.FilesCount++
+	writeResult.FilesUploaded++
+	return writeResult, nil
+}
+
 func (client *Client) PutFile(ctx *Ctx, path string) (meta *Meta, wr *WriteResult, err error) {
 	//log.Printf("PutFile %v/%v\n", txID, path)
 	client.StartUpload()
@@ -130,7 +187,11 @@ func (client *Client) PutFile(ctx *Ctx, path string) (meta *Meta, wr *WriteResul
 		wr.BlobsCount += cnt
 		wr.BlobsSkipped += cnt
 	} else {
-		wr, err = client.FileWriter(con, sha, path)
+		if int(fstat.Size()) > MinBlobSize {
+			wr, err = client.FileWriter(con, sha, path)
+		} else {
+			wr, err = client.SmallFileWriter(con, sha, path)
+		}
 		if err != nil {
 			return nil, nil, fmt.Errorf("FileWriter %v error: %v", path, err)
 		}
