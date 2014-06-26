@@ -2,13 +2,12 @@ package client
 
 import (
 	"bufio"
-	"bytes"
 	"time"
 	"crypto/sha1"
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -28,7 +27,7 @@ var (
 // FileWriter reads the file byte and byte and upload it,
 // chunk by chunk, it also constructs the file index .
 func (client *Client) FileWriter(con redis.Conn, key, path string) (*WriteResult, error) {
-	log.Printf("FileWriter %v %v", key, path)
+	//log.Printf("FileWriter %v %v", key, path)
 	writeResult := &WriteResult{}
 	window := 64
 	rs := rolling.New(window)
@@ -42,8 +41,7 @@ func (client *Client) FileWriter(con redis.Conn, key, path string) (*WriteResult
 		panic(fmt.Errorf("DB error LADD %v %v %v: %v", key, 0, "", err))
 	}
 	//log.Printf("FileWriter(%v, %v, %v)", txID, key, path)
-	var buf bytes.Buffer
-	buf.Reset()
+	buf := client.getBuffer()
 	fullHash := sha1.New()
 	eof := false
 	i := 0
@@ -97,11 +95,13 @@ func (client *Client) FileWriter(con redis.Conn, key, path string) (*WriteResult
 	writeResult.Hash = fmt.Sprintf("%x", fullHash.Sum(nil))
 	writeResult.FilesCount++
 	writeResult.FilesUploaded++
+	// Returns the buffer to the pool
+	client.putBuffer(buf)
 	return writeResult, nil
 }
 
 func (client *Client) SmallFileWriter(con redis.Conn, key, path string) (*WriteResult, error) {
-	log.Printf("SmallFileWriter %v %v", key, path)
+	//log.Printf("SmallFileWriter %v %v", key, path)
 	writeResult := &WriteResult{}
 	f, err := os.Open(path)
 	defer f.Close()
@@ -111,13 +111,9 @@ func (client *Client) SmallFileWriter(con redis.Conn, key, path string) (*WriteR
 	if _, err := con.Do("LADD", key, 0, ""); err != nil {
 		panic(fmt.Errorf("DB error LADD %v %v %v: %v", key, 0, "", err))
 	}
-	//log.Printf("FileWriter(%v, %v, %v)", txID, key, path)
-	// TODO BufPool ?
-	fstat, _ := os.Stat(path)
-	buf2 := make([]byte, fstat.Size())
-	_, err = f.Read(buf2)
+	buf2, err := ioutil.ReadFile(path)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to read file %v: %v", path, err)
 	}
 	nsha := SHA1(buf2)
 	ndata := string(buf2)
@@ -153,7 +149,7 @@ func (client *Client) SmallFileWriter(con redis.Conn, key, path string) (*WriteR
 }
 
 func (client *Client) PutFile(ctx *Ctx, path string) (meta *Meta, wr *WriteResult, err error) {
-	//log.Printf("PutFile %v/%v\n", txID, path)
+	//log.Printf("PutFile %+v/%v\n", ctx, path)
 	client.StartUpload()
 	defer client.UploadDone()
 	fstat, err := os.Stat(path)

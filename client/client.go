@@ -2,16 +2,20 @@ package client
 
 import (
 	"fmt"
-	"github.com/garyburd/redigo/redis"
-	"github.com/tsileo/blobstash/disklru"
-	"github.com/tsileo/blobstash/lru"
 	"os"
 	"path/filepath"
 	"time"
+	"sync"
+	"bytes"
+
+	"github.com/garyburd/redigo/redis"
+
+	"github.com/tsileo/blobstash/disklru"
+	"github.com/tsileo/blobstash/lru"
 )
 
 var (
-	uploaders    = 25 // concurrent upload uploaders
+	uploaders    = 50 // concurrent upload uploaders
 	dirUploaders = 25 // concurrent directory uploaders
 )
 
@@ -24,6 +28,7 @@ type Client struct {
 	Metas        *lru.LRU
 	uploaders    chan struct{}
 	dirUploaders chan struct{}
+	bufferPool *sync.Pool
 	ignoredFiles []string
 }
 
@@ -36,6 +41,11 @@ func (ctx *Ctx) Args() redis.Args {
 	return redis.Args{}.Add(ctx.Hostname).Add(ctx.Archive)
 }
 
+func NewBuffer() interface{} {
+	var b bytes.Buffer
+	return &b
+}
+
 func NewClient(hostname string, ignoredFiles []string) (*Client, error) {
 	var err error
 	if hostname == "" {
@@ -44,8 +54,14 @@ func NewClient(hostname string, ignoredFiles []string) (*Client, error) {
 			return nil, err
 		}
 	}
-	c := &Client{Hostname: hostname, uploaders: make(chan struct{}, uploaders),
-		dirUploaders: make(chan struct{}, dirUploaders)}
+	c := &Client{
+		Hostname: hostname,
+		uploaders: make(chan struct{}, uploaders),
+		dirUploaders: make(chan struct{}, dirUploaders),
+		bufferPool: &sync.Pool{
+			New: NewBuffer,
+		},
+	}
 	if err := c.SetupPool(); err != nil {
 		return nil, err
 	}
@@ -62,6 +78,15 @@ func NewClient(hostname string, ignoredFiles []string) (*Client, error) {
 	return c, err
 }
 
+func (c *Client) getBuffer() *bytes.Buffer {
+	buf := c.bufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	return buf
+}
+
+func (c *Client) putBuffer(buf *bytes.Buffer) {
+	c.bufferPool.Put(buf)
+}
 
 func (client *Client) SetupPool() error {
 	client.Pool = &redis.Pool{
