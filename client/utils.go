@@ -7,9 +7,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 
 	"github.com/dustin/go-humanize"
 )
+
+var wrPool = sync.Pool{
+	New: func() interface{} { return &WriteResult{} },
+}
 
 // NewID generate a random hash that can be used as random key
 func NewID() string {
@@ -56,6 +61,28 @@ type WriteResult struct {
 	DirsUploaded int
 
 	AlreadyExists bool
+}
+
+func NewWriteResult() *WriteResult {
+	return wrPool.Get().(*WriteResult)
+}
+
+func (wr *WriteResult) free() {
+	wr.Hash = ""
+	wr.Size = 0
+	wr.SizeSkipped = 0
+	wr.SizeUploaded = 0
+	wr.BlobsCount = 0
+	wr.BlobsSkipped = 0
+	wr.BlobsUploaded = 0
+	wr.FilesCount = 0
+	wr.FilesSkipped = 0
+	wr.FilesUploaded = 0
+	wr.DirsCount = 0
+	wr.DirsSkipped = 0
+	wr.DirsUploaded = 0
+	wr.AlreadyExists = false
+	wrPool.Put(wr)
 }
 
 func (wr *WriteResult) String() string {

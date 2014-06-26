@@ -28,7 +28,7 @@ var (
 // chunk by chunk, it also constructs the file index .
 func (client *Client) FileWriter(con redis.Conn, key, path string) (*WriteResult, error) {
 	//log.Printf("FileWriter %v %v", key, path)
-	writeResult := &WriteResult{}
+	writeResult := NewWriteResult()
 	window := 64
 	rs := rolling.New(window)
 	f, err := os.Open(path)
@@ -102,7 +102,7 @@ func (client *Client) FileWriter(con redis.Conn, key, path string) (*WriteResult
 
 func (client *Client) SmallFileWriter(con redis.Conn, key, path string) (*WriteResult, error) {
 	//log.Printf("SmallFileWriter %v %v", key, path)
-	writeResult := &WriteResult{}
+	writeResult := NewWriteResult()
 	f, err := os.Open(path)
 	defer f.Close()
 	if err != nil {
@@ -148,7 +148,8 @@ func (client *Client) SmallFileWriter(con redis.Conn, key, path string) (*WriteR
 	return writeResult, nil
 }
 
-func (client *Client) PutFile(ctx *Ctx, path string) (meta *Meta, wr *WriteResult, err error) {
+func (client *Client) PutFile(ctx *Ctx, path string) (*Meta, *WriteResult, error) {
+	wr := NewWriteResult()
 	//log.Printf("PutFile %+v/%v\n", ctx, path)
 	client.StartUpload()
 	defer client.UploadDone()
@@ -173,7 +174,6 @@ func (client *Client) PutFile(ctx *Ctx, path string) (meta *Meta, wr *WriteResul
 		return nil, nil, fmt.Errorf("error LLEN %v: %v", sha, err)
 	}
 	if cnt > 0 || sha == emptyHash {
-		wr = &WriteResult{}
 		wr.Hash = sha
 		wr.AlreadyExists = true
 		wr.FilesSkipped++
@@ -192,7 +192,7 @@ func (client *Client) PutFile(ctx *Ctx, path string) (meta *Meta, wr *WriteResul
 			return nil, nil, fmt.Errorf("FileWriter %v error: %v", path, err)
 		}
 	}
-	meta = NewMeta()
+	meta := NewMeta()
 	if sha != wr.Hash {
 		err = errors.New("initial hash and WriteResult aren't the same")
 		return nil, nil, err

@@ -90,7 +90,7 @@ func (client *Client) DirWriterNode(ctx *Ctx, node *node) {
 	node.mu.Lock()
 	defer node.mu.Unlock()
 
-	node.wr = &WriteResult{}
+	node.wr = NewWriteResult()
 	h := sha1.New()
 	hashes := []string{}
 
@@ -105,7 +105,11 @@ func (client *Client) DirWriterNode(ctx *Ctx, node *node) {
 			cnode.cond.Wait()
 		}
 		node.wr.Add(cnode.wr)
+		cnode.wr.free()
+		cnode.wr = nil
 		hashes = append(hashes, cnode.meta.Hash)
+		cnode.meta.free()
+		cnode.meta = nil
 		cnode.mu.Unlock()
 	}
 
@@ -167,11 +171,11 @@ func (client *Client) DirWriterNode(ctx *Ctx, node *node) {
 
 // PutDir upload a directory, it returns the saved Meta,
 // a WriteResult containing infos about uploaded blobs.
-func (client *Client) PutDir(ctx *Ctx, path string) (meta *Meta, wr *WriteResult, err error) {
+func (client *Client) PutDir(ctx *Ctx, path string) (*Meta, *WriteResult, error) {
 	//log.Printf("PutDir %v\n", path)
 	abspath, err := filepath.Abs(path)
 	if err != nil {
-		return
+		return nil, nil, err
 	}
 	nodes := make(chan *node)
 	fi, _ := os.Stat(abspath)
@@ -200,7 +204,6 @@ func (client *Client) PutDir(ctx *Ctx, path string) (meta *Meta, wr *WriteResult
 					client.DirWriterNode(ctx, node)
 					if node.err != nil {
 						n.err = fmt.Errorf("error DirWriterNode with node %v", node)
-						return
 					}
 				} else {
 					node.mu.Lock()
@@ -208,7 +211,6 @@ func (client *Client) PutDir(ctx *Ctx, path string) (meta *Meta, wr *WriteResult
 					node.meta, node.wr, node.err = client.PutFile(ctx, node.path)
 					if node.err != nil {
 						n.err = fmt.Errorf("error PutFile with node %v", node)
-						return
 					}
 					node.done = true
 					node.cond.Broadcast()

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 
 	"github.com/garyburd/redigo/redis"
 )
@@ -12,6 +13,10 @@ import (
 var (
 	ErrMetaAlreadyExists = errors.New("datadb: meta already exists")
 )
+
+var metaPool = sync.Pool{
+	New: func() interface{} { return &Meta{} },
+}
 
 type Meta struct {
 	Name string `redis:"name"`
@@ -21,6 +26,17 @@ type Meta struct {
 	ModTime string `redis:"mtime"`
 	Ref  string `redis:"ref"`
 	Hash string `redis:"-"`
+}
+
+func (m *Meta) free() {
+	m.Name = ""
+	m.Type = ""
+	m.Size = 0
+	m.Mode = 0
+	m.ModTime = ""
+	m.Ref = ""
+	m.Hash = ""
+	metaPool.Put(m)
 }
 
 func (m *Meta) metaKey() string {
@@ -35,7 +51,7 @@ func (m *Meta) metaKey() string {
 }
 
 func NewMetaFromDB(con redis.Conn, key string) (m *Meta, err error) {
-	m = &Meta{}
+	m = metaPool.Get().(*Meta)
 	reply, err := redis.Values(con.Do("HGETALL", key))
 	if err != nil {
 		return
@@ -50,8 +66,7 @@ func NewMetaFromDB(con redis.Conn, key string) (m *Meta, err error) {
 //}
 
 func NewMeta() *Meta {
-	meta := &Meta{}
-	return meta
+	return metaPool.Get().(*Meta)
 }
 
 // Save the meta
