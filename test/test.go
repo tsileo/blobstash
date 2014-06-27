@@ -38,10 +38,17 @@ func NewRandomFile(path string) string {
 	return f
 }
 
+func NewEmptyFile(path string) string {
+	filename := NewRandomName()
+	f := filepath.Join(path, filename)
+	ioutil.WriteFile(f, []byte{}, 0700)
+	return f
+}
+
 func NewRandomDir(path string) string {
 	dirname := NewRandomName()
 	p := filepath.Join(path, dirname)
-	os.Mkdir(p, 0700)
+	os.MkdirAll(p, 0700)
 	return p
 }
 
@@ -65,6 +72,8 @@ func CreateRandomTree(t *testing.T, path string, rec, maxrec int) (string, int) 
 	if rec == 0 {
 		t.Logf("Creating a new random tree at %v", p)
 	}
+	//NewRandomDir(p)
+	//NewEmptyFile(p)
 	nfiles := 0
 	for {
 		nfiles = mrand.Intn(10)
@@ -82,7 +91,7 @@ func CreateRandomTree(t *testing.T, path string, rec, maxrec int) (string, int) 
 			_, ncnt := CreateRandomTree(t, p, rec+1, maxrec)
 			cnt += ncnt
 		}
-		// Break at 50 to spend less time
+		// Break at 30 to spend less time
 		if cnt > 30 {
 			return p, cnt
 		}

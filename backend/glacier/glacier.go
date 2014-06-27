@@ -41,7 +41,7 @@ type GlacierBackend struct {
 //	db *kv.DB
 }
 
-func New(vault, region string, cache backend.BlobHandler) *GlacierBackend {
+func New(vault, region, cacheDir string) *GlacierBackend {
 	log.Println("GlacierBackend: starting")
 	accessKey := os.Getenv("S3_ACCESS_KEY")
 	secretKey := os.Getenv("S3_SECRET_KEY")
@@ -54,6 +54,7 @@ func New(vault, region string, cache backend.BlobHandler) *GlacierBackend {
 	//	panic(fmt.Errorf("Error initializing DB at %v: %v", util.DBPath, err))
 	//}
 	glacierPubSub := pubsub.NewPubSub("glacier")
+	cache := blobsfile.New(cacheDir, 0, false, true)
 	b := &GlacierBackend{vault, cache, con, glacierPubSub}
 	if err := con.CreateVault(vault); err != nil {
 		panic(fmt.Errorf("Error creating vault: %v", err))
