@@ -80,11 +80,11 @@ func NewClient(hostname string, ignoredFiles []string) (*Client, error) {
 
 func (c *Client) getBuffer() *bytes.Buffer {
 	buf := c.bufferPool.Get().(*bytes.Buffer)
-	buf.Reset()
 	return buf
 }
 
 func (c *Client) putBuffer(buf *bytes.Buffer) {
+	buf.Reset()
 	c.bufferPool.Put(buf)
 }
 

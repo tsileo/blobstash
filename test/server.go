@@ -111,6 +111,7 @@ func (server *TestServer) Start() error {
 	server.server.Stdout = &server.buf
 	server.server.Stderr = &server.buf
 	server.server.Dir = server.tempDir
+	server.server.Env = append(os.Environ(), fmt.Sprintf("BLOBSTASH_VAR_DIR=%v", server.tempDir))
 	if err := server.server.Start(); err != nil {
 		server.err = err
 		return err

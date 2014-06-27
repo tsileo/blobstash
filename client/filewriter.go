@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"bytes"
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/tsileo/blobstash/rolling"
@@ -41,7 +42,8 @@ func (client *Client) FileWriter(con redis.Conn, key, path string) (*WriteResult
 		panic(fmt.Errorf("DB error LADD %v %v %v: %v", key, 0, "", err))
 	}
 	//log.Printf("FileWriter(%v, %v, %v)", txID, key, path)
-	buf := client.getBuffer()
+	//buf := client.bufferPool.Get().(*bytes.Buffer)
+	var buf bytes.Buffer
 	fullHash := sha1.New()
 	eof := false
 	i := 0
@@ -96,7 +98,7 @@ func (client *Client) FileWriter(con redis.Conn, key, path string) (*WriteResult
 	writeResult.FilesCount++
 	writeResult.FilesUploaded++
 	// Returns the buffer to the pool
-	client.putBuffer(buf)
+	//client.putBuffer(buf)
 	return writeResult, nil
 }
 
