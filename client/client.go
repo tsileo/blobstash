@@ -43,7 +43,7 @@ func (ctx *Ctx) Args() redis.Args {
 
 func NewBuffer() interface{} {
 	var b bytes.Buffer
-	return &b
+	return b
 }
 
 func NewClient(hostname string, ignoredFiles []string) (*Client, error) {
@@ -78,12 +78,12 @@ func NewClient(hostname string, ignoredFiles []string) (*Client, error) {
 	return c, err
 }
 
-func (c *Client) getBuffer() *bytes.Buffer {
-	buf := c.bufferPool.Get().(*bytes.Buffer)
+func (c *Client) getBuffer() bytes.Buffer {
+	buf := c.bufferPool.Get().(bytes.Buffer)
 	return buf
 }
 
-func (c *Client) putBuffer(buf *bytes.Buffer) {
+func (c *Client) putBuffer(buf bytes.Buffer) {
 	buf.Reset()
 	c.bufferPool.Put(buf)
 }

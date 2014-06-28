@@ -36,7 +36,8 @@ func NewGlacierFromConfig(conf *simplejson.Json) backend.BlobHandler {
 	}
 	region := conf.Get("region").MustString()
 	cacheDir := conf.Get("cache-dir").MustString(fmt.Sprintf("glacier-cache-%v", vault))
-	return glacier.New(vault, region, cacheDir)
+	compression := conf.Get("compression").MustBool(false)
+	return glacier.New(vault, region, cacheDir, compression)
 }
 
 func NewMirrorFromConfig(conf *simplejson.Json) backend.BlobHandler {
