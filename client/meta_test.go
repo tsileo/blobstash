@@ -3,6 +3,7 @@ package client
 import (
 	"github.com/garyburd/redigo/redis"
 	"testing"
+	"time"
 
 	"github.com/tsileo/blobstash/test"
 )
@@ -30,6 +31,7 @@ func TestModelsMeta(t *testing.T) {
 	check(err)
 	_, err = con.Do("TXCOMMIT")
 	check(err)
+	time.Sleep(1*time.Second)
 
 	fe, err := NewMetaFromDB(con, f.Hash)
 	check(err)

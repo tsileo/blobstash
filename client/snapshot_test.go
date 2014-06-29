@@ -3,6 +3,7 @@ package client
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/tsileo/blobstash/test"
 )
@@ -31,6 +32,7 @@ func TestModelsSnapshots(t *testing.T) {
 	err = f.Save(con)
 	check(err)
 
+	time.Sleep(2*time.Second)
 	f2, err := NewSnapshotFromDB(con, f.Hash)
 	check(err)
 	if !reflect.DeepEqual(f, f2) {

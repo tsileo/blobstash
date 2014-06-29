@@ -188,7 +188,7 @@ func (client *Client) Get(hash, path string) (snapshot *Snapshot, meta *Meta, rr
 	defer con.Close()
 	host, err := redis.String(con.Do("GET", hash))
 	if err != nil {
-		return
+		return nil, nil, nil, fmt.Errorf("failed to fetch host for snapshot %v: %v", hash, err)
 	}
 	ctx := &Ctx{Hostname: host}
 	_, err = con.Do("SETCTX", ctx.Args()...)
@@ -232,7 +232,7 @@ func (client *Client) Put(ctx *Ctx, path string) (snapshot *Snapshot, meta *Meta
 		meta, wr, err = client.PutDir(ctx, path)
 	} else {
 		btype = "file"
-		meta, wr, err = client.PutFile(ctx, path)
+		meta, wr, err = client.PutFile(ctx, nil, path)
 	}
 	if err != nil {
 		return

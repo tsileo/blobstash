@@ -3,6 +3,7 @@ package client
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/tsileo/blobstash/test"
 )
@@ -33,6 +34,8 @@ func TestClientDir(t *testing.T) {
 	//if len(hosts) != 1 || hosts[0] != hostname {
 	//	t.Errorf("Hosts() should return [%v], got %q", hostname, hosts)
 	//}
+
+	time.Sleep(2*time.Second)
 
 	rr, err := c.GetDir(&Ctx{Hostname: c.Hostname}, meta.Hash, meta.Name+"_restored")
 	defer os.RemoveAll(meta.Name+"_restored")
@@ -70,6 +73,8 @@ func TestClientArchiveDir(t *testing.T) {
 	//	t.Errorf("Hosts() should return [%v], got %q", hostname, hosts)
 	//}
 
+	time.Sleep(2*time.Second)
+
 	rr, err := c.GetDir(&Ctx{Hostname: c.Hostname, Archive: true}, meta.Hash, meta.Name+"_restored")
 	defer os.RemoveAll(meta.Name+"_restored")
 	check(err)
@@ -99,6 +104,8 @@ func TestClientDirDeepRecursion(t *testing.T) {
 	defer os.RemoveAll(tdir)
 	meta, wr, err := c.PutDir(&Ctx{Hostname: c.Hostname}, tdir)
 	check(err)
+
+	time.Sleep(3*time.Second)
 
 	rr, err := c.GetDir(&Ctx{Hostname: c.Hostname}, meta.Hash, meta.Name+"_restored")
 	defer os.RemoveAll(meta.Name + "_restored")

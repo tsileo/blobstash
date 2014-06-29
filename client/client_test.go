@@ -4,6 +4,7 @@ import (
 	"os"
 	"testing"
 	"reflect"
+	"time"
 
 	"github.com/tsileo/blobstash/test"
 )
@@ -26,6 +27,7 @@ func TestMultipleClientDifferentHosts(t *testing.T) {
 	ctx := &Ctx{Hostname: c.Hostname}
 	snap, meta, wr, err := c.Put(ctx, tdir)
 	check(err)
+	time.Sleep(2*time.Second)
 	_, _, rr, err := c.Get(snap.Hash, meta.Name+"_restored")
 	defer os.RemoveAll(meta.Name+"_restored")
 	check(err)
@@ -45,6 +47,7 @@ func TestMultipleClientDifferentHosts(t *testing.T) {
 	ctx2 := &Ctx{Hostname: "tomt0m2"}
 	snap, meta, _, err = c2.Put(ctx2, tdir2)
 	check(err)
+	time.Sleep(2*time.Second)
 	_, _, _, err = c2.Get(snap.Hash, meta.Name+"_restored")
 	defer os.RemoveAll(meta.Name+"_restored")
 	check(err)
@@ -69,6 +72,8 @@ func TestClient(t *testing.T) {
 	ctx := &Ctx{Hostname: c.Hostname}
 	putSnap, _, _, err := c.Put(ctx, tdir)
 	check(err)
+
+	time.Sleep(2*time.Second)
 
 	t.Log("Testing client.Hosts()")
 

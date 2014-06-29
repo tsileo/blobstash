@@ -66,6 +66,7 @@ type FakeFile struct {
 	ref    string
 	offset int
 	size   int
+	llen   int
 	lmrange []struct {
 		Index int
 		Value string

@@ -91,6 +91,26 @@ func (m *Meta) Save(con redis.Conn) error {
 	return err
 }
 
+// Save the meta
+func (m *Meta) SaveToBuffer(con redis.Conn, rb *ReqBuffer) error {
+	m.Hash = m.metaKey()
+	cnt, err := redis.Int(con.Do("HLEN", m.Hash))
+	if err != nil {
+		return fmt.Errorf("error HLEN: %v", err)
+	}
+	if cnt != 0 {
+		return nil
+	}
+	rb.Add("hmset", m.Hash, []string{
+		"name", m.Name,
+		"type", m.Type,
+		"size", fmt.Sprintf("%v", m.Size),
+		"mtime", m.ModTime,
+		"mode", fmt.Sprintf("%v", m.Mode),
+		"ref", m.Ref})
+	return nil
+}
+
 func (m *Meta) ComputeHash() {
 	m.Hash = m.metaKey()
 	return

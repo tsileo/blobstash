@@ -103,7 +103,7 @@ func (client *Client) FileWriter(con redis.Conn, key, path string) (*WriteResult
 	return writeResult, nil
 }
 
-func (client *Client) SmallFileWriter(con redis.Conn, key, path string) (*WriteResult, error) {
+func (client *Client) SmallFileWriter(con redis.Conn, rb *ReqBuffer, key, path string) (*WriteResult, error) {
 	//log.Printf("start:%v / %v", time.Now(), path)
 	writeResult := NewWriteResult()
 	f, err := os.Open(path)
@@ -111,9 +111,7 @@ func (client *Client) SmallFileWriter(con redis.Conn, key, path string) (*WriteR
 	if err != nil {
 		return nil, fmt.Errorf("can't open file %v: %v", path, err)
 	}
-	if _, err := con.Do("LADD", key, 0, ""); err != nil {
-		panic(fmt.Errorf("DB error LADD %v %v %v: %v", key, 0, "", err))
-	}
+	rb.Add("ladd", key, []string{"0", ""})
 	buf2, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file %v: %v", path, err)
@@ -142,9 +140,7 @@ func (client *Client) SmallFileWriter(con redis.Conn, key, path string) (*WriteR
 	writeResult.Size += len(buf2)
 	writeResult.BlobsCount++
 	// Save the location and the blob hash into a sorted list (with the offset as index)
-	if _, err := con.Do("LADD", key, writeResult.Size, nsha); err != nil {
-		panic(fmt.Errorf("DB error LADD %v %v %v: %v", key, writeResult.Size, nsha, err))
-	}
+	rb.Add("ladd", key, []string{fmt.Sprintf("%v", writeResult.Size), nsha})
 	writeResult.Hash = nsha
 	writeResult.FilesCount++
 	writeResult.FilesUploaded++
@@ -153,7 +149,7 @@ func (client *Client) SmallFileWriter(con redis.Conn, key, path string) (*WriteR
 	return writeResult, nil
 }
 
-func (client *Client) PutFile(ctx *Ctx, path string) (*Meta, *WriteResult, error) {
+func (client *Client) PutFile(ctx *Ctx, rb *ReqBuffer, path string) (*Meta, *WriteResult, error) {
 	wr := NewWriteResult()
 	//log.Printf("PutFile %+v/%v\n", ctx, path)
 	client.StartUpload()
@@ -166,12 +162,16 @@ func (client *Client) PutFile(ctx *Ctx, path string) (*Meta, *WriteResult, error
 	sha := FullSHA1(path)
 	con := client.Conn()
 	defer con.Close()
-
+	shouldCommit := false
+	newRb := false
 	_, err = redis.String(con.Do("TXINIT", ctx.Args()...))
 	if err != nil {
 		return nil, nil, err
 	}
-
+	if rb == nil {
+		newRb = true
+		rb = NewReqBuffer()
+	}
 	// First we check if the file isn't already uploaded,
 	// if so we skip it.
 	cnt, err := redis.Int(con.Do("LLEN", sha))
@@ -190,8 +190,9 @@ func (client *Client) PutFile(ctx *Ctx, path string) (*Meta, *WriteResult, error
 	} else {
 		if int(fstat.Size()) > MinBlobSize {
 			wr, err = client.FileWriter(con, sha, path)
+			shouldCommit = true
 		} else {
-			wr, err = client.SmallFileWriter(con, sha, path)
+			wr, err = client.SmallFileWriter(con, rb, sha, path)
 		}
 		if err != nil {
 			return nil, nil, fmt.Errorf("FileWriter %v error: %v", path, err)
@@ -209,12 +210,21 @@ func (client *Client) PutFile(ctx *Ctx, path string) (*Meta, *WriteResult, error
 	meta.Type = "file"
 	meta.ModTime = fstat.ModTime().Format(time.RFC3339)
 	meta.Mode = uint32(fstat.Mode())
-	if err := meta.Save(con); err != nil {
+	if err := meta.SaveToBuffer(con, rb); err != nil {
 		return nil, nil, fmt.Errorf("Error saving meta %+v: %v", meta, err)
 	}
-	_, err = con.Do("TXCOMMIT")
-	if err != nil {
-		return nil, nil, fmt.Errorf("error TXCOMMIT: %+v", err)
+	if shouldCommit {
+		_, err = con.Do("TXCOMMIT")
+		if err != nil {
+			return nil, nil, fmt.Errorf("error TXCOMMIT: %+v", err)
+		}
+	}
+	if newRb {
+		_, mblob := rb.JSON()
+		_, err = con.Do("MBPUT", mblob)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error MBPUT: %+v", err)
+		}
 	}
 	return meta, wr, nil
 }

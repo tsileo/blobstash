@@ -26,6 +26,9 @@ type node struct {
 
 	// Children (if the node is a directory)
 	children []*node
+	parent *node
+
+	rb *ReqBuffer
 
 	// Upload result is stored in the node
 	wr   *WriteResult
@@ -63,9 +66,10 @@ func (client *Client) DirExplorer(path string, pnode *node, nodes chan<- *node) 
 	}
 	for _, fi := range dirdata {
 		abspath := filepath.Join(path, fi.Name())
-		n := &node{path: abspath, fi: fi}
+		n := &node{path: abspath, fi: fi, parent: pnode}
 		n.cond.L = &n.mu
 		if fi.IsDir() {
+			n.rb = NewReqBuffer()
 			client.DirExplorer(abspath, n, nodes)
 			nodes <- n
 			pnode.children = append(pnode.children, n)
@@ -125,7 +129,7 @@ func (client *Client) DirWriterNode(ctx *Ctx, node *node) {
 
 	con := client.Conn()
 	defer con.Close()
-	_, err := redis.String(con.Do("TXINIT", ctx.Args()...))
+	_, err := redis.String(con.Do("SETCTX", ctx.Args()...))
 	if err != nil {
 		node.err = err
 		return
@@ -138,11 +142,12 @@ func (client *Client) DirWriterNode(ctx *Ctx, node *node) {
 	}
 	if cnt == 0 {
 		if len(hashes) > 0 {
-			_, err = con.Do("SADD", redis.Args{}.Add(node.wr.Hash).Add("").AddFlat(hashes)...)
-			if err != nil {
-				node.err = err
-				return
-			}
+			node.rb.Add("sadd", node.wr.Hash, hashes)
+			//_, err = con.Do("SADD", redis.Args{}.Add(node.wr.Hash).Add("").AddFlat(hashes)...)
+			//if err != nil {
+			//	node.err = err
+			//	return
+			//}
 			node.wr.DirsUploaded++
 			node.wr.DirsCount++
 		}
@@ -159,10 +164,16 @@ func (client *Client) DirWriterNode(ctx *Ctx, node *node) {
 	node.meta.Ref = node.wr.Hash
 	node.meta.Mode = uint32(node.fi.Mode())
 	node.meta.ModTime = node.fi.ModTime().Format(time.RFC3339)
-	node.err = node.meta.Save(con)
-	_, err = con.Do("TXCOMMIT")
+	node.err = node.meta.SaveToBuffer(con, node.rb)
+	//_, err = con.Do("TXCOMMIT")
+	//if err != nil {
+	//	node.err = fmt.Errorf("error TXCOMMIT: %+v", err)
+	//	return
+	//}
+	_, mblob := node.rb.JSON()
+	_, err = con.Do("MBPUT", mblob)
 	if err != nil {
-		node.err = fmt.Errorf("error TXCOMMIT: %+v", err)
+		node.err = err
 		return
 	}
 	node.done = true
@@ -181,7 +192,7 @@ func (client *Client) PutDir(ctx *Ctx, path string) (*Meta, *WriteResult, error)
 	}
 	nodes := make(chan *node)
 	fi, _ := os.Stat(abspath)
-	n := &node{root: true, path: abspath, fi: fi}
+	n := &node{root: true, path: abspath, fi: fi, rb: NewReqBuffer()}
 	n.cond.L = &n.mu
 
 	var wg sync.WaitGroup
@@ -196,7 +207,7 @@ func (client *Client) PutDir(ctx *Ctx, path string) (*Meta, *WriteResult, error)
 	}()
 	// Upload discovered files (100 file descriptor at the same time max).
 	wg.Add(1)
-	l := make(chan struct{}, 50)
+	l := make(chan struct{}, 25)
 	go func() {
 		defer wg.Done()
 		for f := range nodes {
@@ -215,7 +226,7 @@ func (client *Client) PutDir(ctx *Ctx, path string) (*Meta, *WriteResult, error)
 				} else {
 					node.mu.Lock()
 					defer node.mu.Unlock()
-					node.meta, node.wr, node.err = client.PutFile(ctx, node.path)
+					node.meta, node.wr, node.err = client.PutFile(ctx, node.parent.rb, node.path)
 					if node.err != nil {
 						n.err = fmt.Errorf("error PutFile with node %v", node)
 					}

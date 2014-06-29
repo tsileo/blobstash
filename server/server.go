@@ -65,6 +65,7 @@ type blobPutJob struct {
 	req *backend.Request
 	hash string
 	blob []byte
+	txm *backend.TxManager
 }
 
 func (j *blobPutJob) String() string {
@@ -74,14 +75,16 @@ func (j *blobPutJob) free() {
 	j.req = nil
 	j.blob = nil
 	j.hash = ""
+	j.txm = nil
 	blobPutJobPool.Put(j)
 }
 
-func newBlobPutJob(req *backend.Request, hash string, blob []byte) *blobPutJob {
+func newBlobPutJob(req *backend.Request, hash string, blob []byte, txm *backend.TxManager) *blobPutJob {
 	j := blobPutJobPool.Get().(*blobPutJob)
 	j.req = req
 	j.hash = hash
 	j.blob = blob
+	j.txm = txm
 	return j
 }
 
@@ -458,7 +461,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		return nil
 	})
 	jobc := make(chan *blobPutJob)
-	for w := 1; w <= nCPU; w++ {
+	for w := 1; w <= 25; w++ {
 		go func(jobc <-chan *blobPutJob, w int) {
 			for {
 				job := <-jobc
@@ -466,6 +469,11 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 				log.Printf("Worker %v got Job %v", w, job)
 				if err := BlobRouter.Put(job.req, job.hash, job.blob); err != nil {
 					panic(err)
+				}
+				if job.req.MetaBlob {
+					if err := job.txm.LoadIncomingBlob(job.hash, job.blob); err != nil {
+						panic(err)
+					}
 				}
 			}
 		}(jobc, w)
@@ -480,7 +488,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		}
 		blob := []byte(req.Args[0])
 		sha := SHA1(blob)
-		jobc<- newBlobPutJob(&backend.Request{Host: ctx.Hostname, MetaBlob: false}, sha, blob)
+		jobc<- newBlobPutJob(&backend.Request{Host: ctx.Hostname, MetaBlob: false}, sha, blob, nil)
 		//err = BlobRouter.Put(&backend.Request{Host: ctx.Hostname, MetaBlob: false}, sha, blob)
 		//if err != nil {
 		//	log.Printf("server: Error BPUT:%v\nBlob %v:%v", err, sha, blob)
@@ -530,15 +538,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		}
 		blob := []byte(req.Args[0])
 		sha := SHA1(blob)
-		err = BlobRouter.Put(&backend.Request{Host: ctx.Hostname, MetaBlob: true}, sha, blob)
-		if err != nil {
-			log.Printf("server: Error MBPUT:%v\nBlob %v:%v", err, sha, blob)
-			return ErrSomethingWentWrong
-		}
-		if err := req.Client().Ctx.(*ServerCtx).TxManager().LoadIncomingBlob(sha, blob); err != nil {
-			log.Printf("server: Error MBPUT:%v\nBlob %v:%v", err, sha, string(blob))
-			return ErrSomethingWentWrong
-		}
+		txm := req.Client().Ctx.(*ServerCtx).TxManager()
+		jobc<- newBlobPutJob(&backend.Request{Host: ctx.Hostname, MetaBlob: true}, sha, blob, txm)
 		out.WriteString(sha)
 		return nil
 	})
