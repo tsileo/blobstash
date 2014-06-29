@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/codegangsta/cli"
 
@@ -10,6 +11,15 @@ import (
 	"github.com/tsileo/blobstash/scheduler"
 	"github.com/tsileo/blobstash/fs"
 )
+
+var nCPU = runtime.NumCPU()
+
+func init() {
+	if nCPU < 2 {
+		nCPU = 2
+	}
+	runtime.GOMAXPROCS(nCPU)
+}
 
 func main() {
 	ignoredFiles := []string{"*~", "*.py[cod]", "nohup.out", "*.log", "tmp_*"}

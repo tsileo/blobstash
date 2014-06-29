@@ -6,6 +6,7 @@ import (
 	"crypto/sha1"
 	"errors"
 	"fmt"
+	"log"
 	"io"
 	"io/ioutil"
 	"os"
@@ -28,7 +29,6 @@ var (
 // FileWriter reads the file byte and byte and upload it,
 // chunk by chunk, it also constructs the file index .
 func (client *Client) FileWriter(con redis.Conn, key, path string) (*WriteResult, error) {
-	//log.Printf("FileWriter %v %v", key, path)
 	writeResult := NewWriteResult()
 	window := 64
 	rs := rolling.New(window)
@@ -99,11 +99,12 @@ func (client *Client) FileWriter(con redis.Conn, key, path string) (*WriteResult
 	writeResult.FilesUploaded++
 	// Returns the buffer to the pool
 	//client.putBuffer(buf)
+	log.Printf("FileWriter %v %v done", key, path)
 	return writeResult, nil
 }
 
 func (client *Client) SmallFileWriter(con redis.Conn, key, path string) (*WriteResult, error) {
-	//log.Printf("SmallFileWriter %v %v", key, path)
+	//log.Printf("start:%v / %v", time.Now(), path)
 	writeResult := NewWriteResult()
 	f, err := os.Open(path)
 	defer f.Close()
@@ -147,6 +148,8 @@ func (client *Client) SmallFileWriter(con redis.Conn, key, path string) (*WriteR
 	writeResult.Hash = nsha
 	writeResult.FilesCount++
 	writeResult.FilesUploaded++
+	log.Printf("SmallFileWriter %v %v done", key, path)
+	//log.Printf("end: %v", time.Now())
 	return writeResult, nil
 }
 

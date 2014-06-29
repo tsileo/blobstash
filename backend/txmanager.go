@@ -250,6 +250,10 @@ func (rb *ReqBuffer) Save() error {
 		return nil
 	}
 	h, d := rb.JSON()
+	go SendDebugData(fmt.Sprintf("server: applying meta blob:%v\n", h))
+	if err := rb.Apply(); err != nil {
+		return fmt.Errorf("Failed to apply meta blob %v: %v", h, err)
+	}
 	go SendDebugData(fmt.Sprintf("server: meta blob:%v (len:%v) written\n", h, len(d)))
 	rb.Reset()
 	if err := rb.blobBackend.Put(h, d); err != nil {

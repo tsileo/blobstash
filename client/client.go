@@ -15,10 +15,9 @@ import (
 )
 
 var (
-	uploaders    = 50 // concurrent upload uploaders
-	dirUploaders = 25 // concurrent directory uploaders
+	uploaders    = 25 // concurrent upload uploaders
+	dirUploaders = 5 // concurrent directory uploaders
 )
-
 
 type Client struct {
 	Pool         *redis.Pool
@@ -125,9 +124,11 @@ func NewTestClient(hostname string) (*Client, error) {
 			return nil, err
 		}
 	}
-	c := &Client{Hostname: hostname,
+	c := &Client{
+		Hostname: hostname,
 		uploaders: make(chan struct{}, uploaders),
-		dirUploaders: make(chan struct{}, dirUploaders)}
+		dirUploaders: make(chan struct{}, dirUploaders),
+	}
 	c.Blobs, err = disklru.NewTest(c.FetchBlob, 536870912)
 	c.Dirs = lru.New(c.FetchDir, 512)
 	c.Metas = lru.New(c.FetchMeta, 512)

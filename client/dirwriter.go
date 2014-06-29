@@ -82,6 +82,7 @@ func (client *Client) DirExplorer(path string, pnode *node, nodes chan<- *node) 
 		}
 	}
 	pnode.cond.Broadcast()
+	log.Println("DirExplorer done")
 	return
 }
 
@@ -89,7 +90,7 @@ func (client *Client) DirExplorer(path string, pnode *node, nodes chan<- *node) 
 func (client *Client) DirWriterNode(ctx *Ctx, node *node) {
 	node.mu.Lock()
 	defer node.mu.Unlock()
-
+	log.Printf("DirWriterNode %v star", node)
 	node.wr = NewWriteResult()
 	h := sha1.New()
 	hashes := []string{}
@@ -166,6 +167,7 @@ func (client *Client) DirWriterNode(ctx *Ctx, node *node) {
 	}
 	node.done = true
 	node.cond.Broadcast()
+	log.Printf("DirWriterNode %v done", node)
 	return
 }
 
@@ -194,11 +196,16 @@ func (client *Client) PutDir(ctx *Ctx, path string) (*Meta, *WriteResult, error)
 	}()
 	// Upload discovered files (100 file descriptor at the same time max).
 	wg.Add(1)
+	l := make(chan struct{}, 50)
 	go func() {
 		defer wg.Done()
 		for f := range nodes {
 			wg.Add(1)
+			l <- struct{}{}
 			go func(node *node) {
+				defer func() {
+					<-l
+				}()
 				defer wg.Done()
 				if node.fi.IsDir() {
 					client.DirWriterNode(ctx, node)

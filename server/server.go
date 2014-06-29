@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"runtime"
 	"time"
 
 	"github.com/bsm/redeo"
@@ -41,11 +42,49 @@ var (
 	loadMetaBlobs sync.Once
 )
 
+var blobPutJobPool = sync.Pool{
+	New: func() interface{} { return &blobPutJob{} },
+}
+
+var nCPU = runtime.NumCPU()
+
+func init() {
+	if nCPU < 2 {
+		nCPU = 2
+	}
+	runtime.GOMAXPROCS(nCPU)
+}
+
 type ServerCtx struct {
 	TxID string
 	ArchiveMode bool
 	Hostname string
 }
+
+type blobPutJob struct {
+	req *backend.Request
+	hash string
+	blob []byte
+}
+
+func (j *blobPutJob) String() string {
+	return fmt.Sprintf("[blobPutJob  hash=%v, meta=%v, host=%v]", j.hash, j.req.MetaBlob, j.req.Host)
+}
+func (j *blobPutJob) free() {
+	j.req = nil
+	j.blob = nil
+	j.hash = ""
+	blobPutJobPool.Put(j)
+}
+
+func newBlobPutJob(req *backend.Request, hash string, blob []byte) *blobPutJob {
+	j := blobPutJobPool.Get().(*blobPutJob)
+	j.req = req
+	j.hash = hash
+	j.blob = blob
+	return j
+}
+
 //	dbm.TxManagers[dbname] = NewTxManager(newdb, dbm.metaBackend)
 //func SetupDB(path string) {
 //	os.MkdirAll(path, 0700)
@@ -209,10 +248,10 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		err = blobRouter.Index.Put(req.Args[0], req.Args[1])
-		if err != nil {
-			return ErrSomethingWentWrong
-		}
+		//err = blobRouter.Index.Put(req.Args[0], req.Args[1])
+		//if err != nil {
+		//	return ErrSomethingWentWrong
+		//}
 		out.WriteOK()
 		return nil
 	})
@@ -246,20 +285,21 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		cmdArgs := make([]string, len(req.Args)-1)
-		copy(cmdArgs, req.Args[1:])
-		ctx := req.Client().Ctx.(*ServerCtx)
-		cnt, err := ctx.DB().Sadd(req.Args[0], cmdArgs...)
-		if err != nil {
-			return ErrSomethingWentWrong
-		}
+		out.WriteOK()
+		//cmdArgs := make([]string, len(req.Args)-1)
+		//copy(cmdArgs, req.Args[1:])
+		//ctx := req.Client().Ctx.(*ServerCtx)
+		//cnt, err := ctx.DB().Sadd(req.Args[0], cmdArgs...)
+		//if err != nil {
+		//	return ErrSomethingWentWrong
+		//}
 		// Also write the data in the router index
-		if strings.HasPrefix(req.Args[0], "_") {
-			if _, err := blobRouter.Index.Sadd(req.Args[0], cmdArgs...); err != nil {
-				return ErrSomethingWentWrong
-			}
-		}
-		out.WriteInt(cnt)
+		//if strings.HasPrefix(req.Args[0], "_") {
+		//	if _, err := blobRouter.Index.Sadd(req.Args[0], cmdArgs...); err != nil {
+		//		return ErrSomethingWentWrong
+		//	}
+		//}
+		//out.WriteInt(cnt)
 		return nil
 	})
 	srv.HandleFunc("scard", func(out *redeo.Responder, req *redeo.Request) error {
@@ -307,34 +347,35 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		}
 		return nil
 	})
-	srv.HandleFunc("hset", func(out *redeo.Responder, req *redeo.Request) error {
-		SetUpCtx(req)
-		err := CheckArgs(req, 3)
-		if err != nil {
-			return err
-		}
-		ctx := req.Client().Ctx.(*ServerCtx)
-		cnt, err := ctx.DB().Hmset(req.Args[0], req.Args[1], req.Args[2])
-		if err != nil {
-			return ErrSomethingWentWrong
-		}
-		out.WriteInt(cnt)
-		return nil
-	})
+	//srv.HandleFunc("hset", func(out *redeo.Responder, req *redeo.Request) error {
+	//	SetUpCtx(req)
+	//	err := CheckArgs(req, 3)
+	//	if err != nil {
+	//		return err
+	//	}
+	//	ctx := req.Client().Ctx.(*ServerCtx)
+	//	cnt, err := ctx.DB().Hmset(req.Args[0], req.Args[1], req.Args[2])
+	//	if err != nil {
+	//		return ErrSomethingWentWrong
+	//	}
+	//	out.WriteInt(cnt)
+	//	return nil
+	//})
 	srv.HandleFunc("hmset", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckMinArgs(req, 3)
 		if err != nil {
 			return err
 		}
-		cmdArgs := make([]string, len(req.Args)-1)
-		copy(cmdArgs, req.Args[1:])
-		ctx := req.Client().Ctx.(*ServerCtx)
-		cnt, err := ctx.DB().Hmset(req.Args[0], cmdArgs...)
-		if err != nil {
-			return ErrSomethingWentWrong
-		}
-		out.WriteInt(cnt)
+		out.WriteOK()
+		//cmdArgs := make([]string, len(req.Args)-1)
+		//copy(cmdArgs, req.Args[1:])
+		//ctx := req.Client().Ctx.(*ServerCtx)
+		//cnt, err := ctx.DB().Hmset(req.Args[0], cmdArgs...)
+		//if err != nil {
+		//	return ErrSomethingWentWrong
+		//}
+		//out.WriteInt(cnt)
 		return nil
 	})
 	srv.HandleFunc("hlen", func(out *redeo.Responder, req *redeo.Request) error {
@@ -416,7 +457,19 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		}
 		return nil
 	})
-
+	jobc := make(chan *blobPutJob)
+	for w := 1; w <= nCPU; w++ {
+		go func(jobc <-chan *blobPutJob, w int) {
+			for {
+				job := <-jobc
+				defer job.free()
+				log.Printf("Worker %v got Job %v", w, job)
+				if err := BlobRouter.Put(job.req, job.hash, job.blob); err != nil {
+					panic(err)
+				}
+			}
+		}(jobc, w)
+	}
 	// Blob related commands
 	srv.HandleFunc("bput", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
@@ -427,11 +480,12 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		}
 		blob := []byte(req.Args[0])
 		sha := SHA1(blob)
-		err = BlobRouter.Put(&backend.Request{Host: ctx.Hostname, MetaBlob: false}, sha, blob)
-		if err != nil {
-			log.Printf("server: Error BPUT:%v\nBlob %v:%v", err, sha, blob)
-			return ErrSomethingWentWrong
-		}
+		jobc<- newBlobPutJob(&backend.Request{Host: ctx.Hostname, MetaBlob: false}, sha, blob)
+		//err = BlobRouter.Put(&backend.Request{Host: ctx.Hostname, MetaBlob: false}, sha, blob)
+		//if err != nil {
+		//	log.Printf("server: Error BPUT:%v\nBlob %v:%v", err, sha, blob)
+		//	return ErrSomethingWentWrong
+		//}
 		out.WriteString(sha)
 		return nil
 	})
@@ -540,20 +594,20 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		cindex, err := strconv.Atoi(req.Args[1])
-		if err != nil {
-			return ErrSomethingWentWrong
-		}
-		ctx := req.Client().Ctx.(*ServerCtx)
-		err = ctx.DB().Ladd(req.Args[0], cindex, req.Args[2])
-		if err != nil {
-			return ErrSomethingWentWrong
-		}
-		if strings.HasPrefix(req.Args[0], "_") {
-			if err := blobRouter.Index.Ladd(req.Args[0], cindex, req.Args[2]); err != nil {
-				return ErrSomethingWentWrong
-			}
-		}
+		//cindex, err := strconv.Atoi(req.Args[1])
+		//if err != nil {
+		//	return ErrSomethingWentWrong
+		//}
+		//ctx := req.Client().Ctx.(*ServerCtx)
+		//err = ctx.DB().Ladd(req.Args[0], cindex, req.Args[2])
+		//if err != nil {
+		//	return ErrSomethingWentWrong
+		//}
+		//if strings.HasPrefix(req.Args[0], "_") {
+		//	if err := blobRouter.Index.Ladd(req.Args[0], cindex, req.Args[2]); err != nil {
+		//		return ErrSomethingWentWrong
+		//	}
+		//}
 		out.WriteOK()
 		return nil
 	})
@@ -743,6 +797,18 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		out.WriteOK()
 		return nil
 	})
+	rbc := make(chan *backend.ReqBuffer)
+	for w := 1; w <= nCPU; w++ {
+		go func(rbc <-chan *backend.ReqBuffer, w int) {
+			for {
+				rb := <-rbc
+				log.Printf("Worker %v got ReqBuffer", w)
+				if err := rb.Save(); err != nil {
+					panic(err)
+				}
+			}
+		}(rbc, w)
+	}
 	srv.HandleFunc("txcommit", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 0)
@@ -750,12 +816,12 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return err
 		}
 		txID := req.Client().Ctx.(*ServerCtx).TxID
-		rb := req.Client().Ctx.(*ServerCtx).ReqBuffer(txID)
-		err = rb.Save()
-		if err != nil {
-			log.Printf("server: TXCOMMIT error %v/%v", err, txID)
-			return ErrSomethingWentWrong
-		}
+		rbc <-req.Client().Ctx.(*ServerCtx).ReqBuffer(txID)
+		//err = rb.Save()
+		//if err != nil {
+		//	log.Printf("server: TXCOMMIT error %v/%v", err, txID)
+		//	return ErrSomethingWentWrong
+		//}
 		out.WriteOK()
 		return nil
 	})
