@@ -13,6 +13,8 @@ func check(err error) {
 }
 
 var testConf1 = `[
+[["if-host-tomt0m", "if-archive", "if-meta"], "customHandlerArchiveMeta"],
+[["if-host-tomt0m", "if-archive"], "customHandlerArchive"],
 [["if-host-tomt0m", "if-meta"], "customHandler2"],
 ["if-host-tomt0m", "customHandler"],
 ["if-meta", "metaHandler"],
@@ -23,10 +25,14 @@ var testConfData1 = []struct{
 	req *Request
 	expectedBackend string
 }{
-	{&Request{Read, false, "tomt0m"}, "customHandler"},
-	{&Request{Read, true, "tomt0m"}, "customHandler2"},
-	{&Request{Read, true, "homeserver"}, "metaHandler"},
-	{&Request{Read, false, "homeserver"}, "blobHandler"},
+	{&Request{Read, false, "tomt0m", false}, "customHandler"},
+	{&Request{Read, true, "tomt0m", false}, "customHandler2"},
+	{&Request{Read, true, "homeserver", false}, "metaHandler"},
+	{&Request{Read, false, "homeserver", false}, "blobHandler"},
+	{&Request{Read, true, "homeserver", true}, "metaHandler"},
+	{&Request{Read, false, "homeserver", true}, "blobHandler"},
+	{&Request{Read, true, "tomt0m", true}, "customHandlerArchiveMeta"},
+	{&Request{Read, false, "tomt0m", true}, "customHandlerArchive"},
 }
 
 var testConf2 = `[
@@ -37,13 +43,13 @@ var testConfData2 = []struct{
 	req *Request
 	expectedBackend string
 }{
-	{&Request{Read, false, "homeserver"}, "blobHandler"},
+	{&Request{Read, false, "homeserver", false}, "blobHandler"},
 }
 
 func TestRouter(t *testing.T) {
 	tConf1, err := simplejson.NewJson([]byte(testConf1))
 	check(err)
-	routerConfig, err := NewRouterFromConfig(tConf1)
+	routerConfig, err := NewRouterFromConfig(tConf1, nil)
 	check(err)
 	for _, tdata := range testConfData1 {
 		backend := routerConfig.Route(tdata.req)
@@ -53,7 +59,7 @@ func TestRouter(t *testing.T) {
 	}
 	tConf2, err := simplejson.NewJson([]byte(testConf2))
 	check(err)
-	routerConfig, err = NewRouterFromConfig(tConf2)
+	routerConfig, err = NewRouterFromConfig(tConf2, nil)
 	check(err)
 	for _, tdata := range testConfData2 {
 		backend := routerConfig.Route(tdata.req)

@@ -57,7 +57,7 @@ func init() {
 
 type ServerCtx struct {
 	TxID string
-	ArchiveMode bool
+	Archive bool
 	Hostname string
 }
 
@@ -504,7 +504,12 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		}
 		blob := []byte(req.Args[0])
 		sha := SHA1(blob)
-		jobc<- newBlobPutJob(&backend.Request{Host: ctx.Hostname, MetaBlob: false}, sha, blob, nil)
+		breq := &backend.Request{
+			Host: ctx.Hostname,
+			MetaBlob: false,
+			Archive: ctx.Archive,
+		}
+		jobc<- newBlobPutJob(breq, sha, blob, nil)
 		//err = BlobRouter.Put(&backend.Request{Host: ctx.Hostname, MetaBlob: false}, sha, blob)
 		//if err != nil {
 		//	log.Printf("server: Error BPUT:%v\nBlob %v:%v", err, sha, blob)
@@ -525,7 +530,12 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			blob := []byte(sblob)
 			sha := SHA1(blob)
 			out.WriteString(sha)
-			jobc<- newBlobPutJob(&backend.Request{Host: ctx.Hostname, MetaBlob: false}, sha, blob, nil)
+			breq := &backend.Request{
+				Host: ctx.Hostname,
+				MetaBlob: false,
+				Archive: ctx.Archive,
+			}
+			jobc<- newBlobPutJob(breq, sha, blob, nil)
 		}
 		//err = BlobRouter.Put(&backend.Request{Host: ctx.Hostname, MetaBlob: false}, sha, blob)
 		//if err != nil {
@@ -541,7 +551,12 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		blob, err := BlobRouter.Get(&backend.Request{Host: ctx.Hostname, MetaBlob: false}, req.Args[0])
+		breq := &backend.Request{
+			Host: ctx.Hostname,
+			MetaBlob: false,
+			Archive: ctx.Archive,
+		}
+		blob, err := BlobRouter.Get(breq, req.Args[0])
 		if err != nil {
 			log.Printf("Error bget %v: %v", req.Args[0], err)
 			return ErrSomethingWentWrong
@@ -556,7 +571,12 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		exists := BlobRouter.Exists(&backend.Request{Host: ctx.Hostname, MetaBlob: false}, req.Args[0])
+		breq := &backend.Request{
+			Host: ctx.Hostname,
+			MetaBlob: false,
+			Archive: ctx.Archive,
+		}
+		exists := BlobRouter.Exists(breq, req.Args[0])
 		res := 0
 		if exists {
 			res = 1
@@ -574,7 +594,12 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		out.WriteBulkLen(len(req.Args))
 		for _, h := range req.Args {
 			res := "0"
-			exists := BlobRouter.Exists(&backend.Request{Host: ctx.Hostname, MetaBlob: false}, h)
+			breq := &backend.Request{
+				Host: ctx.Hostname,
+				MetaBlob: false,
+				Archive: ctx.Archive,
+			}
+			exists := BlobRouter.Exists(breq, h)
 			if exists {
 				res = "1"
 			}
@@ -594,7 +619,12 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		blob := []byte(req.Args[0])
 		sha := SHA1(blob)
 		txm := req.Client().Ctx.(*ServerCtx).TxManager()
-		jobc2<- newBlobPutJob(&backend.Request{Host: ctx.Hostname, MetaBlob: true}, sha, blob, txm)
+		breq := &backend.Request{
+			Host: ctx.Hostname,
+			MetaBlob: true,
+			Archive: ctx.Archive,
+		}
+		jobc2<- newBlobPutJob(breq, sha, blob, txm)
 		out.WriteString(sha)
 		return nil
 	})
@@ -605,7 +635,12 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		blob, err := BlobRouter.Get(&backend.Request{Host: ctx.Hostname, MetaBlob: true}, req.Args[0])
+		breq:= &backend.Request{
+			Host: ctx.Hostname,
+			MetaBlob: true,
+			Archive: ctx.Archive,
+		}
+		blob, err := BlobRouter.Get(breq, req.Args[0])
 		if err != nil {
 			log.Printf("Error bget %v: %v", req.Args[0], err)
 			return ErrSomethingWentWrong
@@ -620,7 +655,12 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		exists := BlobRouter.Exists(&backend.Request{Host: ctx.Hostname, MetaBlob: true}, req.Args[0])
+		breq := &backend.Request{
+			Host: ctx.Hostname,
+			MetaBlob: true,
+			Archive: ctx.Archive,
+		}
+		exists := BlobRouter.Exists(breq, req.Args[0])
 		res := 0
 		if exists {
 			res = 1
@@ -792,7 +832,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		out.WriteString("hostname")
 		out.WriteString(ctx.Hostname)
 		out.WriteString("archive-mode")
-		out.WriteString(strconv.FormatBool(ctx.ArchiveMode))
+		out.WriteString(strconv.FormatBool(ctx.Archive))
 		return nil
 	})
 	srv.HandleFunc("setctx", func(out *redeo.Responder, req *redeo.Request) error {
@@ -807,7 +847,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			ctx.Hostname = req.Args[0]
 			archiveMode, err := strconv.ParseBool(req.Args[1])
 			if err != nil {
-				ctx.ArchiveMode = archiveMode
+				ctx.Archive = archiveMode
 			}
 			out.WriteOK()
 		default:
@@ -829,7 +869,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			ctx.Hostname = req.Args[0]
 			archiveMode, err := strconv.ParseBool(req.Args[1])
 			if err != nil {
-				ctx.ArchiveMode = archiveMode
+				ctx.Archive = archiveMode
 			}
 			out.WriteString(newID)
 

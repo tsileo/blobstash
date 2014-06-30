@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"log"
 	"path/filepath"
 	"strings"
+	"runtime"
 
 	"github.com/bitly/go-simplejson"
 	"github.com/codegangsta/cli"
@@ -17,9 +19,12 @@ import (
 	"github.com/tsileo/blobstash/server"
 )
 
+var version = "0.1.0"
+
 func main() {
 	app := cli.NewApp()
 	app.Name = "BlobDB"
+	app.Version = version
 	app.Usage = "BlobMachine database/CAS server"
 	app.Action = func(c *cli.Context) {
     	var path string
@@ -35,6 +40,7 @@ func main() {
 }
 
 func start(config_path string) {
+	log.Printf("Starting blobdb version %v; %v (%v/%v)", version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
 	if config_path == "" {
 		config_path = filepath.Join(pathutil.ConfigDir(), "server-config.json")
 	}

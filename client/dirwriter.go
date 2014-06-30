@@ -168,17 +168,17 @@ func (client *Client) DirWriterNode(ctx *Ctx, node *node) {
 
 	//if node.rb.ShouldFlush() || node.root {
 	//	log.Println("Flushing ReqBuffer now")
-	if node.rb.Len() > 20 || node.root {
-		_, mblob := node.rb.JSON()
-		_, err = con.Do("MBPUT", mblob)
-		if err != nil {
-			node.err = err
-			return
-		}
-	} else {
-		log.Println("Merging ReqBuffer with parent %v", node.parent)
-		node.parent.rb.Merge(node.rb)
+	//if node.rb.Len() > 20 || node.root {
+	_, mblob := node.rb.JSON()
+	_, err = con.Do("MBPUT", mblob)
+	if err != nil {
+		node.err = err
+		return
 	}
+	//} else {
+	//	log.Println("Merging ReqBuffer with parent %v", node.parent)
+	//	node.parent.rb.Merge(node.rb)
+	//}
 	node.done = true
 	node.cond.Broadcast()
 	log.Printf("DirWriterNode %v done", node)

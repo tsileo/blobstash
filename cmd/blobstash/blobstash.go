@@ -6,7 +6,6 @@ import (
 	"runtime"
 	"path/filepath"
 	"io/ioutil"
-	"log"
 
 	"github.com/codegangsta/cli"
 

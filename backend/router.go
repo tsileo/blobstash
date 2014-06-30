@@ -27,6 +27,7 @@ type Request struct {
 	Type int // Whether this is a Put/Read/Exists request (for blob routing only)
 	MetaBlob bool // Whether the blob is a meta blob
 	Host string
+	Archive bool
 }
 
 func (req *Request) String() string {
@@ -141,7 +142,9 @@ func (router *Router) Close() {
 	for _, db := range router.DBs {
 		db.Close()
 	}
-	router.Index.Close()
+	if router.Index != nil {
+		router.Index.Close()
+	}
 }
 
 func (router *Router) Done() error {
@@ -209,6 +212,10 @@ func checkRule(rule string, req *Request) bool {
 	switch {
 	case rule == "if-meta":
 		if req.MetaBlob {
+			return true
+		}
+	case rule == "if-archive":
+		if req.Archive {
 			return true
 		}
 	case strings.HasPrefix(rule, "if-host-"):
