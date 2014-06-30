@@ -82,9 +82,5 @@ func start(config_path string) {
 		blobRouter.DBs[backendKey] = db
 		blobRouter.TxManagers[backendKey] = backend.NewTxManager(blobRouter.Index, db, cbackend)
 	}
-	err = blobRouter.Load()
-	if err != nil {
-		panic(err)
-	}
 	server.New(conf.Get("listen").MustString(":9735"), conf.Get("web-listen").MustString(":9736"), conf.MustString("blobdb_db"), blobRouter,stop)
 }

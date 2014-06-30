@@ -69,7 +69,8 @@ type blobPutJob struct {
 }
 
 func (j *blobPutJob) String() string {
-	return fmt.Sprintf("[blobPutJob  hash=%v, meta=%v, host=%v]", j.hash, j.req.MetaBlob, j.req.Host)
+	return fmt.Sprintf("[blobPutJob  hash=%v, meta=%v, host=%v, archive=%v]",
+		j.hash, j.req.MetaBlob, j.req.Host, j.req.Archive)
 }
 func (j *blobPutJob) free() {
 	j.req = nil
@@ -99,16 +100,16 @@ func newBlobPutJob(req *backend.Request, hash string, blob []byte, txm *backend.
 //}
 
 func (ctx *ServerCtx) TxManager() *backend.TxManager {
-	return BlobRouter.TxManager(&backend.Request{Host: ctx.Hostname})
+	return BlobRouter.TxManager(&backend.Request{Host: ctx.Hostname, Archive: ctx.Archive})
 }
 
 func (ctx *ServerCtx) ReqBuffer(name string) *backend.ReqBuffer {
 	//return ctx.TxManager.ReqBuffer(name)
-	return BlobRouter.TxManager(&backend.Request{Host: ctx.Hostname}).GetReqBuffer(name)
+	return BlobRouter.TxManager(&backend.Request{Host: ctx.Hostname, Archive: ctx.Archive}).GetReqBuffer(name)
 }
 
 func (ctx *ServerCtx) DB() *db.DB {
-	return BlobRouter.DB(&backend.Request{Host: ctx.Hostname})
+	return BlobRouter.DB(&backend.Request{Host: ctx.Hostname, Archive: ctx.Archive})
 }
 
 func SetUpCtx(req *redeo.Request) {
@@ -832,6 +833,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		out.WriteString("hostname")
 		out.WriteString(ctx.Hostname)
 		out.WriteString("archive-mode")
+		log.Printf("ctx:%+v", ctx)
 		out.WriteString(strconv.FormatBool(ctx.Archive))
 		return nil
 	})
@@ -845,10 +847,11 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		case len(req.Args) == 2:
 			ctx := req.Client().Ctx.(*ServerCtx)
 			ctx.Hostname = req.Args[0]
-			archiveMode, err := strconv.ParseBool(req.Args[1])
+			ctx.Archive, err = strconv.ParseBool(req.Args[1])
 			if err != nil {
-				ctx.Archive = archiveMode
+				return ErrSomethingWentWrong
 			}
+			log.Printf("ctx:%+v", ctx)
 			out.WriteOK()
 		default:
 			return ErrSomethingWentWrong
@@ -867,9 +870,9 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			ctx := req.Client().Ctx.(*ServerCtx)
 			ctx.TxID = newID
 			ctx.Hostname = req.Args[0]
-			archiveMode, err := strconv.ParseBool(req.Args[1])
+			ctx.Archive, err = strconv.ParseBool(req.Args[1])
 			if err != nil {
-				ctx.Archive = archiveMode
+				return ErrSomethingWentWrong
 			}
 			out.WriteString(newID)
 
@@ -985,5 +988,11 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		}()
 	}
 	errs := make(chan error)
+	go func() {
+		err = blobRouter.Load()
+		if err != nil {
+			panic(err)
+		}
+	}()
 	srv.Serve(errs, listener)
 }

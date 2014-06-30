@@ -72,6 +72,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"bytes"
+	"log"
 	"strconv"
 	"strings"
 	"sync"
@@ -157,6 +158,7 @@ func (txm *TxManager) LoadIncomingBlob(hash string, blob []byte) error {
 
 // Enumerate every meta blobs filename and check if the data is already indexed.
 func (txm *TxManager) Load() error {
+	log.Printf("scanning meta blobs %v", txm.blobBackend)
 	go SendDebugData("server: scanning meta blobs")
 	hashes := make(chan string)
 	errc := make(chan error, 1)
@@ -164,6 +166,7 @@ func (txm *TxManager) Load() error {
 		errc <- txm.blobBackend.Enumerate(hashes)
 	}()
 	for hash := range hashes {
+		log.Printf("hash: %v", hash)
 		cnt := txm.db.Sismember("_meta", hash)
 		if cnt == 0 {
 			blob, berr := txm.blobBackend.Get(hash)

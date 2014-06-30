@@ -114,7 +114,10 @@ func (client *Client) Conn() redis.Conn {
 
 func (client *Client) ConnWithCtx(ctx *Ctx) redis.Conn {
 	con := client.Pool.Get()
-	con.Do("SETCTX", ctx.Args()...)
+	_, err := con.Do("SETCTX", ctx.Args()...)
+	if err != nil {
+		panic(fmt.Errorf("failed to SETCTX: %v", err))
+	}
 	return con
 }
 

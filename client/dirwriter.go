@@ -127,6 +127,7 @@ func (client *Client) DirWriterNode(ctx *Ctx, node *node) {
 	}
 	node.wr.Hash = fmt.Sprintf("%x", h.Sum(nil))
 
+	log.Printf("ConnWithCtx DirWriterNode %+v", ctx)
 	con := client.ConnWithCtx(ctx)
 	defer con.Close()
 

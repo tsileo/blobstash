@@ -31,7 +31,8 @@ type Request struct {
 }
 
 func (req *Request) String() string {
-	return fmt.Sprintf("[request type=%v, meta=%v, hostname=%v]", req.Type, req.MetaBlob, req.Host)
+	return fmt.Sprintf("[request type=%v, meta=%v, hostname=%v, archive=%v]",
+		req.Type, req.MetaBlob, req.Host, req.Archive)
 }
 
 type BackendAndDB struct {
