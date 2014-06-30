@@ -31,7 +31,7 @@ import (
 var blobClient *client.Client
 
 // Mount the filesystem to the given mountpoint
-func Mount(mountpoint string, stop <-chan bool, stopped chan<- bool) {
+func Mount(client *client.Client, mountpoint string, stop <-chan bool, stopped chan<- bool) {
 	c, err := fuse.Mount(mountpoint)
 	if err != nil {
 		log.Fatal(err)
@@ -61,7 +61,7 @@ func Mount(mountpoint string, stop <-chan bool, stopped chan<- bool) {
 		}
 	}()
 
-	err = fs.Serve(c, NewFS())
+	err = fs.Serve(c, NewFS(client))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -78,11 +78,10 @@ type FS struct {
 }
 
 // NewFS initialize a new file system.
-func NewFS() (fs *FS) {
+func NewFS(client *client.Client) (fs *FS) {
 	// Override supported time format
 	now.TimeFormats = []string{"2006-1-2T15:4:5", "2006-1-2T15:4", "2006-1-2T15", "2006-1-2", "2006-1", "2006"}
-	blobClient, _ = client.NewClient("", []string{})
-	fs = &FS{Client: blobClient}
+	fs = &FS{Client: client}
 	return
 }
 

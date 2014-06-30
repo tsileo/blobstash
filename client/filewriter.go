@@ -36,7 +36,7 @@ type BlobsBuffer struct {
 }
 
 var (
-	BlobsBufferDefaultThresold = 15 // Same as the number of blobs upload worker server-side
+	BlobsBufferDefaultThresold = 5 // Same as the number of blobs upload worker server-side
 )
 
 func NewBlobsBuffer(thresold int) *BlobsBuffer {
@@ -46,7 +46,7 @@ func NewBlobsBuffer(thresold int) *BlobsBuffer {
 	return &BlobsBuffer{
 		thresold: thresold,
 		blobs: make(map[string]string),
-		done: make(map[string]struct{})
+		done: make(map[string]struct{}),
 	}
 }
 func (b *BlobsBuffer) Put(hash, blob string) {

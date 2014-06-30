@@ -16,10 +16,11 @@ import (
 
 var (
 	uploaders    = 25 // concurrent upload uploaders
-	dirUploaders = 5 // concurrent directory uploaders
+	dirUploaders = 12 // concurrent directory uploaders
 )
 
 type Client struct {
+	ServerAddr   string
 	Pool         *redis.Pool
 	Hostname     string
 	Blobs        *disklru.DiskLRU
@@ -45,7 +46,7 @@ func NewBuffer() interface{} {
 	return b
 }
 
-func NewClient(hostname string, ignoredFiles []string) (*Client, error) {
+func NewClient(hostname, serverAddr string, ignoredFiles []string) (*Client, error) {
 	var err error
 	if hostname == "" {
 		hostname, err = os.Hostname()
@@ -54,6 +55,7 @@ func NewClient(hostname string, ignoredFiles []string) (*Client, error) {
 		}
 	}
 	c := &Client{
+		ServerAddr: serverAddr,
 		Hostname: hostname,
 		uploaders: make(chan struct{}, uploaders),
 		dirUploaders: make(chan struct{}, dirUploaders),
@@ -92,7 +94,7 @@ func (client *Client) SetupPool() error {
 		MaxIdle:     50,
 		IdleTimeout: 240 * time.Second,
 		Dial: func() (redis.Conn, error) {
-			c, err := redis.Dial("tcp", "localhost:9735")
+			c, err := redis.Dial("tcp", client.ServerAddr)
 			if err != nil {
 				return nil, err
 			}
