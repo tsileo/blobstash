@@ -251,10 +251,10 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		//err = blobRouter.Index.Put(req.Args[0], req.Args[1])
-		//if err != nil {
-		//	return ErrSomethingWentWrong
-		//}
+		err = blobRouter.Index.Put(req.Args[0], req.Args[1])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
 		out.WriteOK()
 		return nil
 	})
@@ -288,21 +288,20 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		out.WriteOK()
-		//cmdArgs := make([]string, len(req.Args)-1)
-		//copy(cmdArgs, req.Args[1:])
-		//ctx := req.Client().Ctx.(*ServerCtx)
-		//cnt, err := ctx.DB().Sadd(req.Args[0], cmdArgs...)
-		//if err != nil {
-		//	return ErrSomethingWentWrong
-		//}
+		cmdArgs := make([]string, len(req.Args)-1)
+		copy(cmdArgs, req.Args[1:])
+		ctx := req.Client().Ctx.(*ServerCtx)
+		cnt, err := ctx.DB().Sadd(req.Args[0], cmdArgs...)
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
 		// Also write the data in the router index
-		//if strings.HasPrefix(req.Args[0], "_") {
-		//	if _, err := blobRouter.Index.Sadd(req.Args[0], cmdArgs...); err != nil {
-		//		return ErrSomethingWentWrong
-		//	}
-		//}
-		//out.WriteInt(cnt)
+		if strings.HasPrefix(req.Args[0], "_") {
+			if _, err := blobRouter.Index.Sadd(req.Args[0], cmdArgs...); err != nil {
+				return ErrSomethingWentWrong
+			}
+		}
+		out.WriteInt(cnt)
 		return nil
 	})
 	srv.HandleFunc("scard", func(out *redeo.Responder, req *redeo.Request) error {
@@ -370,15 +369,14 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		out.WriteOK()
-		//cmdArgs := make([]string, len(req.Args)-1)
-		//copy(cmdArgs, req.Args[1:])
-		//ctx := req.Client().Ctx.(*ServerCtx)
-		//cnt, err := ctx.DB().Hmset(req.Args[0], cmdArgs...)
-		//if err != nil {
-		//	return ErrSomethingWentWrong
-		//}
-		//out.WriteInt(cnt)
+		cmdArgs := make([]string, len(req.Args)-1)
+		copy(cmdArgs, req.Args[1:])
+		ctx := req.Client().Ctx.(*ServerCtx)
+		cnt, err := ctx.DB().Hmset(req.Args[0], cmdArgs...)
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		out.WriteInt(cnt)
 		return nil
 	})
 	srv.HandleFunc("hlen", func(out *redeo.Responder, req *redeo.Request) error {
@@ -478,6 +476,24 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			}
 		}(jobc, w)
 	}
+	jobc2 := make(chan *blobPutJob)
+	for w := 1; w <= nCPU*2; w++ {
+		go func(jobc <-chan *blobPutJob, w int) {
+			for {
+				job := <-jobc
+				defer job.free()
+				log.Printf("Worker %v got Job %v", w, job)
+				if err := BlobRouter.Put(job.req, job.hash, job.blob); err != nil {
+					panic(err)
+				}
+				if job.req.MetaBlob {
+					if err := job.txm.LoadIncomingBlob(job.hash, job.blob); err != nil {
+						panic(err)
+					}
+				}
+			}
+		}(jobc2, w)
+	}
 	// Blob related commands
 	srv.HandleFunc("bput", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
@@ -495,6 +511,27 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		//	return ErrSomethingWentWrong
 		//}
 		out.WriteString(sha)
+		return nil
+	})
+	srv.HandleFunc("bmultiput", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		ctx := req.Client().Ctx.(*ServerCtx)
+		err := CheckMinArgs(req, 1)
+		if err != nil {
+			return err
+		}
+		out.WriteBulkLen(len(req.Args))
+		for _, sblob := range req.Args {
+			blob := []byte(sblob)
+			sha := SHA1(blob)
+			out.WriteString(sha)
+			jobc<- newBlobPutJob(&backend.Request{Host: ctx.Hostname, MetaBlob: false}, sha, blob, nil)
+		}
+		//err = BlobRouter.Put(&backend.Request{Host: ctx.Hostname, MetaBlob: false}, sha, blob)
+		//if err != nil {
+		//	log.Printf("server: Error BPUT:%v\nBlob %v:%v", err, sha, blob)
+		//	return ErrSomethingWentWrong
+		//}
 		return nil
 	})
 	srv.HandleFunc("bget", func(out *redeo.Responder, req *redeo.Request) error {
@@ -527,6 +564,24 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		out.WriteInt(res)
 		return nil
 	})
+	srv.HandleFunc("bmultiexists", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		ctx := req.Client().Ctx.(*ServerCtx)
+		err := CheckMinArgs(req, 1)
+		if err != nil {
+			return err
+		}
+		out.WriteBulkLen(len(req.Args))
+		for _, h := range req.Args {
+			res := "0"
+			exists := BlobRouter.Exists(&backend.Request{Host: ctx.Hostname, MetaBlob: false}, h)
+			if exists {
+				res = "1"
+			}
+			out.WriteString(res)
+		}
+		return nil
+	})
 
 	// Meta blob related commands
 	srv.HandleFunc("mbput", func(out *redeo.Responder, req *redeo.Request) error {
@@ -539,7 +594,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		blob := []byte(req.Args[0])
 		sha := SHA1(blob)
 		txm := req.Client().Ctx.(*ServerCtx).TxManager()
-		jobc<- newBlobPutJob(&backend.Request{Host: ctx.Hostname, MetaBlob: true}, sha, blob, txm)
+		jobc2<- newBlobPutJob(&backend.Request{Host: ctx.Hostname, MetaBlob: true}, sha, blob, txm)
 		out.WriteString(sha)
 		return nil
 	})
@@ -595,20 +650,20 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		//cindex, err := strconv.Atoi(req.Args[1])
-		//if err != nil {
-		//	return ErrSomethingWentWrong
-		//}
-		//ctx := req.Client().Ctx.(*ServerCtx)
-		//err = ctx.DB().Ladd(req.Args[0], cindex, req.Args[2])
-		//if err != nil {
-		//	return ErrSomethingWentWrong
-		//}
-		//if strings.HasPrefix(req.Args[0], "_") {
-		//	if err := blobRouter.Index.Ladd(req.Args[0], cindex, req.Args[2]); err != nil {
-		//		return ErrSomethingWentWrong
-		//	}
-		//}
+		cindex, err := strconv.Atoi(req.Args[1])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		ctx := req.Client().Ctx.(*ServerCtx)
+		err = ctx.DB().Ladd(req.Args[0], cindex, req.Args[2])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		if strings.HasPrefix(req.Args[0], "_") {
+			if err := blobRouter.Index.Ladd(req.Args[0], cindex, req.Args[2]); err != nil {
+				return ErrSomethingWentWrong
+			}
+		}
 		out.WriteOK()
 		return nil
 	})

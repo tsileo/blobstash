@@ -12,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"bytes"
+	"sync"
+	"strconv"
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/tsileo/blobstash/rolling"
@@ -26,9 +28,81 @@ var (
 	emptyHash = "da39a3ee5e6b4b0d3255bfef95601890afd80709"
 )
 
+type BlobsBuffer struct {
+	thresold int
+	blobs map[string]string
+	done map[string]struct{}
+	sync.Mutex
+}
+
+var (
+	BlobsBufferDefaultThresold = 15 // Same as the number of blobs upload worker server-side
+)
+
+func NewBlobsBuffer(thresold int) *BlobsBuffer {
+	if thresold == 0 {
+		thresold = BlobsBufferDefaultThresold
+	}
+	return &BlobsBuffer{
+		thresold: thresold,
+		blobs: make(map[string]string),
+		done: make(map[string]struct{})
+	}
+}
+func (b *BlobsBuffer) Put(hash, blob string) {
+	b.Lock()
+	defer b.Unlock()
+	_, done := b.done[hash]
+	if !done {
+		b.blobs[hash] = blob
+	}
+}
+
+func (b *BlobsBuffer) Flush(con redis.Conn, force bool) error {
+	b.Lock()
+	defer b.Unlock()
+	if (force || len(b.blobs) >= b.thresold) && len(b.blobs) > 0 {
+		hashes := []string{}
+		blobs := []string{}
+		for hash, _ := range b.blobs {
+			hashes = append(hashes, hash)
+		}
+		results, err := redis.Strings(con.Do("BMULTIEXISTS", redis.Args{}.AddFlat(hashes)...))
+		if err != nil {
+			return err
+		}
+		ehashes := []string{}
+		for index, res := range results {
+			h := hashes[index]
+			exist, err := strconv.ParseBool(res)
+			if err != nil {
+				return err
+			}
+			if !exist {
+				ehashes = append(ehashes, h)
+				blobs = append(blobs, b.blobs[h])
+			}
+			b.done[h] = struct{}{}
+		}
+		if len(blobs) > 0 {
+			rhashes, err := redis.Strings(con.Do("BMULTIPUT", redis.Args{}.AddFlat(blobs)...))
+			if err != nil {
+				return err
+			}
+			for index, rhash := range rhashes {
+				if rhash != ehashes[index] {
+					return fmt.Errorf("Corrupted data: %+v/%+v", rhash, ehashes[index])
+				}
+			}
+		}
+		b.blobs = make(map[string]string)
+	}
+	return nil
+}
+
 // FileWriter reads the file byte and byte and upload it,
 // chunk by chunk, it also constructs the file index .
-func (client *Client) FileWriter(con redis.Conn, key, path string) (*WriteResult, error) {
+func (client *Client) FileWriter(con redis.Conn, rb *ReqBuffer, blobsBuffer *BlobsBuffer, key, path string) (*WriteResult, error) {
 	writeResult := NewWriteResult()
 	window := 64
 	rs := rolling.New(window)
@@ -38,9 +112,10 @@ func (client *Client) FileWriter(con redis.Conn, key, path string) (*WriteResult
 		return nil, fmt.Errorf("can't open file %v: %v", path, err)
 	}
 	freader := bufio.NewReader(f)
-	if _, err := con.Do("LADD", key, 0, ""); err != nil {
-		panic(fmt.Errorf("DB error LADD %v %v %v: %v", key, 0, "", err))
-	}
+	//if _, err := con.Do("LADD", key, 0, ""); err != nil {
+	//	panic(fmt.Errorf("DB error LADD %v %v %v: %v", key, 0, "", err))
+	//}
+	rb.Add("ladd", key, []string{"0", ""})
 	//log.Printf("FileWriter(%v, %v, %v)", txID, key, path)
 	//buf := client.bufferPool.Get().(*bytes.Buffer)
 	var buf bytes.Buffer
@@ -63,32 +138,37 @@ func (client *Client) FileWriter(con redis.Conn, key, path string) (*WriteResult
 			ndata := string(buf.Bytes())
 			fullHash.Write(buf.Bytes())
 			// Check if the blob exists
-			exists, err := redis.Bool(con.Do("BEXISTS", nsha))
-			if err != nil {
-				panic(fmt.Sprintf("DB error: %v", err))
+			//exists, err := redis.Bool(con.Do("BEXISTS", nsha))
+			//if err != nil {
+			//	panic(fmt.Sprintf("DB error: %v", err))
+			//}
+			//if !exists {
+			//	rsha, err := redis.String(con.Do("BPUT", ndata))
+			//	if err != nil {
+			//		panic(fmt.Sprintf("Error BPUT: %v", err))
+			//	}
+			//	writeResult.BlobsUploaded++
+			//	writeResult.SizeUploaded += buf.Len()
+			//	// Check if the hash returned correspond to the locally computed hash
+			//	if rsha != nsha {
+			//		panic(fmt.Sprintf("Corrupted data: %+v/%+v", rsha, nsha))
+			//	}
+			//} else {
+			//	writeResult.SizeSkipped += buf.Len()
+			//	writeResult.BlobsSkipped++
+			//}
+			if err := blobsBuffer.Flush(con, false); err != nil {
+				panic(fmt.Errorf("failed to flush blobsBuffer: %v", err))
 			}
-			if !exists {
-				rsha, err := redis.String(con.Do("BPUT", ndata))
-				if err != nil {
-					panic(fmt.Sprintf("Error BPUT: %v", err))
-				}
-				writeResult.BlobsUploaded++
-				writeResult.SizeUploaded += buf.Len()
-				// Check if the hash returned correspond to the locally computed hash
-				if rsha != nsha {
-					panic(fmt.Sprintf("Corrupted data: %+v/%+v", rsha, nsha))
-				}
-			} else {
-				writeResult.SizeSkipped += buf.Len()
-				writeResult.BlobsSkipped++
-			}
+			blobsBuffer.Put(nsha, ndata)
 			writeResult.Size += buf.Len()
 			buf.Reset()
 			writeResult.BlobsCount++
 			// Save the location and the blob hash into a sorted list (with the offset as index)
-			if _, err := con.Do("LADD", key, writeResult.Size, nsha); err != nil {
-				panic(fmt.Errorf("DB error LADD %v %v %v: %v", key, writeResult.Size, nsha, err))
-			}
+			rb.Add("ladd", key, []string{fmt.Sprintf("%v", writeResult.Size), nsha})
+			//if _, err := con.Do("LADD", key, writeResult.Size, nsha); err != nil {
+			//	panic(fmt.Errorf("DB error LADD %v %v %v: %v", key, writeResult.Size, nsha, err))
+			//}
 		}
 		if eof {
 			break
@@ -103,7 +183,7 @@ func (client *Client) FileWriter(con redis.Conn, key, path string) (*WriteResult
 	return writeResult, nil
 }
 
-func (client *Client) SmallFileWriter(con redis.Conn, rb *ReqBuffer, key, path string) (*WriteResult, error) {
+func (client *Client) SmallFileWriter(con redis.Conn, rb *ReqBuffer, blobsBuffer *BlobsBuffer, key, path string) (*WriteResult, error) {
 	//log.Printf("start:%v / %v", time.Now(), path)
 	writeResult := NewWriteResult()
 	f, err := os.Open(path)
@@ -118,25 +198,29 @@ func (client *Client) SmallFileWriter(con redis.Conn, rb *ReqBuffer, key, path s
 	}
 	nsha := SHA1(buf2)
 	ndata := string(buf2)
-	exists, err := redis.Bool(con.Do("BEXISTS", nsha))
-	if err != nil {
-		panic(fmt.Sprintf("DB error: %v", err))
+	if err := blobsBuffer.Flush(con, false); err != nil {
+		panic(fmt.Errorf("failed to flush blobsBuffer: %v", err))
 	}
-	if !exists {
-		rsha, err := redis.String(con.Do("BPUT", ndata))
-		if err != nil {
-			panic(fmt.Sprintf("Error BPUT: %v", err))
-		}
-		writeResult.BlobsUploaded++
-		writeResult.SizeUploaded += len(buf2)
+	blobsBuffer.Put(nsha, ndata)
+	//exists, err := redis.Bool(con.Do("BEXISTS", nsha))
+	//if err != nil {
+	//	panic(fmt.Sprintf("DB error: %v", err))
+	//}
+	//if !exists {
+	//	rsha, err := redis.String(con.Do("BPUT", ndata))
+	//	if err != nil {
+	//		panic(fmt.Sprintf("Error BPUT: %v", err))
+	//	}
+	//	writeResult.BlobsUploaded++
+	//	writeResult.SizeUploaded += len(buf2)
 		// Check if the hash returned correspond to the locally computed hash
-		if rsha != nsha {
-			panic(fmt.Sprintf("Corrupted data: %+v/%+v", rsha, nsha))
-		}
-	} else {
-		writeResult.SizeSkipped += len(buf2)
-		writeResult.BlobsSkipped++
-	}
+	//	if rsha != nsha {
+	//		panic(fmt.Sprintf("Corrupted data: %+v/%+v", rsha, nsha))
+	//	}
+	//} else {
+	//	writeResult.SizeSkipped += len(buf2)
+	//	writeResult.BlobsSkipped++
+	//}
 	writeResult.Size += len(buf2)
 	writeResult.BlobsCount++
 	// Save the location and the blob hash into a sorted list (with the offset as index)
@@ -149,7 +233,7 @@ func (client *Client) SmallFileWriter(con redis.Conn, rb *ReqBuffer, key, path s
 	return writeResult, nil
 }
 
-func (client *Client) PutFile(ctx *Ctx, rb *ReqBuffer, path string) (*Meta, *WriteResult, error) {
+func (client *Client) PutFile(ctx *Ctx, rb *ReqBuffer, blobsBuffer *BlobsBuffer, path string) (*Meta, *WriteResult, error) {
 	wr := NewWriteResult()
 	//log.Printf("PutFile %+v/%v\n", ctx, path)
 	client.StartUpload()
@@ -160,17 +244,13 @@ func (client *Client) PutFile(ctx *Ctx, rb *ReqBuffer, path string) (*Meta, *Wri
 	}
 	_, filename := filepath.Split(path)
 	sha := FullSHA1(path)
-	con := client.Conn()
+	con := client.ConnWithCtx(ctx)
 	defer con.Close()
-	shouldCommit := false
 	newRb := false
-	_, err = redis.String(con.Do("TXINIT", ctx.Args()...))
-	if err != nil {
-		return nil, nil, err
-	}
 	if rb == nil {
 		newRb = true
 		rb = NewReqBuffer()
+		blobsBuffer = NewBlobsBuffer(0)
 	}
 	// First we check if the file isn't already uploaded,
 	// if so we skip it.
@@ -189,10 +269,9 @@ func (client *Client) PutFile(ctx *Ctx, rb *ReqBuffer, path string) (*Meta, *Wri
 		wr.BlobsSkipped += cnt
 	} else {
 		if int(fstat.Size()) > MinBlobSize {
-			wr, err = client.FileWriter(con, sha, path)
-			shouldCommit = true
+			wr, err = client.FileWriter(con, rb, blobsBuffer, sha, path)
 		} else {
-			wr, err = client.SmallFileWriter(con, rb, sha, path)
+			wr, err = client.SmallFileWriter(con, rb, blobsBuffer, sha, path)
 		}
 		if err != nil {
 			return nil, nil, fmt.Errorf("FileWriter %v error: %v", path, err)
@@ -213,17 +292,15 @@ func (client *Client) PutFile(ctx *Ctx, rb *ReqBuffer, path string) (*Meta, *Wri
 	if err := meta.SaveToBuffer(con, rb); err != nil {
 		return nil, nil, fmt.Errorf("Error saving meta %+v: %v", meta, err)
 	}
-	if shouldCommit {
-		_, err = con.Do("TXCOMMIT")
-		if err != nil {
-			return nil, nil, fmt.Errorf("error TXCOMMIT: %+v", err)
-		}
-	}
 	if newRb {
+		log.Printf("FileWriter triggered MBPUT")
 		_, mblob := rb.JSON()
 		_, err = con.Do("MBPUT", mblob)
 		if err != nil {
 			return nil, nil, fmt.Errorf("error MBPUT: %+v", err)
+		}
+		if err := blobsBuffer.Flush(con, true); err != nil {
+			panic(fmt.Errorf("failed to flush blobsBuffer: %v", err))
 		}
 	}
 	return meta, wr, nil

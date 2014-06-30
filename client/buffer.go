@@ -82,3 +82,29 @@ func (rb *ReqBuffer) JSON() (string, []byte) {
 func (rb *ReqBuffer) Len() int {
 	return rb.reqCnt
 }
+
+func (rb *ReqBuffer) Merge(rb2 *ReqBuffer) error {
+	for reqType, reqArgs := range rb2.Reqs {
+		for _, req := range reqArgs {
+			for _, args := range req.Args {
+				if err := rb.Add(reqType, req.Key, args); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (rb *ReqBuffer) Size() int {
+	_, data := rb.JSON()
+	//log.Printf("%v bytes/%v commands", len(data), rb.Len())
+	return len(data)
+}
+
+func (rb *ReqBuffer) ShouldFlush() bool {
+	if rb.Size() > (MinBlobSize / 2) {
+		return true
+	}
+	return false
+}
