@@ -159,26 +159,31 @@ func (txm *TxManager) LoadIncomingBlob(hash string, blob []byte) error {
 // Enumerate every meta blobs filename and check if the data is already indexed.
 func (txm *TxManager) Load() error {
 	log.Printf("scanning meta blobs %v", txm.blobBackend)
-	go SendDebugData("server: scanning meta blobs")
+	scanResult := struct{
+		Blobs int
+		MetaBlobs int
+		Size int
+	}{}
+	go SendDebugData(fmt.Sprintf("server: scanning meta blobs %v", txm.blobBackend))
 	hashes := make(chan string)
 	errc := make(chan error, 1)
 	go func() {
 		errc <- txm.blobBackend.Enumerate(hashes)
 	}()
 	for hash := range hashes {
-		log.Printf("hash: %v", hash)
+		scanResult.Blobs++
 		cnt := txm.db.Sismember("_meta", hash)
 		if cnt == 0 {
-			log.Printf("apply hash: %v", hash)
 			blob, berr := txm.blobBackend.Get(hash)
+			scanResult.Size += len(blob)
 			if berr != nil {
 				return berr
 			}
 			if len(blob) < MetaBlobOverhead || !bytes.Equal(blob[0:MetaBlobOverhead], []byte(MetaBlobHeader)) {
-				log.Printf("not valid hash: %v", hash)
 				go SendDebugData(fmt.Sprintf("server: blob %v is not a valid meta blob, skipping", hash))
 				continue
 			}
+			scanResult.MetaBlobs++
 			go SendDebugData(fmt.Sprintf("server: meta blob %v not yet loaded", hash))
 
 			res := make(map[string][]*ReqArgs)
@@ -190,8 +195,9 @@ func (txm *TxManager) Load() error {
 			if err := NewReqBufferWithData(txm.index, txm.db, txm.blobBackend, res).Apply(); err != nil {
 				return err
 			}
-			log.Printf("applied hash: %v", hash)
 			go SendDebugData(fmt.Sprintf("server: meta blob %v applied", hash))
+		} else {
+			scanResult.MetaBlobs++
 		}
 	}
 	if err := <-errc; err != nil {
@@ -199,6 +205,7 @@ func (txm *TxManager) Load() error {
 		return err
 	}
 	go SendDebugData("server: scan done")
+	log.Printf("scan result for %v: %+v", txm.blobBackend, scanResult)
 	return nil
 }
 

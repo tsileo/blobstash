@@ -181,7 +181,6 @@ func NewID() string {
 
 func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan bool) {
 	glacierPubSub := pubsub.NewPubSub("glacier")
-	log.Println("server: starting...")
 	BlobRouter = blobRouter
 	srv := redeo.NewServer(&redeo.Config{Addr: addr})
 	srv.HandleFunc("ping", func(out *redeo.Responder, _ *redeo.Request) error {
@@ -465,7 +464,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			for {
 				job := <-jobc
 				defer job.free()
-				log.Printf("Worker %v got Job %v", w, job)
+				//log.Printf("Worker %v got Job %v", w, job)
 				if err := BlobRouter.Put(job.req, job.hash, job.blob); err != nil {
 					panic(err)
 				}
@@ -483,7 +482,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			for {
 				job := <-jobc
 				defer job.free()
-				log.Printf("Worker %v got Job %v", w, job)
+				//log.Printf("Worker %v got Job %v", w, job)
 				if err := BlobRouter.Put(job.req, job.hash, job.blob); err != nil {
 					panic(err)
 				}
@@ -833,7 +832,6 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		out.WriteString("hostname")
 		out.WriteString(ctx.Hostname)
 		out.WriteString("archive-mode")
-		log.Printf("ctx:%+v", ctx)
 		out.WriteString(strconv.FormatBool(ctx.Archive))
 		return nil
 	})
@@ -851,7 +849,6 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			if err != nil {
 				return ErrSomethingWentWrong
 			}
-			log.Printf("ctx:%+v", ctx)
 			out.WriteOK()
 		default:
 			return ErrSomethingWentWrong
@@ -896,12 +893,12 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		out.WriteOK()
 		return nil
 	})
+	// Worker to save multiple ReqBuffers
 	rbc := make(chan *backend.ReqBuffer)
 	for w := 1; w <= nCPU; w++ {
 		go func(rbc <-chan *backend.ReqBuffer, w int) {
 			for {
 				rb := <-rbc
-				log.Printf("Worker %v got ReqBuffer", w)
 				if err := rb.Save(); err != nil {
 					panic(err)
 				}
