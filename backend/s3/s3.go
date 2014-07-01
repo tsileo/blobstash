@@ -190,7 +190,8 @@ func (backend *S3Backend) upload(hash string, data []byte) error {
 
 func (backend *S3Backend) Put(hash string, data []byte) error {
 	var err error
-	for tries, retry := 0, false; tries < 2 && retry; tries++ {
+	for tries, retry := 0, true; tries < 2 && retry; tries++ {
+		retry = false
 		err = backend.upload(hash, data)
 		if err != nil {
 			retry = true
