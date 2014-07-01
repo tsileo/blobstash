@@ -237,7 +237,7 @@ func (client *Client) Put(ctx *Ctx, path string) (snapshot *Snapshot, meta *Meta
 		meta, wr, err = client.PutDir(ctx, path)
 	} else {
 		btype = "file"
-		meta, wr, err = client.PutFile(ctx, nil, nil, path)
+		meta, wr, err = client.PutFile(ctx, nil, path)
 	}
 	if err != nil {
 		return

@@ -169,17 +169,17 @@ func (client *Client) DirWriterNode(ctx *Ctx, node *node) {
 
 	//if node.rb.ShouldFlush() || node.root {
 	//	log.Println("Flushing ReqBuffer now")
-	//if node.rb.Len() > 20 || node.root {
-	_, mblob := node.rb.JSON()
-	_, err = con.Do("MBPUT", mblob)
-	if err != nil {
-		node.err = err
-		return
+	if node.rb.Len() > 1 || node.root {
+		_, mblob := node.rb.JSON()
+		_, err = con.Do("MBPUT", mblob)
+		if err != nil {
+			node.err = err
+			return
+		}
+	} else {
+		//log.Println("Merging ReqBuffer with parent %v", node.parent)
+		node.parent.rb.Merge(node.rb)
 	}
-	//} else {
-	//	log.Println("Merging ReqBuffer with parent %v", node.parent)
-	//	node.parent.rb.Merge(node.rb)
-	//}
 	node.done = true
 	node.cond.Broadcast()
 	log.Printf("DirWriterNode %v done", node)
@@ -198,8 +198,6 @@ func (client *Client) PutDir(ctx *Ctx, path string) (*Meta, *WriteResult, error)
 	fi, _ := os.Stat(abspath)
 	n := &node{root: true, path: abspath, fi: fi, rb: NewReqBuffer()}
 	n.cond.L = &n.mu
-
-	blobsBuffer := NewBlobsBuffer(0)
 
 	var wg sync.WaitGroup
 	// Iterate the directory tree in a goroutine
@@ -232,7 +230,7 @@ func (client *Client) PutDir(ctx *Ctx, path string) (*Meta, *WriteResult, error)
 				} else {
 					node.mu.Lock()
 					defer node.mu.Unlock()
-					node.meta, node.wr, node.err = client.PutFile(ctx, node.parent.rb, blobsBuffer, node.path)
+					node.meta, node.wr, node.err = client.PutFile(ctx, node.parent.rb, node.path)
 					if node.err != nil {
 						n.err = fmt.Errorf("error PutFile with node %v", node)
 					}
@@ -247,9 +245,6 @@ func (client *Client) PutDir(ctx *Ctx, path string) (*Meta, *WriteResult, error)
 	client.DirWriterNode(ctx, n)
 	con := client.ConnWithCtx(ctx)
 	defer con.Close()
-	if err := blobsBuffer.Flush(con, true); err != nil {
-		panic(fmt.Errorf("failed to flush blobsBuffer: %v", err))
-	}
 	log.Printf("last node: %v", n)
 	return n.meta, n.wr, n.err
 }
