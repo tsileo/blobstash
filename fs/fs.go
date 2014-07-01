@@ -172,7 +172,11 @@ func NewRootHostDir(fs *FS, ctx *client.Ctx) (d *Dir) {
 }
 
 func NewArchivesRootDir(fs *FS, ctx *client.Ctx) (d *Dir) {
-	d = NewDir(fs, ctx.Hostname, ctx, "", "", os.ModeDir)
+	archiveCtx := &client.Ctx{
+		Hostname: ctx.Hostname,
+		Archive: true,
+	}
+	d = NewDir(fs, ctx.Hostname, archiveCtx, "", "", os.ModeDir)
 	d.RootArchives = true
 	return d
 }
@@ -282,6 +286,7 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 	case d.RootArchives:
 		d.Children = make(map[string]fs.Node)
 		con := d.fs.Client.ConnWithCtx(d.Ctx)
+		log.Printf("RootArchives/ctx:%v", d.Ctx)
 		defer con.Close()
 		archives, err := d.fs.Client.Archives(d.Ctx.Hostname)
 		if err != nil {
@@ -397,6 +402,7 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 	case d.FakeDir:
 		d.Children = make(map[string]fs.Node)
 		//meta, _ := client.NewMetaFromDB(d.fs.Client.Pool, d.Ref)
+		log.Printf("FakeDir/ctx:%v", d.Ctx)
 		con := d.fs.Client.ConnWithCtx(d.Ctx)
 		defer con.Close()
 		meta := d.fs.Client.Metas.Get(con, d.Ref).(*client.Meta)

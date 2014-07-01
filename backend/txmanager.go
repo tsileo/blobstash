@@ -169,11 +169,13 @@ func (txm *TxManager) Load() error {
 		log.Printf("hash: %v", hash)
 		cnt := txm.db.Sismember("_meta", hash)
 		if cnt == 0 {
+			log.Printf("apply hash: %v", hash)
 			blob, berr := txm.blobBackend.Get(hash)
 			if berr != nil {
 				return berr
 			}
 			if len(blob) < MetaBlobOverhead || !bytes.Equal(blob[0:MetaBlobOverhead], []byte(MetaBlobHeader)) {
+				log.Printf("not valid hash: %v", hash)
 				go SendDebugData(fmt.Sprintf("server: blob %v is not a valid meta blob, skipping", hash))
 				continue
 			}
@@ -188,6 +190,7 @@ func (txm *TxManager) Load() error {
 			if err := NewReqBufferWithData(txm.index, txm.db, txm.blobBackend, res).Apply(); err != nil {
 				return err
 			}
+			log.Printf("applied hash: %v", hash)
 			go SendDebugData(fmt.Sprintf("server: meta blob %v applied", hash))
 		}
 	}
