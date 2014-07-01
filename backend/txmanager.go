@@ -162,6 +162,7 @@ func (txm *TxManager) Load() error {
 	scanResult := struct{
 		Blobs int
 		MetaBlobs int
+		Applied int
 		Size int
 	}{}
 	go SendDebugData(fmt.Sprintf("server: scanning meta blobs %v", txm.blobBackend))
@@ -183,6 +184,7 @@ func (txm *TxManager) Load() error {
 				go SendDebugData(fmt.Sprintf("server: blob %v is not a valid meta blob, skipping", hash))
 				continue
 			}
+			scanResult.Applied++
 			scanResult.MetaBlobs++
 			go SendDebugData(fmt.Sprintf("server: meta blob %v not yet loaded", hash))
 
@@ -264,7 +266,7 @@ func (rb *ReqBuffer) Save() error {
 	}
 	h, d := rb.JSON()
 	go SendDebugData(fmt.Sprintf("server: meta blob:%v (len:%v) written\n", h, len(d)))
-	rb.Reset()
+	defer rb.Reset()
 	if err := rb.blobBackend.Put(h, d); err != nil {
 		return fmt.Errorf("Error putting blob: %v", err)
 	}

@@ -170,7 +170,7 @@ func (backend *S3Backend) load() error {
 	return nil
 }
 
-func (backend *S3Backend) Put(hash string, data []byte) error {
+func (backend *S3Backend) upload(hash string, data []byte) error {
 	backend.Lock()
 	defer backend.Unlock()
 	r := bytes.NewBuffer(data)
@@ -186,6 +186,17 @@ func (backend *S3Backend) Put(hash string, data []byte) error {
 		return err
 	}
 	return nil
+}
+
+func (backend *S3Backend) Put(hash string, data []byte) error {
+	var err error
+	for tries, retry := 0, false; tries < 2 && retry; tries++ {
+		err = backend.upload(hash, data)
+		if err != nil {
+			retry = true
+		}
+	}
+	return err
 }
 
 func (backend *S3Backend) Get(hash string) ([]byte, error) {
