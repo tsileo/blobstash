@@ -28,8 +28,6 @@ import (
 	"github.com/tsileo/blobstash/client"
 )
 
-var blobClient *client.Client
-
 // Mount the filesystem to the given mountpoint
 func Mount(client *client.Client, mountpoint string, stop <-chan bool, stopped chan<- bool) {
 	c, err := fuse.Mount(mountpoint)
@@ -51,7 +49,7 @@ func Mount(client *client.Client, mountpoint string, stop <-chan bool, stopped c
 			break
 		}
 		log.Println("Closing client...")
-		blobClient.Blobs.Close()
+		client.Blobs.Close()
 		log.Printf("Unmounting %v...\n", mountpoint)
 		err := fuse.Unmount(mountpoint)
 		if err != nil {
