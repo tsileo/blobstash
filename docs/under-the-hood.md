@@ -98,3 +98,16 @@ A backup is a set with pointer to hash (either representing a directory or a fil
 If a file is stored multiple times, metadata are not duplicated.
 
 A hash contains the backup parts reference, an ordered list of the files hash blobs.
+
+Metadata are stored in meta blobs.
+
+## Meta blobs
+
+A meta blobs contains a set of DB operations.
+
+### Meta blobs creation
+
+There is two way to create meta blobs:
+
+- Create the meta blob client-side and uploading it once finished (with a ``MBPUT`` command).
+- Via a transaction, the server store commands and automatically create and upload the meta blob once the transaction is committed (with ``TXINIT $SERVER $ARCHIVE_MODE``/``TXCOMMIT``.

@@ -4,7 +4,6 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -86,7 +85,6 @@ func (client *Client) DirExplorer(path string, pnode *node, nodes chan<- *node) 
 		}
 	}
 	pnode.cond.Broadcast()
-	log.Println("DirExplorer done")
 	return
 }
 
@@ -127,7 +125,6 @@ func (client *Client) DirWriterNode(ctx *Ctx, node *node) {
 	}
 	node.wr.Hash = fmt.Sprintf("%x", h.Sum(nil))
 
-	log.Printf("ConnWithCtx DirWriterNode %+v", ctx)
 	con := client.ConnWithCtx(ctx)
 	defer con.Close()
 
@@ -182,7 +179,6 @@ func (client *Client) DirWriterNode(ctx *Ctx, node *node) {
 	}
 	node.done = true
 	node.cond.Broadcast()
-	log.Printf("DirWriterNode %v done", node)
 	return
 }
 
@@ -245,6 +241,6 @@ func (client *Client) PutDir(ctx *Ctx, path string) (*Meta, *WriteResult, error)
 	client.DirWriterNode(ctx, n)
 	con := client.ConnWithCtx(ctx)
 	defer con.Close()
-	log.Printf("last node: %v", n)
+	//log.Printf("last node: %v", n)
 	return n.meta, n.wr, n.err
 }

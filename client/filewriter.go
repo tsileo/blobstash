@@ -6,7 +6,6 @@ import (
 	"crypto/sha1"
 	"errors"
 	"fmt"
-	"log"
 	"io"
 	"io/ioutil"
 	"os"
@@ -177,9 +176,6 @@ func (client *Client) FileWriter(con redis.Conn, rb *ReqBuffer, key, path string
 	writeResult.Hash = fmt.Sprintf("%x", fullHash.Sum(nil))
 	writeResult.FilesCount++
 	writeResult.FilesUploaded++
-	// Returns the buffer to the pool
-	//client.putBuffer(buf)
-	log.Printf("FileWriter %v %v done", key, path)
 	return writeResult, nil
 }
 
@@ -228,14 +224,11 @@ func (client *Client) SmallFileWriter(con redis.Conn, rb *ReqBuffer, key, path s
 	writeResult.Hash = nsha
 	writeResult.FilesCount++
 	writeResult.FilesUploaded++
-	log.Printf("SmallFileWriter %v %v done", key, path)
-	//log.Printf("end: %v", time.Now())
 	return writeResult, nil
 }
 
 func (client *Client) PutFile(ctx *Ctx, rb *ReqBuffer, path string) (*Meta, *WriteResult, error) {
 	wr := NewWriteResult()
-	//log.Printf("PutFile %+v/%v\n", ctx, path)
 	client.StartUpload()
 	defer client.UploadDone()
 	fstat, err := os.Stat(path)
@@ -292,7 +285,6 @@ func (client *Client) PutFile(ctx *Ctx, rb *ReqBuffer, path string) (*Meta, *Wri
 		return nil, nil, fmt.Errorf("Error saving meta %+v: %v", meta, err)
 	}
 	if newRb {
-		log.Printf("FileWriter triggered MBPUT")
 		_, mblob := rb.JSON()
 		_, err = con.Do("MBPUT", mblob)
 		if err != nil {
