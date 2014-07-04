@@ -35,6 +35,7 @@ type Client struct {
 type Ctx struct {
 	Hostname string
 	Archive  bool
+	MetaBlob bool
 }
 
 func (ctx *Ctx) Args() redis.Args {

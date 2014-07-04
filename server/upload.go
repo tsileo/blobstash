@@ -11,8 +11,31 @@ import (
 	"io"
 	"strconv"
 
+	"github.com/gorilla/mux"
+
 	"github.com/tsileo/blobstash/backend"
 )
+
+func blobHandler(router *backend.Router) func(http.ResponseWriter, *http.Request) {
+	return func (w http.ResponseWriter, r *http.Request) {
+		if r.Method != "HEAD" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		meta, _ := strconv.ParseBool(r.Header.Get("BlobStash-Meta"))
+		req := &backend.Request{
+			Host: r.Header.Get("BlobStash-Hostname"),
+			MetaBlob: meta,
+		}
+		vars := mux.Vars(r)
+		exists := router.Exists(req, vars["hash"])
+		if exists {
+			return
+		}
+		http.Error(w, http.StatusText(404), 404)
+		return
+	}
+}
 
 func uploadHandler(jobc chan<- *blobPutJob) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {

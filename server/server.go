@@ -465,12 +465,16 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			for {
 				job := <-jobc
 				defer job.free()
+				log.Printf("received blob %v %+v", job.hash, job.req)
 				//log.Printf("Worker %v got Job %v", w, job)
 				if err := BlobRouter.Put(job.req, job.hash, job.blob); err != nil {
 					panic(err)
 				}
 				if job.req.MetaBlob {
-					if err := job.txm.LoadIncomingBlob(job.hash, job.blob); err != nil {
+					back := blobRouter.Route(job.req)
+					txm := blobRouter.TxManagers[back]
+					log.Printf("meta blob: %v received", job.hash)
+					if err := txm.LoadIncomingBlob(job.hash, job.blob); err != nil {
 						panic(err)
 					}
 				}
@@ -949,10 +953,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 	log.Printf("server: http server listening on http://%v", webAddr)
 	r := mux.NewRouter()
 	r.HandleFunc("/", handler)
-	r.HandleFunc("/blob/{hash}/exists", func(w http.ResponseWriter, req *http.Request) {
-			//w.Header().Set("Content-Type", "text/plain")
-			w.Write([]byte("0"))
-		})
+	r.HandleFunc("/blob/{hash}", blobHandler(blobRouter))
 	r.HandleFunc("/debug/monitor", monitor)
 	r.HandleFunc("/upload", uploadHandler(jobc))
 	http.Handle("/", r)

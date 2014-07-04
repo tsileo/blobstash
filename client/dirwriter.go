@@ -166,10 +166,12 @@ func (client *Client) DirWriterNode(ctx *Ctx, node *node) {
 
 	//if node.rb.ShouldFlush() || node.root {
 	//	log.Println("Flushing ReqBuffer now")
-	if node.rb.Len() > 1 || node.root {
-		_, mblob := node.rb.JSON()
-		_, err = con.Do("MBPUT", mblob)
-		if err != nil {
+	if node.rb.Len() > 3 || node.root {
+		node.rb.Lock()
+		defer node.rb.Unlock()
+		mbhash, mblob := node.rb.JSON()
+		//_, err = con.Do("MBPUT", mblob)
+		if err := PutBlob(&Ctx{MetaBlob: true, Hostname: ctx.Hostname}, mbhash, mblob); err != nil {
 			node.err = err
 			return
 		}
