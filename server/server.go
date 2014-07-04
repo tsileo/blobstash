@@ -948,6 +948,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 	log.Printf("server: http server listening on http://%v", webAddr)
 	http.HandleFunc("/", handler)
 	http.HandleFunc("/debug/monitor", monitor)
+	http.HandleFunc("/upload", uploadHandler(jobc))
 	go http.ListenAndServe(webAddr, nil)
 
 	log.Printf("server: listening on tcp://%s", srv.Addr())

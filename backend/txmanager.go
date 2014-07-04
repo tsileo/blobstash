@@ -72,6 +72,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"bytes"
+	"io"
 	"log"
 	"strconv"
 	"strings"
@@ -130,6 +131,15 @@ func (txm *TxManager) GetReqBuffer(name string) *ReqBuffer {
 		return txm.Txs[name]
 	}
 	return rb
+}
+
+func IsMetaBlob(r io.Reader) bool {
+	h := make([]byte, MetaBlobOverhead)
+	r.Read(h)
+	if bytes.Equal(h, []byte(MetaBlobHeader)) {
+		return true
+	}
+	return false
 }
 
 // LoadIncomingBlob try to decode/load and apply a ReqBuffer from the raw blob
