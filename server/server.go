@@ -464,7 +464,6 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		go func(jobc <-chan *blobPutJob, w int) {
 			for {
 				job := <-jobc
-				defer job.free()
 				log.Printf("received blob %v %+v", job.hash, job.req)
 				//log.Printf("Worker %v got Job %v", w, job)
 				if err := BlobRouter.Put(job.req, job.hash, job.blob); err != nil {
@@ -474,9 +473,14 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 					back := blobRouter.Route(job.req)
 					txm := blobRouter.TxManagers[back]
 					log.Printf("meta blob: %v received", job.hash)
-					if err := txm.LoadIncomingBlob(job.hash, job.blob); err != nil {
-						panic(err)
-					}
+					go func(job *blobPutJob) {
+						defer job.free()
+						if err := txm.LoadIncomingBlob(job.hash, job.blob); err != nil {
+							panic(err)
+						}
+					}(job)
+				} else {
+					job.free()
 				}
 			}
 		}(jobc, w)

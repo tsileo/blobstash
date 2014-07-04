@@ -307,16 +307,16 @@ func (rb *ReqBuffer) Len() int {
 
 // ApplyReqArgs execute each commands stored in a ReqArgs in a transaction.
 func (rb *ReqBuffer) Apply() error {
-	commit := false
-	defer func() {
-		if !commit {
-			go SendDebugData(fmt.Sprintf("server: error applying ReqBuffer %+v, rolling back...", rb))
-			rb.db.Rollback()
-		}
-	}()
-	if err := rb.db.BeginTransaction(); err != nil {
-		return err
-	}
+	//commit := false
+	//defer func() {
+	//	if !commit {
+	//		go SendDebugData(fmt.Sprintf("server: error applying ReqBuffer %+v, rolling back...", rb))
+	//		rb.db.Rollback()
+	//	}
+	//}()
+	//if err := rb.db.BeginTransaction(); err != nil {
+	//	return err
+	//}
 	for reqCmd, reqArgs := range rb.Reqs {
 		switch {
 		case reqCmd == "sadd":
@@ -376,10 +376,10 @@ func (rb *ReqBuffer) Apply() error {
 
 		}
 	}
-	commit = true
-	if err := rb.db.Commit(); err != nil {
-		return err
-	}
+	//commit = true
+	//if err := rb.db.Commit(); err != nil {
+	//	return err
+	//}
 	hash, _ := rb.JSON()
 	rb.db.Sadd("_meta", hash)
 	return nil
