@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/bsm/redeo"
+	"github.com/gorilla/mux"
 
 	"github.com/tsileo/blobstash/backend"
 	"github.com/tsileo/blobstash/pubsub"
@@ -946,9 +947,15 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 	})
 	serverStartedAtVar.Set(time.Now().UTC().Format(time.RFC822Z))
 	log.Printf("server: http server listening on http://%v", webAddr)
-	http.HandleFunc("/", handler)
-	http.HandleFunc("/debug/monitor", monitor)
-	http.HandleFunc("/upload", uploadHandler(jobc))
+	r := mux.NewRouter()
+	r.HandleFunc("/", handler)
+	r.HandleFunc("/blob/{hash}/exists", func(w http.ResponseWriter, req *http.Request) {
+			//w.Header().Set("Content-Type", "text/plain")
+			w.Write([]byte("0"))
+		})
+	r.HandleFunc("/debug/monitor", monitor)
+	r.HandleFunc("/upload", uploadHandler(jobc))
+	http.Handle("/", r)
 	go http.ListenAndServe(webAddr, nil)
 
 	log.Printf("server: listening on tcp://%s", srv.Addr())

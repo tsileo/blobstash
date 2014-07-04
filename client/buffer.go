@@ -84,6 +84,8 @@ func (rb *ReqBuffer) Len() int {
 }
 
 func (rb *ReqBuffer) Merge(rb2 *ReqBuffer) error {
+	rb2.Lock()
+	defer rb2.Unlock()
 	for reqType, reqArgs := range rb2.Reqs {
 		for _, req := range reqArgs {
 			for _, args := range req.Args {
@@ -94,17 +96,4 @@ func (rb *ReqBuffer) Merge(rb2 *ReqBuffer) error {
 		}
 	}
 	return nil
-}
-
-func (rb *ReqBuffer) Size() int {
-	_, data := rb.JSON()
-	//log.Printf("%v bytes/%v commands", len(data), rb.Len())
-	return len(data)
-}
-
-func (rb *ReqBuffer) ShouldFlush() bool {
-	if rb.Size() > (MinBlobSize / 2) {
-		return true
-	}
-	return false
 }
