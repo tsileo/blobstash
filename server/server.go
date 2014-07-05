@@ -616,68 +616,6 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		}
 		return nil
 	})
-
-	// Meta blob related commands
-	srv.HandleFunc("mbput", func(out *redeo.Responder, req *redeo.Request) error {
-		SetUpCtx(req)
-		ctx := req.Client().Ctx.(*ServerCtx)
-		err := CheckArgs(req, 1)
-		if err != nil {
-			return err
-		}
-		blob := []byte(req.Args[0])
-		sha := SHA1(blob)
-		txm := req.Client().Ctx.(*ServerCtx).TxManager()
-		breq := &backend.Request{
-			Host: ctx.Hostname,
-			MetaBlob: true,
-			Archive: ctx.Archive,
-		}
-		jobc2<- newBlobPutJob(breq, sha, blob, txm)
-		out.WriteString(sha)
-		return nil
-	})
-	srv.HandleFunc("mbget", func(out *redeo.Responder, req *redeo.Request) error {
-		SetUpCtx(req)
-		ctx := req.Client().Ctx.(*ServerCtx)
-		err := CheckArgs(req, 1)
-		if err != nil {
-			return err
-		}
-		breq:= &backend.Request{
-			Host: ctx.Hostname,
-			MetaBlob: true,
-			Archive: ctx.Archive,
-		}
-		blob, err := BlobRouter.Get(breq, req.Args[0])
-		if err != nil {
-			log.Printf("Error bget %v: %v", req.Args[0], err)
-			return ErrSomethingWentWrong
-		}
-		out.WriteString(string(blob))
-		return nil
-	})
-	srv.HandleFunc("mbexists", func(out *redeo.Responder, req *redeo.Request) error {
-		SetUpCtx(req)
-		ctx := req.Client().Ctx.(*ServerCtx)
-		err := CheckArgs(req, 1)
-		if err != nil {
-			return err
-		}
-		breq := &backend.Request{
-			Host: ctx.Hostname,
-			MetaBlob: true,
-			Archive: ctx.Archive,
-		}
-		exists := BlobRouter.Exists(breq, req.Args[0])
-		res := 0
-		if exists {
-			res = 1
-		}
-		out.WriteInt(res)
-		return nil
-	})
-
 	// List related command
 	srv.HandleFunc("llen", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
