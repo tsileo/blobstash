@@ -151,7 +151,9 @@ func indexKey(key string, index uint32) []byte {
 func decodeIndexKey(key []byte) (string, uint32) {
 	return string(key[5:]), binary.BigEndian.Uint32(key[1:5])
 }
-
+func (lru *DiskLRU) filepath(key string) string {
+	return filepath.Join(lru.path, "blobs", key[:2], key)
+}
 // Get the value for the given key, call Func if the key isn't stored yet.
 func (lru *DiskLRU) Get(con redis.Conn, key string) (data []byte, fetched bool, err error) {
 	lru.Lock()
@@ -168,7 +170,7 @@ func (lru *DiskLRU) Get(con redis.Conn, key string) (data []byte, fetched bool, 
 	if lastAccessTime == 0 {
 		fetched = true
 		data = lru.Func(con, key)
-		if err = ioutil.WriteFile(filepath.Join(lru.path, "blobs", key[:2], key), data, 0644); err != nil {
+		if err = ioutil.WriteFile(lru.filepath(key), data, 0644); err != nil {
 			return
 		}
 		// Increments the internal counter (for size and items count)
@@ -180,7 +182,7 @@ func (lru *DiskLRU) Get(con redis.Conn, key string) (data []byte, fetched bool, 
 		}
 	} else {
 		// Remove the precedent last access time
-		data, err = ioutil.ReadFile(filepath.Join(lru.path, "blobs", key[:2], key))
+		data, err = ioutil.ReadFile(lru.filepath(key))
 		if err != nil {
 			return
 		}
@@ -210,6 +212,7 @@ func (lru *DiskLRU) remove(key string) (err error) {
 		return
 	}
 	if lastAccessTime != 0 {
+		os.Remove(lru.filepath(key))
 		ikey := indexKey(key, lastAccessTime)
 		if err = lru.db.Delete(ikey); err != nil {
 			return
