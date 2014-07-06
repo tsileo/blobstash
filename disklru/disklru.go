@@ -37,7 +37,6 @@ import (
 	"time"
 
 	"github.com/cznic/kv"
-	"github.com/garyburd/redigo/redis"
 
 	"github.com/tsileo/blobstash/config/pathutil"
 )
@@ -62,6 +61,7 @@ func force(str string, n int, thisString string,
         force(str, n-1, thisString + string(v), callback)
     }
 }
+
 // Namespaces for the DB keys
 const (
 	Keys byte = iota
@@ -74,14 +74,14 @@ func opts() *kv.Options {
 	return &kv.Options{
 		VerifyDbBeforeOpen:  true,
 		VerifyDbAfterOpen:   true,
-		VerifyDbBeforeClose: true,
-		VerifyDbAfterClose:  true,
+		VerifyDbBeforeClose: false,
+		VerifyDbAfterClose:  false,
 	}
 }
 
 type DiskLRU struct {
-	Func      func(redis.Conn, string) []byte
-	Threshold int64
+	Func      func(string) ([]byte, error)
+	MaxSize   uint32
 	db        *kv.DB
 	path      string
 	sync.Mutex
@@ -94,7 +94,7 @@ type CacheItem struct {
 }
 
 // New initialize a new DiskLRU.
-func New(path string, f func(redis.Conn, string) []byte, threshold int64) (*DiskLRU, error) {
+func New(path string, f func(string) ([]byte, error), maxSize uint32) (*DiskLRU, error) {
 	if path == "" {
 		path = pathutil.CacheDir()
 	}
@@ -113,12 +113,12 @@ func New(path string, f func(redis.Conn, string) []byte, threshold int64) (*Disk
 	if err != nil {
 		panic(err)
 	}
-	return &DiskLRU{f, threshold, db, path, sync.Mutex{}}, err
-}
-
-func NewTest(f func(redis.Conn, string) []byte, threshold int64) (*DiskLRU, error) {
-	db, err := kv.CreateMem(&kv.Options{})
-	return &DiskLRU{f, threshold, db, "tmp_test_blobs_lru", sync.Mutex{}}, err
+	return &DiskLRU{
+		Func: f,
+		MaxSize: maxSize,
+		db: db,
+		path: path,
+	}, err
 }
 
 // Close cleanly close the kv db.
@@ -148,28 +148,32 @@ func indexKey(key string, index uint32) []byte {
 	return out
 }
 
+// decodeIndexKey returns the pair (key, last-access-time)
 func decodeIndexKey(key []byte) (string, uint32) {
 	return string(key[5:]), binary.BigEndian.Uint32(key[1:5])
 }
+
 func (lru *DiskLRU) filepath(key string) string {
 	return filepath.Join(lru.path, "blobs", key[:2], key)
 }
+
 // Get the value for the given key, call Func if the key isn't stored yet.
-func (lru *DiskLRU) Get(con redis.Conn, key string) (data []byte, fetched bool, err error) {
+func (lru *DiskLRU) Get(key string) (data []byte, fetched bool, err error) {
 	lru.Lock()
-	defer func() {
-		lru.Unlock()
-		defer lru.evict()
-	}()
-	accessTime := time.Now().UTC().Unix()
+	defer lru.Unlock()
+	accessTime := time.Now().UTC().UnixNano()
 	bkey := buildKey(Keys, key)
 	lastAccessTime, err := lru.getUint32(bkey)
 	if err != nil {
 		return
 	}
 	if lastAccessTime == 0 {
+		defer lru.evict()
 		fetched = true
-		data = lru.Func(con, key)
+		data, err = lru.Func(key)
+		if err != nil {
+			return
+		}
 		if err = ioutil.WriteFile(lru.filepath(key), data, 0644); err != nil {
 			return
 		}
@@ -192,8 +196,8 @@ func (lru *DiskLRU) Get(con redis.Conn, key string) (data []byte, fetched bool, 
 		}
 	}
 	// Update the last access time
-	nikey := indexKey(key, uint32(accessTime))
-	if err = lru.putUint32(nikey, uint32(len(data))); err != nil {
+	if err = lru.putUint32(indexKey(key, uint32(accessTime)),
+		uint32(len(data))); err != nil {
 		return
 	}
 	// Update the Keys index access time
@@ -211,15 +215,13 @@ func (lru *DiskLRU) remove(key string) (err error) {
 	if err != nil {
 		return
 	}
-	if lastAccessTime != 0 {
-		os.Remove(lru.filepath(key))
-		ikey := indexKey(key, lastAccessTime)
-		if err = lru.db.Delete(ikey); err != nil {
-			return
-		}
-		if err = lru.db.Delete(bkey); err != nil {
-			return
-		}
+	os.Remove(lru.filepath(key))
+	ikey := indexKey(key, lastAccessTime)
+	if err = lru.db.Delete(ikey); err != nil {
+		return
+	}
+	if err = lru.db.Delete(bkey); err != nil {
+		return
 	}
 	return nil
 }
@@ -249,19 +251,19 @@ func (lru *DiskLRU) evict() error {
 	if err != nil {
 		return err
 	}
-	if int64(tsize) > lru.Threshold {
+	if tsize > lru.MaxSize {
 		items := make(chan *CacheItem)
-		go lru.Iter(items)
-		csize := int64(tsize)
+		go lru.iter(items)
+		csize := tsize
 		for item := range items {
 			// The cache must contains at list one element, even above the threshold
-			if csize > lru.Threshold {
+			if csize > lru.MaxSize {
 				if err := lru.remove(item.Key); err != nil {
 					return err
 				}
 				lru.incrUint32([]byte{MetaSize}, -int(item.Size))
 				lru.incrUint32([]byte{MetaCnt}, -1)
-				csize -= int64(item.Size)
+				csize -= item.Size
 			}
 		}
 	}
@@ -269,16 +271,20 @@ func (lru *DiskLRU) evict() error {
 }
 
 // Iter iterate over keys and index (unix timestamp of last access).
-func (lru *DiskLRU) Iter(items chan<- *CacheItem) {
-	lru.Lock()
-	defer lru.Unlock()
+func (lru *DiskLRU) iter(items chan<- *CacheItem) {
 	defer close(items)
-	enum, _, _ := lru.db.Seek(buildKey(Index, ""))
+	enum, _, err := lru.db.Seek(buildKey(Index, ""))
+	if err != nil {
+		panic(err)
+	}
 	endBytes := buildKey(Index, "\xff")
 	for {
 		k, v, err := enum.Next()
 		if err == io.EOF || bytes.Compare(k, endBytes) > 0 {
 			break
+		}
+		if err != nil {
+			panic(err)
 		}
 		rkey, rindex := decodeIndexKey(k)
 		rsize := binary.LittleEndian.Uint32(v)

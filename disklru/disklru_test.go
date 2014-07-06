@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"os"
 	"testing"
-	"time"
 )
 
 func check(e error) {
@@ -13,8 +12,8 @@ func check(e error) {
 	}
 }
 
-func LRUTestFunc(host, key string) []byte {
-	return []byte(key)
+func LRUTestFunc(key string) ([]byte, error) {
+	return []byte(key), nil
 }
 
 var fakeData = []struct {
@@ -42,7 +41,7 @@ func TestDiskLRU(t *testing.T) {
 	defer os.RemoveAll("tmp_lru_test")
 
 	for _, tdata := range fakeData {
-		data, fetched, err := lru.Get("", tdata.key)
+		data, fetched, err := lru.Get(tdata.key)
 		check(err)
 		if !bytes.Equal(data, tdata.data) {
 			t.Errorf("Bad get result, got:%+v, expected:%+v", data, tdata.data)
@@ -56,7 +55,6 @@ func TestDiskLRU(t *testing.T) {
 		if lru.Cnt() != tdata.cnt {
 			t.Errorf("Bad DiskLRU items count, got:%v, expected:%v", lru.Cnt(), tdata.cnt)
 		}
-		time.Sleep(500 * time.Millisecond)
 	}
 
 }
