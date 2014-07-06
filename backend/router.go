@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"time"
 	"strings"
+	"log"
 
 	"github.com/bitly/go-simplejson"
 	"github.com/bitly/go-notify"
 
 	"github.com/tsileo/blobstash/db"
+	"github.com/tsileo/blobstash/pubsub"
 )
 
 func SendDebugData(data string) {
@@ -26,13 +28,12 @@ type Request struct {
 	// The following fields are used for routing
 	Type int // Whether this is a Put/Read/Exists request (for blob routing only)
 	MetaBlob bool // Whether the blob is a meta blob
-	Host string
-	Archive bool
+	Namespace string
 }
 
 func (req *Request) String() string {
-	return fmt.Sprintf("[request type=%v, meta=%v, hostname=%v, archive=%v]",
-		req.Type, req.MetaBlob, req.Host, req.Archive)
+	return fmt.Sprintf("[request type=%v, meta=%v, ns=%v]",
+		req.Type, req.MetaBlob, req.Namespace)
 }
 
 type BackendAndDB struct {
@@ -46,6 +47,7 @@ type Router struct {
 	Backends map[string]BlobHandler
 	DBs map[string]*db.DB
 	TxManagers map[string]*TxManager
+	NsPubSub *pubsub.PubSub
 }
 
 func (router *Router) Load() error {
@@ -85,6 +87,10 @@ func (router *Router) TxManager(req *Request) *TxManager {
 	return txmanager
 }
 
+func (router *Router) ReqBuffer(req *Request, txId string) *ReqBuffer {
+	return router.TxManager(req).GetReqBuffer(txId)
+}
+
 func (router *Router) DB(req *Request) *db.DB {
 	req.MetaBlob = true
 	// Type and Host must be set
@@ -103,7 +109,19 @@ func (router *Router) Put(req *Request, hash string, data []byte) error {
 	if !exists {
 		panic(fmt.Errorf("backend %v is not registered", key))
 	}
+	if err := router.TxManagers[key].GetReqBuffer("_ns").Add("sadd", fmt.Sprintf("_ns:%v", req.Namespace), []string{hash}); err != nil {
+		return err
+	}
 	return backend.Put(hash, data)
+}
+
+func (router *Router) FlushNamespace() error {
+	for _, txm := range router.TxManagers {
+		if err := txm.GetReqBuffer("_ns").Save(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (router *Router) Exists(req *Request, hash string) bool {
@@ -162,14 +180,27 @@ func NewRouterFromConfig(json *simplejson.Json, index *db.DB) (*Router, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse config, body must be an array")
 	}
-	rconf := &Router{Rules: []*simplejson.Json{},
+	rconf := &Router{
+		Rules: []*simplejson.Json{},
 		Index: index,
 		Backends: make(map[string]BlobHandler),
 		DBs: make(map[string]*db.DB),
-		TxManagers: make(map[string]*TxManager)}
+		TxManagers: make(map[string]*TxManager),
+		NsPubSub: pubsub.NewPubSub("ns"),
+	}
 	for i, _ := range rules {
 		rconf.Rules = append(rconf.Rules, json.GetIndex(i))
 	}
+	rconf.NsPubSub.Listen()
+	go func(r *Router) {
+		for {
+			<-r.NsPubSub.Msgc
+			log.Println("Router: Namespace flush triggered")
+			if err := r.FlushNamespace(); err != nil {
+				panic(fmt.Errorf("failed to flush namespace %v", err))
+			}
+		}
+	}(rconf)
 	return rconf, nil
 }
 
@@ -215,13 +246,9 @@ func checkRule(rule string, req *Request) bool {
 		if req.MetaBlob {
 			return true
 		}
-	case rule == "if-archive":
-		if req.Archive {
-			return true
-		}
-	case strings.HasPrefix(rule, "if-host-"):
-		host := strings.Replace(rule, "if-host-", "", 1)
-		if strings.ToLower(req.Host) == strings.ToLower(host) {
+	case strings.HasPrefix(rule, "if-ns-"):
+		ns := strings.Replace(rule, "if-ns-", "", 1)
+		if strings.ToLower(req.Namespace) == strings.ToLower(ns) {
 			return true
 		}
 	case rule == "default":

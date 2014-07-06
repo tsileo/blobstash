@@ -298,7 +298,7 @@ func (client *Client) PutFile(ctx *Ctx, rb *ReqBuffer, path string) (*Meta, *Wri
 		defer rb.Unlock()
 		mbhash, mblob := rb.JSON()
 		//_, err = con.Do("MBPUT", mblob)
-		if err := PutBlob(&Ctx{MetaBlob: true, Hostname: ctx.Hostname}, mbhash, mblob); err != nil {
+		if err := PutBlob(&Ctx{MetaBlob: true, Namespace: ctx.Namespace}, mbhash, mblob); err != nil {
 			return nil, nil, fmt.Errorf("error MBPUT: %+v", err)
 		}
 	}

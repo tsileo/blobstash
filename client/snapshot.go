@@ -17,14 +17,17 @@ type Snapshot struct {
 	Description string `redis:"description"`
 	Path string `redis:"path"`
 	Hash string `redis:"-"`
+	Namespace string `redis:"-"`
 }
 
-func NewSnapshot(bhostname, bpath, btype, bref string) (s *Snapshot) {
+func NewSnapshot(ns, bhostname, bpath, btype, bref string) (s *Snapshot) {
 	return &Snapshot{Path: bpath,
 		Type: btype,
 		Ref: bref,
 		Ts: time.Now().UTC().Unix(),
-		Hostname: bhostname}
+		Hostname: bhostname,
+		Namespace: ns,
+	}
 }
 
 func NewSnapshotFromDB(con redis.Conn, key string) (s *Snapshot, err error) {
@@ -68,6 +71,9 @@ func backupKey(hostname, path string) string {
 
 // Save the backup to DB
 func (s *Snapshot) Save(con redis.Conn) (error) {
+	if s.Namespace == "" {
+		return fmt.Errorf("namespace not set")
+	}
 	s.computeHash()
 	_, err := con.Do("HMSET", s.Hash,
 					"path", s.Path,
@@ -81,21 +87,21 @@ func (s *Snapshot) Save(con redis.Conn) (error) {
 	// Set/update the latest meta for this filename (snapshot)
 	snapKey := backupKey(s.Hostname, s.Path)
 	// Index the host
-	if _, err := con.Do("SADD", "_hosts", s.Hostname); err != nil {
+	if _, err := con.Do("SADD", "_ns", s.Namespace); err != nil {
 		return err
 	}
 	// Index the snapshot
-	if _, err := con.Do("SADD", fmt.Sprintf("_backups:%v", s.Hostname), snapKey); err != nil {
+	if _, err := con.Do("SADD", fmt.Sprintf("_backups:%v", s.Namespace), snapKey); err != nil {
 		return err
 	}
 	if _, err := con.Do("LADD", snapKey, int(s.Ts), s.Hash); err != nil {
 		return err
 	}
 	// TODO save the Ctx instead of just the hostname
-	if _, err := con.Do("SET", snapKey, s.Hostname); err != nil {
+	if _, err := con.Do("SET", fmt.Sprintf("_ns:%v", snapKey), s.Namespace); err != nil {
 		return err
 	}
-	if _, err := con.Do("SET", s.Hash, s.Hostname); err != nil {
+	if _, err := con.Do("SET", fmt.Sprintf("_ns:%v", s.Hash), s.Namespace); err != nil {
 		return err
 	}
 	return nil
@@ -103,6 +109,9 @@ func (s *Snapshot) Save(con redis.Conn) (error) {
 
 // Save the backup to DB
 func (s *Snapshot) SaveAsArchive(con redis.Conn) (error) {
+	if s.Namespace == "" {
+		return fmt.Errorf("namespace not set")
+	}
 	s.computeArchiveHash()
 	_, err := con.Do("HMSET", s.Hash,
 					"path", s.Path,
@@ -114,14 +123,14 @@ func (s *Snapshot) SaveAsArchive(con redis.Conn) (error) {
 		return err
 	}
 	// Index the host
-	if _, err := con.Do("SADD", "_hosts", s.Hostname); err != nil {
+	if _, err := con.Do("SADD", "_ns", s.Namespace); err != nil {
 		return err
 	}
 	// Index the snapshot
-	if _, err := con.Do("SADD", fmt.Sprintf("_archives:%v", s.Hostname), s.Hash); err != nil {
+	if _, err := con.Do("SADD", fmt.Sprintf("_archives:%v", s.Namespace), s.Hash); err != nil {
 		return err
 	}
-	if _, err := con.Do("SET", s.Hash, s.Hostname); err != nil {
+	if _, err := con.Do("SET", fmt.Sprintf("_ns:%v", s.Hash), s.Namespace); err != nil {
 		return err
 	}
 	return nil

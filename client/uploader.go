@@ -15,13 +15,12 @@ var (
 	ErrBlobNotFound = errors.New("blob not found")
 )
 
-func GetBlob(hash string) ([]byte, error) {
+func GetBlob(ctx *Ctx, hash string) ([]byte, error) {
   request, err := http.NewRequest("GET", "http://0.0.0.0:9736/blob/"+hash, nil)
   if err != nil {
   	return nil, err
   }
-  // TODO put Ctx here
-  //request.Header.Add("BlobStash-Hostname", hostname)
+  request.Header.Add("BlobStash-Namespace", ctx.Namespace)
   client := &http.Client{}
   resp, err := client.Do(request)
   if err != nil {
@@ -42,13 +41,12 @@ func GetBlob(hash string) ([]byte, error) {
   }
 }
 
-func StatBlob(hash string) (bool, error) {
+func StatBlob(ctx *Ctx, hash string) (bool, error) {
   request, err := http.NewRequest("HEAD", "http://0.0.0.0:9736/blob/"+hash, nil)
   if err != nil {
   	return false, err
   }
-  // TODO put Ctx here
-  //request.Header.Add("BlobStash-Hostname", hostname)
+  request.Header.Add("BlobStash-Namespace", ctx.Namespace)
   client := &http.Client{}
   resp, err := client.Do(request)
   if err != nil {
@@ -84,7 +82,7 @@ func PutBlob(ctx *Ctx, hash string, blob []byte) error {
   	return err
   }
   // TODO put Ctx here
-  request.Header.Add("BlobStash-Hostname", ctx.Hostname)
+  request.Header.Add("BlobStash-Namespace", ctx.Namespace)
   request.Header.Add("BlobStash-Meta", strconv.FormatBool(ctx.MetaBlob))
   request.Header.Add("Content-Type", writer.FormDataContentType())
   client := &http.Client{}

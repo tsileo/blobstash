@@ -19,7 +19,7 @@ func blobHandler(router *backend.Router) func(http.ResponseWriter, *http.Request
 	return func (w http.ResponseWriter, r *http.Request) {
 		meta, _ := strconv.ParseBool(r.Header.Get("BlobStash-Meta"))
 		req := &backend.Request{
-			Host: r.Header.Get("BlobStash-Hostname"),
+			Namespace: r.Header.Get("BlobStash-Namespace"),
 			MetaBlob: meta,
 		}
 		vars := mux.Vars(r)
@@ -51,7 +51,7 @@ func uploadHandler(jobc chan<- *blobPutJob) func(http.ResponseWriter, *http.Requ
 
 		//POST takes the uploaded file(s) and saves it to disk.
 		case "POST":
-			hostname := r.Header.Get("BlobStash-Hostname")
+			namespace := r.Header.Get("BlobStash-Namespace")
 			//ctx := r.Header.Get("BlobStash-Ctx")
 			meta, _ := strconv.ParseBool(r.Header.Get("BlobStash-Meta"))
 
@@ -75,9 +75,8 @@ func uploadHandler(jobc chan<- *blobPutJob) func(http.ResponseWriter, *http.Requ
 				var buf bytes.Buffer
 				buf.ReadFrom(part)
 				breq := &backend.Request{
-					Host: hostname,
+					Namespace: namespace,
 					MetaBlob: meta,
-					Archive: false,
 				}
 				jobc<- newBlobPutJob(breq, hash, buf.Bytes(), nil)
 			}

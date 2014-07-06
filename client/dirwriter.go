@@ -171,7 +171,7 @@ func (client *Client) DirWriterNode(ctx *Ctx, node *node) {
 		defer node.rb.Unlock()
 		mbhash, mblob := node.rb.JSON()
 		//_, err = con.Do("MBPUT", mblob)
-		if err := PutBlob(&Ctx{MetaBlob: true, Hostname: ctx.Hostname}, mbhash, mblob); err != nil {
+		if err := PutBlob(&Ctx{MetaBlob: true, Namespace: ctx.Namespace}, mbhash, mblob); err != nil {
 			node.err = err
 			return
 		}

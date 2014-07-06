@@ -466,6 +466,11 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 				job := <-jobc
 				log.Printf("received blob %v %+v", job.hash, job.req)
 				//log.Printf("Worker %v got Job %v", w, job)
+				exists := BlobRouter.Exists(job.req, job.hash)
+				if exists {
+					job.free()
+					return
+				}
 				if err := BlobRouter.Put(job.req, job.hash, job.blob); err != nil {
 					panic(err)
 				}
@@ -484,24 +489,6 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 				}
 			}
 		}(jobc, w)
-	}
-	jobc2 := make(chan *blobPutJob)
-	for w := 1; w <= nCPU*2; w++ {
-		go func(jobc <-chan *blobPutJob, w int) {
-			for {
-				job := <-jobc
-				defer job.free()
-				//log.Printf("Worker %v got Job %v", w, job)
-				if err := BlobRouter.Put(job.req, job.hash, job.blob); err != nil {
-					panic(err)
-				}
-				if job.req.MetaBlob {
-					if err := job.txm.LoadIncomingBlob(job.hash, job.blob); err != nil {
-						panic(err)
-					}
-				}
-			}
-		}(jobc2, w)
 	}
 	// Blob related commands
 	srv.HandleFunc("bput", func(out *redeo.Responder, req *redeo.Request) error {

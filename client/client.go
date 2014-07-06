@@ -33,13 +33,13 @@ type Client struct {
 }
 
 type Ctx struct {
-	Hostname string
-	Archive  bool
-	MetaBlob bool
+	Namespace string
+	Archive bool // Only used internally by the client
+	MetaBlob bool // Flag for blob upload
 }
 
 func (ctx *Ctx) Args() redis.Args {
-	return redis.Args{}.Add(ctx.Hostname).Add(ctx.Archive)
+	return redis.Args{}.Add(ctx.Namespace)
 }
 
 func NewClient(hostname, serverAddr string, ignoredFiles []string) (*Client, error) {
@@ -154,11 +154,11 @@ func (client *Client) DirUploadDone() {
 func (client *Client) Get(hash, path string) (snapshot *Snapshot, meta *Meta, rr *ReadResult, err error) {
 	con := client.Conn()
 	defer con.Close()
-	host, err := redis.String(con.Do("GET", hash))
+	ns, err := redis.String(con.Do("GET", fmt.Sprintf("_ns:%v", hash)))
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to fetch host for snapshot %v: %v", hash, err)
-	}
-	ctx := &Ctx{Hostname: host}
+	}_
+	ctx := &Ctx{Namespace: ns}
 	_, err = con.Do("SETCTX", ctx.Args()...)
 	if err != nil {
 		return
