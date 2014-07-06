@@ -5,8 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-	"sync"
-	"bytes"
 
 	"github.com/garyburd/redigo/redis"
 
@@ -19,6 +17,9 @@ var (
 	dirUploaders = 12 // concurrent directory uploaders
 )
 
+var DefaultBlobCacheSize = uint32(262144000) // 256MB
+
+
 type Client struct {
 	ServerAddr   string
 	Pool         *redis.Pool
@@ -28,7 +29,6 @@ type Client struct {
 	Metas        *lru.LRU
 	uploaders    chan struct{}
 	dirUploaders chan struct{}
-	bufferPool *sync.Pool
 	ignoredFiles []string
 }
 
@@ -40,11 +40,6 @@ type Ctx struct {
 
 func (ctx *Ctx) Args() redis.Args {
 	return redis.Args{}.Add(ctx.Hostname).Add(ctx.Archive)
-}
-
-func NewBuffer() interface{} {
-	var b bytes.Buffer
-	return b
 }
 
 func NewClient(hostname, serverAddr string, ignoredFiles []string) (*Client, error) {
@@ -60,14 +55,11 @@ func NewClient(hostname, serverAddr string, ignoredFiles []string) (*Client, err
 		Hostname: hostname,
 		uploaders: make(chan struct{}, uploaders),
 		dirUploaders: make(chan struct{}, dirUploaders),
-		bufferPool: &sync.Pool{
-			New: NewBuffer,
-		},
 	}
 	if err := c.SetupPool(); err != nil {
 		return nil, err
 	}
-	c.Blobs, err = disklru.New("", c.FetchBlob, 536870912)
+	c.Blobs, err = disklru.New("", c.FetchBlob, DefaultBlobCacheSize)
 	c.Dirs = lru.New(c.FetchDir, 512)
 	c.Metas = lru.New(c.FetchMeta, 512)
 	for _, ignoredFile := range ignoredFiles {
@@ -78,16 +70,6 @@ func NewClient(hostname, serverAddr string, ignoredFiles []string) (*Client, err
 	}
 	c.ignoredFiles = ignoredFiles
 	return c, err
-}
-
-func (c *Client) getBuffer() bytes.Buffer {
-	buf := c.bufferPool.Get().(bytes.Buffer)
-	return buf
-}
-
-func (c *Client) putBuffer(buf bytes.Buffer) {
-	buf.Reset()
-	c.bufferPool.Put(buf)
 }
 
 func (client *Client) SetupPool() error {
@@ -120,26 +102,6 @@ func (client *Client) ConnWithCtx(ctx *Ctx) redis.Conn {
 		panic(fmt.Errorf("failed to SETCTX: %v", err))
 	}
 	return con
-}
-
-func NewTestClient(hostname string) (*Client, error) {
-	var err error
-	if hostname == "" {
-		hostname, err = os.Hostname()
-		if err != nil {
-			return nil, err
-		}
-	}
-	c := &Client{
-		Hostname: hostname,
-		uploaders: make(chan struct{}, uploaders),
-		dirUploaders: make(chan struct{}, dirUploaders),
-	}
-	c.Blobs, err = disklru.NewTest(c.FetchBlob, 536870912)
-	c.Dirs = lru.New(c.FetchDir, 512)
-	c.Metas = lru.New(c.FetchMeta, 512)
-	c.SetupPool()
-	return c, err
 }
 
 func (client *Client) Close() {

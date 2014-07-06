@@ -7,7 +7,40 @@ import (
 	"bytes"
 	"fmt"
 	"strconv"
+	"errors"
+	"io/ioutil"
 )
+
+var (
+	ErrBlobNotFound = errors.New("blob not found")
+)
+
+func GetBlob(hash string) ([]byte, error) {
+  request, err := http.NewRequest("GET", "http://0.0.0.0:9736/blob/"+hash, nil)
+  if err != nil {
+  	return nil, err
+  }
+  // TODO put Ctx here
+  //request.Header.Add("BlobStash-Hostname", hostname)
+  client := &http.Client{}
+  resp, err := client.Do(request)
+  if err != nil {
+  	return nil, err
+  }
+  defer resp.Body.Close()
+  body, err := ioutil.ReadAll(resp.Body)
+  if err != nil {
+  	return nil, err
+  }
+  switch {
+  case resp.StatusCode == 200:
+  		return body, nil
+  case resp.StatusCode == 404:
+  		return nil, ErrBlobNotFound
+  default:
+  		return nil, fmt.Errorf("failed to put blob %v: %v", hash, body)
+  }
+}
 
 func StatBlob(hash string) (bool, error) {
   request, err := http.NewRequest("HEAD", "http://0.0.0.0:9736/blob/"+hash, nil)

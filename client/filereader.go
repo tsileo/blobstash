@@ -12,14 +12,13 @@ import (
 
 // FetchBlob is used by the client level blobs LRU
 // Return the data for the given hash
-func (client *Client) FetchBlob(con redis.Conn, hash string) []byte {
-	var buf bytes.Buffer
-	data, err := redis.String(con.Do("BGET", hash))
+func (client *Client) FetchBlob(hash string) ([]byte, error) {
+	data, err := GetBlob(hash)
+	//data, err := redis.String(con.Do("BGET", hash))
 	if err != nil {
-		panic(fmt.Errorf("failed to fetch blob %v (%v)", hash, err))
+		return nil, fmt.Errorf("failed to fetch blob %v (%v)", hash, err)
 	}
-	buf.WriteString(data)
-	return buf.Bytes()
+	return data, nil
 }
 
 // Download a file by its hash to path
@@ -87,11 +86,13 @@ func NewFakeFile(client *Client, ctx *Ctx, ref string, size int) (f *FakeFile) {
 		}
 	}
 	redis.ScanSlice(values, &f.lmrange)
+	f.con.Close()
+	f.con = nil
 	return
 }
 
 func (f *FakeFile) Close() error {
-	return f.con.Close()
+	return nil
 }
 
 // Implement the io.ReaderAt interface
@@ -129,7 +130,7 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 		if offset > iv.Index {
 			continue
 		}
-		bbuf, _, _ := f.client.Blobs.Get(f.con, iv.Value)
+		bbuf, _, _ := f.client.Blobs.Get(iv.Value)
 		foffset := 0
 		if offset != 0 {
 			// Compute the starting offset of the blob
@@ -150,6 +151,9 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 		} else {
 			// What we need fit in this blob
 			// it should return after this
+			if foffset+cnt-written > len(bbuf) {
+				panic(fmt.Errorf("failed to read from FakeFile %+v [%v:%v]", f, foffset, foffset+cnt-written))
+			}
 			fwritten, err := buf.Write(bbuf[foffset : foffset+cnt-written])
 			if err != nil {
 				return nil, err
