@@ -59,7 +59,7 @@ func init() {
 type ServerCtx struct {
 	TxID string
 	Archive bool
-	Hostname string
+	Namespace string
 }
 
 type blobPutJob struct {
@@ -70,9 +70,10 @@ type blobPutJob struct {
 }
 
 func (j *blobPutJob) String() string {
-	return fmt.Sprintf("[blobPutJob  hash=%v, meta=%v, host=%v, archive=%v]",
-		j.hash, j.req.MetaBlob, j.req.Host, j.req.Archive)
+	return fmt.Sprintf("[blobPutJob  hash=%v, meta=%v, ns=%v]",
+		j.hash, j.req.MetaBlob, j.req.Namespace)
 }
+
 func (j *blobPutJob) free() {
 	j.req = nil
 	j.blob = nil
@@ -101,16 +102,16 @@ func newBlobPutJob(req *backend.Request, hash string, blob []byte, txm *backend.
 //}
 
 func (ctx *ServerCtx) TxManager() *backend.TxManager {
-	return BlobRouter.TxManager(&backend.Request{Host: ctx.Hostname, Archive: ctx.Archive})
+	return BlobRouter.TxManager(&backend.Request{Namespace: ctx.Namespace})
 }
 
 func (ctx *ServerCtx) ReqBuffer(name string) *backend.ReqBuffer {
 	//return ctx.TxManager.ReqBuffer(name)
-	return BlobRouter.TxManager(&backend.Request{Host: ctx.Hostname, Archive: ctx.Archive}).GetReqBuffer(name)
+	return BlobRouter.TxManager(&backend.Request{Namespace: ctx.Namespace}).GetReqBuffer(name)
 }
 
 func (ctx *ServerCtx) DB() *db.DB {
-	return BlobRouter.DB(&backend.Request{Host: ctx.Hostname, Archive: ctx.Archive})
+	return BlobRouter.DB(&backend.Request{Namespace: ctx.Namespace})
 }
 
 func SetUpCtx(req *redeo.Request) {
@@ -501,9 +502,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		blob := []byte(req.Args[0])
 		sha := SHA1(blob)
 		breq := &backend.Request{
-			Host: ctx.Hostname,
-			MetaBlob: false,
-			Archive: ctx.Archive,
+			Namespace: ctx.Namespace,
 		}
 		jobc<- newBlobPutJob(breq, sha, blob, nil)
 		//err = BlobRouter.Put(&backend.Request{Host: ctx.Hostname, MetaBlob: false}, sha, blob)
@@ -527,9 +526,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			sha := SHA1(blob)
 			out.WriteString(sha)
 			breq := &backend.Request{
-				Host: ctx.Hostname,
-				MetaBlob: false,
-				Archive: ctx.Archive,
+				Namespace: ctx.Namespace,
 			}
 			jobc<- newBlobPutJob(breq, sha, blob, nil)
 		}
@@ -548,9 +545,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return err
 		}
 		breq := &backend.Request{
-			Host: ctx.Hostname,
-			MetaBlob: false,
-			Archive: ctx.Archive,
+			Namespace: ctx.Namespace,
 		}
 		blob, err := BlobRouter.Get(breq, req.Args[0])
 		if err != nil {
@@ -568,9 +563,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return err
 		}
 		breq := &backend.Request{
-			Host: ctx.Hostname,
-			MetaBlob: false,
-			Archive: ctx.Archive,
+			Namespace: ctx.Namespace,
 		}
 		exists := BlobRouter.Exists(breq, req.Args[0])
 		res := 0
@@ -578,29 +571,6 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			res = 1
 		}
 		out.WriteInt(res)
-		return nil
-	})
-	srv.HandleFunc("bmultiexists", func(out *redeo.Responder, req *redeo.Request) error {
-		SetUpCtx(req)
-		ctx := req.Client().Ctx.(*ServerCtx)
-		err := CheckMinArgs(req, 1)
-		if err != nil {
-			return err
-		}
-		out.WriteBulkLen(len(req.Args))
-		for _, h := range req.Args {
-			res := "0"
-			breq := &backend.Request{
-				Host: ctx.Hostname,
-				MetaBlob: false,
-				Archive: ctx.Archive,
-			}
-			exists := BlobRouter.Exists(breq, h)
-			if exists {
-				res = "1"
-			}
-			out.WriteString(res)
-		}
 		return nil
 	})
 	// List related command
@@ -763,10 +733,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		out.WriteBulkLen(6)
 		out.WriteString("tx-id")
 		out.WriteString(ctx.TxID)
-		out.WriteString("hostname")
-		out.WriteString(ctx.Hostname)
-		out.WriteString("archive-mode")
-		out.WriteString(strconv.FormatBool(ctx.Archive))
+		out.WriteString("namespace")
+		out.WriteString(ctx.Namespace)
 		return nil
 	})
 	srv.HandleFunc("setctx", func(out *redeo.Responder, req *redeo.Request) error {
@@ -776,13 +744,9 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return err
 		}
 		switch {
-		case len(req.Args) == 2:
+		case len(req.Args) == 1:
 			ctx := req.Client().Ctx.(*ServerCtx)
-			ctx.Hostname = req.Args[0]
-			ctx.Archive, err = strconv.ParseBool(req.Args[1])
-			if err != nil {
-				return ErrSomethingWentWrong
-			}
+			ctx.Namespace = req.Args[0]
 			out.WriteOK()
 		default:
 			return ErrSomethingWentWrong
@@ -796,15 +760,11 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return err
 		}
 		switch {
-		case len(req.Args) == 2:
+		case len(req.Args) == 1:
 			newID := NewID()
 			ctx := req.Client().Ctx.(*ServerCtx)
 			ctx.TxID = newID
-			ctx.Hostname = req.Args[0]
-			ctx.Archive, err = strconv.ParseBool(req.Args[1])
-			if err != nil {
-				return ErrSomethingWentWrong
-			}
+			ctx.Namespace = req.Args[0]
 			out.WriteString(newID)
 
 		case len(req.Args) == 1:
@@ -855,13 +815,13 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		out.WriteOK()
 		return nil
 	})
-	srv.HandleFunc("hostname", func(out *redeo.Responder, req *redeo.Request) error {
+	srv.HandleFunc("namespace", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 1)
 		if err != nil {
 			return err
 		}
-		req.Client().Ctx.(*ServerCtx).Hostname = req.Args[0]
+		req.Client().Ctx.(*ServerCtx).Namespace = req.Args[0]
 		out.WriteOK()
 		return nil
 	})
