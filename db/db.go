@@ -106,7 +106,19 @@ func GetRange(db *kv.DB, kStart []byte, kEnd []byte, limit int) (values []*KeyVa
 	}
 	return
 }
-
+// GetRangeLast performs a lexical range query, and return the last key-value pair.
+func GetListLastRange(db *kv.DB, kStart []byte) (kv *KeyValue, err error) {
+	enum, _, err := db.Seek(kStart)
+	enum.Prev()
+	k, v, err := enum.Prev()
+	if err == io.EOF {
+		return
+	}
+	vstr := string(v)
+	kstr := string(k[1:])
+	kv = &KeyValue{kstr, vstr}
+	return
+}
 // GetRangeLast performs a lexical range query, and return the last key-value pair.
 func GetRangeLast(db *kv.DB, kStart []byte, kEnd []byte, limit int) (kv *KeyValue, err error) {
 	enum, _, err := db.Seek(kStart)

@@ -40,6 +40,10 @@ func keyList(key []byte, index interface{}) []byte {
 
 // Extract the index from the raw key
 func decodeListIndex(key []byte) int {
+	klen := int(binary.LittleEndian.Uint32(key[0:4]))
+	if len(key) == klen+4 {
+		return 0
+	}
 	return int(binary.BigEndian.Uint32(key[len(key)-4:]))
 }
 
@@ -67,8 +71,29 @@ func (db *DB) Llen(key string) (int, error) {
 	return int(card), err
 }
 
+func (db *DB) Linit(key string) error {
+	bkey := []byte(key)
+	card, err := db.Llen(key)
+	if err != nil {
+		return err
+	}
+	if card == 0 {
+		return nil
+	}
+	//if err := db.put(keyList(bkey, []byte("\x00")), []byte("")); err != nil {
+	//	return err
+	//}
+	if err := db.put(keyList(bkey, []byte("\xff")), []byte("")); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Add an element in the list at the given index
 func (db *DB) Ladd(key string, index int, value string) error {
+	if err := db.Linit(key); err != nil {
+		return err
+	}
 	bkey := []byte(key)
 	kmember := keyList(bkey, index)
 	cval, err := db.get(kmember)
@@ -97,7 +122,7 @@ func (db *DB) Lindex(key string, index int) ([]byte, error) {
 // Returns list values, sorted by index ASC
 func (db *DB) Liter(key string) ([][]byte, error) {
 	bkey := []byte(key)
-	start := keyList(bkey, []byte{})
+	start := keyList(bkey, "")
 	end := keyList(bkey, "\xff")
 	res := [][]byte{}
 	kvs, err := GetRange(db.db, start, end, 0)
@@ -105,13 +130,27 @@ func (db *DB) Liter(key string) ([][]byte, error) {
 		return res, err
 	}
 	for _, kv := range kvs {
-		if kv.Value != "\x00" {
+		if kv.Value != "\x00" && kv.Value != "" {
 			res = append(res, []byte(kv.Value))
 		}
 		//res = append(res,  decodeListIndex([]byte(kv.Key)))
 	}
 	return res, nil
 }
+// Returns list values, sorted by index ASC
+func (db *DB) Llast(key string) ([]byte, error) {
+	bkey := []byte(key)
+	start := keyList(bkey, "\xff")
+	kv, err := GetListLastRange(db.db, start)
+	if err != nil {
+		return nil, err
+	}
+	if kv.Value != "\x00" && kv.Value != "" {
+		return []byte(kv.Value), nil
+	}
+	return nil, nil
+}
+
 
 // Returns list values, sorted by index ASC
 func (db *DB) LiterWithIndex(key string) (ivs []*IndexValue, err error) {
@@ -123,7 +162,7 @@ func (db *DB) LiterWithIndex(key string) (ivs []*IndexValue, err error) {
 		return
 	}
 	for _, skv := range kvs {
-		if skv.Value != "\x00" {
+		if skv.Value != "\x00" && skv.Value != "" {
 			ivs = append(ivs, &IndexValue{Index: decodeListIndex([]byte(skv.Key)), Value: skv.Value})
 		}
 	}

@@ -48,6 +48,13 @@ func TestDBListDataType(t *testing.T) {
 		t.Errorf("Bad LITER result:%q",rdata)
 	}
 
+
+	data, err = db.Llast("foo")
+	check(err)
+	if !bytes.Equal(data, []byte("10")) {
+		t.Errorf("Last list value should be 10, got %v", string(data))
+	}
+
 	// TODO(tsileo) check Lmrange
 
 	err = db.Ldel("foo")
