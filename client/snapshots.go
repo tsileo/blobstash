@@ -22,7 +22,7 @@ func NewBackup(client *Client, snapKey string) (*Backup, error) {
 	if err != nil {
 		return nil, err
 	}
-	backup := &Backup{ctx: &Ctx{Hostname: host}, client: client, SnapKey: snapKey}
+	backup := &Backup{ctx: &Ctx{Namespace: host}, client: client, SnapKey: snapKey}
 	return backup, nil
 }
 
@@ -92,7 +92,7 @@ func (client *Client) Hosts() ([]string, error) {
 
 // Archives return all archives for the given host.
 func (client *Client) Archives(host string) ([]*Snapshot, error) {
-	con := client.ConnWithCtx(&Ctx{Hostname: host, Archive: true})
+	con := client.ConnWithCtx(&Ctx{Namespace: host})
 	defer con.Close()
 	keys, err := redis.Strings(con.Do("SMEMBERS", fmt.Sprintf("_archives:%v", host)))
 	if err != nil {

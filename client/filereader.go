@@ -13,7 +13,7 @@ import (
 // FetchBlob is used by the client level blobs LRU
 // Return the data for the given hash
 func (client *Client) FetchBlob(hash string) ([]byte, error) {
-	data, err := GetBlob(hash)
+	data, err := GetBlob(&Ctx{}, hash)
 	//data, err := redis.String(con.Do("BGET", hash))
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch blob %v (%v)", hash, err)

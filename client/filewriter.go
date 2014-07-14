@@ -138,7 +138,7 @@ func (client *Client) FileWriter(ctx *Ctx, rb *ReqBuffer, key, path string) (*Wr
 			fullHash.Write(buf.Bytes())
 			// Check if the blob exists
 			//exists, err := redis.Bool(con.Do("BEXISTS", nsha))
-			exists, err := StatBlob(nsha)
+			exists, err := StatBlob(ctx, nsha)
 			//exists, err := redis.Bool(con.Do("BEXISTS", nsha))
 			if err != nil {
 				panic(fmt.Sprintf("DB error: %v", err))
@@ -204,7 +204,7 @@ func (client *Client) SmallFileWriter(ctx *Ctx, rb *ReqBuffer, key, path string)
 	//}
 	//blobsBuffer.Put(nsha, ndata)
 	//exists, err := redis.Bool(con.Do("BEXISTS", nsha))
-	exists, err := StatBlob(nsha)
+	exists, err := StatBlob(ctx, nsha)
 	if err != nil {
 		panic(fmt.Sprintf("DB error: %v", err))
 	}

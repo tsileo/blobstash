@@ -157,7 +157,7 @@ func (client *Client) Get(hash, path string) (snapshot *Snapshot, meta *Meta, rr
 	ns, err := redis.String(con.Do("GET", fmt.Sprintf("_ns:%v", hash)))
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to fetch host for snapshot %v: %v", hash, err)
-	}_
+	}
 	ctx := &Ctx{Namespace: ns}
 	_, err = con.Do("SETCTX", ctx.Args()...)
 	if err != nil {
@@ -210,7 +210,7 @@ func (client *Client) Put(ctx *Ctx, path string) (snapshot *Snapshot, meta *Meta
 	if _, err = redis.String(con.Do("TXINIT", ctx.Args()...)); err != nil {
 		return
 	}
-	snapshot = NewSnapshot(client.Hostname, path, btype, meta.Hash)
+	snapshot = NewSnapshot(ctx.Namespace, client.Hostname, path, btype, meta.Hash)
 	saver := snapshot.Save
 	if ctx.Archive {
 		saver = snapshot.SaveAsArchive

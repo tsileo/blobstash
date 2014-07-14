@@ -47,6 +47,12 @@ func TestDBListDataType(t *testing.T) {
 	if !reflect.DeepEqual(rdata, [][]byte{[]byte("0"), []byte("1"), []byte("10")}) {
 		t.Errorf("Bad LITER result:%q",rdata)
 	}
+	
+	rdata, err = db.Lriter("foo")
+	check(err)
+	if !reflect.DeepEqual(rdata, [][]byte{[]byte("10"), []byte("1"), []byte("0")}) {
+		t.Errorf("Bad LRITER result:%q",rdata)
+	}
 
 
 	data, err = db.Llast("foo")

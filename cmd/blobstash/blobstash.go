@@ -14,7 +14,6 @@ import (
 
 	"github.com/tsileo/blobstash/client"
 	"github.com/tsileo/blobstash/scheduler"
-	"github.com/tsileo/blobstash/fs"
 	"github.com/tsileo/blobstash/config/pathutil"
 )
 
@@ -66,7 +65,7 @@ func main() {
 			Action: func(c *cli.Context) {
 				cl, _ := client.NewClient(c.String("host"), defaultHost, ignoredFiles)
 				defer cl.Close()
-				b, m, wr, err := cl.Put(&client.Ctx{Hostname: cl.Hostname, Archive: c.Bool("archive")}, c.Args().First())
+				b, m, wr, err := cl.Put(&client.Ctx{Namespace: cl.Hostname, Archive: c.Bool("archive")}, c.Args().First())
 				fmt.Printf("b:%+v,m:%+v,wr:%+v,err:%v\n", b, m, wr, err)
 			},
 		},
@@ -92,16 +91,16 @@ func main() {
 				fmt.Printf("snap:%+v,meta:%+v,rr:%+v/err:%v", snap, meta, rr, err)
 			},
 		},
-		{
-			Name:  "mount",
-			Usage: "Mount the read-only filesystem to the given path",
-			Action: func(c *cli.Context) {
-				cl, _ := client.NewClient("", defaultHost, ignoredFiles)
-				stop := make(chan bool, 1)
-				stopped := make(chan bool, 1)
-				fs.Mount(cl, c.Args().First(), stop, stopped)
-			},
-		},
+		//{
+		//	Name:  "mount",
+		//	Usage: "Mount the read-only filesystem to the given path",
+		//	Action: func(c *cli.Context) {
+		//		cl, _ := client.NewClient("", defaultHost, ignoredFiles)
+		//		stop := make(chan bool, 1)
+		//		stopped := make(chan bool, 1)
+		//		fs.Mount(cl, c.Args().First(), stop, stopped)
+		//	},
+		//},
 		{
 			Name:      "scheduler",
 			ShortName: "sched",

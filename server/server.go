@@ -204,6 +204,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		switch {
 		case channel == "glacier":
 			glacierPubSub.Publish(req.Args[1])
+		case channel == "ns":
+			pubsub.NewPubSub("ns").Publish(req.Args[1])
 		default:
 			log.Printf("server: invalid channel %v", channel)
 			return ErrSomethingWentWrong
@@ -611,6 +613,39 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		out.WriteOK()
 		return nil
 	})
+	srv.HandleFunc("llast", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckMinArgs(req, 1)
+		if err != nil {
+			return err
+		}
+		ctx := req.Client().Ctx.(*ServerCtx)
+		if len(req.Args) == 3 {
+			res, err := ctx.DB().LlastWithIndex(req.Args[0])
+			if err != nil {
+				return ErrSomethingWentWrong
+			}
+			if res != nil {
+				out.WriteBulkLen(2)
+				out.WriteString(strconv.Itoa(res.Index))
+				out.WriteString(res.Value)
+			} else {
+				out.WriteNil()
+			}
+			return nil
+		}
+		res, err := ctx.DB().Llast(req.Args[0])
+		if err != nil {
+			log.Printf("Err LLAST %v", err)
+			return ErrSomethingWentWrong
+		}
+		if res != nil {
+			out.WriteString(string(res))
+		} else {
+			out.WriteNil()
+		}
+		return nil
+	})
 	srv.HandleFunc("lindex", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckArgs(req, 2)
@@ -706,7 +741,54 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		}
 		return ErrSomethingWentWrong
 	})
-
+	srv.HandleFunc("lriter", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckMinArgs(req, 1)
+		if err != nil {
+			return err
+		}
+		ctx := req.Client().Ctx.(*ServerCtx)
+		source := ctx.DB()
+		if strings.HasPrefix(req.Args[0], "_") {
+			source = blobRouter.Index
+		}
+		if len(req.Args) == 1 {
+			vals, err := source.Lriter(req.Args[0])
+			if err != nil {
+				return ErrSomethingWentWrong
+			}
+			if len(vals) == 0 {
+				out.WriteNil()
+			} else {
+				out.WriteBulkLen(len(vals))
+				for _, bval := range vals {
+					out.WriteString(string(bval))
+				}
+			}
+			return nil
+		}
+		if len(req.Args) == 3 {
+			// WITH INDEX
+			if strings.ToLower(req.Args[1]) != "with" {
+				return ErrSomethingWentWrong
+			}
+			ivs, err := source.LriterWithIndex(req.Args[0])
+			if err != nil {
+				return ErrSomethingWentWrong
+			}
+			if len(ivs) == 0 {
+				out.WriteNil()
+			} else {
+				out.WriteBulkLen(len(ivs) * 2)
+				for _, iv := range ivs {
+					out.WriteString(strconv.Itoa(iv.Index))
+					out.WriteString(iv.Value)
+				}
+			}
+			return nil
+		}
+		return ErrSomethingWentWrong
+	})
 	srv.HandleFunc("size", func(out *redeo.Responder, _ *redeo.Request) error {
 		out.WriteInt(0)
 		return nil
@@ -871,6 +953,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 					log.Printf("server: Captured %v\n", sig)
 					break
 				}
+				// Trigger the saving of the namespace buffer
+				pubsub.NewPubSub("ns").Publish("1")
 				log.Println("server: closing backends...")
 				BlobRouter.Close()
 				log.Println("server: shutting down...")
