@@ -13,10 +13,8 @@ func check(err error) {
 }
 
 var testConf1 = `[
-[["if-host-tomt0m", "if-archive", "if-meta"], "customHandlerArchiveMeta"],
-[["if-host-tomt0m", "if-archive"], "customHandlerArchive"],
-[["if-host-tomt0m", "if-meta"], "customHandler2"],
-["if-host-tomt0m", "customHandler"],
+[["if-ns-tomt0m", "if-meta"], "customHandler2"],
+["if-ns-tomt0m", "customHandler"],
 ["if-meta", "metaHandler"],
 ["default", "blobHandler"]
 ]`
@@ -25,14 +23,12 @@ var testConfData1 = []struct{
 	req *Request
 	expectedBackend string
 }{
-	{&Request{Read, false, "tomt0m", false}, "customHandler"},
-	{&Request{Read, true, "tomt0m", false}, "customHandler2"},
-	{&Request{Read, true, "homeserver", false}, "metaHandler"},
-	{&Request{Read, false, "homeserver", false}, "blobHandler"},
-	{&Request{Read, true, "homeserver", true}, "metaHandler"},
-	{&Request{Read, false, "homeserver", true}, "blobHandler"},
-	{&Request{Read, true, "tomt0m", true}, "customHandlerArchiveMeta"},
-	{&Request{Read, false, "tomt0m", true}, "customHandlerArchive"},
+	{&Request{Read, false, "tomt0m"}, "customHandler"},
+	{&Request{Read, true, "tomt0m"}, "customHandler2"},
+	{&Request{Read, true, "homeserver"}, "metaHandler"},
+	{&Request{Read, false, "homeserver"}, "blobHandler"},
+	{&Request{Read, true, "homeserver"}, "metaHandler"},
+	{&Request{Read, false, "homeserver"}, "blobHandler"},
 }
 
 var testConf2 = `[
@@ -43,7 +39,7 @@ var testConfData2 = []struct{
 	req *Request
 	expectedBackend string
 }{
-	{&Request{Read, false, "homeserver", false}, "blobHandler"},
+	{&Request{Read, false, "homeserver"}, "blobHandler"},
 }
 
 func TestRouter(t *testing.T) {
