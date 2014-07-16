@@ -5,6 +5,17 @@
 - a HTTP blob store, for get/put/exists operations on blob.
 - a Redis-like data structure server with custom data type (data is stored in blobs), compatible the with [Redis Protocol](http://redis.io/topics/protocol).
 
+## Blob store
+
+You can deal directly with blob when needed using the HTTP API:
+
+$ curl -H "BlobStash-Hostname: ok2" -H "Blobstash-Meta: 0" -F "92a949fd41844e1bb8c6812cdea102708fde23a4=ok" http://0.0.0.0:9736/upload
+
+
+## Data structure server
+
+Y
+
 ## Backend
 
 Blobs are stored in a backend.
@@ -35,8 +46,8 @@ You can define rules to specify where blobs should be stored, depending on wheth
 
 ```json
 [
-    [["if-host-tomt0m", "if-meta"], "customHandler2"],
-    ["if-host-tomt0m", "customHandler"],
+    [["if-ns-myhost", "if-meta"], "customHandler2"],
+    ["if-ns-myhost", "customHandler"],
     ["if-meta", "metaHandler"],
     ["default", "blobHandler"]
 ]
