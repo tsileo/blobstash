@@ -24,40 +24,6 @@ Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com
 
 ## Components
 
-### Database
-
-**BlobDB** is a backup database (a Content-Addressable Storage and a data structure server) designed to efficiently handle snapshots of files/directories, built on top of [kv](https://github.com/cznic/kv) and the [Redis Protocol](http://redis.io/topics/protocol).
-
-#### Backend
-
-- BlobsFile (local disk)
-- AWS S3
-- Mirror
-- AWS Glacier
-- A remote BlobDB instance? (not started yet)
-- Submit a pull request!
-
-##### Router
-
-You can define rules to specify where blobs should be stored, depending on whether it's a meta blob or not, or depending on the host it come from.
-
-**Blobs are routed to the first matching rule backend, rules order is important.**
-
-```json
-[
-    [["if-host-tomt0m", "if-meta"], "customHandler2"],
-    ["if-host-tomt0m", "customHandler"],
-    ["if-meta", "metaHandler"],
-    ["default", "blobHandler"]
-]
-```
-
-The minimal router config is:
-
-```json
-[["default", "blobHandler"]]
-```
-
 ### Fuse file system
 
 **BlobFS** is the most convenient way to restore/navigate snapshots is the FUSE file system.
@@ -97,19 +63,6 @@ $ blobstash put /path/to/dir/or/file
 ### Backup scheduler
 
 The backup scheduler allows you to perform snapshots...
-
-## How it works
-
-### Backend
-
-A **backend** handle blobs operation (blobsfile/s3/encrypt/mirror/remote).
-
-- Put
-- Exists
-- Get
-- Enumerate
-
-You can combine backend as you wish, e.g. Mirror( Encrypt( S3() ), BlobsFile() ).
 
 ## Roadmap / Ideas
 
