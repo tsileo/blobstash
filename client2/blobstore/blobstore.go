@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"strconv"
+	
+	"github.com/tsileo/blobstash/client"
 )
 
 // ErrBlobNotFound is returned from a get/stat request
@@ -33,7 +34,7 @@ func New(serverAddr string) *BlobStore {
 }
 
 // Get fetch the given blob.
-func (bs *BlobStore) Get(ctx *Ctx, hash string) ([]byte, error) {
+func (bs *BlobStore) Get(ctx *client.Ctx, hash string) ([]byte, error) {
 	request, err := http.NewRequest("GET", bs.ServerAddr+"/blob/"+hash, nil)
 	if err != nil {
 		return nil, err
@@ -55,12 +56,12 @@ func (bs *BlobStore) Get(ctx *Ctx, hash string) ([]byte, error) {
 	case resp.StatusCode == 404:
 		return nil, ErrBlobNotFound
 	default:
-		return nil, fmt.Errorf("failed to put blob %v: %v", hash, body.String())
+		return nil, fmt.Errorf("failed to put blob %v: %v", hash, string(body))
 	}
 }
 
 // Stat checks wether a blob exists or not.
-func (bs *BlobStore) Stat(ctx *Ctx, hash string) (bool, error) {
+func (bs *BlobStore) Stat(ctx *client.Ctx, hash string) (bool, error) {
 	request, err := http.NewRequest("HEAD", bs.ServerAddr+"/blob/"+hash, nil)
 	if err != nil {
 		return false, err
@@ -82,7 +83,7 @@ func (bs *BlobStore) Stat(ctx *Ctx, hash string) (bool, error) {
 }
 
 // Put upload the given blob, the caller is responsible for computing the SHA-1 hash
-func (bs *BlobStore) Put(ctx *Ctx, hash string, blob []byte) error {
+func (bs *BlobStore) Put(ctx *client.Ctx, hash string, blob []byte) error {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 	part, err := writer.CreateFormFile(hash, hash)
@@ -95,7 +96,7 @@ func (bs *BlobStore) Put(ctx *Ctx, hash string, blob []byte) error {
 	if err := writer.Close(); err != nil {
 		return err
 	}
-	request, err := http.NewRequest("POST", bs.ServerAddr+"/upload", body.String())
+	request, err := http.NewRequest("POST", bs.ServerAddr+"/upload", body)
 	if err != nil {
 		return err
 	}
