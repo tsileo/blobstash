@@ -955,6 +955,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 				}
 				// Trigger the saving of the namespace buffer
 				pubsub.NewPubSub("ns").Publish("1")
+				time.Sleep(3*time.Second)
 				log.Println("server: closing backends...")
 				BlobRouter.Close()
 				log.Println("server: shutting down...")

@@ -103,6 +103,7 @@ func (server *TestServer) Start() error {
 	bpath, err := server.BuildServer()
 	if err != nil {
 		server.t.Log("Error building server")
+		panic(err)
 		server.err = err
 		return err
 	}
@@ -114,6 +115,7 @@ func (server *TestServer) Start() error {
 	server.server.Env = append(os.Environ(), fmt.Sprintf("BLOBSTASH_VAR_DIR=%v", server.tempDir))
 	if err := server.server.Start(); err != nil {
 		server.err = err
+		panic(err)
 		return err
 	}
 	waitc := make(chan error, 1)

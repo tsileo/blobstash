@@ -16,7 +16,7 @@
         }
     },
     "router": [
-        ["if-host-tomt0m2", "blobs2"],
+        ["if-ns-tomt0m2", "blobs2"],
         ["default", "blobs"]
     ]
 }

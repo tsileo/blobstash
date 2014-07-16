@@ -20,14 +20,14 @@ func TestClientFile(t *testing.T) {
 	}
 
 	defer s.Shutdown()
-	c, err := NewTestClient("")
+	c, err := NewClient("", ":9735", []string{})
 	defer c.Close()
 	defer c.RemoveCache()
 	check(err)
 	rfile := test.NewRandomFile(".")
 	defer os.Remove(rfile)
 	th := FullSHA1(rfile)
-	m, h, err := c.PutFile(&Ctx{Hostname: c.Hostname}, nil, rfile)
+	m, h, err := c.PutFile(&Ctx{Namespace: c.Hostname}, nil, rfile)
 	check(err)
 	if h.Hash != th {
 		t.Errorf("File not put successfully")
@@ -35,7 +35,7 @@ func TestClientFile(t *testing.T) {
 	time.Sleep(2*time.Second)
 
 	rfile2 := fmt.Sprintf("%v%v", rfile, "_restored")
-	rr, err := c.GetFile(&Ctx{Hostname: c.Hostname}, m.Hash, rfile2)
+	rr, err := c.GetFile(&Ctx{Namespace: c.Hostname}, m.Hash, rfile2)
 	check(err)
 
 	h2 := FullSHA1(rfile2)
@@ -52,11 +52,11 @@ func TestClientFile(t *testing.T) {
 	err = ioutil.WriteFile(helloPath, d1, 0644)
 	check(err)
 	defer os.Remove(helloPath)
-	_, rw, err := c.PutFile(&Ctx{Hostname: c.Hostname}, nil, helloPath)
+	_, rw, err := c.PutFile(&Ctx{Namespace: c.Hostname}, nil, helloPath)
 	check(err)
 	time.Sleep(2*time.Second)
 	t.Logf("fileput hash: %v", rw.Hash)
-	fakeFile := NewFakeFile(c, &Ctx{Hostname: c.Hostname}, rw.Hash, rw.Size)
+	fakeFile := NewFakeFile(c, &Ctx{Namespace: c.Hostname}, rw.Hash, rw.Size)
 	fkr, err := fakeFile.read(0, 5)
 	check(err)
 	if !bytes.Equal(fkr, []byte("hello")) {

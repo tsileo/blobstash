@@ -16,13 +16,13 @@ func TestClientDir(t *testing.T) {
 		t.Fatalf("server error:\n%v", err)
 	}
 	defer s.Shutdown()
-	c, err := NewTestClient("")
+	c, err := NewClient("", ":9735", []string{})
 	defer c.Close()
 	defer c.RemoveCache()
 	check(err)
 	tdir := test.NewRandomTree(t, ".", 1)
 	defer os.RemoveAll(tdir)
-	meta, wr, err := c.PutDir(&Ctx{Hostname: c.Hostname}, tdir)
+	meta, wr, err := c.PutDir(&Ctx{Namespace: c.Hostname}, tdir)
 	check(err)
 
 	// Move this to test client
@@ -37,7 +37,7 @@ func TestClientDir(t *testing.T) {
 
 	time.Sleep(2*time.Second)
 
-	rr, err := c.GetDir(&Ctx{Hostname: c.Hostname}, meta.Hash, meta.Name+"_restored")
+	rr, err := c.GetDir(&Ctx{Namespace: c.Hostname}, meta.Hash, meta.Name+"_restored")
 	defer os.RemoveAll(meta.Name+"_restored")
 	check(err)
 	if !MatchResult(wr, rr) {
@@ -54,13 +54,13 @@ func TestClientArchiveDir(t *testing.T) {
 		t.Fatalf("server error:\n%v", err)
 	}
 	defer s.Shutdown()
-	c, err := NewTestClient("")
+	c, err := NewClient("", ":9735", []string{})
 	defer c.Close()
 	defer c.RemoveCache()
 	check(err)
 	tdir := test.NewRandomTree(t, ".", 1)
 	defer os.RemoveAll(tdir)
-	meta, wr, err := c.PutDir(&Ctx{Hostname: c.Hostname, Archive: true}, tdir)
+	meta, wr, err := c.PutDir(&Ctx{Namespace: c.Hostname, Archive: true}, tdir)
 	check(err)
 
 	// Move this to test client
@@ -75,7 +75,7 @@ func TestClientArchiveDir(t *testing.T) {
 
 	time.Sleep(2*time.Second)
 
-	rr, err := c.GetDir(&Ctx{Hostname: c.Hostname, Archive: true}, meta.Hash, meta.Name+"_restored")
+	rr, err := c.GetDir(&Ctx{Namespace: c.Hostname, Archive: true}, meta.Hash, meta.Name+"_restored")
 	defer os.RemoveAll(meta.Name+"_restored")
 	check(err)
 	if !MatchResult(wr, rr) {
@@ -96,18 +96,18 @@ func TestClientDirDeepRecursion(t *testing.T) {
 	}
 	defer s.Shutdown()
 
-	c, err := NewTestClient("")
+	c, err := NewClient("", ":9735", []string{})
 	check(err)
 	defer c.Close()
 	defer c.RemoveCache()
 	tdir := test.NewRandomTree(t, ".", 5)
 	defer os.RemoveAll(tdir)
-	meta, wr, err := c.PutDir(&Ctx{Hostname: c.Hostname}, tdir)
+	meta, wr, err := c.PutDir(&Ctx{Namespace: c.Hostname}, tdir)
 	check(err)
 
 	time.Sleep(3*time.Second)
 
-	rr, err := c.GetDir(&Ctx{Hostname: c.Hostname}, meta.Hash, meta.Name+"_restored")
+	rr, err := c.GetDir(&Ctx{Namespace: c.Hostname}, meta.Hash, meta.Name+"_restored")
 	defer os.RemoveAll(meta.Name + "_restored")
 	check(err)
 	if !MatchResult(wr, rr) {

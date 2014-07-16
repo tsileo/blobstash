@@ -16,12 +16,12 @@ func TestModelsMeta(t *testing.T) {
 		t.Fatalf("server error:\n%v", err)
 	}
 	defer s.Shutdown()
-	c, err := NewTestClient("")
+	c, err := NewClient("", ":9735", []string{})
 	check(err)
 	defer c.Close()
 	con := c.Conn()
 	defer con.Close()
-	ctx := &Ctx{Hostname: c.Hostname}
+	ctx := &Ctx{Namespace: c.Hostname}
 	_, err = redis.String(con.Do("TXINIT", ctx.Args()...))
 	check(err)
 	f := NewMeta()

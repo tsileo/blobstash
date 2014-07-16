@@ -38,7 +38,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
+	_ "syscall"
 
 	"code.google.com/p/snappy-go/snappy"
 	"github.com/bitly/go-simplejson"
@@ -444,9 +444,10 @@ func (backend *BlobsFileBackend) ropen(n int) error {
 func (backend *BlobsFileBackend) allocateBlobsFile() error {
 	log.Printf("BlobsFileBackend: running fallocate on BlobsFile %v", backend.filename(backend.n))
 	// fallocate 256MB
-	if err := syscall.Fallocate(int(backend.current.Fd()), 0x01, 0, backend.maxBlobsFileSize); err != nil {
-		return err
-	}
+	//if err := syscall.Fallocate(int(backend.current.Fd()), 0x01, 0, backend.maxBlobsFileSize); err != nil {
+	//	return err
+	//}
+	// TODO check
 	return nil
 }
 

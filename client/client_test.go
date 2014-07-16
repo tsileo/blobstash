@@ -17,14 +17,13 @@ func TestMultipleClientDifferentHosts(t *testing.T) {
 		t.Fatalf("server error:\n%v", err)
 	}
 	defer s.Shutdown()
-	c, err := NewTestClient("")
+	c, err := NewClient("", ":9735", []string{})
 	t.Logf("Testing with host=%v", c.Hostname)
-	defer c.Close()
-	defer c.RemoveCache()
+	
 	check(err)
 	tdir := test.NewRandomTree(t, ".", 1)
 	defer os.RemoveAll(tdir)
-	ctx := &Ctx{Hostname: c.Hostname}
+	ctx := &Ctx{Namespace: c.Hostname}
 	snap, meta, wr, err := c.Put(ctx, tdir)
 	check(err)
 	time.Sleep(2*time.Second)
@@ -35,16 +34,17 @@ func TestMultipleClientDifferentHosts(t *testing.T) {
 		t.Errorf("Directory %+v not restored successfully, wr:%+v/rr:%+v", meta, wr, rr)
 	}
 	check(test.Diff(tdir, meta.Name+"_restored"))
-
+	c.Close()
+	c.RemoveCache()
 	t.Logf("Testing with host=tomt0m2")
 
-	c2, err := NewTestClient("tomt0m2")
+	c2, err := NewClient("tomt0m2", ":9735", []string{})
 	defer c2.Close()
 	defer c2.RemoveCache()
 	check(err)
 	tdir2 := test.NewRandomTree(t, ".", 1)
 	defer os.RemoveAll(tdir2)
-	ctx2 := &Ctx{Hostname: "tomt0m2"}
+	ctx2 := &Ctx{Namespace: "tomt0m2"}
 	snap, meta, _, err = c2.Put(ctx2, tdir2)
 	check(err)
 	time.Sleep(2*time.Second)
@@ -63,13 +63,13 @@ func TestClient(t *testing.T) {
 	}
 	defer s.Shutdown()
 
-	c, err := NewTestClient("")
+	c, err := NewClient("", ":9735", []string{})
 	defer c.Close()
 	defer c.RemoveCache()
 	check(err)
 	tdir := test.NewRandomTree(t, ".", 1)
 	defer os.RemoveAll(tdir)
-	ctx := &Ctx{Hostname: c.Hostname}
+	ctx := &Ctx{Namespace: c.Hostname}
 	putSnap, _, _, err := c.Put(ctx, tdir)
 	check(err)
 

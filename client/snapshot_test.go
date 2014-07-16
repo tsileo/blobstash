@@ -22,13 +22,13 @@ func TestModelsSnapshots(t *testing.T) {
 		t.Fatalf("server error:\n%v", err)
 	}
 	defer s.Shutdown()
-	c, err := NewTestClient("")
+	c, err := NewClient("", ":9735", []string{})
 	check(err)
 	defer c.Close()
-	con := c.ConnWithCtx(&Ctx{Hostname: c.Hostname})
+	con := c.ConnWithCtx(&Ctx{Namespace: c.Hostname})
 	defer con.Close()
 	// NewSnapshot(hostname, path, type, ref)
-	f := NewSnapshot("hostname", "foo", "file", "bar")
+	f := NewSnapshot("hostname", "hostname", "foo", "file", "bar")
 	err = f.Save(con)
 	check(err)
 
