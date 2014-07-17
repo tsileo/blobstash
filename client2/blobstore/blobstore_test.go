@@ -2,6 +2,8 @@ package blobstore
 
 import (
 	"testing"
+	"bytes"
+	"time"
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/tsileo/blobstash/test"
@@ -29,9 +31,27 @@ func TestBlobStore(t *testing.T) {
 		t.Errorf("PING failed")
 	}
 	bs := New("")
-	exist, err := bs.Stat(&client.Ctx{Namespace: ""}, "f9c24e2abb82063a3ba2c44efd2d3c797f28ac90")
+	testCtx := &client.Ctx{Namespace: ""}
+	exist, err := bs.Stat(testCtx, "f9c24e2abb82063a3ba2c44efd2d3c797f28ac90")
 	check(err)
 	if exist {
 		t.Errorf("Blob f9c24e2abb82063a3ba2c44efd2d3c797f28ac90 should not exists")
+	}
+
+	blob := test.RandomBlob(nil)
+	err = bs.Put(testCtx, blob.Hash, blob.Data)
+	check(err)
+
+	// Wait a little since putting blob is an async operation
+	time.Sleep(500*time.Millisecond)
+
+	blobData, err := bs.Get(testCtx, blob.Hash)
+	if !bytes.Equal(blob.Data, blobData) {
+		t.Errorf("Blob corrupted, expected: %v, got %v", blob.Data, blobData)
+	}
+	exist, err = bs.Stat(testCtx, blob.Hash)
+	check(err)
+	if !exist {
+		t.Errorf("Blob %v should not exists", blob.Hash)
 	}
 }
