@@ -3,13 +3,12 @@ package client2
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/garyburd/redigo/redis"
 
-	"github.com/tsileo/blobstash/disklru"
-	"github.com/tsileo/blobstash/lru"
+	_ "github.com/tsileo/blobstash/disklru"
+	_"github.com/tsileo/blobstash/lru"
 )
 
 var (

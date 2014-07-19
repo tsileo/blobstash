@@ -1,13 +1,10 @@
-package blobstore
+package client2
 
 import (
 	"testing"
-	"bytes"
-	"time"
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/tsileo/blobstash/test"
-	"github.com/tsileo/blobstash/client"
 )
 
 func check(err error) {
@@ -30,12 +27,17 @@ func TestClient(t *testing.T) {
 	if _, err := c.Do("PING"); err != nil {
 		t.Errorf("PING failed")
 	}
-	cl := New("")
+	cl, err := New("")
+	check(err)
 	defer cl.Close()
-	testCtx := &client.Ctx{Namespace: ""}
+	testCtx := &Ctx{Namespace: ""}
 
-	con := cl.ConnWithCtx(testctx)
+	con := cl.ConnWithCtx(testCtx)
 	defer con.Close()
+
+	debug, err := test.GetDebug()
+	check(err)
+	t.Logf("Debug: %+v", debug)
 
 	// TODO test basic txinit/txcommit workflow
 	// TODO add and test the client reqbuffer
