@@ -10,7 +10,7 @@ type Transaction struct {
 	ReqBuffer *reqbuffer.ReqBuffer
 }
 
-func (client *Client) NewTransaction() *Transaction {
+func NewTransaction() *Transaction {
 	return &Transaction{
 		ReqBuffer: reqbuffer.NewReqBuffer(),
 	}

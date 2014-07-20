@@ -31,4 +31,3 @@ func (client *Client) HscanStruct(con redis.Conn, key string, s interface{}) (er
 func (client *Client) Llen(con redis.Conn, key string) (int, error) {
 	return redis.Int(con.Do("LLEN", key))
 }
-

@@ -67,7 +67,7 @@ func TestClient(t *testing.T) {
 		Field3: 10,
 	}
 
-	tx := cl.NewTransaction()
+	tx := NewTransaction()
 	tx.Sadd("anotherset", "e", "f", "g")
 	tx.Sadd("anotherset", "h")
 	tx.Hmset("hid", FormatStruct(ts)...)
@@ -82,6 +82,12 @@ func TestClient(t *testing.T) {
 	
 	if !reflect.DeepEqual([]string{"e", "f", "g", "h"}, res) {
 		t.Errorf("SMEMBERS failed got %q", res)
+	}
+
+	scard, err := cl.Scard(con, "anotherset")
+	check(err)
+	if scard != 4 {
+		t.Errorf("\"anotherset\" cardinality should be 4, got %v", scard)
 	}
 
 	ts2 := &TestStruct{}
