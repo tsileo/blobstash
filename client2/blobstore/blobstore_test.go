@@ -7,7 +7,7 @@ import (
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/tsileo/blobstash/test"
-	"github.com/tsileo/blobstash/client"
+	"github.com/tsileo/blobstash/client2/ctx"
 )
 
 func check(err error) {
@@ -31,7 +31,7 @@ func TestBlobStore(t *testing.T) {
 		t.Errorf("PING failed")
 	}
 	bs := New("")
-	testCtx := &client.Ctx{Namespace: ""}
+	testCtx := &ctx.Ctx{Namespace: ""}
 	exist, err := bs.Stat(testCtx, "f9c24e2abb82063a3ba2c44efd2d3c797f28ac90")
 	check(err)
 	if exist {

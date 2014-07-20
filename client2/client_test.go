@@ -2,9 +2,12 @@ package client2
 
 import (
 	"testing"
+	"time"
+	"reflect"
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/tsileo/blobstash/test"
+	"github.com/tsileo/blobstash/client2/ctx"
 )
 
 func check(err error) {
@@ -30,15 +33,45 @@ func TestClient(t *testing.T) {
 	cl, err := New("")
 	check(err)
 	defer cl.Close()
-	testCtx := &Ctx{Namespace: ""}
+	testCtx := &ctx.Ctx{Namespace: ""}
 
 	con := cl.ConnWithCtx(testCtx)
 	defer con.Close()
 
+	_, err = con.Do("TXINIT", testCtx.Args())
+	check(err)
+
+	_, err = con.Do("SADD", "testset", "a", "b", "c", "d")
+
+	_, err = con.Do("TXCOMMIT")
+	check(err)
+
+	time.Sleep(500*time.Millisecond)
+
+	res, err := cl.Smembers(con, "testset")
+	check(err)
+
+	if !reflect.DeepEqual([]string{"a", "b", "c", "d"}, res) {
+		t.Errorf("SMEMBERS failed got %q", res)
+	}
+
+	tx := cl.NewTransaction()
+	tx.Sadd("anotherset", "e", "f", "g")
+	tx.Sadd("anotherset", "h")
+	if err := cl.Commit(testCtx, tx); err != nil {
+		panic(err)
+	}
+	
+	time.Sleep(500*time.Millisecond)
+
+	res, err = cl.Smembers(con, "anotherset")
+	check(err)
+	
+	if !reflect.DeepEqual([]string{"e", "f", "g", "h"}, res) {
+		t.Errorf("SMEMBERS failed got %q", res)
+	}
+
 	debug, err := test.GetDebug()
 	check(err)
 	t.Logf("Debug: %+v", debug)
-
-	// TODO test basic txinit/txcommit workflow
-	// TODO add and test the client reqbuffer
 }

@@ -7,8 +7,8 @@ import (
 
 	"github.com/garyburd/redigo/redis"
 
-	_ "github.com/tsileo/blobstash/disklru"
-	_"github.com/tsileo/blobstash/lru"
+	"github.com/tsileo/blobstash/client2/ctx"
+	"github.com/tsileo/blobstash/client2/blobstore"
 )
 
 var (
@@ -19,17 +19,8 @@ type Client struct {
 	ServerAddr   string
 	Pool         *redis.Pool
 	Hostname     string
-}
 
-// Ctx holds a request context
-type Ctx struct {
-	Namespace string
-	MetaBlob bool // Flag for blob upload
-}
-
-// Args cast the Ctx into Redis.Args
-func (ctx *Ctx) Args() redis.Args {
-	return redis.Args{}.Add(ctx.Namespace)
+	BlobStore *blobstore.BlobStore
 }
 
 // New creates a new Client
@@ -44,6 +35,7 @@ func New(serverAddr string) (*Client, error) {
 	c := &Client{
 		ServerAddr: serverAddr,
 		Hostname: hostname,
+		BlobStore: blobstore.New(""),	
 	}
 	if err := c.setupPool(); err != nil {
 		return nil, err
@@ -77,9 +69,9 @@ func (client *Client) Conn() redis.Conn {
 
 // ConnWithCtx retrieves a connection from the connection Pool,
 // and set the provided Ctx
-func (client *Client) ConnWithCtx(ctx *Ctx) redis.Conn {
+func (client *Client) ConnWithCtx(cctx *ctx.Ctx) redis.Conn {
 	con := client.Pool.Get()
-	_, err := con.Do("SETCTX", ctx.Args()...)
+	_, err := con.Do("SETCTX", cctx.Args()...)
 	if err != nil {
 		panic(fmt.Errorf("failed to SETCTX: %v", err))
 	}
