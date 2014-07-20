@@ -1,9 +1,9 @@
 # BlobDB
 
-**BlobDB** is a database build on top of a content-addressable blob store, it includes:
+**BlobDB** is an immutable database build on top of a content-addressable blob store, it includes:
 
 - a HTTP blob store, for get/put/exists operations on blob.
-- a Redis-like data structure server with custom data type (data is stored in blobs), compatible the with [Redis Protocol](http://redis.io/topics/protocol).
+- a Redis-like data structure server with custom immutable data type (transactions are stored in blobs), compatible the with the [Redis Protocol](http://redis.io/topics/protocol).
 
 ## Blob store
 
@@ -11,10 +11,19 @@ You can deal directly with blob when needed using the HTTP API:
 
 $ curl -H "BlobStash-Hostname: ok2" -H "Blobstash-Meta: 0" -F "92a949fd41844e1bb8c6812cdea102708fde23a4=ok" http://0.0.0.0:9736/upload
 
-
 ## Data structure server
 
-Y
+BlobDB implements 4 immutable data types (no update/delete features by design):
+
+- Strings (GET/SET)
+- Sets (SADD/SMEMBERS/SCARD)
+- Hashes (HMSET/HLEN/HGET/HGETALL/HSCAN)
+- Indexed lists (LADD/LITER/LRANGE/LLEN/LINDEX)
+
+The database can only be updated during a transcation (TXINIT/TXCOMMIT),
+every request will be added to a ReqBuffer, and on commit, it will be dumped to JSON and saved as blob.
+
+BlobDB keep an index used for querying.
 
 ## Backend
 
@@ -38,9 +47,13 @@ You can combine backend as you wish, e.g. Mirror( Encrypt( S3() ), BlobsFile() )
 - A remote BlobDB instance? (not started yet)
 - Submit a pull request!
 
+## Namespace
+
+When interacting with BlobDB, you must specify a **namespace**, used to indicate ownership,
+
 ## Routing
 
-You can define rules to specify where blobs should be stored, depending on whether it's a meta blob or not, or depending on the host it come from.
+You can define rules to specify where blobs should be stored, depending on whether it's a meta blob or not, or depending on the namespace it come from.
 
 **Blobs are routed to the first matching rule backend, rules order is important.**
 
