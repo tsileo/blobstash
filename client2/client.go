@@ -35,7 +35,7 @@ func New(serverAddr string) (*Client, error) {
 	c := &Client{
 		ServerAddr: serverAddr,
 		Hostname: hostname,
-		BlobStore: blobstore.New(""),	
+		BlobStore: blobstore.New(""), // TODO make the client use ServerAddr port+1
 	}
 	if err := c.setupPool(); err != nil {
 		return nil, err

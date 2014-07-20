@@ -16,6 +16,12 @@ func check(err error) {
 	}
 }
 
+type TestStruct struct {
+	Field1 string
+	Field2 bool
+	Field3 int
+}
+
 func TestClient(t *testing.T) {
 	s, err := test.NewTestServer(t)
 	check(err)
@@ -55,9 +61,16 @@ func TestClient(t *testing.T) {
 		t.Errorf("SMEMBERS failed got %q", res)
 	}
 
+	ts := &TestStruct{
+		Field1: "ok",
+		Field2: true,
+		Field3: 10,
+	}
+
 	tx := cl.NewTransaction()
 	tx.Sadd("anotherset", "e", "f", "g")
 	tx.Sadd("anotherset", "h")
+	tx.Hmset("hid", FormatStruct(ts)...)
 	if err := cl.Commit(testCtx, tx); err != nil {
 		panic(err)
 	}
@@ -71,7 +84,16 @@ func TestClient(t *testing.T) {
 		t.Errorf("SMEMBERS failed got %q", res)
 	}
 
-	debug, err := test.GetDebug()
+	ts2 := &TestStruct{}
+	if err := cl.HscanStruct(con, "hid", ts2); err != nil {
+		panic(err)
+	}
+
+	if !reflect.DeepEqual(ts, ts2) {
+		t.Errorf("Failed to retrieve struct, expected: %+v, got: %+v", ts, ts2)
+	}
+
+	_, err = test.GetDebug()
 	check(err)
-	t.Logf("Debug: %+v", debug)
+	//t.Logf("Debug: %+v", debug)
 }
