@@ -136,7 +136,13 @@ func (up *Uploader) PutFile(cctx *ctx.Ctx, tx *client2.Transaction, path string)
 	meta.ModTime = fstat.ModTime().Format(time.RFC3339)
 	meta.Mode = uint32(fstat.Mode())
 	meta.ComputeHash()
-	tx.Hmset(meta.Hash, client2.FormatStruct(meta)...)
+	hlen, err := up.client.Hlen(con, meta.Hash)
+	if err != nil {
+		return nil, nil, err
+	}
+	if hlen == 0 {
+		tx.Hmset(meta.Hash, client2.FormatStruct(meta)...)
+	}
 	if newTx {
 		if err := up.client.Commit(cctx, tx); err != nil {
 			return meta, wr, err

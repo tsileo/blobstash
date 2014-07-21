@@ -16,6 +16,14 @@ func NewTransaction() *Transaction {
 	}
 }
 
+func (tx *Transaction) Merge(tx2 *Transaction) error {
+	return tx.ReqBuffer.Merge(tx2.ReqBuffer)
+}
+
+func (tx *Transaction) Len() int {
+	return tx.ReqBuffer.Len()
+}
+
 func (tx *Transaction) Reset() {
 	tx.ReqBuffer.Reset()
 }

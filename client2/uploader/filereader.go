@@ -65,7 +65,7 @@ type FakeFile struct {
 }
 
 
-// Create a new FakeFile instance.
+// NewFakeFile creates a new FakeFile instance.
 func NewFakeFile(client *client.Client, cctx *ctx.Ctx, ref string, size int) (f *FakeFile) {
 	// Needed for the blob routing
 	f = &FakeFile{
@@ -91,7 +91,7 @@ func (f *FakeFile) Close() error {
 	return nil
 }
 
-// Implement the io.ReaderAt interface
+// ReadAt implements the io.ReaderAt interface
 func (f *FakeFile) ReadAt(p []byte, offset int64) (n int, err error) {
 	if len(p) == 0 {
 		return 0, nil
@@ -175,12 +175,12 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 	return buf.Bytes(), err
 }
 
-// Reset the offset to 0
+// Reset resets the offset to 0
 func (f *FakeFile) Reset() {
 	f.offset = 0
 }
 
-// Read implement io.Reader
+// Read implements io.Reader
 func (f *FakeFile) Read(p []byte) (n int, err error) {
 	if len(p) == 0 {
 		return 0, nil

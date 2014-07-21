@@ -2,6 +2,7 @@ package uploader
 
 import (
 	"testing"
+	"time"
 
 	"github.com/garyburd/redigo/redis"
 
@@ -40,6 +41,8 @@ func TestUploader(t *testing.T) {
 
 	meta, wr, err := up.PutFile(testCtx, nil, "/work/writing/cube.md")
 	check(err)
+
+	time.Sleep(1*time.Second)
 
 	rr, err := up.GetFile(testCtx, meta.Hash, "cube2.md")
 	check(err)
