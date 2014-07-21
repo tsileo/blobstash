@@ -3,11 +3,12 @@ package backend
 import (
 	"bytes"
 	"crypto/rand"
-	"crypto/sha1"
 	"fmt"
 	"reflect"
 	"sort"
 	"testing"
+
+	"github.com/dchest/blake2b"
 )
 
 type BlobTest struct {
@@ -23,7 +24,7 @@ func RandomBlob(content []byte) *BlobTest {
 	} else {
 		data = content
 	}
-	sha := sha1.New()
+	sha := blake2b.New256()
 	sha.Write(data)
 	hash := fmt.Sprintf("%x", sha.Sum(nil))
 	return &BlobTest{hash, data}
@@ -32,7 +33,7 @@ func RandomBlob(content []byte) *BlobTest {
 func BigRandomBlob() *BlobTest {
 	data := make([]byte, 2097152)
 	rand.Read(data)
-	sha := sha1.New()
+	sha := blake2b.New256()
 	sha.Write(data)
 	hash := fmt.Sprintf("%x", sha.Sum(nil))
 	return &BlobTest{hash, data}

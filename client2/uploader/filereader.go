@@ -2,12 +2,12 @@ package uploader
 
 import (
 	"bytes"
-	"crypto/sha1"
 	"fmt"
 	"io"
 	"os"
 
 	"github.com/garyburd/redigo/redis"
+	"github.com/dchest/blake2b"
 
 	"github.com/tsileo/blobstash/client2/ctx"
 	client "github.com/tsileo/blobstash/client2"
@@ -21,7 +21,7 @@ func (up *Uploader) GetFile(cctx *ctx.Ctx, key, path string) (*ReadResult, error
 	if err != nil {
 		return nil, err
 	}
-	h := sha1.New()
+	h := blake2b.New256()
 	con := up.client.ConnWithCtx(cctx)
 	defer con.Close()
 	meta := NewMeta()

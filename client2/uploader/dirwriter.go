@@ -1,7 +1,6 @@
 package uploader
 
 import (
-	"crypto/sha1"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -9,6 +8,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/dchest/blake2b"
 
 	"github.com/tsileo/blobstash/client2/ctx"
 	client "github.com/tsileo/blobstash/client2"
@@ -96,7 +97,7 @@ func (up *Uploader) DirWriterNode(cctx *ctx.Ctx, node *node) {
 	defer node.mu.Unlock()
 	//log.Printf("DirWriterNode %v star", node)
 	node.wr = NewWriteResult()
-	h := sha1.New()
+	h := blake2b.New256()
 	hashes := []string{}
 
 	// Wait for all children node to finish

@@ -14,7 +14,6 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/rand"
-	"crypto/sha1"
 	"errors"
 	"expvar"
 	"fmt"
@@ -23,6 +22,8 @@ import (
 	"sync"
 
 	"github.com/tsileo/blobstash/backend"
+
+	"github.com/dchest/blake2b"
 
 	"code.google.com/p/go.crypto/nacl/secretbox"
 	"code.google.com/p/snappy-go/snappy"
@@ -121,9 +122,7 @@ func (b *EncryptBackend) Put(hash string, rawData []byte) (err error) {
 	secretbox.Seal(encData[0:0], data, &nonce, b.key)
 	out.Write(nonce[:])
 	out.Write(encData)
-	encSha1 := sha1.New()
-	encSha1.Write(out.Bytes())
-	encHash := fmt.Sprintf("%x", encSha1.Sum(nil))
+	encHash := fmt.Sprintf("%x", blake2b.Sum256(out.Bytes()))
 	b.dest.Put(encHash, out.Bytes())
 	b.Lock()
 	b.index[hash] = encHash

@@ -2,12 +2,13 @@ package uploader
 
 import (
 	"time"
-	"crypto/sha1"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"bytes"
+
+	"github.com/dchest/blake2b"
 
 	"github.com/tsileo/blobstash/rolling"
 	"github.com/tsileo/blobstash/client2/ctx"
@@ -33,17 +34,16 @@ func (up *Uploader) FileWriter(cctx *ctx.Ctx, tx *client2.Transaction, key, path
 		return writeResult, fmt.Errorf("can't open file %v: %v", path, err)
 	}
 	// Prepare the reader to compute the hash on the fly
-	fullHash := sha1.New()
+	fullHash := blake2b.New256()
 	freader := io.TeeReader(f, fullHash)
 	// Init the list that wil hold blobs reference
 	tx.Ladd(key, 0, "")
 
 	eof := false
 	i := 0
-	
 	// Prepare the blob writer
 	var buf bytes.Buffer
-	blobHash := sha1.New()
+	blobHash := blake2b.New256()
 	blobWriter := io.MultiWriter(&buf, blobHash, rs)
 	for {
 		b := make([]byte, 1)
@@ -95,7 +95,7 @@ func (up *Uploader) PutFile(cctx *ctx.Ctx, tx *client2.Transaction, path string)
 		return nil, nil, err
 	}
 	_, filename := filepath.Split(path)
-	sha := FullSHA1(path)
+	sha := FullHash(path)
 	con := up.client.ConnWithCtx(cctx)
 	defer con.Close()
 	newTx := false

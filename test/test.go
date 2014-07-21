@@ -16,18 +16,12 @@ import (
 	"fmt"
 	"path/filepath"
 	"sync"
-	"crypto/sha1"
 	"testing"
+
+	"github.com/dchest/blake2b"
 )
 
 const MaxRandomFileSize = 2 << 19
-
-// SHA1 is a helper to quickly compute the SHA1 hash of a []byte.
-func SHA1(data []byte) string {
-	h := sha1.New()
-	h.Write(data)
-	return fmt.Sprintf("%x", h.Sum(nil))
-}
 
 func NewRandomFile(path string) string {
 	filename := NewRandomName()
@@ -59,7 +53,7 @@ func NewRandomName() string {
 	if n != len(b) || err != nil {
 		panic(err)
 	}
-	return SHA1(b)
+	return fmt.Sprintf("%x", blake2b.Sum256(b))
 }
 
 func NewRandomFileWg(path string, wg *sync.WaitGroup) string {

@@ -1,16 +1,17 @@
 package uploader
 
 import (
-	"crypto/sha1"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/garyburd/redigo/redis"
+	"github.com/dchest/blake2b"
 
 	"github.com/tsileo/blobstash/client2/ctx"
 )
 
+// DirIter returns a slice of the given directory children
 func (up *Uploader) DirIter(con redis.Conn, ref string) ([]*Meta, error) {
 	metas := []*Meta{}
 	members, err := up.client.Smembers(con, ref)
@@ -27,9 +28,9 @@ func (up *Uploader) DirIter(con redis.Conn, ref string) ([]*Meta, error) {
 	return metas, nil
 }
 
-// Reconstruct a directory given its hash to path
+// GetDir restore the directory to path
 func (up *Uploader) GetDir(cctx *ctx.Ctx, key, path string) (rr *ReadResult, err error) {
-	fullHash := sha1.New()
+	fullHash := blake2b.New256()
 	rr = &ReadResult{}
 	err = os.Mkdir(path, os.ModeDir)
 	if err != nil {

@@ -3,41 +3,35 @@ package uploader
 import (
 	"bufio"
 	"crypto/rand"
-	"crypto/sha1"
 	"fmt"
 	"io"
 	"os"
 	"sync"
 
 	"github.com/dustin/go-humanize"
+	"github.com/dchest/blake2b"
 )
 
 var wrPool = sync.Pool{
 	New: func() interface{} { return &WriteResult{} },
 }
 
+// FullHash is helper to compute the Blake2B of the given file path.
+func FullHash(path string) string {
+	f, _ := os.Open(path)
+	defer f.Close()
+	reader := bufio.NewReader(f)
+	h := blake2b.New256()
+	_, _ = io.Copy(h, reader)
+	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
+
 // NewID generate a random hash that can be used as random key
 func NewID() string {
 	data := make([]byte, 16)
 	rand.Read(data)
-	return SHA1(data)
-}
-
-// SHA1 is a helper to quickly compute the SHA1 hash of a []byte.
-func SHA1(data []byte) string {
-	h := sha1.New()
-	h.Write(data)
-	return fmt.Sprintf("%x", h.Sum(nil))
-}
-
-// FullSHA1 is helper to compute the SHA1 of the given file path.
-func FullSHA1(path string) string {
-	f, _ := os.Open(path)
-	defer f.Close()
-	reader := bufio.NewReader(f)
-	h := sha1.New()
-	_, _ = io.Copy(h, reader)
-	return fmt.Sprintf("%x", h.Sum(nil))
+	return fmt.Sprintf("%x", blake2b.Sum256(data))
 }
 
 // a WriteResult keeps track of the number of blobs uploaded/skipped, and basic stats.

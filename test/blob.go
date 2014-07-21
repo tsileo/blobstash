@@ -2,8 +2,9 @@ package test
 
 import (
 	"crypto/rand"
-	"crypto/sha1"
 	"fmt"
+
+	"github.com/dchest/blake2b"
 )
 
 // BlobTest represents a fake blob for testing purpose.
@@ -21,8 +22,6 @@ func RandomBlob(content []byte) *BlobTest {
 	} else {
 		data = content
 	}
-	sha := sha1.New()
-	sha.Write(data)
-	hash := fmt.Sprintf("%x", sha.Sum(nil))
+	hash := fmt.Sprintf("%x", blake2b.Sum256(data))
 	return &BlobTest{hash, data}
 }

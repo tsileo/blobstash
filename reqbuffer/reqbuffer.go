@@ -10,7 +10,8 @@ import (
 	"fmt"
 	"bytes"
 	"sync"
-	"crypto/sha1"
+
+	"github.com/dchest/blake2b"
 )
 
 var (
@@ -77,10 +78,8 @@ func (rb *ReqBuffer) JSON() (string, []byte) {
 	data, _ := json.Marshal(rb.Reqs)
 	blob.Write(data)
 	// Compute the blob hash
-	h := sha1.New()
-	h.Write(blob.Bytes())
-	sha1 := fmt.Sprintf("%x", h.Sum(nil))
-	return sha1, blob.Bytes()
+	hash := fmt.Sprintf("%x", blake2b.Sum256(blob.Bytes()))
+	return hash, blob.Bytes()
 }
 
 // Return the number of commands stored.

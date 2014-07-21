@@ -1,10 +1,11 @@
 package uploader
 
 import (
-	"crypto/sha1"
 	"fmt"
 	"strconv"
 	"sync"
+
+	"github.com/dchest/blake2b"
 )
 
 var metaPool = sync.Pool{
@@ -33,14 +34,14 @@ func (m *Meta) free() {
 }
 
 func (m *Meta) metaKey() string {
-	sha := sha1.New()
-	sha.Write([]byte(m.Name))
-	sha.Write([]byte(m.Type))
-	sha.Write([]byte(strconv.Itoa(int(m.Size))))
-	sha.Write([]byte(strconv.Itoa(int(m.Mode))))
-	sha.Write([]byte(m.ModTime))
-	sha.Write([]byte(m.Ref))
-	return fmt.Sprintf("%x", sha.Sum(nil))
+	hash := blake2b.New256()
+	hash.Write([]byte(m.Name))
+	hash.Write([]byte(m.Type))
+	hash.Write([]byte(strconv.Itoa(int(m.Size))))
+	hash.Write([]byte(strconv.Itoa(int(m.Mode))))
+	hash.Write([]byte(m.ModTime))
+	hash.Write([]byte(m.Ref))
+	return fmt.Sprintf("%x", hash.Sum(nil))
 }
 
 func NewMeta() *Meta {

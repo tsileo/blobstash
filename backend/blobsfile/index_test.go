@@ -1,10 +1,11 @@
 package blobsfile
 
 import (
-	"crypto/sha1"
 	"fmt"
 	"os"
 	"testing"
+
+	"github.com/dchest/blake2b"
 )
 
 func TestBlobsIndex(t *testing.T) {
@@ -14,7 +15,7 @@ func TestBlobsIndex(t *testing.T) {
 	defer os.RemoveAll("tmp_test_index")
 
 	bp := &BlobPos{n: 1, offset: 5, size: 10}
-	h := fmt.Sprintf("%x", sha1.New().Sum([]byte("fakehash")))
+	h := fmt.Sprintf("%x", blake2b.Sum256([]byte("fakehash")))
 	err = index.SetPos(h, bp)
 	check(err)
 	bp3, err := index.GetPos(h)

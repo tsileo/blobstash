@@ -28,7 +28,6 @@ package blobsfile
 
 import (
 	"bytes"
-	"crypto/sha1"
 	"encoding/binary"
 	"encoding/hex"
 	"expvar"
@@ -42,6 +41,7 @@ import (
 
 	"code.google.com/p/snappy-go/snappy"
 	"github.com/bitly/go-simplejson"
+	"github.com/dchest/blake2b"
 
 	"github.com/tsileo/blobstash/config/pathutil"
 )
@@ -55,7 +55,8 @@ const (
 )
 
 const (
-	Overhead = 24 // 24 bytes of meta-data are stored for each blob
+	Overhead = 36 // 24 bytes of meta-data are stored for each blob
+	hashSize = 32
 )
 
 var (
@@ -65,13 +66,6 @@ var (
 	blobsUploaded   = expvar.NewMap("blobsfile-blobs-uploaded")
 	blobsDownloaded = expvar.NewMap("blobsfile-blobs-downloaded")
 )
-
-// SHA1 is a helper to quickly compute the SHA1 hash of a []byte.
-func SHA1(data []byte) string {
-	h := sha1.New()
-	h.Write(data)
-	return fmt.Sprintf("%x", h.Sum(nil))
-}
 
 type BlobsFileBackend struct {
 	// Directory which holds the blobsfile
@@ -252,7 +246,7 @@ func (backend *BlobsFileBackend) reindex() error {
 		blobsIndexed := 0
 		for {
 			// SCAN
-			blobHash := make([]byte, sha1.Size)
+			blobHash := make([]byte, hashSize)
 			blobSizeEncoded := make([]byte, 4)
 			_, err := blobsfile.Read(blobHash)
 			if err == io.EOF {
@@ -283,7 +277,7 @@ func (backend *BlobsFileBackend) reindex() error {
 			} else {
 				blob = rawBlob
 			}
-			hash := SHA1(blob)
+			hash := fmt.Sprintf("%x", blake2b.Sum256(blob))
 			if fmt.Sprintf("%x", blobHash) != hash {
 				return fmt.Errorf("hash doesn't match %v/%v", fmt.Sprintf("%x", blobHash), hash)
 			}
@@ -503,7 +497,7 @@ func (backend *BlobsFileBackend) Exists(hash string) bool {
 }
 
 func (backend *BlobsFileBackend) decodeBlob(data []byte) (size int, blob []byte) {
-	size = int(binary.LittleEndian.Uint32(data[sha1.Size:Overhead]))
+	size = int(binary.LittleEndian.Uint32(data[hashSize:Overhead]))
 	blob = make([]byte, size)
 	copy(blob, data[Overhead:])
 	if backend.snappyCompression {
@@ -513,16 +507,16 @@ func (backend *BlobsFileBackend) decodeBlob(data []byte) (size int, blob []byte)
 		}
 		blob = blobDecoded
 	}
-	h := sha1.New()
+	h := blake2b.New256()
 	h.Write(blob)
-	if !bytes.Equal(h.Sum(nil), data[0:sha1.Size]) {
-		panic(fmt.Errorf("Hash doesn't match %x != %x", h.Sum(nil), data[0:sha1.Size]))
+	if !bytes.Equal(h.Sum(nil), data[0:hashSize]) {
+		panic(fmt.Errorf("Hash doesn't match %x != %x", h.Sum(nil), data[0:hashSize]))
 	}
 	return
 }
 
 func (backend *BlobsFileBackend) encodeBlob(blob []byte) (size int, data []byte) {
-	h := sha1.New()
+	h := blake2b.New256()
 	h.Write(blob)
 
 	if backend.snappyCompression {
@@ -535,7 +529,7 @@ func (backend *BlobsFileBackend) encodeBlob(blob []byte) (size int, data []byte)
 	size = len(blob)
 	data = make([]byte, len(blob)+Overhead)
 	copy(data[:], h.Sum(nil))
-	binary.LittleEndian.PutUint32(data[sha1.Size:], uint32(size))
+	binary.LittleEndian.PutUint32(data[hashSize:], uint32(size))
 	copy(data[Overhead:], blob)
 	return
 }
