@@ -36,7 +36,7 @@ var (
 	blobsDownloaded = expvar.NewMap("encrypt-blobs-downloaded")
 )
 
-var headerSize = 59
+var headerSize = 86
 
 func GenerateNonce(nonce *[24]byte) (err error) {
 	_, err = io.ReadFull(rand.Reader, nonce[:])

@@ -9,7 +9,7 @@ import (
 )
 
 func TestEncryptBackend(t *testing.T) {
-	dest := blobsfile.New("tmp_blobsfile_enc")
+	dest := blobsfile.New("tmp_blobsfile_enc", 0, false, false)
 	defer os.RemoveAll("tmp_blobsfile_enc")
 	keyPath := "/work/opensource/homedb_gopath/src/github.com/tsileo/blobstash/keytest.key"
 	b := New(keyPath, dest)
