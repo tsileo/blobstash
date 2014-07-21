@@ -1,6 +1,6 @@
 # BlobDB
 
-**BlobDB** is an immutable database build on top of a content-addressable blob store, it includes:
+**BlobDB** is an immutable database build on top of a content-addressable ([BLAKE2b](https://blake2.net) hash) blob store, it includes:
 
 - a HTTP blob store, for get/put/exists operations on blob.
 - a Redis-like data structure server with custom immutable data type (transactions are stored in blobs), compatible the with the [Redis Protocol](http://redis.io/topics/protocol).
