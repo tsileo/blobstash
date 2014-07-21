@@ -3,6 +3,7 @@ package encrypt
 import (
 	"os"
 	"testing"
+	"path/filepath"
 
 	"github.com/tsileo/blobstash/backend"
 	"github.com/tsileo/blobstash/backend/blobsfile"
@@ -11,7 +12,11 @@ import (
 func TestEncryptBackend(t *testing.T) {
 	dest := blobsfile.New("tmp_blobsfile_enc", 0, false, false)
 	defer os.RemoveAll("tmp_blobsfile_enc")
-	keyPath := "/work/opensource/homedb_gopath/src/github.com/tsileo/blobstash/keytest.key"
+	gopath := os.Getenv("GOPATH")
+	if gopath == "" {
+		panic("GOPATH env variable not set")
+	}
+	keyPath := filepath.Join(gopath, "src/github.com/tsileo/blobstash/test/data/key.testkey")
 	b := New(keyPath, dest)
 	backend.Test(t, b)
 }
