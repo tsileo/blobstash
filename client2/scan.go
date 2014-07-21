@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
-	
+
 	"github.com/garyburd/redigo/redis"
 )
 
