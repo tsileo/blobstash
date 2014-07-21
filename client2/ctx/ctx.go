@@ -14,3 +14,8 @@ type Ctx struct {
 func (ctx *Ctx) Args() redis.Args {
 	return redis.Args{}.Add(ctx.Namespace)
 }
+
+func (ctx *Ctx) Meta() *Ctx {
+	ctx.MetaBlob = true
+	return ctx
+}

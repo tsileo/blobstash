@@ -38,8 +38,10 @@ func TestUploader(t *testing.T) {
 	}
 	testCtx := &ctx.Ctx{Namespace: ""}
 
-	meta, err := up.PutFile(testCtx, nil, "/work/writing/cube.md")
+	meta, wr, err := up.PutFile(testCtx, nil, "/work/writing/cube.md")
 	check(err)
 
-	t.Logf("%v %v %v", up, testCtx, meta)
+	rr, err := up.GetFile(testCtx, meta.Hash, "cube2.md")
+	check(err)
+	t.Logf("%v %v %v %v %v", up, testCtx, meta, wr, rr)
 }

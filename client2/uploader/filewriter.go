@@ -1,7 +1,6 @@
 package uploader
 
 import (
-	"bufio"
 	"time"
 	"crypto/sha1"
 	"fmt"
@@ -20,54 +19,44 @@ var (
 	MaxBlobSize = 1<<20 // 1MB
 )
 
-// SHA1 is a helper to quickly compute the SHA1 hash of a []byte.
-func SHA1(data []byte) string {
-	h := sha1.New()
-	h.Write(data)
-	return fmt.Sprintf("%x", h.Sum(nil))
-}
-
-// FullSHA1 is helper to compute the SHA1 of the given file path.
-func FullSHA1(path string) string {
-	f, _ := os.Open(path)
-	defer f.Close()
-	reader := bufio.NewReader(f)
-	h := sha1.New()
-	_, _ = io.Copy(h, reader)
-	return fmt.Sprintf("%x", h.Sum(nil))
-}
-
 // FileWriter reads the file byte and byte and upload it,
 // chunk by chunk, it also constructs the file index .
-func (up *Uploader) FileWriter(cctx *ctx.Ctx, tx *client2.Transaction, key, path string) (error) {
+func (up *Uploader) FileWriter(cctx *ctx.Ctx, tx *client2.Transaction, key, path string) (*WriteResult, error) {
+	writeResult := NewWriteResult()
+	// Init the rolling checksum
 	window := 64
 	rs := rolling.New(window)
+	// Open the file
 	f, err := os.Open(path)
 	defer f.Close()
 	if err != nil {
-		return fmt.Errorf("can't open file %v: %v", path, err)
+		return writeResult, fmt.Errorf("can't open file %v: %v", path, err)
 	}
-	freader := bufio.NewReader(f)
-	tx.Ladd(key, 0, "")
-	var buf bytes.Buffer
+	// Prepare the reader to compute the hash on the fly
 	fullHash := sha1.New()
+	freader := io.TeeReader(f, fullHash)
+	// Init the list that wil hold blobs reference
+	tx.Ladd(key, 0, "")
+
 	eof := false
 	i := 0
-	size := 0
+	
+	// Prepare the blob writer
+	var buf bytes.Buffer
+	blobHash := sha1.New()
+	blobWriter := io.MultiWriter(&buf, blobHash, rs)
 	for {
 		b := make([]byte, 1)
 		_, err := freader.Read(b)
 		if err == io.EOF {
 			eof = true
 		} else {
-			rs.Write(b)
-			buf.Write(b)
+			blobWriter.Write(b)
 			i++
 		}
 		onSplit := rs.OnSplit()
 		if (onSplit && (buf.Len() > MinBlobSize)) || buf.Len() >= MaxBlobSize || eof {
-			nsha := SHA1(buf.Bytes())
-			fullHash.Write(buf.Bytes())
+			nsha := fmt.Sprintf("%x", blobHash.Sum(nil))
 			// Check if the blob exists
 			exists, err := up.client.BlobStore.Stat(cctx, nsha)
 			if err != nil {
@@ -77,38 +66,33 @@ func (up *Uploader) FileWriter(cctx *ctx.Ctx, tx *client2.Transaction, key, path
 				if err := up.client.BlobStore.Put(cctx, nsha, buf.Bytes()); err != nil {
 					panic(fmt.Errorf("failed to PUT blob %v", err))
 				}
-				//writeResult.BlobsUploaded++
-				//writeResult.SizeUploaded += buf.Len()
-				// Check if the hash returned correspond to the locally computed hash
-				//if rsha != nsha {
-				//	panic(fmt.Sprintf("Corrupted data: %+v/%+v", rsha, nsha))
-				//}
+				writeResult.BlobsUploaded++
+				writeResult.SizeUploaded += buf.Len()
+			} else {
+				writeResult.SizeSkipped += buf.Len()
+				writeResult.BlobsSkipped++
 			}
-			//} else {
-			//	writeResult.SizeSkipped += buf.Len()
-			//	writeResult.BlobsSkipped++
-			//}
-			//writeResult.Size += buf.Len()
-			size += buf.Len()
+			writeResult.Size += buf.Len()
 			buf.Reset()
-			//writeResult.BlobsCount++
+			blobHash.Reset()
+			writeResult.BlobsCount++
 			// Save the location and the blob hash into a sorted list (with the offset as index)
-			tx.Ladd(key, size, nsha)
+			tx.Ladd(key, writeResult.Size, nsha)
 		}
 		if eof {
 			break
 		}
 	}
-	//writeResult.Hash = fmt.Sprintf("%x", fullHash.Sum(nil))
-	//writeResult.FilesCount++
-	//writeResult.FilesUploaded++
-	return nil
+	writeResult.Hash = fmt.Sprintf("%x", fullHash.Sum(nil))
+	writeResult.FilesCount++
+	writeResult.FilesUploaded++
+	return writeResult, nil
 }
 
-func (up *Uploader) PutFile(cctx *ctx.Ctx, tx *client2.Transaction, path string) (*Meta, error) {
+func (up *Uploader) PutFile(cctx *ctx.Ctx, tx *client2.Transaction, path string) (*Meta, *WriteResult, error) {
 	fstat, err := os.Stat(path)
 	if os.IsNotExist(err) {
-		return nil, err
+		return nil, nil, err
 	}
 	_, filename := filepath.Split(path)
 	sha := FullSHA1(path)
@@ -123,18 +107,30 @@ func (up *Uploader) PutFile(cctx *ctx.Ctx, tx *client2.Transaction, path string)
 	// if so we skip it.
 	cnt, err := up.client.Llen(con, sha)
 	if err != nil {
-		return nil, fmt.Errorf("error LLEN %v: %v", sha, err)
+		return nil, nil, fmt.Errorf("error LLEN %v: %v", sha, err)
+	}
+	wr := NewWriteResult()
+	if cnt > 0 || fstat.Size() == 0 {
+		wr.Hash = sha
+		wr.AlreadyExists = true
+		wr.FilesSkipped++
+		wr.FilesCount++
+		wr.SizeSkipped = int(fstat.Size())
+		wr.Size = wr.SizeSkipped
+		wr.BlobsCount += cnt
+		wr.BlobsSkipped += cnt
 	}
 	if cnt == 0 {
-		if err := up.FileWriter(cctx, tx, sha, path); err != nil {
-			return nil, err
-		}	
+		cwr, err := up.FileWriter(cctx, tx, sha, path)
+		if err != nil {
+			return nil, nil, err
+		}
+		wr.free()
+		wr = cwr
 	}
 	meta := NewMeta()
-	// TODO test the filewriter hash ?
 	meta.Ref = sha
 	meta.Name = filename
-	//if wr.Size != fstat.Size()
 	meta.Size = int(fstat.Size())
 	meta.Type = "file"
 	meta.ModTime = fstat.ModTime().Format(time.RFC3339)
@@ -143,8 +139,8 @@ func (up *Uploader) PutFile(cctx *ctx.Ctx, tx *client2.Transaction, path string)
 	tx.Hmset(meta.Hash, client2.FormatStruct(meta)...)
 	if newTx {
 		if err := up.client.Commit(cctx, tx); err != nil {
-			return nil, err
+			return meta, wr, err
 		}
 	}
-	return meta, nil
+	return meta, wr, nil
 }

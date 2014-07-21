@@ -44,7 +44,7 @@ func (tx *Transaction) dump() (string, []byte) {
 
 func (client *Client) Commit(cctx *ctx.Ctx, tx *Transaction) error {
 	hash, js := tx.dump()
-	if err := client.BlobStore.Put(&ctx.Ctx{MetaBlob: true, Namespace: cctx.Namespace}, hash, js); err != nil {
+	if err := client.BlobStore.Put(cctx.Meta(), hash, js); err != nil {
 		return err
 	}
 	return nil
