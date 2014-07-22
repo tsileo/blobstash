@@ -22,6 +22,11 @@ func (client *Client) Get(con redis.Conn, key string) (string, error) {
 	return redis.String(con.Do("GET", key))
 }
 
+// Get fetch the value for the given key.
+func (client *Client) GetInt(con redis.Conn, key string) (int, error) {
+	return redis.Int(con.Do("GET", key))
+}
+
 // Hlen returns the number of fields for the given hash key.
 func (client *Client) Hlen(con redis.Conn, key string) (int, error) {
 	return redis.Int(con.Do("HLEN", key))

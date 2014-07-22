@@ -16,6 +16,8 @@ func (ctx *Ctx) Args() redis.Args {
 }
 
 func (ctx *Ctx) Meta() *Ctx {
-	ctx.MetaBlob = true
-	return ctx
+	return &Ctx{
+		Namespace: ctx.Namespace,
+		MetaBlob: true,
+	}
 }

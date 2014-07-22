@@ -149,7 +149,7 @@ func (txm *TxManager) LoadIncomingBlob(hash string, blob []byte) error {
 	cnt := txm.db.Sismember("_meta", hash)
 	if cnt == 0 {
 		if !bytes.Equal(blob[0:MetaBlobOverhead], []byte(MetaBlobHeader)) {
-			return fmt.Errorf("blob %v from is not a valid meta blob", hash)
+			return fmt.Errorf("blob %v from is not a valid meta blob\n[\n%v\n]\n", hash, string(blob))
 		}
 		go SendDebugData(fmt.Sprintf("server: meta blob %v not yet loaded", hash))
 
