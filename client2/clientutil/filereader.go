@@ -1,4 +1,4 @@
-package uploader
+package clientutil
 
 import (
 	"bytes"
@@ -14,7 +14,7 @@ import (
 )
 
 // Download a file by its hash to path
-func (up *Uploader) GetFile(cctx *ctx.Ctx, key, path string) (*ReadResult, error) {
+func GetFile(cl *client.Client, cctx *ctx.Ctx, key, path string) (*ReadResult, error) {
 	readResult := &ReadResult{}
 	buf, err := os.Create(path)
 	defer buf.Close()
@@ -22,14 +22,14 @@ func (up *Uploader) GetFile(cctx *ctx.Ctx, key, path string) (*ReadResult, error
 		return nil, err
 	}
 	h := blake2b.New256()
-	con := up.client.ConnWithCtx(cctx)
+	con := cl.ConnWithCtx(cctx)
 	defer con.Close()
 	meta := NewMeta()
-	if err := up.client.HscanStruct(con, key, meta); err != nil {
+	if err := cl.HscanStruct(con, key, meta); err != nil {
 		return nil, err
 	}
 	meta.Hash = key
-	ffile := NewFakeFile(up.client, cctx, meta.Ref, meta.Size)
+	ffile := NewFakeFile(cl, cctx, meta.Ref, meta.Size)
 	defer ffile.Close()
 	fileReader := io.TeeReader(ffile, h)
 	io.Copy(buf, fileReader)

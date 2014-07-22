@@ -1,4 +1,4 @@
-package uploader
+package clientutil
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 	"github.com/garyburd/redigo/redis"
 
 	"github.com/tsileo/blobstash/test"
-	"github.com/tsileo/blobstash/client2"
+	client "github.com/tsileo/blobstash/client2"
 	"github.com/tsileo/blobstash/client2/ctx"
 )
 
@@ -32,11 +32,9 @@ func TestUploader(t *testing.T) {
 		t.Errorf("PING failed")
 	}
 
-	cl, err := client2.New("")
+	cl, err := client.New("")
 	check(err)
-	up := &Uploader{
-		client: cl,
-	}
+	up := NewUploader(cl)
 	testCtx := &ctx.Ctx{Namespace: ""}
 
 	meta, wr, err := up.PutFile(testCtx, nil, "/work/writing/cube.md")
@@ -44,7 +42,7 @@ func TestUploader(t *testing.T) {
 
 	time.Sleep(1*time.Second)
 
-	rr, err := up.GetFile(testCtx, meta.Hash, "cube2.md")
+	rr, err := GetFile(cl, testCtx, meta.Hash, "cube2.md")
 	check(err)
 	t.Logf("%v %v %v %v %v", up, testCtx, meta, wr, rr)
 }

@@ -1,4 +1,4 @@
-package uploader
+package clientutil
 
 import (
 	"time"
@@ -12,7 +12,7 @@ import (
 
 	"github.com/tsileo/blobstash/rolling"
 	"github.com/tsileo/blobstash/client2/ctx"
-	"github.com/tsileo/blobstash/client2"
+	client "github.com/tsileo/blobstash/client2"
 )
 
 var (
@@ -22,7 +22,7 @@ var (
 
 // FileWriter reads the file byte and byte and upload it,
 // chunk by chunk, it also constructs the file index .
-func (up *Uploader) FileWriter(cctx *ctx.Ctx, tx *client2.Transaction, key, path string) (*WriteResult, error) {
+func (up *Uploader) FileWriter(cctx *ctx.Ctx, tx *client.Transaction, key, path string) (*WriteResult, error) {
 	writeResult := NewWriteResult()
 	// Init the rolling checksum
 	window := 64
@@ -89,7 +89,9 @@ func (up *Uploader) FileWriter(cctx *ctx.Ctx, tx *client2.Transaction, key, path
 	return writeResult, nil
 }
 
-func (up *Uploader) PutFile(cctx *ctx.Ctx, tx *client2.Transaction, path string) (*Meta, *WriteResult, error) {
+func (up *Uploader) PutFile(cctx *ctx.Ctx, tx *client.Transaction, path string) (*Meta, *WriteResult, error) {
+	up.StartUpload()
+	defer up.UploadDone()
 	fstat, err := os.Stat(path)
 	if os.IsNotExist(err) {
 		return nil, nil, err
@@ -101,7 +103,7 @@ func (up *Uploader) PutFile(cctx *ctx.Ctx, tx *client2.Transaction, path string)
 	newTx := false
 	if tx == nil {
 		newTx = true
-		tx = client2.NewTransaction()
+		tx = client.NewTransaction()
 	}
 	// First we check if the file isn't already uploaded,
 	// if so we skip it.
@@ -141,7 +143,7 @@ func (up *Uploader) PutFile(cctx *ctx.Ctx, tx *client2.Transaction, path string)
 		return nil, nil, err
 	}
 	if hlen == 0 {
-		tx.Hmset(meta.Hash, client2.FormatStruct(meta)...)
+		tx.Hmset(meta.Hash, client.FormatStruct(meta)...)
 	}
 	if newTx {
 		if err := up.client.Commit(cctx, tx); err != nil {

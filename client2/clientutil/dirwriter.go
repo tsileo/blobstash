@@ -1,4 +1,4 @@
-package uploader
+package clientutil
 
 import (
 	"fmt"
@@ -119,8 +119,8 @@ func (up *Uploader) DirWriterNode(cctx *ctx.Ctx, node *node) {
 		cnode.mu.Unlock()
 	}
 
-	//client.StartDirUpload()
-	//defer client.DirUploadDone()
+	up.StartDirUpload()
+	defer up.DirUploadDone()
 
 	sort.Strings(hashes)
 	for _, hash := range hashes {
@@ -130,7 +130,7 @@ func (up *Uploader) DirWriterNode(cctx *ctx.Ctx, node *node) {
 
 	con := up.client.ConnWithCtx(cctx)
 	defer con.Close()
-	
+
 	cnt, err := up.client.Scard(con, node.wr.Hash)
 	if err != nil {
 		node.err = err
