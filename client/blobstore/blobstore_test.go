@@ -1,13 +1,13 @@
 package blobstore
 
 import (
-	"testing"
 	"bytes"
+	"testing"
 	"time"
 
 	"github.com/garyburd/redigo/redis"
+	"github.com/tsileo/blobstash/client/ctx"
 	"github.com/tsileo/blobstash/test"
-	"github.com/tsileo/blobstash/client2/ctx"
 )
 
 func check(err error) {
@@ -43,7 +43,7 @@ func TestBlobStore(t *testing.T) {
 	check(err)
 
 	// Wait a little since putting blob is an async operation
-	time.Sleep(500*time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 
 	blobData, err := bs.Get(testCtx, blob.Hash)
 	if !bytes.Equal(blob.Data, blobData) {

@@ -1,9 +1,9 @@
-package client2
+package client
 
 import (
-	"strconv"
+	"github.com/tsileo/blobstash/client/ctx"
 	"github.com/tsileo/blobstash/reqbuffer"
-	"github.com/tsileo/blobstash/client2/ctx"
+	"strconv"
 )
 
 type Transaction struct {

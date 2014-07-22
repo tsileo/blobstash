@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/tsileo/blobstash/client2/ctx"
+	"github.com/tsileo/blobstash/client/ctx"
 )
 
 // ErrBlobNotFound is returned from a get/stat request

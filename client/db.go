@@ -1,4 +1,4 @@
-package client2
+package client
 
 import (
 	"fmt"
@@ -28,7 +28,7 @@ func (client *Client) Hlen(con redis.Conn, key string) (int, error) {
 }
 
 // HscanStruct scans alternating names and values of the hash to given struct.
-func (client *Client) HscanStruct(con redis.Conn, key string, s interface{}) (error) {
+func (client *Client) HscanStruct(con redis.Conn, key string, s interface{}) error {
 	reply, err := redis.Values(con.Do("HGETALL", key))
 	if err != nil {
 		return err

@@ -5,11 +5,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/garyburd/redigo/redis"
 	"github.com/dchest/blake2b"
+	"github.com/garyburd/redigo/redis"
 
-	"github.com/tsileo/blobstash/client2/ctx"
-	client "github.com/tsileo/blobstash/client2"
+	"github.com/tsileo/blobstash/client"
+	"github.com/tsileo/blobstash/client/ctx"
 )
 
 // DirIter returns a slice of the given directory children

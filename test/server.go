@@ -54,13 +54,13 @@ func (server *TestServer) Out() string {
 
 // BuildServer build the "blobdb" binary and return its path
 func (server *TestServer) BuildServer() (string, error) {
-	blobDbDir := filepath.Join(server.rootDir, "cmd/blobdb")
+	blobDbDir := filepath.Join(server.rootDir, "cmd/blobstash")
 	cmd := exec.Command("go", "install")
 	cmd.Dir = blobDbDir
-	server.t.Log("Running go install to build blobDB...")
+	server.t.Log("Running go install to build blobstash...")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("Error installing blobdb: %v, %s", err, string(out))
+		return "", fmt.Errorf("Error installing blobstash: %v, %s", err, string(out))
 	}
 	server.t.Log("Done")
 	return filepath.Join(server.binDir, "blobdb"), nil

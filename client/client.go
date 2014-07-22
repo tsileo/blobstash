@@ -1,4 +1,4 @@
-package client2
+package client
 
 import (
 	"fmt"
@@ -7,8 +7,8 @@ import (
 
 	"github.com/garyburd/redigo/redis"
 
-	"github.com/tsileo/blobstash/client2/ctx"
-	"github.com/tsileo/blobstash/client2/blobstore"
+	"github.com/tsileo/blobstash/client/blobstore"
+	"github.com/tsileo/blobstash/client/ctx"
 )
 
 var (
@@ -16,9 +16,9 @@ var (
 )
 
 type Client struct {
-	ServerAddr   string
-	Pool         *redis.Pool
-	Hostname     string
+	ServerAddr string
+	Pool       *redis.Pool
+	Hostname   string
 
 	BlobStore *blobstore.BlobStore
 }
@@ -34,8 +34,8 @@ func New(serverAddr string) (*Client, error) {
 	}
 	c := &Client{
 		ServerAddr: serverAddr,
-		Hostname: hostname,
-		BlobStore: blobstore.New(""), // TODO make the client use ServerAddr port+1
+		Hostname:   hostname,
+		BlobStore:  blobstore.New(""), // TODO make the client use ServerAddr port+1
 	}
 	if err := c.setupPool(); err != nil {
 		return nil, err

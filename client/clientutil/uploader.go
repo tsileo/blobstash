@@ -1,6 +1,7 @@
 package clientutil
+
 import (
-	client "github.com/tsileo/blobstash/client2"
+	"github.com/tsileo/blobstash/client"
 )
 
 var (
@@ -11,14 +12,14 @@ var (
 type Uploader struct {
 	client *client.Client
 
-	uploader chan struct{}
+	uploader    chan struct{}
 	dirUploader chan struct{}
 }
 
 func NewUploader(cl *client.Client) *Uploader {
 	return &Uploader{
-		client: cl,
-		uploader: make(chan struct{}, uploader),
+		client:      cl,
+		uploader:    make(chan struct{}, uploader),
 		dirUploader: make(chan struct{}, dirUploader),
 	}
 }

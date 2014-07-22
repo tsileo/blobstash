@@ -1,13 +1,13 @@
-package client2
+package client
 
 import (
+	"reflect"
 	"testing"
 	"time"
-	"reflect"
 
 	"github.com/garyburd/redigo/redis"
+	"github.com/tsileo/blobstash/client/ctx"
 	"github.com/tsileo/blobstash/test"
-	"github.com/tsileo/blobstash/client2/ctx"
 )
 
 func check(err error) {
@@ -52,7 +52,7 @@ func TestClient(t *testing.T) {
 	_, err = con.Do("TXCOMMIT")
 	check(err)
 
-	time.Sleep(500*time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 
 	res, err := cl.Smembers(con, "testset")
 	check(err)
@@ -74,12 +74,12 @@ func TestClient(t *testing.T) {
 	if err := cl.Commit(testCtx, tx); err != nil {
 		panic(err)
 	}
-	
-	time.Sleep(500*time.Millisecond)
+
+	time.Sleep(500 * time.Millisecond)
 
 	res, err = cl.Smembers(con, "anotherset")
 	check(err)
-	
+
 	if !reflect.DeepEqual([]string{"e", "f", "g", "h"}, res) {
 		t.Errorf("SMEMBERS failed got %q", res)
 	}

@@ -13,13 +13,13 @@ var metaPool = sync.Pool{
 }
 
 type Meta struct {
-	Name string `redis:"name"`
-	Type string `redis:"type"`
-	Size int    `redis:"size"`
-	Mode uint32 `redis:"mode"`
+	Name    string `redis:"name"`
+	Type    string `redis:"type"`
+	Size    int    `redis:"size"`
+	Mode    uint32 `redis:"mode"`
 	ModTime string `redis:"mtime"`
-	Ref  string `redis:"ref"`
-	Hash string `redis:"-"`
+	Ref     string `redis:"ref"`
+	Hash    string `redis:"-"`
 }
 
 func (m *Meta) free() {

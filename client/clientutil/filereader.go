@@ -6,11 +6,11 @@ import (
 	"io"
 	"os"
 
-	"github.com/garyburd/redigo/redis"
 	"github.com/dchest/blake2b"
+	"github.com/garyburd/redigo/redis"
 
-	"github.com/tsileo/blobstash/client2/ctx"
-	client "github.com/tsileo/blobstash/client2"
+	"github.com/tsileo/blobstash/client"
+	"github.com/tsileo/blobstash/client/ctx"
 )
 
 // Download a file by its hash to path
@@ -52,27 +52,26 @@ func GetFile(cl *client.Client, cctx *ctx.Ctx, key, path string) (*ReadResult, e
 // FakeFile implements io.Reader, and io.ReaderAt.
 // It fetch blobs on the fly.
 type FakeFile struct {
-	client *client.Client
-	ctx *ctx.Ctx
-	ref    string
-	offset int
-	size   int
-	llen   int
+	client  *client.Client
+	ctx     *ctx.Ctx
+	ref     string
+	offset  int
+	size    int
+	llen    int
 	lmrange []struct {
 		Index int
 		Value string
 	}
 }
 
-
 // NewFakeFile creates a new FakeFile instance.
 func NewFakeFile(client *client.Client, cctx *ctx.Ctx, ref string, size int) (f *FakeFile) {
 	// Needed for the blob routing
 	f = &FakeFile{
 		client: client,
-		ref: ref,
-		size: size,
-		ctx: cctx,
+		ref:    ref,
+		size:   size,
+		ctx:    cctx,
 	}
 	con := f.client.ConnWithCtx(cctx)
 	defer con.Close()

@@ -7,7 +7,7 @@ import (
 // Ctx holds a request context
 type Ctx struct {
 	Namespace string
-	MetaBlob bool // Flag for blob upload
+	MetaBlob  bool // Flag for blob upload
 }
 
 // Args cast the Ctx into Redis.Args

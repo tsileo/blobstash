@@ -8,8 +8,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/dustin/go-humanize"
 	"github.com/dchest/blake2b"
+	"github.com/dustin/go-humanize"
 )
 
 var wrPool = sync.Pool{
@@ -25,7 +25,6 @@ func FullHash(path string) string {
 	_, _ = io.Copy(h, reader)
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
-
 
 // NewID generate a random hash that can be used as random key
 func NewID() string {

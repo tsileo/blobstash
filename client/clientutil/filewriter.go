@@ -1,23 +1,23 @@
 package clientutil
 
 import (
-	"time"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"bytes"
+	"time"
 
 	"github.com/dchest/blake2b"
 
+	"github.com/tsileo/blobstash/client"
+	"github.com/tsileo/blobstash/client/ctx"
 	"github.com/tsileo/blobstash/rolling"
-	"github.com/tsileo/blobstash/client2/ctx"
-	client "github.com/tsileo/blobstash/client2"
 )
 
 var (
-	MinBlobSize = 64<<10 // 64Kb
-	MaxBlobSize = 1<<20 // 1MB
+	MinBlobSize = 64 << 10 // 64Kb
+	MaxBlobSize = 1 << 20  // 1MB
 )
 
 // FileWriter reads the file byte and byte and upload it,

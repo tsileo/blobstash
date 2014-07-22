@@ -11,8 +11,8 @@ import (
 
 	"github.com/dchest/blake2b"
 
-	"github.com/tsileo/blobstash/client2/ctx"
-	client "github.com/tsileo/blobstash/client2"
+	"github.com/tsileo/blobstash/client"
+	"github.com/tsileo/blobstash/client/ctx"
 )
 
 // node represents either a file or directory in the directory tree
@@ -28,7 +28,7 @@ type node struct {
 
 	// Children (if the node is a directory)
 	children []*node
-	parent *node
+	parent   *node
 
 	tx *client.Transaction
 
