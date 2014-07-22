@@ -2,34 +2,49 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"runtime"
-	"path/filepath"
 	"io/ioutil"
-
-	"github.com/codegangsta/cli"
+	"os"
+	"log"
+	"path/filepath"
+	"strings"
+	"runtime"
 
 	"github.com/bitly/go-simplejson"
+	"github.com/codegangsta/cli"
 
-
-	"github.com/tsileo/blobstash/client"
-	"github.com/tsileo/blobstash/scheduler"
+	"github.com/tsileo/blobstash/db"
+	"github.com/tsileo/blobstash/config"
 	"github.com/tsileo/blobstash/config/pathutil"
+	"github.com/tsileo/blobstash/backend"
+	"github.com/tsileo/blobstash/server"
 )
 
-var nCPU = runtime.NumCPU()
+var version = "0.1.0"
 
-func init() {
-	if nCPU < 2 {
-		nCPU = 2
-	}
-	runtime.GOMAXPROCS(nCPU)
+func main() {
+	app := cli.NewApp()
+	app.Name = "blobstash"
+	app.Version = version
+	app.Usage = ""
+	app.Action = func(c *cli.Context) {
+    	var path string
+    	args := c.Args()
+    	if len(args) == 0 {
+    		path = ""
+    	} else {
+    		path = args[0]
+    	}
+    	start(path)
+  	}
+  	app.Run(os.Args)
 }
 
-func loadConf(config_path string) *simplejson.Json {
+func start(config_path string) {
+	log.Printf("Starting blobstash version %v; %v (%v/%v)", version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
 	if config_path == "" {
-		config_path = filepath.Join(pathutil.ConfigDir(), "client-config.json")
+		config_path = filepath.Join(pathutil.ConfigDir(), "server-config.json")
 	}
+	stop := make(chan bool)
 	dat, err := ioutil.ReadFile(config_path)
 	if err != nil {
 		panic(fmt.Errorf("failed to read config file: %v", err))
@@ -38,81 +53,34 @@ func loadConf(config_path string) *simplejson.Json {
 	if err != nil {
 		panic(fmt.Errorf("failed decode config file (invalid json): %v", err))
 	}
-	return conf
-}
-
-func main() {
-	app := cli.NewApp()
-	commonFlags := []cli.Flag{
-  		cli.StringFlag{"host", "", "override the real hostname"},
+	_, exists := conf.CheckGet("backends")
+	if !exists {
+		panic(fmt.Errorf("missing top-level key \"backends\" from config file"))
 	}
-
-	conf := loadConf("")
-	defaultHost := conf.Get("server").MustString("localhost:9735")
-	ignoredFiles, _ := conf.Get("ignored-files").StringArray()
-
-	app.Name = "blobstash"
-	app.Usage = "BlobStash command-line tool"
-	app.Version = "0.1.0"
-	//  app.Action = func(c *cli.Context) {
-	//    println("Hello friend!")
-	//  }
-	app.Commands = []cli.Command{
-		{
-			Name:      "put",
-			Usage:     "put a file/directory",
-			Flags:     append(commonFlags, cli.BoolFlag{"archive", "upload the file/directory as an archive"}),
-			Action: func(c *cli.Context) {
-				cl, _ := client.NewClient(c.String("host"), defaultHost, ignoredFiles)
-				defer cl.Close()
-				b, m, wr, err := cl.Put(&client.Ctx{Namespace: cl.Hostname, Archive: c.Bool("archive")}, c.Args().First())
-				fmt.Printf("b:%+v,m:%+v,wr:%+v,err:%v\n", b, m, wr, err)
-			},
-		},
-		//{
-		//	Name:      "ls",
-		//	Usage:     "List backups",
-		//	Action: func(c *cli.Context) {
-		//		client, _ := client.NewClient("", ignoredFiles)
-		//		metas, _ := client.List()
-		//		for _, m := range metas {
-		//			fmt.Printf("%+v\n", m)
-		//		}
-		//	},
-		//},
-		{
-			Name:      "restore",
-			Usage:     "Restore a snapshot",
-			Action: func(c *cli.Context) {
-				cl, _ := client.NewClient("", defaultHost, ignoredFiles)
-				defer cl.Close()
-				args := c.Args()
-				snap, meta, rr, err := cl.Get(args[0], args[1])
-				fmt.Printf("snap:%+v,meta:%+v,rr:%+v/err:%v", snap, meta, rr, err)
-			},
-		},
-		//{
-		//	Name:  "mount",
-		//	Usage: "Mount the read-only filesystem to the given path",
-		//	Action: func(c *cli.Context) {
-		//		cl, _ := client.NewClient("", defaultHost, ignoredFiles)
-		//		stop := make(chan bool, 1)
-		//		stopped := make(chan bool, 1)
-		//		fs.Mount(cl, c.Args().First(), stop, stopped)
-		//	},
-		//},
-		{
-			Name:      "scheduler",
-			ShortName: "sched",
-			Usage:     "Start the backup scheduler",
-			Flags:     commonFlags,
-			Action: func(c *cli.Context) {
-				cl, _ := client.NewClient(c.String("host"), defaultHost, ignoredFiles)
-				defer cl.Close()
-				d := scheduler.New(cl)
-				d.Run()
-			},
-		},
+	dbPath := pathutil.VarDir()
+	os.MkdirAll(dbPath, 0700)
+	routerDB, err := db.New(filepath.Join(dbPath, "index"))
+	if err != nil {
+		panic(err)
 	}
-	app.Run(os.Args)
+	_, exists = conf.CheckGet("router")
+	if !exists {
+		panic(fmt.Errorf("missing top-level key \"router\" from config file"))
+	}
+	blobRouter, err := backend.NewRouterFromConfig(conf.Get("router"), routerDB)
+	if err != nil {
+		panic(err)
+	}
+	// TODO => config backend in BlobRouter
+	for _, backendKey := range blobRouter.ResolveBackends() {
+		cbackend := config.NewFromConfig(conf.GetPath("backends", backendKey))
+		blobRouter.Backends[backendKey] = cbackend
+		db, err := db.New(filepath.Join(dbPath, strings.Replace(cbackend.String(), "/", "_", -1)))
+		if err != nil {
+			panic(err)
+		}
+		blobRouter.DBs[backendKey] = db
+		blobRouter.TxManagers[backendKey] = backend.NewTxManager(blobRouter.Index, db, cbackend)
+	}
+	server.New(conf.Get("listen").MustString(":9735"), conf.Get("web-listen").MustString(":9736"), conf.MustString("blobdb_db"), blobRouter,stop)
 }
