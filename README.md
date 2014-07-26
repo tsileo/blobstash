@@ -82,7 +82,7 @@ The minimal router config is:
 
 ```json
 [["default", "blobHandler"]]
-``
+```
 
 ## Roadmap / Ideas
 
