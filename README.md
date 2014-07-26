@@ -82,13 +82,10 @@ The minimal router config is:
 
 ```json
 [["default", "blobHandler"]]
-```
+``
 
 ## Roadmap / Ideas
 
-- an Android app to backup Android devices
-- Follow .gitignore file
-- Garbage collection (sparse files support for blob files)
 - A web interface
 - An S3-like HTTP API to store archive
 - Fill an issue!
