@@ -16,12 +16,6 @@ func TestDBStringDataType(t *testing.T) {
 		db.Destroy()
 	}()
 
-	cnt, err := db.GetStringCnt()
-	check(err)
-	if cnt != 0 {
-		t.Errorf("String cnt should be 0, not %v", cnt)
-	}
-
 	err = db.Put("foo", "bar")
 	check(err)
 	err = db.Put("foo2", "bar2")
@@ -29,11 +23,6 @@ func TestDBStringDataType(t *testing.T) {
 	err = db.Put("foo3", "bar3")
 	check(err)
 
-	cnt, err = db.GetStringCnt()
-	check(err)
-	if cnt != 3 {
-		t.Errorf("String cnt should be 3, not %v", cnt)
-	}
 
 	kvs, err := db.GetStringRange("", "\xff", 10)
 	check(err)
@@ -50,10 +39,4 @@ func TestDBStringDataType(t *testing.T) {
 	db.Del("foo")
 	db.Del("foo2")
 	db.Del("foo3")
-
-	cnt, err = db.GetStringCnt()
-	check(err)
-	if cnt != 0 {
-		t.Errorf("String cnt should be 0, not %v", cnt)
-	}
 }

@@ -2,11 +2,6 @@ package db
 
 import ()
 
-// Return the number of string key stored
-func (db *DB) GetStringCnt() (uint32, error) {
-	return db.getUint32(KeyType(StringCnt, Meta))
-}
-
 // Increment the key by the given value,
 // just return the value, the result must be set by a raft command
 func (db *DB) IncrBy(key string, value int) {
@@ -27,11 +22,7 @@ func (db *DB) Getset(key, value string) (val []byte, err error) {
 
 // Sets the value for a given key.
 func (db *DB) Put(key, value string) error {
-	// Incr the StringCnt if needed
-	cval, err := db.getset(KeyType(key, String), []byte(value))
-	if cval == nil {
-		err = db.incrUint32(KeyType(StringCnt, Meta), 1)
-	}
+	_, err := db.getset(KeyType(key, String), []byte(value))
 	return err
 }
 
@@ -39,7 +30,6 @@ func (db *DB) Put(key, value string) error {
 func (db *DB) Del(key string) {
 	k := KeyType(key, String)
 	db.del(k)
-	db.incrUint32(KeyType(StringCnt, Meta), -1)
 	return
 }
 

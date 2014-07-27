@@ -2,6 +2,7 @@ package db
 
 import (
 	"encoding/binary"
+	"fmt"
 )
 
 //
@@ -11,10 +12,10 @@ import (
 // and instead of an empty value, the value is stored)
 // lists
 //   List + (key length as binary encoded uint32) + list key + index (uint32)  => value
+// List boundaries: for each list the min/max index are stored for iteration/seeking
+//  Meta + ListMax/ListMin + list key => binary encoded uint32
 // list len
 //   Meta + ListLen + list key => binary encoded uint32
-// the total number of list
-//   Meta + ListCnt => binary encoded uint32
 //
 
 // Format the key to add new element to the list at the given index
@@ -55,10 +56,10 @@ func decodeListKey(key []byte) []byte {
 	return member
 }
 
-// Build the key to retrieve the list length
-func listLen(key []byte) []byte {
+// Build a list meta key
+func listMeta(keyByte byte, key []byte) []byte {
 	cardkey := make([]byte, len(key)+1)
-	cardkey[0] = ListLen
+	cardkey[0] = keyByte
 	copy(cardkey[1:], key)
 	return cardkey
 }
@@ -66,36 +67,37 @@ func listLen(key []byte) []byte {
 // Get the length of the list
 func (db *DB) Llen(key string) (int, error) {
 	bkey := []byte(key)
-	cardkey := listLen(bkey)
+	cardkey := listMeta(ListLen, bkey)
 	card, err := db.getUint32(KeyType(cardkey, Meta))
 	return int(card), err
 }
 
-func (db *DB) Linit(key string) error {
+
+
+func (db *DB) Ladd(key string, index int, value string) error {
 	bkey := []byte(key)
-	card, err := db.Llen(key)
+	cmin, err := db.getUint32(listMeta(ListMin, bkey))
 	if err != nil {
 		return err
 	}
-	if card == 0 {
-		return nil
-	}
-	if err := db.put(keyList(bkey, []byte("\xff")), []byte("")); err != nil {
+	cmax, err := db.getUint32(listMeta(ListMax, bkey))
+	if err != nil {
 		return err
 	}
-	return nil
-}
-
-func (db *DB) Ladd(key string, index int, value string) error {
-	if err := db.Linit(key); err != nil {
+	llen, err := db.Llen(key)
+	if err != nil {
 		return err
 	}
-	return db.ladd(key, index, value)
-}
-
-// Add an element in the list at the given index
-func (db *DB) ladd(key string, index int, value string) error {
-	bkey := []byte(key)
+	if llen == 0 || int(cmin) > index {
+		if err := db.putUint32(listMeta(ListMin, bkey), uint32(index)); err != nil {
+			return fmt.Errorf("Error putUint32 %v", err)
+		}
+	}
+	if cmax == 0 || int(cmax) < index {
+		if err := db.putUint32(listMeta(ListMax, bkey), uint32(index)); err != nil {
+			return err
+		}
+	}
 	kmember := keyList(bkey, index)
 	cval, err := db.get(kmember)
 	if err != nil {
@@ -105,7 +107,7 @@ func (db *DB) ladd(key string, index int, value string) error {
 		return err
 	}
 	if cval == nil {
-		cardkey := listLen(bkey)
+		cardkey := listMeta(ListLen, bkey)
 		if err := db.incrUint32(KeyType(cardkey, Meta), 1); err != nil {
 			return err
 		}
@@ -139,57 +141,70 @@ func (db *DB) Liter(key string) ([][]byte, error) {
 	return res, nil
 }
 
+func (db *DB) lMinMax(bkey []byte) (int, int, error) {
+	min, err := db.getUint32(listMeta(ListMin, bkey))
+	if err != nil {
+		return 0, 0, err
+	}
+	max, err := db.getUint32(listMeta(ListMax, bkey))
+	if err != nil {
+		return 0, 0, err
+	}
+	return int(min), int(max), nil
+}
+
 // Returns list values, sorted by index ASC
 func (db *DB) Lriter(key string) ([][]byte, error) {
 	bkey := []byte(key)
-	start := keyList(bkey, "")
-	end := keyList(bkey, "\xff")
+	min, max, err := db.lMinMax(bkey)
+	fmt.Printf("Min:%v/%v\n", min, max)
+	start := keyList(bkey, "\x00")
+	end := keyList(bkey, max)
 	res := [][]byte{}
 	kvs, err := GetReverseRange(db.db, end, start, 0)
 	if err != nil {
 		return res, err
 	}
 	for _, kv := range kvs {
-		if kv.Value != "\x00" && kv.Value != "" {
-			res = append(res, []byte(kv.Value))
-		}
-		//res = append(res,  decodeListIndex([]byte(kv.Key)))
+		res = append(res, []byte(kv.Value))
 	}
 	return res, nil
 }
 
-
 func (db *DB) Llast(key string) ([]byte, error) {
 	bkey := []byte(key)
-	start := keyList(bkey, "\xff")
-	kv, err := GetListLastRange(db.db, start)
+	max, err := db.getUint32(listMeta(ListMax, bkey))
 	if err != nil {
 		return nil, err
 	}
-	if kv.Value != "\x00" && kv.Value != "" {
-		return []byte(kv.Value), nil
-	}
-	return nil, nil
+	return db.get(keyList(bkey, int(max)))
 }
 
 func (db *DB) LlastWithIndex(key string) (*IndexValue, error) {
 	bkey := []byte(key)
-	start := keyList(bkey, "\xff")
-	kv, err := GetListLastRange(db.db, start)
+	max, err := db.getUint32(listMeta(ListMax, bkey))
 	if err != nil {
 		return nil, err
 	}
-	if kv.Value != "\x00" && kv.Value != "" {
-		return &IndexValue{Index: decodeListIndex([]byte(kv.Key)), Value: kv.Value}, nil
+	val, err := db.get(keyList(bkey, int(max)))
+	if err != nil {
+		return nil, err
 	}
-	return nil, nil
+	return &IndexValue{
+		Index: int(max),
+		Value: string(val),
+	}, nil
 }
 
 // Returns list values, sorted by index ASC
 func (db *DB) LiterWithIndex(key string) (ivs []*IndexValue, err error) {
 	bkey := []byte(key)
-	start := keyList(bkey, []byte{})
-	end := keyList(bkey, "\xff")
+	min, max, err := db.lMinMax(bkey)
+	if err != nil {
+		return nil, err
+	}
+	start := keyList(bkey, min)
+	end := keyList(bkey, max)
 	kvs, err := GetRange(db.db, start, end, 0)
 	if err != nil {
 		return
@@ -205,8 +220,12 @@ func (db *DB) LiterWithIndex(key string) (ivs []*IndexValue, err error) {
 // Returns list values, sorted by index ASC
 func (db *DB) LriterWithIndex(key string) (ivs []*IndexValue, err error) {
 	bkey := []byte(key)
-	start := keyList(bkey, []byte{})
-	end := keyList(bkey, "\xff")
+	min, max, err := db.lMinMax(bkey)
+	if err != nil {
+		return nil, err
+	}
+	start := keyList(bkey, min)
+	end := keyList(bkey, max)
 	kvs, err := GetReverseRange(db.db, end, start, 0)
 	if err != nil {
 		return
@@ -234,7 +253,7 @@ func (db *DB) Ldel(key string) error {
 			return err
 		}
 	}
-	cardkey := listLen(bkey)
+	cardkey := listMeta(ListLen, bkey)
 	err = db.del(KeyType(cardkey, Meta))
 	return err
 }

@@ -12,7 +12,6 @@ package db
 import (
 	"bytes"
 	"encoding/binary"
-	_ "fmt"
 	"github.com/cznic/kv"
 	"io"
 	"os"
@@ -24,8 +23,6 @@ import (
 //
 // String key are stored this way:
 //   String byte + key => value
-// and a key holds the number of string key:
-//   Meta + StringCnt => binary encoded uint32
 //
 
 // Define namespaces for raw key sorted in db.
@@ -33,19 +30,15 @@ const (
 	Empty byte = iota
 	Meta
 	String
-	StringCnt
 	Set
 	SetCardinality
-	SetCnt
 	List
 	ListLen
-	ListCnt
+	ListMin // List boundaries for seeking
+	ListMax
 	Hash
 	HashFieldsCnt
 	HashIndex
-	HashCnt
-	BlobsCnt
-	BlobsSize
 )
 
 func opts() *kv.Options {
@@ -217,6 +210,7 @@ func NewMem() (*DB, error) {
 // Destroy remove completely the DB.
 func (db *DB) Destroy() error {
 	if db.db_path != "" {
+		db.Close()
 		return os.RemoveAll(db.db_path)
 	}
 	return nil
@@ -336,16 +330,13 @@ func (db *DB) incrby(key []byte, value int) error {
 	if err != nil {
 		return err
 	}
-	if sval == nil {
-		sval = []byte("0")
-		err = db.incrUint32(KeyType(StringCnt, Meta), 1)
+	var ival int
+	if string(sval) != "" {
+		iival, err := strconv.Atoi(string(sval))
 		if err != nil {
 			return err
 		}
-	}
-	ival, err := strconv.Atoi(string(sval))
-	if err != nil {
-		return err
+		ival = iival
 	}
 	err = db.db.Set(key, []byte(strconv.Itoa(ival+value)))
 	return err

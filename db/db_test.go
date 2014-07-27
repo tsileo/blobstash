@@ -16,7 +16,7 @@ func TestDB(t *testing.T) {
 	db, err := New("db_base")
 	defer db.Destroy()
 	if err != nil {
-		t.Fatal("Error creating db")
+		t.Fatalf("Error creating db %v", err)
 	}
 
 	err = db.put([]byte("foo"), []byte("bar"))
