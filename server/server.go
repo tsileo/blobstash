@@ -353,20 +353,20 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		}
 		return nil
 	})
-	//srv.HandleFunc("hset", func(out *redeo.Responder, req *redeo.Request) error {
-	//	SetUpCtx(req)
-	//	err := CheckArgs(req, 3)
-	//	if err != nil {
-	//		return err
-	//	}
-	//	ctx := req.Client().Ctx.(*ServerCtx)
-	//	cnt, err := ctx.DB().Hmset(req.Args[0], req.Args[1], req.Args[2])
-	//	if err != nil {
-	//		return ErrSomethingWentWrong
-	//	}
-	//	out.WriteInt(cnt)
-	//	return nil
-	//})
+	srv.HandleFunc("hset", func(out *redeo.Responder, req *redeo.Request) error {
+		SetUpCtx(req)
+		err := CheckArgs(req, 3)
+		if err != nil {
+			return err
+		}
+		ctx := req.Client().Ctx.(*ServerCtx)
+		cnt, err := ctx.DB().Hmset(req.Args[0], req.Args[1], req.Args[2])
+		if err != nil {
+			return ErrSomethingWentWrong
+		}
+		out.WriteInt(cnt)
+		return nil
+	})
 	srv.HandleFunc("hmset", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		err := CheckMinArgs(req, 3)

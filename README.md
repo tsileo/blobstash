@@ -25,17 +25,29 @@ $ curl -H "BlobStash-Hostname: ok2" -H "Blobstash-Meta: 0" -F "92a949fd41844e1bb
 
 ## Data structure server
 
-BlobDB implements 4 immutable data types (no update/delete features by design):
+BlobStash implements 4 immutable data types (no in-place update/delete features by design):
 
 - Strings (GET/SET)
 - Sets (SADD/SMEMBERS/SCARD)
 - Hashes (HMSET/HLEN/HGET/HGETALL/HSCAN)
 - Indexed lists (LADD/LITER/LRANGE/LLEN/LINDEX)
 
-The database can only be updated during a transcation (TXINIT/TXCOMMIT),
-every request will be added to a ReqBuffer, and on commit, it will be dumped to JSON and saved as blob.
+The database can only be updated during a transaction (TXINIT/TXCOMMIT),
+every request will be added to a ReqBuffer, and on commit, it will be dumped to JSON and saved as blob,
+more info [in the docs directory](docs/under-the-hood.md).
 
-BlobDB keep an index used for querying.
+BlobStash keeps an index used for querying, at startup all blobs are scanned and meta blobs are applied if needed.
+
+### Talks to the DB with using Redis protocol
+
+You can inspect the database with any Redis-compatible client:
+
+```console
+$ redis-cli -p 9736
+127.0.0.1:9736> ping
+PONG
+127.0.0.1:9736> 
+```
 
 ## Backend
 

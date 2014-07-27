@@ -1,16 +1,5 @@
 # Under the hood
 
-## Talks to the DB with using Redis protocol
-
-You can inspect the database with any Redis-compatible client:
-
-```console
-$ redis-cli -p 9736
-127.0.0.1:9736> ping
-PONG
-127.0.0.1:9736> 
-```
-
 ## Monitor commands
 
 You can monitor the database using the Server-Sent Events API:
