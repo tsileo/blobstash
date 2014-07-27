@@ -84,9 +84,12 @@ func (db *DB) Ladd(key string, index int, value string) error {
 	if err != nil {
 		return err
 	}
-	llen, err := db.Llen(key)
-	if err != nil {
-		return err
+	llen := -1
+	if cmin == 0 && cmax == 0 {
+		llen, err = db.Llen(key)
+		if err != nil {
+			return err
+		}
 	}
 	if llen == 0 || int(cmin) > index {
 		if err := db.putUint32(listMeta(ListMin, bkey), uint32(index)); err != nil {
@@ -125,8 +128,12 @@ func (db *DB) Lindex(key string, index int) ([]byte, error) {
 // Returns list values, sorted by index ASC
 func (db *DB) Liter(key string) ([][]byte, error) {
 	bkey := []byte(key)
-	start := keyList(bkey, "")
-	end := keyList(bkey, "\xff")
+	min, max, err := db.lMinMax(bkey)
+	if err != nil {
+		return nil, err
+	}
+	start := keyList(bkey, min)
+	end := keyList(bkey, max)
 	res := [][]byte{}
 	kvs, err := GetRange(db.db, start, end, 0)
 	if err != nil {
@@ -157,8 +164,7 @@ func (db *DB) lMinMax(bkey []byte) (int, int, error) {
 func (db *DB) Lriter(key string) ([][]byte, error) {
 	bkey := []byte(key)
 	min, max, err := db.lMinMax(bkey)
-	fmt.Printf("Min:%v/%v\n", min, max)
-	start := keyList(bkey, "\x00")
+	start := keyList(bkey, min)
 	end := keyList(bkey, max)
 	res := [][]byte{}
 	kvs, err := GetReverseRange(db.db, end, start, 0)
@@ -210,9 +216,7 @@ func (db *DB) LiterWithIndex(key string) (ivs []*IndexValue, err error) {
 		return
 	}
 	for _, skv := range kvs {
-		if skv.Value != "\x00" && skv.Value != "" {
-			ivs = append(ivs, &IndexValue{Index: decodeListIndex([]byte(skv.Key)), Value: skv.Value})
-		}
+		ivs = append(ivs, &IndexValue{Index: decodeListIndex([]byte(skv.Key)), Value: skv.Value})
 	}
 	return
 }
@@ -231,9 +235,7 @@ func (db *DB) LriterWithIndex(key string) (ivs []*IndexValue, err error) {
 		return
 	}
 	for _, skv := range kvs {
-		if skv.Value != "\x00" && skv.Value != "" {
-			ivs = append(ivs, &IndexValue{Index: decodeListIndex([]byte(skv.Key)), Value: skv.Value})
-		}
+		ivs = append(ivs, &IndexValue{Index: decodeListIndex([]byte(skv.Key)), Value: skv.Value})
 	}
 	return
 }
