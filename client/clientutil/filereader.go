@@ -26,7 +26,7 @@ func GetFile(cl *client.Client, cctx *ctx.Ctx, key, path string) (*ReadResult, e
 	defer con.Close()
 	meta := NewMeta()
 	if err := cl.HscanStruct(con, key, meta); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get meta %v: %v", key, err)
 	}
 	meta.Hash = key
 	ffile := NewFakeFile(cl, cctx, meta.Ref, meta.Size)

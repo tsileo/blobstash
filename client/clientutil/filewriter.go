@@ -36,9 +36,6 @@ func (up *Uploader) FileWriter(cctx *ctx.Ctx, tx *client.Transaction, key, path 
 	// Prepare the reader to compute the hash on the fly
 	fullHash := blake2b.New256()
 	freader := io.TeeReader(f, fullHash)
-	// Init the list that wil hold blobs reference
-	tx.Ladd(key, 0, "")
-
 	eof := false
 	i := 0
 	// Prepare the blob writer

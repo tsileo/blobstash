@@ -3,6 +3,7 @@ package clientutil
 import (
 	"testing"
 	"time"
+	"os"
 
 	"github.com/garyburd/redigo/redis"
 
@@ -37,12 +38,29 @@ func TestUploader(t *testing.T) {
 	up := NewUploader(cl)
 	testCtx := &ctx.Ctx{Namespace: ""}
 
-	meta, wr, err := up.PutFile(testCtx, nil, "/work/writing/cube.md")
+	t.Logf("Testing with a random file...")
+
+	fname := test.NewRandomFile(".")
+	defer os.Remove(fname)
+	meta, wr, err := up.PutFile(testCtx, nil, fname)
 	check(err)
 
 	time.Sleep(1 * time.Second)
 
-	rr, err := GetFile(cl, testCtx, meta.Hash, "cube2.md")
+	rr, err := GetFile(cl, testCtx, meta.Hash, fname+"restored")
+	defer os.Remove(fname+"restored")
 	check(err)
 	t.Logf("%v %v %v %v %v", up, testCtx, meta, wr, rr)
+
+	t.Logf("Testing with a random directory tree")
+	path, _ := test.CreateRandomTree(t, ".", 0, 1)
+	defer os.RemoveAll(path)
+	meta, wr, err = up.PutDir(testCtx, path)
+	check(err)
+	t.Logf("%v %v %v %v %v", up, testCtx, meta, wr, rr)
+
+	time.Sleep(3 * time.Second)
+	rr, err = GetDir(cl, testCtx, meta.Hash, path+"restored")
+	defer os.RemoveAll(path+"restored")
+	check(err)
 }

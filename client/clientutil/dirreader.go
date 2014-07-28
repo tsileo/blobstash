@@ -24,6 +24,7 @@ func DirIter(cl *client.Client, con redis.Conn, ref string) ([]*Meta, error) {
 		if err := cl.HscanStruct(con, metaRef, meta); err != nil {
 			return nil, err
 		}
+		meta.Hash = metaRef
 		metas = append(metas, meta)
 	}
 	return metas, nil
@@ -33,7 +34,7 @@ func DirIter(cl *client.Client, con redis.Conn, ref string) ([]*Meta, error) {
 func GetDir(cl *client.Client, cctx *ctx.Ctx, key, path string) (rr *ReadResult, err error) {
 	fullHash := blake2b.New256()
 	rr = &ReadResult{}
-	err = os.Mkdir(path, os.ModeDir)
+	err = os.Mkdir(path, 0700)
 	if err != nil {
 		return
 	}
@@ -41,7 +42,7 @@ func GetDir(cl *client.Client, cctx *ctx.Ctx, key, path string) (rr *ReadResult,
 	defer con.Close()
 	meta := NewMeta()
 	if err := cl.HscanStruct(con, key, meta); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch meta: %v", err)
 	}
 	meta.Hash = key
 	var crr *ReadResult
@@ -54,12 +55,12 @@ func GetDir(cl *client.Client, cctx *ctx.Ctx, key, path string) (rr *ReadResult,
 			if meta.IsFile() {
 				crr, err = GetFile(cl, cctx, meta.Hash, filepath.Join(path, meta.Name))
 				if err != nil {
-					return rr, err
+					return rr, fmt.Errorf("failed to GetFile %+v: %v", meta, err)
 				}
 			} else {
 				crr, err = GetDir(cl, cctx, meta.Hash, filepath.Join(path, meta.Name))
 				if err != nil {
-					return rr, err
+					return rr, fmt.Errorf("failed to GetDir %+v: %v", meta, err)
 				}
 			}
 			fullHash.Write([]byte(crr.Hash))
