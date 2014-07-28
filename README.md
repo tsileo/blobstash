@@ -15,12 +15,20 @@ BlobStash
 
 Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com/bup/bup) (files are split into multiple blobs using a rolling checksum).
 
+## Getting started
+
+```console
+$ go get github.com/tsileo/blobstash/cmd/blobstash
+$ $GOPATH/bin/blobstash
+
+```
+
 ## Blob store
 
 You can deal directly with blob when needed using the HTTP API:
 
 ```console
-$ curl -H "BlobStash-Hostname: ok2" -H "Blobstash-Meta: 0" -F "92a949fd41844e1bb8c6812cdea102708fde23a4=ok" http://0.0.0.0:9736/upload
+$ curl -H "BlobStash-Namespace: ok2" -H "Blobstash-Meta: 0" -F "92a949fd41844e1bb8c6812cdea102708fde23a4=ok" http://0.0.0.0:9736/upload
 ```
 
 ## Data structure server

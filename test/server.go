@@ -63,7 +63,7 @@ func (server *TestServer) BuildServer() (string, error) {
 		return "", fmt.Errorf("Error installing blobstash: %v, %s", err, string(out))
 	}
 	server.t.Log("Done")
-	return filepath.Join(server.binDir, "blobdb"), nil
+	return filepath.Join(server.binDir, "blobstash"), nil
 }
 
 // Ready try to ping the server
