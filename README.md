@@ -104,6 +104,19 @@ The minimal router config is:
 [["default", "blobHandler"]]
 ```
 
+## Scripting
+
+You can extend BlobStash by running [Lua](http://www.lua.org/) program that can create transaction and/or read data.
+
+```lua
+print(blobstash.Tx.Set('title', blobstash.Args.title))
+return {
+    ok = blobstash.Tx.Len()
+}
+```
+
+The Lua program must returns an associative array (a table).
+
 ## Roadmap / Ideas
 
 - A web interface
