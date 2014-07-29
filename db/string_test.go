@@ -3,6 +3,7 @@ package db
 import (
 	"reflect"
 	"testing"
+	"bytes"
 )
 
 func TestDBStringDataType(t *testing.T) {
@@ -22,6 +23,14 @@ func TestDBStringDataType(t *testing.T) {
 	check(err)
 	err = db.Put("foo3", "bar3")
 	check(err)
+
+	func(r DBReader) {
+		val, err := r.Get("foo")
+		check(err)
+		if !bytes.Equal(val, []byte("bar")) {
+			t.Errorf("failed to get foo")
+		}
+	}(db)
 
 
 	kvs, err := db.GetStringRange("", "\xff", 10)

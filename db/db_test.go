@@ -36,12 +36,8 @@ func TestDB(t *testing.T) {
 		t.Errorf("Non existent key should return nil")
 	}
 
-	// testing basic getset/incrby command
-	val, err = db.getset([]byte("foo"), []byte("10"))
+	err = db.put([]byte("foo"), []byte("10"))
 	check(err)
-	if !bytes.Equal(val, []byte("bar")) {
-		t.Error("Error during getset")
-	}
 
 	val, err = db.get([]byte("foo"))
 	check(err)

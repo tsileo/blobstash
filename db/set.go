@@ -127,4 +127,3 @@ func (db *DB) Sdel(key string) error {
 }
 
 // func (db *DB) Srange(snapId, kStart string, kEnd string, limit int) [][]byte
-// func (db *DB) Srem(key string, member ...string) int

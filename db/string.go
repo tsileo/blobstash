@@ -15,15 +15,9 @@ func (db *DB) Get(key string) (val []byte, err error) {
 	return
 }
 
-func (db *DB) Getset(key, value string) (val []byte, err error) {
-	val, err = db.getset(KeyType(key, String), []byte(value))
-	return
-}
-
 // Sets the value for a given key.
 func (db *DB) Put(key, value string) error {
-	_, err := db.getset(KeyType(key, String), []byte(value))
-	return err
+	return db.put(KeyType(key, String), []byte(value))
 }
 
 // Delete the given string key

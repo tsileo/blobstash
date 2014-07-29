@@ -184,6 +184,10 @@ type DB struct {
 	mutex   *SlottedMutex
 }
 
+type DBReader interface {
+	Get(key string) (val []byte, err error)
+}
+
 // New creates a new database.
 func New(db_path string) (*DB, error) {
 	createOpen := kv.Open
@@ -195,17 +199,20 @@ func New(db_path string) (*DB, error) {
 	//if _, err := os.Stat(db_path); os.IsNotExist(err) {
 	//	action = kv.Create
 	//}
-	db, err := createOpen(db_path, &kv.Options{})
-	mutex := NewSlottedMutex()
-	return &DB{db: db, db_path: db_path, mutex: mutex}, err
+	kvdb, err := createOpen(db_path, &kv.Options{})
+	db := &DB{}
+	db.db = kvdb
+	db.db_path = db_path
+	db.mutex = NewSlottedMutex()
+	return db, err
 }
 
 // NewMem initialize a in-memory database (used for testing purpose).
-func NewMem() (*DB, error) {
-	db, err := kv.CreateMem(&kv.Options{})
-	mutex := NewSlottedMutex()
-	return &DB{db: db, db_path: "", mutex: mutex}, err
-}
+//func NewMem() (*DB, error) {
+//	db, err := kv.CreateMem(&kv.Options{})
+//	mutex := NewSlottedMutex()
+//	return &DB{db: db, db_path: "", mutex: mutex}, err
+//}
 
 // Destroy remove completely the DB.
 func (db *DB) Destroy() error {
@@ -248,18 +255,6 @@ func (db *DB) get(key []byte) ([]byte, error) {
 		data = []byte{}
 	}
 	return data, err
-}
-
-// Perform an atomic getset (Redis-like).
-func (db *DB) getset(key, value []byte) ([]byte, error) {
-	db.mutex.Lock(key)
-	defer db.mutex.Unlock(key)
-	cval, err := db.db.Get(nil, key)
-	if err != nil {
-		return cval, err
-	}
-	err = db.db.Set(key, value)
-	return cval, err
 }
 
 // put sets the value for a given key.
