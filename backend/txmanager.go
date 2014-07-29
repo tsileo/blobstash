@@ -365,9 +365,10 @@ func (rb *ReqBuffer) Apply() error {
 
 		case reqCmd == "set":
 			for _, req := range reqArgs {
+				// TODO keys with _ into the index ?
 				for _, args := range req.Args {
 					go SendDebugData(fmt.Sprintf("server: Applying SET: %+v/%+v", req.Key, args))
-					if err := rb.index.Put(req.Key, args[0]); err != nil {
+					if err := rb.db.Put(req.Key, args[0]); err != nil {
 						return err
 					}
 				}
