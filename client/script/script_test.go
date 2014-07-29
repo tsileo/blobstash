@@ -4,11 +4,28 @@ import (
 	"testing"
 
 	"github.com/tsileo/blobstash/test"
+	"github.com/garyburd/redigo/redis"
 )
 
-const dummyScript = `
-return {Hello = 'World'}
-`
+var testData = []struct {
+	args     map[string]interface{}
+	code     string
+	setup func(redis.Conn) error
+	expected func(*testing.T, map[string]interface{})
+}{
+	{
+		map[string]interface{}{},
+		"return {Hello = 'World'}",
+		func(c redis.Conn) error {
+			return nil
+		},
+		func(t *testing.T, res map[string]interface{}) {
+			if res["Hello"].(string) != "World" {
+				t.Errorf("dummyScript failed")
+			}
+		},
+	},
+}
 
 func check(err error) {
 	if err != nil {
@@ -25,9 +42,17 @@ func TestScripting(t *testing.T) {
 	}
 	defer s.Shutdown()
 
-	res, err := RunScript("", dummyScript, map[string]interface{}{})
+	c, err := redis.Dial("tcp", ":9735")
 	check(err)
-	if res["Hello"].(string) != "World" {
-		t.Errorf("dummyScript failed")
+	defer c.Close()
+	if _, err := c.Do("PING"); err != nil {
+		t.Errorf("PING failed")
+	}
+
+	for _, tdata := range testData {
+		check(tdata.setup(c))
+		res, err := RunScript("", tdata.code, tdata.args)
+		check(err)
+		tdata.expected(t, res)
 	}
 }
