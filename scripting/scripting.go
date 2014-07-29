@@ -22,26 +22,30 @@ func WriteJSON(w http.ResponseWriter, data interface{}) {
     w.Write(js)
 }
 
+// Hash generate the 256 bits Blake2B hash, accessible within the LUA script under "blake2b('ok')".
 func Hash(data string) string {
     return fmt.Sprintf("%x", blake2b.Sum256([]byte(data)))
 }
 
+// Now generates current UTC timestamp, accessible in the LUA script as "now()".
 func Now() int64 {
     return time.Now().UTC().Unix()
 }
 
+// DB is a "sandboxed" read-only wrapper, accessible within the LUA script under blobstash.DB
 type DB struct {
     db *db.DB
 }
 
+// Get a string key
 func (db *DB) Get(key string) (string, error) {
     val, err := db.db.Get(key)
     return string(val), err
 }
 
+// execScript execute the LUA script "code" against the database "db" with "args" as argument.
+// The script must return a table (associative array) that will be returned.
 func execScript(db *db.DB, code string, args interface{}) map[string]interface{} {
-    // TODO set args the JSON from req.Body
-    // TODO add blobstash.DB => but read-only => remove delete function and separate DBReader from DB
     L := luar.Init()
     defer L.Close()
     luar.Register(L,"",luar.Map{
@@ -63,9 +67,8 @@ func execScript(db *db.DB, code string, args interface{}) map[string]interface{}
     // And output JSON
 }
 
+// ScriptingHandler registers the "scripting" handling.
 func ScriptingHandler(router *backend.Router) func(http.ResponseWriter, *http.Request) {
-    val, err := router.DB(&backend.Request{}).Get("ok")
-    fmt.Printf("val:%v, err:%v\n", val, err)
     return func (w http.ResponseWriter, r *http.Request) {
        switch {
         case r.Method == "POST":
