@@ -12,6 +12,7 @@ BlobStash
 - Possibility to incrementally archive blobs to AWS Glacier (with a recovery command-line tool)
 - Strong test suite (unit tests + integration tests)
 - Backend routing with namespacing, you can define rules to specify where blobs should be stored ("if-meta", "if-ns-myhost"...) and setup custom context
+- Lua scripting
 
 Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com/bup/bup) (files are split into multiple blobs using a rolling checksum).
 
