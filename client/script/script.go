@@ -3,8 +3,8 @@ package script
 import (
 	"net/http"
 	"bytes"
+	"fmt"
 	"encoding/json"
-	"github.com/tsileo/blobstash/client"
 )
 
 var defaultServerAddr = "http://localhost:9736"
@@ -13,11 +13,19 @@ func RunScript(serverAddr, code string, args interface{}) (map[string]interface{
 	if serverAddr == "" {
 		serverAddr = defaultServerAddr
 	}
-	body := &bytes.Buffer
-	// => make the json
+	body := &bytes.Buffer{}
+	payload := map[string]interface{}{
+		"_args": args,
+		"_script": code,
+	}
+	js, err := json.Marshal(&payload)
+    if err != nil {
+        return nil, err
+    }
+    body.Write(js)
 	request, err := http.NewRequest("POST", serverAddr+"/scripting", body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to POST script: %v", err)
 	}
 	client :=  http.Client{}
 	resp, err := client.Do(request)
@@ -30,7 +38,6 @@ func RunScript(serverAddr, code string, args interface{}) (map[string]interface{
         return nil, err
     }
 	defer resp.Body.Close()
-	// DECODE JSON
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("failed to run script")
 	}
