@@ -6,22 +6,34 @@ BlobStash
 - a HTTP blob store, for get/put/exists operations on blob.
 - a Redis-like data structure server with custom immutable data type (transactions are stored in blobs), compatible the with the [Redis Protocol](http://redis.io/topics/protocol).
 
+Initially created to power [BlobSnap](https://github.com/tsileo/blobsnap) and [BlobPad](https://github.com/tsileo/blobpad).
+
 ## Features
 
+- A full featured Go client
+- Backend routing with namespacing, you can define rules to specify where blobs should be stored ("if-meta", "if-ns-myhost"...) and setup custom context
+- Extendable via Lua scripting
 - Optional encryption (using [go.crypto/nacl secretbox](http://godoc.org/code.google.com/p/go.crypto/nacl))
 - Possibility to incrementally archive blobs to AWS Glacier (with a recovery command-line tool)
-- Strong test suite (unit tests + integration tests)
-- Backend routing with namespacing, you can define rules to specify where blobs should be stored ("if-meta", "if-ns-myhost"...) and setup custom context
-- Lua scripting
 
-Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com/bup/bup) (files are split into multiple blobs using a rolling checksum).
+Draws inspiration from [Camlistore](http://camlistore.org/) and [bup](https://github.com/bup/bup) (files are split into multiple blobs using a rolling checksum).
 
 ## Getting started
 
 ```console
 $ go get github.com/tsileo/blobstash/cmd/blobstash
 $ $GOPATH/bin/blobstash
-
+2014/07/29 19:54:34 Starting blobstash version 0.1.0; go1.3 (linux/amd64)
+2014/07/29 19:54:34 BlobsFileBackend: starting, opening index
+2014/07/29 19:54:34 BlobsFileBackend: scanning BlobsFiles...
+2014/07/29 19:54:34 BlobsFileBackend: opening /home/thomas/var/blobstash/blobs/blobs-00000 for writing
+2014/07/29 19:54:34 BlobsFileBackend: running fallocate on BlobsFile /home/thomas/var/blobstash/blobs/blobs-00000
+2014/07/29 19:54:34 BlobsFileBackend: snappyCompression = true
+2014/07/29 19:54:34 BlobsFileBackend: backend id => blobsfile-/home/thomas/var/blobstash/blobs
+2014/07/29 19:54:34 server: http server listening on http://:9736
+2014/07/29 19:54:34 server: listening on tcp://:9735
+2014/07/29 19:54:34 scanning meta blobs blobsfile-/home/thomas/var/blobstash/blobs
+2014/07/29 19:54:34 scan result for blobsfile-/home/thomas/var/blobstash/blobs: {Blobs:0 MetaBlobs:0 Applied:0 Size:0}
 ```
 
 ## Blob store
@@ -73,16 +85,16 @@ You can combine backend as you wish, e.g. Mirror( Encrypt( S3() ), BlobsFile() )
 
 ### Available backends
 
-- BlobsFile (local disk)
+- [BlobsFile](docs/blobsfile.md) (local disk)
 - AWS S3
 - Mirror
-- AWS Glacier
+- AWS Glacier (only as a backup)
 - A remote BlobDB instance? (not started yet)
 - Submit a pull request!
 
 ## Namespace
 
-When interacting with BlobDB, you must specify a **namespace**, used to indicate ownership,
+When interacting with BlobDB, you must specify a **namespace**, used to indicate ownership, like database.
 
 ## Routing
 
@@ -122,8 +134,18 @@ The Lua program must returns an associative array (a table), more docs [here](do
 - An S3-like HTTP API to store archive
 - Fill an issue!
 
-## Donate!
+## Contribution
+
+Pull requests are welcome but open an issue to start a discussion before starting something consequent.
+
+Feel free to open an issue if you have any ideas/suggestions!
+
+## Donation
 
 [![Flattr this git repo](http://api.flattr.com/button/flattr-badge-large.png)](https://flattr.com/submit/auto?user_id=tsileo&url=https%3A%2F%2Fgithub.com%2Ftsileo%2Fblobstash)
 
 BTC 1HpHxwNUmXfrU9MR9WTj8Mpg1YUEry9MF4
+
+## License
+
+Copyright (c) 2014 Thomas Sileo and contributors. Released under the MIT license.
