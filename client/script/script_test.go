@@ -8,19 +8,21 @@ import (
 )
 
 var testData = []struct {
+	dest     interface{}
 	args     map[string]interface{}
 	code     string
 	setup func(redis.Conn) error
-	expected func(*testing.T, map[string]interface{})
+	expected func(*testing.T, interface{})
 }{
 	{
+		map[string]interface{}{},
 		map[string]interface{}{},
 		"return {Hello = 'World'}",
 		func(c redis.Conn) error {
 			return nil
 		},
-		func(t *testing.T, res map[string]interface{}) {
-			if res["Hello"].(string) != "World" {
+		func(t *testing.T, res interface{}) {
+			if res.(map[string]interface{})["Hello"].(string) != "World" {
 				t.Errorf("dummyScript failed")
 			}
 		},
@@ -45,14 +47,11 @@ func TestScripting(t *testing.T) {
 	c, err := redis.Dial("tcp", ":9735")
 	check(err)
 	defer c.Close()
-	if _, err := c.Do("PING"); err != nil {
-		t.Errorf("PING failed")
-	}
 
 	for _, tdata := range testData {
 		check(tdata.setup(c))
-		res, err := RunScript("", tdata.code, tdata.args)
+		err := RunScript("", tdata.code, tdata.args, &tdata.dest)
 		check(err)
-		tdata.expected(t, res)
+		tdata.expected(t, tdata.dest)
 	}
 }

@@ -9,7 +9,7 @@ import (
 
 var defaultServerAddr = "http://localhost:9736"
 
-func RunScript(serverAddr, code string, args interface{}) (map[string]interface{}, error) {
+func RunScript(serverAddr, code string, args interface{}, dest interface{}) (error) {
 	if serverAddr == "" {
 		serverAddr = defaultServerAddr
 	}
@@ -20,26 +20,25 @@ func RunScript(serverAddr, code string, args interface{}) (map[string]interface{
 	}
 	js, err := json.Marshal(&payload)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	body.Write(js)
 	request, err := http.NewRequest("POST", serverAddr+"/scripting", body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to POST script: %v", err)
+		return fmt.Errorf("failed to POST script: %v", err)
 	}
 	client := http.Client{}
 	resp, err := client.Do(request)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	res := map[string]interface{}{}
 	decoder := json.NewDecoder(resp.Body)
-	if err := decoder.Decode(&res); err != nil {
-		return nil, err
+	if err := decoder.Decode(&dest); err != nil {
+		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("failed to run script")
+		return fmt.Errorf("failed to run script")
 	}
-	return res, nil
+	return nil
 }
