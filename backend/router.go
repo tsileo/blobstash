@@ -36,6 +36,15 @@ func (req *Request) String() string {
 		req.Type, req.MetaBlob, req.Namespace)
 }
 
+func (req *Request) Meta() *Request {
+	return &Request{
+		Type: req.Type,
+		MetaBlob: true,
+		Namespace: req.Namespace,
+	}
+}
+
+
 type BackendAndDB struct {
 	Blob BlobHandler
 	DB   *db.DB

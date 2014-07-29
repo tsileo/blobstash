@@ -1,4 +1,4 @@
-# Scripting
+# Scriptings
 
 You can extend BlobStash by running [Lua](http://www.lua.org/) program that can create transaction and/or read data.
 

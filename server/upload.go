@@ -9,10 +9,13 @@ import (
 	"bytes"
 	"io"
 	"strconv"
+	"encoding/json"
+	"fmt"
 
 	"github.com/gorilla/mux"
 
 	"github.com/tsileo/blobstash/backend"
+	"github.com/tsileo/blobstash/scripting"
 )
 
 func blobHandler(router *backend.Router) func(http.ResponseWriter, *http.Request) {
@@ -84,4 +87,44 @@ func uploadHandler(jobc chan<- *blobPutJob) func(http.ResponseWriter, *http.Requ
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
 	}
+}
+func WriteJSON(w http.ResponseWriter, data interface{}) {
+    js, err := json.Marshal(data)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    w.Header().Set("Content-Type", "application/json")
+    w.Write(js)
+}
+// ScriptingHandler registers the "scripting" handling.
+func ScriptingHandler(jobc chan<- *blobPutJob, router *backend.Router) func(http.ResponseWriter, *http.Request) {
+    return func (w http.ResponseWriter, r *http.Request) {
+       switch {
+        case r.Method == "POST":
+            decoder := json.NewDecoder(r.Body)
+            data := map[string]interface{}{}
+            if err := decoder.Decode(&data); err != nil {
+                http.Error(w, err.Error(), http.StatusInternalServerError)
+            }
+            req := &backend.Request{
+                Namespace: r.Header.Get("BlobStash-Namespace"),
+            }
+            db := router.DB(req)
+            fmt.Printf("Received script: %v\n", data)
+            code := data["_script"].(string)
+            args := data["_args"]
+            out, tx := scripting.ExecScript(db, code, args)
+            if tx.Len() > 0 {
+            	hash, js := tx.Dump()
+            	jobc<- newBlobPutJob(req.Meta(), hash, js, nil)
+            }
+            fmt.Printf("Script out: %+v\n", out)
+            WriteJSON(w, &out)
+            return
+        default:
+            w.WriteHeader(http.StatusMethodNotAllowed)
+            return
+        }
+    }
 }

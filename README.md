@@ -10,6 +10,7 @@ Initially created to power [BlobSnap](https://github.com/tsileo/blobsnap) and [B
 
 ## Features
 
+- Immutability reduce the risk of loosing data
 - A full featured Go client
 - Backend routing with namespacing, you can define rules to specify where blobs should be stored ("if-meta", "if-ns-myhost"...) and setup custom context
 - Extendable via Lua scripting

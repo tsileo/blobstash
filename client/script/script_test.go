@@ -27,6 +27,21 @@ var testData = []struct {
 			}
 		},
 	},
+	{
+		map[string]interface{}{},
+		map[string]interface{}{},
+		`local val = blobstash.DB.Get("k1")
+		return {res = val}`,
+		func(c redis.Conn) error {
+			_, err := c.Do("SET", "k1", "val1")
+			return err
+		},
+		func(t *testing.T, res interface{}) {
+			if res.(map[string]interface{})["res"].(string) != "val1" {
+				t.Errorf("DB script #1 failed: %+v", res)
+			}
+		},
+	},
 }
 
 func check(err error) {

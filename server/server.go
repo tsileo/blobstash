@@ -22,7 +22,6 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/tsileo/blobstash/backend"
-	"github.com/tsileo/blobstash/scripting"
 	"github.com/tsileo/blobstash/pubsub"
 	"github.com/tsileo/blobstash/db"
 )
@@ -519,30 +518,6 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		out.WriteString(sha)
 		return nil
 	})
-	srv.HandleFunc("bmultiput", func(out *redeo.Responder, req *redeo.Request) error {
-		SetUpCtx(req)
-		ctx := req.Client().Ctx.(*ServerCtx)
-		err := CheckMinArgs(req, 1)
-		if err != nil {
-			return err
-		}
-		out.WriteBulkLen(len(req.Args))
-		for _, sblob := range req.Args {
-			blob := []byte(sblob)
-			sha := SHA1(blob)
-			out.WriteString(sha)
-			breq := &backend.Request{
-				Namespace: ctx.Namespace,
-			}
-			jobc<- newBlobPutJob(breq, sha, blob, nil)
-		}
-		//err = BlobRouter.Put(&backend.Request{Host: ctx.Hostname, MetaBlob: false}, sha, blob)
-		//if err != nil {
-		//	log.Printf("server: Error BPUT:%v\nBlob %v:%v", err, sha, blob)
-		//	return ErrSomethingWentWrong
-		//}
-		return nil
-	})
 	srv.HandleFunc("bget", func(out *redeo.Responder, req *redeo.Request) error {
 		SetUpCtx(req)
 		ctx := req.Client().Ctx.(*ServerCtx)
@@ -924,6 +899,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		out.WriteOK()
 		return nil
 	})
+
 	serverStartedAtVar.Set(time.Now().UTC().Format(time.RFC822Z))
 	log.Printf("server: http server listening on http://%v", webAddr)
 	r := mux.NewRouter()
@@ -931,7 +907,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 	r.HandleFunc("/blob/{hash}", blobHandler(blobRouter))
 	r.HandleFunc("/debug/monitor", monitor)
 	r.HandleFunc("/upload", uploadHandler(jobc))
-	r.HandleFunc("/scripting", scripting.ScriptingHandler(blobRouter))
+	r.HandleFunc("/scripting", ScriptingHandler(jobc, blobRouter))
 	http.Handle("/", r)
 	go http.ListenAndServe(webAddr, nil)
 
