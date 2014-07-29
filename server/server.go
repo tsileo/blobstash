@@ -22,6 +22,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/tsileo/blobstash/backend"
+	"github.com/tsileo/blobstash/scripting"
 	"github.com/tsileo/blobstash/pubsub"
 	"github.com/tsileo/blobstash/db"
 )
@@ -927,6 +928,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 	r.HandleFunc("/blob/{hash}", blobHandler(blobRouter))
 	r.HandleFunc("/debug/monitor", monitor)
 	r.HandleFunc("/upload", uploadHandler(jobc))
+	r.HandleFunc("/scripting", scripting.ScriptingHandler(blobRouter))
 	http.Handle("/", r)
 	go http.ListenAndServe(webAddr, nil)
 
