@@ -108,14 +108,12 @@ The minimal router config is:
 
 You can extend BlobStash by running [Lua](http://www.lua.org/) program that can create transaction and/or read data.
 
-```lua
-print(blobstash.Tx.Set('title', blobstash.Args.title))
-return {
-    ok = blobstash.Tx.Len()
-}
+```console
+$ curl -X POST http://localhost:9736/scripting -d '{"_script": "return {Hello = \"World\"}", "_args": {}}'
+{"Hello":"World"}
 ```
 
-The Lua program must returns an associative array (a table).
+The Lua program must returns an associative array (a table), more docs [here](docs/scripting.md).
 
 ## Roadmap / Ideas
 

@@ -239,7 +239,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		res, err := blobRouter.Index.Get(req.Args[0])
+		ctx := req.Client().Ctx.(*ServerCtx)
+		res, err := ctx.DB().Get(req.Args[0])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -256,7 +257,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return err
 		}
-		err = blobRouter.Index.Put(req.Args[0], req.Args[1])
+		ctx := req.Client().Ctx.(*ServerCtx)
+		err = ctx.DB().Put(req.Args[0], req.Args[1])
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
@@ -273,7 +275,8 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		if err != nil {
 			return ErrSomethingWentWrong
 		}
-		kvs, err := blobRouter.Index.GetStringRange(req.Args[0], req.Args[1], limit)
+		ctx := req.Client().Ctx.(*ServerCtx)
+		kvs, err := ctx.DB().GetStringRange(req.Args[0], req.Args[1], limit)
 		if err != nil {
 			return ErrSomethingWentWrong
 		}

@@ -7,36 +7,10 @@ import (
     "encoding/json"
     "github.com/stevedonovan/luar"
     "github.com/dchest/blake2b"
+    "github.com/tsileo/blobstash/db"
     "github.com/tsileo/blobstash/backend"
     "github.com/tsileo/blobstash/client/transaction"
 )
-
-const code2 = `
-print(blake2b('ok'))
-print(now())
-v1, v2 = two()
-print(v1)
-print(v2)
-print(blobstash.Tx.Set('title', blobstash.Args.title))
-t = three()
-ta = luar.slice2table(t)
-print(ta)
-for i = 1, #t do  -- #v is the size of v for lists.
-  print(t[i])  -- Indices start at 1 !! SO CRAZY!
-end
-print(ta[1])
-return {
-    ok = blobstash.Tx.Len(),
-    t = t
-}
-`
-
-const code = `
-return {
-    ok = blobstash.Tx.Len(),
-    test = blake2b('ok')
-}
-`
 
 func WriteJSON(w http.ResponseWriter, data interface{}) {
     js, err := json.Marshal(data)
@@ -56,15 +30,16 @@ func Now() int64 {
     return time.Now().UTC().Unix()
 }
 
-func TwoValue() (string, string) {
-    return "ok1", "ok2"
+type DB struct {
+    db *db.DB
 }
 
-func Test1() []string {
-    return []string{"IT'S SO COOL"}
+func (db *DB) Get(key string) (string, error) {
+    val, err := db.db.Get(key)
+    return string(val), err
 }
 
-func execScript(args map[string]interface{}) map[string]interface{} {
+func execScript(db *db.DB, code string, args interface{}) map[string]interface{} {
     // TODO set args the JSON from req.Body
     // TODO add blobstash.DB => but read-only => remove delete function and separate DBReader from DB
     L := luar.Init()
@@ -72,9 +47,8 @@ func execScript(args map[string]interface{}) map[string]interface{} {
     luar.Register(L,"",luar.Map{
         "blake2b": Hash,
         "now": Now,
-        "two": TwoValue,
-        "three": Test1,
         "blobstash": luar.Map{
+            "DB": &DB{db},
             "Args": args,
             "Tx": transaction.NewTransaction(),
         },
@@ -84,16 +58,14 @@ func execScript(args map[string]interface{}) map[string]interface{} {
         fmt.Println("Error:",res)
     }
     v := luar.CopyTableToMap(L,nil,-1)
-    fmt.Println("returned map",v)
     return v.(map[string]interface{})
-    //for k,v := range m {
-    //    fmt.Println(k,v)
-    //}
     // TODO process the transaction
     // And output JSON
 }
 
 func ScriptingHandler(router *backend.Router) func(http.ResponseWriter, *http.Request) {
+    val, err := router.DB(&backend.Request{}).Get("ok")
+    fmt.Printf("val:%v, err:%v\n", val, err)
     return func (w http.ResponseWriter, r *http.Request) {
        switch {
         case r.Method == "POST":
@@ -106,10 +78,12 @@ func ScriptingHandler(router *backend.Router) func(http.ResponseWriter, *http.Re
                 Namespace: r.Header.Get("BlobStash-Namespace"),
             }
             db := router.DB(req)
-            fmt.Printf("db:%v", db)
-            //args := map[string]interface{}{"title": "ok"}
-            out := execScript(data)
-            WriteJSON(w, out)
+            fmt.Printf("Received script: %v\n", data)
+            code := data["_script"].(string)
+            args := data["_args"]
+            out := execScript(db, code, args)
+            fmt.Printf("Script out: %+v\n", out)
+            WriteJSON(w, &out)
             return
         default:
             w.WriteHeader(http.StatusMethodNotAllowed)
