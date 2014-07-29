@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"runtime"
+	"encoding/json"
 
 	"github.com/bitly/go-simplejson"
 	"github.com/codegangsta/cli"
@@ -39,12 +40,34 @@ func main() {
   	app.Run(os.Args)
 }
 
+var defaultConf = map[string]interface{}{
+	"backends": map[string]interface{}{
+		"blobs": map[string]interface{}{
+			"backend-type": "blobsfile",
+			"backend-args": map[string]interface{}{
+				"path": "blobs",
+			},
+		},
+	},
+	"router": []interface{}{[]string{"default", "blobs"}},
+}
+
 func start(config_path string) {
 	log.Printf("Starting blobstash version %v; %v (%v/%v)", version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
 	if config_path == "" {
 		config_path = filepath.Join(pathutil.ConfigDir(), "server-config.json")
 	}
 	stop := make(chan bool)
+	if _, err := os.Stat(config_path); os.IsNotExist(err) {
+		log.Println("No config file found")
+		cpath, _ := filepath.Split(config_path)
+		os.MkdirAll(cpath, 0700)
+		js, _ := json.MarshalIndent(&defaultConf, "", "	")
+		if err := ioutil.WriteFile(config_path, js, 0644); err != nil {
+			panic(fmt.Errorf("failed to create config file at %v: %v", config_path, err))
+		}
+		log.Printf("Config file created at %v", config_path)
+	}
 	dat, err := ioutil.ReadFile(config_path)
 	if err != nil {
 		panic(fmt.Errorf("failed to read config file: %v", err))
