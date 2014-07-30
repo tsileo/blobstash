@@ -14,7 +14,7 @@ Initially created to power [BlobSnap](https://github.com/tsileo/blobsnap) and [B
 
 - [BLAKE2b](https://blake2.net) as hashing algorithm for the blob store
 - Immutability reduce the risk of loosing data
-- A full featured [Go client](http://godoc.org/github.com/tsileo/blobstash/client)
+- A full featured Go [client](http://godoc.org/github.com/tsileo/blobstash/client)/[clientutil](http://godoc.org/github.com/tsileo/blobstash/client/clientutil)
 - Backend routing with namespacing, you can define rules to specify where blobs should be stored ("if-meta", "if-ns-myhost"...) and setup custom context
 - [Lua](http://www.lua.org/) scripting support
 - Optional encryption (using [go.crypto/nacl secretbox](http://godoc.org/code.google.com/p/go.crypto/nacl))
@@ -137,6 +137,7 @@ The Lua program must returns an associative array (a table), more docs [here](do
 
 ## Roadmap / Ideas
 
+- A better documentation
 - A web interface
 - An S3-like HTTP API to store archive
 - Fill an issue!
