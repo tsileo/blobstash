@@ -1,19 +1,22 @@
 BlobStash
 =========
 
-**BlobStash** is an immutable database build on top of a content-addressable ([BLAKE2b](https://blake2.net) hash) blob store, it includes:
+**BlobStash** is an immutable database build on top of a content-addressable blob store, it includes:
 
 - a HTTP blob store, for get/put/exists operations on blob.
 - a Redis-like data structure server with custom immutable data type (transactions are stored in blobs), compatible the with the [Redis Protocol](http://redis.io/topics/protocol).
 
 Initially created to power [BlobSnap](https://github.com/tsileo/blobsnap) and [BlobPad](https://github.com/tsileo/blobpad).
 
+**Still in early development, but I expect to release a v0.1.0 soon.**
+
 ## Features
 
+- [BLAKE2b](https://blake2.net) as hashing algorithm for the blob store
 - Immutability reduce the risk of loosing data
 - A full featured Go client
 - Backend routing with namespacing, you can define rules to specify where blobs should be stored ("if-meta", "if-ns-myhost"...) and setup custom context
-- Extendable via Lua scripting
+- [Lua](http://www.lua.org/) scripting support
 - Optional encryption (using [go.crypto/nacl secretbox](http://godoc.org/code.google.com/p/go.crypto/nacl))
 - Possibility to incrementally archive blobs to AWS Glacier (with a recovery command-line tool)
 
@@ -39,10 +42,10 @@ $ $GOPATH/bin/blobstash
 
 ## Blob store
 
-You can deal directly with blob when needed using the HTTP API:
+You can deal directly with blobs when needed using the HTTP API, full docs [here](docs/blobstore.md).
 
 ```console
-$ curl -H "BlobStash-Namespace: ok2" -H "Blobstash-Meta: 0" -F "92a949fd41844e1bb8c6812cdea102708fde23a4=ok" http://0.0.0.0:9736/upload
+$ curl -H "BlobStash-Namespace: mynamespace" -F "c0f1480a26c2fd4deb8e738a52b7530ed111b9bcd17bbb09259ce03f129988c5=ok" http://0.0.0.0:9736/upload
 ```
 
 ## Data structure server
@@ -54,7 +57,9 @@ BlobStash implements 4 immutable data types (no in-place update/delete features 
 - Hashes (HMSET/HLEN/HGET/HGETALL/HSCAN)
 - Indexed lists (LADD/LITER/LRANGE/LLEN/LINDEX)
 
-The database can only be updated during a transaction (TXINIT/TXCOMMIT),
+Full commands list [here](docs/commands.md).
+
+The database can only be updated within a transaction (TXINIT/TXCOMMIT),
 every request will be added to a ReqBuffer, and on commit, it will be dumped to JSON and saved as blob,
 more info [in the docs directory](docs/under-the-hood.md).
 
@@ -62,7 +67,7 @@ BlobStash keeps an index used for querying, at startup all blobs are scanned and
 
 ### Talks to the DB with using Redis protocol
 
-You can inspect the database with any Redis-compatible client:
+You can inspect the database with any Redis-compatible client.
 
 ```console
 $ redis-cli -p 9736
