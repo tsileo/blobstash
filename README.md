@@ -13,7 +13,7 @@ Initially created to power [BlobSnap](https://github.com/tsileo/blobsnap) and [B
 ## Features
 
 - [BLAKE2b](https://blake2.net) as hashing algorithm for the blob store
-- Immutability reduce the risk of loosing data
+- Immutability reduce the risk of losing data
 - A full featured Go [client](http://godoc.org/github.com/tsileo/blobstash/client)/[clientutil](http://godoc.org/github.com/tsileo/blobstash/client/clientutil)
 - Backend routing with namespacing, you can define rules to specify where blobs should be stored ("if-meta", "if-ns-myhost"...) and setup custom context
 - [Lua](http://www.lua.org/) scripting support
