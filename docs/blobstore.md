@@ -35,7 +35,7 @@ $ curl -H "BlobStash-Namespace: ok2" -H "Blobstash-Meta: 1" -F "c0f1480a26c2fd4d
 Returns status code 200 if the blob exists, 404 if it doesn't exist.
 
 ```console
-curl -I -H "BlobStash-Namespace: ok2" http://0.0.0.0:9736/blob/c0f1480a26c2fd4deb8e738a52b7530ed111b9bcd17bbb09259ce03f129988c7
+$ curl -I -H "BlobStash-Namespace: ok2" http://0.0.0.0:9736/blob/c0f1480a26c2fd4deb8e738a52b7530ed111b9bcd17bbb09259ce03f129988c7
 HTTP/1.1 404 Not Found
 Content-Type: text/plain; charset=utf-8
 Date: Wed, 30 Jul 2014 11:09:25 GMT
@@ -44,7 +44,9 @@ Content-Length: 10
 
 ### GET /blob/<hash>
 
+Returns the blob content.
+
 ```console
-curl -H "BlobStash-Namespace: ok2" http://0.0.0.0:9736/blob/c0f1480a26c2fd4deb8e738a52b7530ed111b9bcd17bbb09259ce03f129988c5
+$ curl -H "BlobStash-Namespace: ok2" http://0.0.0.0:9736/blob/c0f1480a26c2fd4deb8e738a52b7530ed111b9bcd17bbb09259ce03f129988c5
 ok
 ```

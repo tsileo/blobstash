@@ -14,7 +14,7 @@ Initially created to power [BlobSnap](https://github.com/tsileo/blobsnap) and [B
 
 - [BLAKE2b](https://blake2.net) as hashing algorithm for the blob store
 - Immutability reduce the risk of loosing data
-- A full featured Go client
+- A full featured [Go client](http://godoc.org/github.com/tsileo/blobstash/client)
 - Backend routing with namespacing, you can define rules to specify where blobs should be stored ("if-meta", "if-ns-myhost"...) and setup custom context
 - [Lua](http://www.lua.org/) scripting support
 - Optional encryption (using [go.crypto/nacl secretbox](http://godoc.org/code.google.com/p/go.crypto/nacl))
@@ -25,6 +25,7 @@ Draws inspiration from [Camlistore](http://camlistore.org/) and [bup](https://gi
 ## Getting started
 
 ```console
+$ sudo apt-get install liblua5.1-dev
 $ go get github.com/tsileo/blobstash/cmd/blobstash
 $ $GOPATH/bin/blobstash
 2014/07/29 19:54:34 Starting blobstash version 0.1.0; go1.3 (linux/amd64)
