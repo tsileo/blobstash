@@ -12,6 +12,7 @@ import (
 	"github.com/dchest/blake2b"
 
 	"github.com/tsileo/blobstash/client"
+	"github.com/tsileo/blobstash/client/transaction"
 	"github.com/tsileo/blobstash/client/ctx"
 )
 
@@ -30,7 +31,7 @@ type node struct {
 	children []*node
 	parent   *node
 
-	tx *client.Transaction
+	tx *transaction.Transaction
 
 	// Upload result is stored in the node
 	wr   *WriteResult

@@ -11,6 +11,7 @@ import (
 	"github.com/dchest/blake2b"
 
 	"github.com/tsileo/blobstash/client"
+	"github.com/tsileo/blobstash/client/transaction"
 	"github.com/tsileo/blobstash/client/ctx"
 	"github.com/tsileo/blobstash/rolling"
 )
@@ -22,7 +23,7 @@ var (
 
 // FileWriter reads the file byte and byte and upload it,
 // chunk by chunk, it also constructs the file index .
-func (up *Uploader) FileWriter(cctx *ctx.Ctx, tx *client.Transaction, key, path string) (*WriteResult, error) {
+func (up *Uploader) FileWriter(cctx *ctx.Ctx, tx *transaction.Transaction, key, path string) (*WriteResult, error) {
 	writeResult := NewWriteResult()
 	// Init the rolling checksum
 	window := 64
@@ -86,7 +87,7 @@ func (up *Uploader) FileWriter(cctx *ctx.Ctx, tx *client.Transaction, key, path 
 	return writeResult, nil
 }
 
-func (up *Uploader) PutFile(cctx *ctx.Ctx, tx *client.Transaction, path string) (*Meta, *WriteResult, error) {
+func (up *Uploader) PutFile(cctx *ctx.Ctx, tx *transaction.Transaction, path string) (*Meta, *WriteResult, error) {
 	up.StartUpload()
 	defer up.UploadDone()
 	fstat, err := os.Stat(path)

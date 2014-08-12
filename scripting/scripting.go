@@ -29,6 +29,21 @@ func (db *DB) Get(key string) (string, error) {
     return string(val), err
 }
 
+// Smembers returns the full set
+func (db *DB) Smembers(key string) ([]string, error) {
+    out := []string{}
+    for _, bval := range db.db.Smembers(key) {
+        out = append(out, string(bval))
+    }
+    return out, nil
+}
+
+// Llast returns the latest list element
+func (db *DB) Llast(key string) (string, error) {
+    bval, err := db.db.Llast(key)
+    return string(bval), err
+}
+
 // ExecScript execute the LUA script "code" against the database "db" with "args" as argument.
 // The script must return a table (associative array) that will be returned.
 func ExecScript(db *db.DB, code string, args interface{}) (map[string]interface{}, *transaction.Transaction) {
