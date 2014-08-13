@@ -29,6 +29,6 @@ $ curl -X POST http://localhost:9736/scripting -d '{"_script": "return {Hello = 
 
 You can test Lua script directly in your browser [http://localhost:9736/debug/scripting](http://localhost:9736/debug/scripting).
 
-###s Go client
+### Go client
 
 See the [godoc documentation for client/script](http://godoc.org/github.com/tsileo/blobstash/client/script).
