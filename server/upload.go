@@ -113,7 +113,11 @@ func ScriptingHandler(jobc chan<- *blobPutJob, router *backend.Router) func(http
             db := router.DB(req)
             fmt.Printf("Received script: %v\n", data)
             code := data["_script"].(string)
-            args := data["_args"]
+            sargs := data["_args"].(string)
+            args := map[string]interface{}{}
+            if err := json.Unmarshal([]byte(sargs), &args); err != nil {
+            	http.Error(w, err.Error(), http.StatusInternalServerError)
+            }
             out, tx := scripting.ExecScript(db, code, args)
             err, isErr := out["error"]
             if isErr {
