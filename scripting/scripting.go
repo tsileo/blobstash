@@ -62,6 +62,8 @@ func ExecScript(db *db.DB, code string, args interface{}) (map[string]interface{
     res := L.DoString(code)
     if res != nil {
         fmt.Println("Error:",res)
+        fmt.Printf("RES:%+v", res)
+        return map[string]interface{}{"error": res.Error()}, transaction.NewTransaction()
     }
     v := luar.CopyTableToMap(L,nil,-1)
     return v.(map[string]interface{}), tx
