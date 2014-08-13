@@ -11,6 +11,25 @@ The Lua program must returns an associative array (a table).
 - ``blobstash.DB`` to query data
 - ``blobstash.Args`` the aguments provided in the POST request (**_args**)
 
+### blobstash.DB
+
+#### blobstash.DB.Get
+
+#### blobstash.DB.Smembers
+
+#### blobstash.DB.Llast
+
+#### blobstash.DB.GetHash
+
+Returns the hash as a Lua table (map[string]string).
+
+There is one drawback: **you must cast int/float/bool value server-side**.
+
+```Lua
+local myhash, _ = blobstash.DB.GetHash("myhash")
+return {res = myhash.mykey}
+```
+
 ## Usage
 
 You must send a POST request at **http://localhost:9736/scripting** with a JSON object contanining the following keys:

@@ -44,6 +44,18 @@ func (db *DB) Llast(key string) (string, error) {
     return string(bval), err
 }
 
+func (db *DB) GetHash(key string) (map[string]string, error) {
+    res := map[string]string{}
+    kvs, err := db.db.Hgetall(key)
+    if err != nil {
+        return res, err
+    }
+    for _, kv := range kvs {
+        res[kv.Key] = kv.Value
+    }
+    return res, nil
+}
+
 // ExecScript execute the LUA script "code" against the database "db" with "args" as argument.
 // The script must return a table (associative array) that will be returned.
 func ExecScript(db *db.DB, code string, args interface{}) (map[string]interface{}, *transaction.Transaction) {
