@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en-us" dir="ltr">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Scripting Debug - BlobStash</title>
+        <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/uikit/2.8.0/css/uikit.min.css">
+        <style type="text/css">
+        body {
+        	padding:20px;
+        }
+        </style>
+    </head>
+    <body>
+    	<h1>Scripting Debug</h1>
+    	<div class="uk-grid">
+    	<div class="uk-width-1-2">
+    	<h2>Input</h2>
+    	<form class="uk-form" id="script">
+		<div class="uk-form-row">
+		    <textarea cols="" rows="" id="_args" style="width:100%;">{}</textarea>
+		    <p class="uk-form-help-block">Args (JSON)</p>
+		</div>
+
+		<div class="uk-form-row">
+		    <textarea cols="" rows="" id="_script" style="width:100%">return {Hello = "World"}</textarea>
+		    <p class="uk-form-help-block">Script (Lua)</p>
+		</div>
+		<div class="uk-form-row">
+			<input type="submit" value="Run" />
+		</div>
+		</form>
+		</div>
+		<div class="uk-width-1-2">
+		<h2>Result</h2>
+		<div id="result"></div>
+    	</div>
+    	<script src="//cdnjs.cloudflare.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+    	<script type="text/javascript">
+    	$(function() {
+    		$("#script").submit(function(ev) {
+    			ev.preventDefault();
+    			console.log("submit");
+    			req = $.ajax({
+    				method: "POST",
+    				url: "/scripting",
+    				dataType: "json",
+    				processData: false,
+    				contentType: 'application/json',
+	    			data: JSON.stringify({
+    					_args: $("#_args").val(),
+    					_script: $("#_script").val(),
+    				}),
+    			});
+    			req.done(function(data) {
+    				$("#result").html(JSON.stringify(data, null, '\t'));
+    			}).fail(function(data) {
+    				$("#result").html(data);
+    			});
+    		});
+    	});
+    	</script>
+    </body>
+</html>

@@ -24,6 +24,7 @@ import (
 	"github.com/tsileo/blobstash/backend"
 	"github.com/tsileo/blobstash/pubsub"
 	"github.com/tsileo/blobstash/db"
+	"github.com/tsileo/blobstash/scripting"
 )
 
 var (
@@ -908,6 +909,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 	r.HandleFunc("/debug/monitor", monitor)
 	r.HandleFunc("/upload", uploadHandler(jobc))
 	r.HandleFunc("/scripting", ScriptingHandler(jobc, blobRouter))
+	r.HandleFunc("/debug/scripting", scripting.ScriptDebugUI())
 	http.Handle("/", r)
 	go http.ListenAndServe(webAddr, nil)
 
