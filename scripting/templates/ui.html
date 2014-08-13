@@ -41,21 +41,17 @@
     		$("#script").submit(function(ev) {
     			ev.preventDefault();
     			console.log("submit");
-    			req = $.ajax({
+    			$.ajax({
     				method: "POST",
     				url: "/scripting",
-    				dataType: "json",
     				processData: false,
     				contentType: 'application/json',
 	    			data: JSON.stringify({
     					_args: $("#_args").val(),
     					_script: $("#_script").val(),
     				}),
-    			});
-    			req.done(function(data) {
+    			}).always(function(data) {
     				$("#result").html(JSON.stringify(data, null, '\t'));
-    			}).fail(function(data) {
-    				$("#result").html(data);
     			});
     		});
     	});

@@ -115,6 +115,10 @@ func ScriptingHandler(jobc chan<- *blobPutJob, router *backend.Router) func(http
             code := data["_script"].(string)
             args := data["_args"]
             out, tx := scripting.ExecScript(db, code, args)
+            err, isErr := out["error"]
+            if isErr {
+				http.Error(w, err.(string), http.StatusInternalServerError)
+            }
             if tx.Len() > 0 {
             	hash, js := tx.Dump()
             	jobc<- newBlobPutJob(req.Meta(), hash, js, nil)
