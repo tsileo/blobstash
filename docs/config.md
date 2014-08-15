@@ -49,13 +49,13 @@ The **encrypt** backup need a encryption key (used by [go.crypto/nacl secretbox]
                     }
                 }
             }
-        },
-        "router": [
-            [
-                "default",
-                "blobs"
-            ]
+        }
+    },
+    "router": [
+        [
+            "default",
+            "blobs"
         ]
-    }
+    ]
 }
 ```
