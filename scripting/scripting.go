@@ -56,6 +56,20 @@ func (db *DB) GetHash(key string) (map[string]string, error) {
     return res, nil
 }
 
+func (db *DB) LiterWithIndex(key string) ([]map[string]interface{}, error) {
+    ivs, err := db.db.LiterWithIndex(key)
+    if err != nil {
+        return nil, err
+    }
+    res := []map[string]interface{}{}
+    for _, iv := range ivs {
+        res = append(res, map[string]interface{}{
+            "value": iv.Value,
+            "index": iv.Index,
+        })
+    }
+    return res, nil
+}
 // ExecScript execute the LUA script "code" against the database "db" with "args" as argument.
 // The script must return a table (associative array) that will be returned.
 func ExecScript(db *db.DB, code string, args interface{}) (map[string]interface{}, *transaction.Transaction) {

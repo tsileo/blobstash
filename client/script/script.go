@@ -14,8 +14,13 @@ func RunScript(serverAddr, code string, args interface{}, dest interface{}) (err
 		serverAddr = defaultServerAddr
 	}
 	body := &bytes.Buffer{}
+	// Script args must be json encoded
+	argsJs, err := json.Marshal(args)
+	if err != nil {
+		return err
+	}
 	payload := map[string]interface{}{
-		"_args":   args,
+		"_args":   string(argsJs),
 		"_script": code,
 	}
 	js, err := json.Marshal(&payload)

@@ -25,7 +25,7 @@ Draws inspiration from [Camlistore](http://camlistore.org/) and [bup](https://gi
 ## Getting started
 
 ```console
-$ sudo apt-get install liblua5.1-dev
+$ sudo apt-get install liblua5.1-dev lua-cjson
 $ go get github.com/tsileo/blobstash/cmd/blobstash
 $ $GOPATH/bin/blobstash
 2014/07/29 19:54:34 Starting blobstash version 0.1.0; go1.3 (linux/amd64)

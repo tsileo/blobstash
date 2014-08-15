@@ -6,6 +6,8 @@ The Lua program must returns an associative array (a table).
 
 ## Helpers available
 
+In addition the standard [Luar helpers](https://github.com/stevedonovan/luar) (like ``luar.map2table``), you have access to:
+
 - ``blake2b()`` to compute the blake2b hash.
 - ``blobstash.Tx`` to write data ([API docs here](http://godoc.org/github.com/tsileo/blobstash/client/transaction))
 - ``blobstash.DB`` to query data
