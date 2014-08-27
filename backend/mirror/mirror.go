@@ -99,13 +99,15 @@ func (backend *MirrorBackend) Get(hash string) (data []byte, err error) {
 func (backen *MirrorBackend) Enumerate(blobs chan<- string) error {
 	defer close(blobs)
 	for _, b := range backen.backends {
+		errc := make(chan error)
 		tblobs := make(chan string)
-		err := b.Enumerate(tblobs)
 		go func() {
-			for bl := range tblobs {
-				blobs <- bl
-			}
+			errc <- b.Enumerate(tblobs)
 		}()
+		for bl := range tblobs {
+			blobs <- bl
+		}
+		err := <-errc
 		switch err {
 		case backend.ErrWriteOnly:
 			continue
