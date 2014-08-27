@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"time"
+	"strings"
+	"strconv"
 
 	"github.com/garyburd/redigo/redis"
 
@@ -32,10 +34,19 @@ func New(serverAddr string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	blobstoreAddr := ""
+	addrData := strings.Split(serverAddr, ":")
+	if len(addrData) == 2 {
+		port, err := strconv.Atoi(addrData[1])
+		if err != nil {
+			panic(err)
+		}
+		blobstoreAddr = fmt.Sprintf("http://%v:%v", addrData[0], port+1)
+	}
 	c := &Client{
 		ServerAddr: serverAddr,
 		Hostname:   hostname,
-		BlobStore:  blobstore.New(""), // TODO make the client use ServerAddr port+1
+		BlobStore:  blobstore.New(blobstoreAddr), // TODO make the client use ServerAddr port+1
 	}
 	if err := c.setupPool(); err != nil {
 		return nil, err
