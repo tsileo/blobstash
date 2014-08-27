@@ -90,8 +90,11 @@ func New(keyPath string, dest backend.BlobHandler) *EncryptBackend {
 		blobsCnt++
 	}
 	if err := <-errs; err != nil {
-		panic(err)
-		//return err
+		if err == backend.ErrWriteOnly {
+			log.Printf("EncryptBackend: no scan in write-only mode")
+		} else {
+			panic(err)
+		}
 	}
 	log.Printf("EncryptBackend: %v blobs successfully scanned", blobsCnt)
 	return b

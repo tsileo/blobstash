@@ -567,6 +567,7 @@ func (backend *BlobsFileBackend) Get(hash string) ([]byte, error) {
 }
 
 func (backend *BlobsFileBackend) Enumerate(blobs chan<- string) error {
+	defer close(blobs)
 	if backend.writeOnly {
 		return bbackend.ErrWriteOnly
 	}
@@ -576,7 +577,6 @@ func (backend *BlobsFileBackend) Enumerate(blobs chan<- string) error {
 	backend.Lock()
 	defer backend.Unlock()
 	// TODO(tsileo) send the size along the hashes ?
-	defer close(blobs)
 	enum, _, err := backend.index.db.Seek(formatKey(BlobPosKey, []byte("")))
 	if err != nil {
 		return err
