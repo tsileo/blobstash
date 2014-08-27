@@ -39,7 +39,6 @@ func BigRandomBlob() *BlobTest {
 	return &BlobTest{hash, data}
 }
 
-
 func Test(t *testing.T, b BlobHandler) {
 	FullTest(t, b, false, false)
 }
@@ -72,18 +71,25 @@ func FullTest(t *testing.T, b BlobHandler, writeOnlyMode, readOnlyMode bool) {
 	sort.Strings(eblobs)
 	t.Logf("%v test blobs generated", len(blobs))
 
-	if !readOnlyMode {
+	if !readOnlyMode && !writeOnlyMode {
 		t.Logf("Test empty enumerate")
 		rblobs := []string{}
 		cblobs := make(chan string)
-		go b.Enumerate(cblobs)
+		errc := make(chan error)
+		go func() {
+			errc <- b.Enumerate(cblobs)
+		}()
 		for blobHash := range cblobs {
 			rblobs = append(rblobs, blobHash)
+		}
+		if err := <-errc; err != nil {
+			panic(err)
 		}
 		if len(rblobs) != 0 {
 			t.Fatalf("Enumerate should return nothing, got: %q", rblobs)
 		}
-
+	}
+	if !readOnlyMode {
 		t.Logf("Testing Put")
 
 		for i, blob := range blobs {
@@ -118,7 +124,7 @@ func FullTest(t *testing.T, b BlobHandler, writeOnlyMode, readOnlyMode bool) {
 		t.Fatalf(fmt.Sprintf("Blob %v should exists", eblobs[0]))
 	}
 
-	if !readOnlyMode {
+	if !readOnlyMode && !writeOnlyMode {
 		t.Logf("Testing Enumerate")
 
 		rblobs := []string{}

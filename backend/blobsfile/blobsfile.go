@@ -43,6 +43,7 @@ import (
 	"github.com/bitly/go-simplejson"
 	"github.com/dchest/blake2b"
 
+	bbackend "github.com/tsileo/blobstash/backend"
 	"github.com/tsileo/blobstash/config/pathutil"
 )
 
@@ -566,6 +567,9 @@ func (backend *BlobsFileBackend) Get(hash string) ([]byte, error) {
 }
 
 func (backend *BlobsFileBackend) Enumerate(blobs chan<- string) error {
+	if backend.writeOnly {
+		return bbackend.ErrWriteOnly
+	}
 	if !backend.loaded {
 		panic("backend BlobsFileBackend not loaded")
 	}

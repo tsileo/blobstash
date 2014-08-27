@@ -96,7 +96,15 @@ func (backend *MirrorBackend) Get(hash string) (data []byte, err error) {
 	return
 }
 
-func (backend *MirrorBackend) Enumerate(blobs chan<- string) error {
-	// TODO(tsileo) enumerate over all backends with a map to check if already sent ?
-	return backend.backends[0].Enumerate(blobs)
+func (backen *MirrorBackend) Enumerate(blobs chan<- string) error {
+	for _, b := range backen.backends {
+		err := b.Enumerate(blobs)
+		switch err {
+		case backend.ErrWriteOnly:
+			continue
+		default:
+			return err
+		}
+	}
+	return nil
 }

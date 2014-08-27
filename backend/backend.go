@@ -1,5 +1,11 @@
 package backend
 
+import (
+	"errors"
+)
+
+var ErrWriteOnly = errors.New("backend is write-only")
+
 // BlobHandler is the interface that defines
 // all the method a "blob backend" must implement.
 type BlobHandler interface {
