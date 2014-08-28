@@ -178,7 +178,7 @@ func (backend *BlobsFileBackend) Close() {
 func (backend *BlobsFileBackend) Done() error {
 	if backend.writeOnly {
 		log.Println("BlobsFileBackend: Done()")
-		if backend.blobsUploaded > 0 {
+		if backend.blobsUploaded == 0 {
 			log.Println("BlobsFileBackend: no new blobs have been uploaded")
 			return nil
 		}
