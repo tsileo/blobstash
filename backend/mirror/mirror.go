@@ -24,14 +24,26 @@ var (
 )
 
 type MirrorBackend struct {
-	backends []backend.BlobHandler
+	backends          []backend.BlobHandler
+	readWriteBackends []backend.BlobHandler
+	writeBackends     []backend.BlobHandler
 }
 
-func New(backends ...backend.BlobHandler) *MirrorBackend {
+func New(rwbackends []backend.BlobHandler, wbackends []backend.BlobHandler) *MirrorBackend {
 	log.Println("MirrorBackend: starting")
-	b := &MirrorBackend{[]backend.BlobHandler{}}
-	for _, mBackend := range backends {
-		log.Printf("MirrorBackend: adding backend %v", mBackend.String())
+	b := &MirrorBackend{
+		backends:          []backend.BlobHandler{},
+		readWriteBackends: []backend.BlobHandler{},
+		writeBackends:     []backend.BlobHandler{},
+	}
+	for _, mBackend := range rwbackends {
+		log.Printf("MirrorBackend: adding Write/Read backend %v", mBackend.String())
+		b.readWriteBackends = append(b.readWriteBackends, mBackend)
+		b.backends = append(b.backends, mBackend)
+	}
+	for _, mBackend := range wbackends {
+		log.Printf("MirrorBackend: adding Write-only backend %v", mBackend.String())
+		b.writeBackends = append(b.writeBackends, mBackend)
 		b.backends = append(b.backends, mBackend)
 	}
 	return b
@@ -74,14 +86,14 @@ func (backend *MirrorBackend) Put(hash string, data []byte) (err error) {
 }
 
 func (backend *MirrorBackend) Exists(hash string) bool {
-	for _, b := range backend.backends {
+	for _, b := range backend.readWriteBackends {
 		return b.Exists(hash)
 	}
 	return false
 }
 
 func (backend *MirrorBackend) Get(hash string) (data []byte, err error) {
-	for _, b := range backend.backends {
+	for _, b := range backend.readWriteBackends {
 		data, err = b.Get(hash)
 		if err == nil {
 			blobsDownloaded.Add("total", 1)
@@ -98,7 +110,7 @@ func (backend *MirrorBackend) Get(hash string) (data []byte, err error) {
 
 func (backen *MirrorBackend) Enumerate(blobs chan<- string) error {
 	defer close(blobs)
-	for _, b := range backen.backends {
+	for _, b := range backen.readWriteBackends {
 		errc := make(chan error)
 		tblobs := make(chan string)
 		go func() {

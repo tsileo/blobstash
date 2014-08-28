@@ -8,9 +8,9 @@ import (
 	"github.com/tsileo/blobstash/backend"
 	"github.com/tsileo/blobstash/backend/blobsfile"
 	"github.com/tsileo/blobstash/backend/encrypt"
+	"github.com/tsileo/blobstash/backend/glacier"
 	"github.com/tsileo/blobstash/backend/mirror"
 	"github.com/tsileo/blobstash/backend/s3"
-	"github.com/tsileo/blobstash/backend/glacier"
 )
 
 const defaultS3Location = "us-east-1"
@@ -45,7 +45,11 @@ func NewMirrorFromConfig(conf *simplejson.Json) backend.BlobHandler {
 	for index, _ := range conf.Get("backends").MustArray() {
 		backends = append(backends, NewFromConfig(conf.Get("backends").GetIndex(index)))
 	}
-	return mirror.New(backends...)
+	wbackends := []backend.BlobHandler{}
+	for index, _ := range conf.Get("write-backends").MustArray() {
+		wbackends = append(wbackends, NewFromConfig(conf.Get("write-backends").GetIndex(index)))
+	}
+	return mirror.New(backends, wbackends)
 }
 
 func NewFromConfig(conf *simplejson.Json) backend.BlobHandler {

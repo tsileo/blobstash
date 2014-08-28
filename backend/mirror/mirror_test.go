@@ -13,6 +13,6 @@ func TestMirrorBackend(t *testing.T) {
 	defer os.RemoveAll("tmp_blobsfile_1")
 	dest2 := blobsfile.New("tmp_blobsfile_2", 0, false, false)
 	defer os.RemoveAll("tmp_blobsfile_2")
-	b := New(dest1, dest2)
+	b := New([]backend.BlobHandler{dest1, dest2}, []backend.BlobHandler{})
 	backend.Test(t, b)
 }
