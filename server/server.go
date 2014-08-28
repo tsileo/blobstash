@@ -11,19 +11,19 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
-	"runtime"
 	"time"
 
 	"github.com/bsm/redeo"
 	"github.com/gorilla/mux"
 
 	"github.com/tsileo/blobstash/backend"
-	"github.com/tsileo/blobstash/pubsub"
 	"github.com/tsileo/blobstash/db"
+	"github.com/tsileo/blobstash/pubsub"
 	"github.com/tsileo/blobstash/scripting"
 )
 
@@ -40,7 +40,7 @@ var (
 )
 
 var (
-	BlobRouter *backend.Router
+	BlobRouter    *backend.Router
 	loadMetaBlobs sync.Once
 )
 
@@ -58,16 +58,16 @@ func init() {
 }
 
 type ServerCtx struct {
-	TxID string
-	Archive bool
+	TxID      string
+	Archive   bool
 	Namespace string
 }
 
 type blobPutJob struct {
-	req *backend.Request
+	req  *backend.Request
 	hash string
 	blob []byte
-	txm *backend.TxManager
+	txm  *backend.TxManager
 }
 
 func (j *blobPutJob) String() string {
@@ -128,7 +128,7 @@ func SetUpCtx(req *redeo.Request) {
 
 	// Send raw cmd over SSE
 	var mCmd string
-	if !strings.HasPrefix(reqName, "b") &&  !strings.HasPrefix(reqName, "mb") {
+	if !strings.HasPrefix(reqName, "b") && !strings.HasPrefix(reqName, "mb") {
 		mCmd = fmt.Sprintf("%+v command  with args %+v from client: %v", req.Name, req.Args, client)
 	} else {
 		switch {
@@ -476,7 +476,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 				exists := BlobRouter.Exists(job.req, job.hash)
 				if exists {
 					job.free()
-					return
+					continue
 				}
 				if err := BlobRouter.Put(job.req, job.hash, job.blob); err != nil {
 					panic(err)
@@ -484,12 +484,12 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 				if job.req.MetaBlob {
 					back := blobRouter.Route(job.req)
 					txm := blobRouter.TxManagers[back]
-					log.Printf("meta blob: %v received", job.hash)
 					go func(job *blobPutJob) {
 						defer job.free()
 						if err := txm.LoadIncomingBlob(job.hash, job.blob); err != nil {
 							panic(err)
 						}
+						log.Printf("meta blob %v applied", job.hash)
 					}(job)
 				} else {
 					job.free()
@@ -510,7 +510,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 		breq := &backend.Request{
 			Namespace: ctx.Namespace,
 		}
-		jobc<- newBlobPutJob(breq, sha, blob, nil)
+		jobc <- newBlobPutJob(breq, sha, blob, nil)
 		//err = BlobRouter.Put(&backend.Request{Host: ctx.Hostname, MetaBlob: false}, sha, blob)
 		//if err != nil {
 		//	log.Printf("server: Error BPUT:%v\nBlob %v:%v", err, sha, blob)
@@ -868,7 +868,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 			return err
 		}
 		txID := req.Client().Ctx.(*ServerCtx).TxID
-		rbc <-req.Client().Ctx.(*ServerCtx).ReqBuffer(txID)
+		rbc <- req.Client().Ctx.(*ServerCtx).ReqBuffer(txID)
 		//err = rb.Save()
 		//if err != nil {
 		//	log.Printf("server: TXCOMMIT error %v/%v", err, txID)
@@ -938,7 +938,7 @@ func New(addr, webAddr, dbpath string, blobRouter *backend.Router, stop chan boo
 				}
 				// Trigger the saving of the namespace buffer
 				pubsub.NewPubSub("ns").Publish("1")
-				time.Sleep(3*time.Second)
+				time.Sleep(3 * time.Second)
 				log.Println("server: closing backends...")
 				BlobRouter.Close()
 				log.Println("server: shutting down...")

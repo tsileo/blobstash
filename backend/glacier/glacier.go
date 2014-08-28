@@ -15,15 +15,15 @@ package glacier
 import (
 	"expvar"
 	"fmt"
-	"os"
 	"log"
+	"os"
 
 	"github.com/tsileo/blobstash/backend"
 
-	"github.com/tsileo/blobstash/backend/blobsfile"
-	"github.com/tsileo/blobstash/pubsub"
-    "github.com/tsileo/blobstash/backend/glacier/util"
 	"github.com/rdwilliamson/aws/glacier"
+	"github.com/tsileo/blobstash/backend/blobsfile"
+	"github.com/tsileo/blobstash/backend/glacier/util"
+	"github.com/tsileo/blobstash/pubsub"
 )
 
 var (
@@ -34,11 +34,11 @@ var (
 )
 
 type GlacierBackend struct {
-	Vault string
-	cache backend.BlobHandler
-	con *glacier.Connection
+	Vault  string
+	cache  backend.BlobHandler
+	con    *glacier.Connection
 	pubsub *pubsub.PubSub
-//	db *kv.DB
+	//	db *kv.DB
 }
 
 func New(vault, region, cacheDir string, compression bool) *GlacierBackend {
@@ -90,7 +90,7 @@ func (backend *GlacierBackend) Done() error {
 
 func (backend *GlacierBackend) Upload() error {
 	// TODO handle upload to Glacier
-	log.Printf("GlacierBackend %+v Upload()", backend)
+	log.Printf("GlacierBackend: %+v upload started", backend)
 	bfBackend, err := backend.cache.(*blobsfile.BlobsFileBackend)
 	if !err {
 		panic(fmt.Errorf("GlacierBackend cache must be a BlobsFileBackend"))
@@ -107,6 +107,7 @@ func (backend *GlacierBackend) Upload() error {
 	if err := backend.cache.Done(); err != nil {
 		return err
 	}
+	log.Printf("GlacierBackend: %+v upload done", backend)
 	return nil
 }
 
