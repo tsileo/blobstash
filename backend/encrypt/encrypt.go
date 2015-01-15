@@ -25,8 +25,8 @@ import (
 
 	"github.com/dchest/blake2b"
 
-	"code.google.com/p/go.crypto/nacl/secretbox"
 	"code.google.com/p/snappy-go/snappy"
+	"golang.org/x/crypto/nacl/secretbox"
 )
 
 var (
