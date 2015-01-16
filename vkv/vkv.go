@@ -154,8 +154,12 @@ func (db *DB) VersionCnt(key string) (int, error) {
 	return int(card), err
 }
 
-func (db *DB) Put(key, value string) (*KeyValue, error) {
-	index := int(time.Now().UTC().Unix())
+// Put updates the value for the given version associated with key,
+// if version == -1, version will be set to time.Now().UTC().Unix().
+func (db *DB) Put(key, value string, version int) (*KeyValue, error) {
+	if version == -1 {
+		version = int(time.Now().UTC().Unix())
+	}
 	bkey := []byte(key)
 	cmin, err := db.getUint32(encodeMeta(KvVersionMin, bkey))
 	if err != nil {
@@ -172,17 +176,17 @@ func (db *DB) Put(key, value string) (*KeyValue, error) {
 			return nil, err
 		}
 	}
-	if llen == 0 || int(cmin) > index {
-		if err := db.putUint32(encodeMeta(KvVersionMin, bkey), uint32(index)); err != nil {
+	if llen == 0 || int(cmin) > version {
+		if err := db.putUint32(encodeMeta(KvVersionMin, bkey), uint32(version)); err != nil {
 			return nil, err
 		}
 	}
-	if cmax == 0 || int(cmax) < index {
-		if err := db.putUint32(encodeMeta(KvVersionMax, bkey), uint32(index)); err != nil {
+	if cmax == 0 || int(cmax) < version {
+		if err := db.putUint32(encodeMeta(KvVersionMax, bkey), uint32(version)); err != nil {
 			return nil, err
 		}
 	}
-	kmember := encodeKey(bkey, index)
+	kmember := encodeKey(bkey, version)
 	cval, err := db.db.Get(kmember, nil)
 	if err != nil {
 		return nil, err
@@ -202,24 +206,28 @@ func (db *DB) Put(key, value string) (*KeyValue, error) {
 	return &KeyValue{
 		Key:     key,
 		Value:   value,
-		Version: index,
+		Version: version,
 	}, nil
 }
 
-// Get returns the latest value for the given key
-func (db *DB) Get(key string) (*KeyValue, error) {
+// Get returns the latest value for the given key,
+// if version == -1, the latest version will be returned.
+func (db *DB) Get(key string, version int) (*KeyValue, error) {
 	bkey := []byte(key)
-	max, err := db.getUint32(encodeMeta(KvVersionMax, bkey))
-	if err != nil {
-		return nil, err
+	if version == -1 {
+		max, err := db.getUint32(encodeMeta(KvVersionMax, bkey))
+		if err != nil {
+			return nil, err
+		}
+		version = max
 	}
-	val, err := db.db.Get(encodeKey(bkey, int(max)), nil)
+	val, err := db.db.Get(encodeKey(bkey, int(version)), nil)
 	if err != nil {
 		return nil, err
 	}
 	return &KeyValue{
 		Key:     key,
-		Version: int(max),
+		Version: int(version),
 		Value:   string(val),
 	}, nil
 }
@@ -276,6 +284,4 @@ func (db *DB) Keys(start, end string, limit int) ([]string, error) {
 		i++
 	}
 	return res, nil
-} // TODO Keys(start, end string) ([]string, error)
-//	Add the key index meta
-//	Add tests
+}
