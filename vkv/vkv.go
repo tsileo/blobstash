@@ -219,15 +219,15 @@ func (db *DB) Get(key string, version int) (*KeyValue, error) {
 		if err != nil {
 			return nil, err
 		}
-		version = max
+		version = int(max)
 	}
-	val, err := db.db.Get(encodeKey(bkey, int(version)), nil)
+	val, err := db.db.Get(encodeKey(bkey, version), nil)
 	if err != nil {
 		return nil, err
 	}
 	return &KeyValue{
 		Key:     key,
-		Version: int(version),
+		Version: version,
 		Value:   string(val),
 	}, nil
 }
