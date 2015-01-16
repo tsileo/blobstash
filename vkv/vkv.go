@@ -15,6 +15,7 @@ import (
 	"encoding/binary"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/cznic/kv"
@@ -24,9 +25,10 @@ import (
 const (
 	Empty byte = iota
 	Meta
+	KvKeyIndex
 	KvItem
 	KvVersionCnt
-	kvVersionMin
+	KvVersionMin
 	KvVersionMax
 )
 
@@ -46,10 +48,11 @@ type KeyValueVersions struct {
 type DB struct {
 	db   *kv.DB
 	path string
+	mu   *sync.Mutex
 }
 
 // New creates a new database.
-func New(db_path string) (*DB, error) {
+func New(path string) (*DB, error) {
 	createOpen := kv.Open
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		createOpen = kv.Create
@@ -61,6 +64,7 @@ func New(db_path string) (*DB, error) {
 	return &DB{
 		db:   kvdb,
 		path: path,
+		mu:   new(sync.Mutex),
 	}, nil
 }
 
@@ -78,6 +82,8 @@ func (db *DB) Destroy() error {
 
 // Store a uint32 as binary data.
 func (db *DB) putUint32(key []byte, value uint32) error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
 	val := make([]byte, 4)
 	binary.LittleEndian.PutUint32(val[:], value)
 	err := db.db.Set(key, val)
@@ -95,6 +101,8 @@ func (db *DB) getUint32(key []byte) (uint32, error) {
 
 // Increment a binary stored uint32.
 func (db *DB) incrUint32(key []byte, step int) error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
 	data, err := db.db.Get(nil, key)
 	var value uint32
 	if err != nil {
@@ -115,7 +123,7 @@ func encodeKey(key []byte, index int) []byte {
 	indexbyte := make([]byte, 4)
 	binary.BigEndian.PutUint32(indexbyte, uint32(index))
 	k := make([]byte, len(key)+9)
-	k[0] = List
+	k[0] = KvItem
 	binary.LittleEndian.PutUint32(k[1:5], uint32(len(key)))
 	copy(k[5:], key)
 	copy(k[5+len(key):], indexbyte)
@@ -128,7 +136,7 @@ func decodeKey(key []byte) (string, int) {
 	index := int(binary.BigEndian.Uint32(key[len(key)-4:]))
 	member := make([]byte, klen)
 	copy(member, key[5:5+klen])
-	return member, int
+	return string(member), index
 }
 
 func encodeMeta(keyByte byte, key []byte) []byte {
@@ -146,7 +154,7 @@ func (db *DB) VersionCnt(key string) (int, error) {
 	return int(card), err
 }
 
-func (db *DB) Set(key, value string) (*KeyValue, error) {
+func (db *DB) Put(key, value string) (*KeyValue, error) {
 	index := int(time.Now().UTC().Unix())
 	bkey := []byte(key)
 	cmin, err := db.getUint32(encodeMeta(KvVersionMin, bkey))
@@ -175,11 +183,8 @@ func (db *DB) Set(key, value string) (*KeyValue, error) {
 		}
 	}
 	kmember := encodeKey(bkey, index)
-	cval, err := db.db.Get(kmember)
+	cval, err := db.db.Get(kmember, nil)
 	if err != nil {
-		return nil, err
-	}
-	if err := db.db.Put(kmember, []byte(value)); err != nil {
 		return nil, err
 	}
 	if cval == nil {
@@ -188,10 +193,16 @@ func (db *DB) Set(key, value string) (*KeyValue, error) {
 			return nil, err
 		}
 	}
+	if err := db.db.Set(kmember, []byte(value)); err != nil {
+		return nil, err
+	}
+	if err := db.db.Set(encodeMeta(KvKeyIndex, []byte(value)), []byte{}); err != nil {
+		return nil, err
+	}
 	return &KeyValue{
-		Key:   key,
-		Value: value,
-		Index: index,
+		Key:     key,
+		Value:   value,
+		Version: index,
 	}, nil
 }
 
@@ -202,14 +213,14 @@ func (db *DB) Get(key string) (*KeyValue, error) {
 	if err != nil {
 		return nil, err
 	}
-	val, err := db.db.Get(encodeKey(bkey, int(max)))
+	val, err := db.db.Get(encodeKey(bkey, int(max)), nil)
 	if err != nil {
 		return nil, err
 	}
 	return &KeyValue{
-		Key:   key,
-		Index: int(max),
-		Value: string(val),
+		Key:     key,
+		Version: int(max),
+		Value:   string(val),
 	}, nil
 }
 
@@ -221,6 +232,9 @@ func (db *DB) Versions(key string, start, end, limit int) (*KeyValueVersions, er
 	}
 	bkey := []byte(key)
 	enum, _, err := db.db.Seek(encodeKey(bkey, start))
+	if err != nil {
+		return nil, err
+	}
 	endBytes := encodeKey(bkey, end)
 	i := 0
 	for {
@@ -231,16 +245,37 @@ func (db *DB) Versions(key string, start, end, limit int) (*KeyValueVersions, er
 		if bytes.Compare(k, endBytes) > 0 || (limit != 0 && i > limit) {
 			return res, nil
 		}
-		index, _ := decodeKey(k)
+		_, index := decodeKey(k)
 		res.Versions = append(res.Versions, &KeyValue{
-			Value: string(v),
-			Index: index,
+			Value:   string(v),
+			Version: index,
 		})
 		i++
 	}
-	return res
+	return res, nil
 }
 
-// TODO Keys(start, end string) ([]string, error)
+// Return a lexicographical range
+func (db *DB) Keys(start, end string, limit int) ([]string, error) {
+	res := []string{}
+	enum, _, err := db.db.Seek(encodeMeta(KvKeyIndex, []byte(start)))
+	if err != nil {
+		return nil, err
+	}
+	endBytes := encodeMeta(KvKeyIndex, []byte(end))
+	i := 0
+	for {
+		k, _, err := enum.Next()
+		if err == io.EOF {
+			break
+		}
+		if bytes.Compare(k, endBytes) > 0 || (limit != 0 && i > limit) {
+			return res, nil
+		}
+		res = append(res, string(k[1:]))
+		i++
+	}
+	return res, nil
+} // TODO Keys(start, end string) ([]string, error)
 //	Add the key index meta
 //	Add tests
