@@ -1,8 +1,10 @@
 package vkv
 
 import (
+	"reflect"
 	"sync"
 	"testing"
+	"time"
 )
 
 func check(e error) {
@@ -57,4 +59,19 @@ func TestDB(t *testing.T) {
 	if len(keys) != 0 {
 		t.Errorf("Keys() should be empty: %q", keys)
 	}
+	res, err := db.Put("test_key_1", "test_value_1", -1)
+	check(err)
+	res2, err := db.Get("test_key_1", -1)
+	if !reflect.DeepEqual(res, res2) {
+		t.Errorf("bad KeyValue result got %+v, expected %+v", res2, res)
+	}
+	res, err = db.Put("test_key_1", "test_value_1.1", -1)
+	check(err)
+	res2, err = db.Get("test_key_1", -1)
+	if !reflect.DeepEqual(res, res2) {
+		t.Errorf("bad KeyValue result got %+v, expected %+v", res2, res)
+	}
+	versions, err := db.Versions("test_key_1", 0, int(time.Now().UTC().Unix()+10), 0)
+	check(err)
+	t.Logf("v:%q", versions)
 }

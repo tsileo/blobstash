@@ -155,10 +155,10 @@ func (db *DB) VersionCnt(key string) (int, error) {
 }
 
 // Put updates the value for the given version associated with key,
-// if version == -1, version will be set to time.Now().UTC().Unix().
+// if version == -1, version will be set to time.Now().UTC().UnixNano().
 func (db *DB) Put(key, value string, version int) (*KeyValue, error) {
 	if version == -1 {
-		version = int(time.Now().UTC().Unix())
+		version = int(time.Now().UTC().UnixNano())
 	}
 	bkey := []byte(key)
 	cmin, err := db.getUint32(encodeMeta(KvVersionMin, bkey))
@@ -187,7 +187,7 @@ func (db *DB) Put(key, value string, version int) (*KeyValue, error) {
 		}
 	}
 	kmember := encodeKey(bkey, version)
-	cval, err := db.db.Get(kmember, nil)
+	cval, err := db.db.Get(nil, kmember)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +200,7 @@ func (db *DB) Put(key, value string, version int) (*KeyValue, error) {
 	if err := db.db.Set(kmember, []byte(value)); err != nil {
 		return nil, err
 	}
-	if err := db.db.Set(encodeMeta(KvKeyIndex, []byte(value)), []byte{}); err != nil {
+	if err := db.db.Set(encodeMeta(KvKeyIndex, bkey), []byte{}); err != nil {
 		return nil, err
 	}
 	return &KeyValue{
@@ -221,7 +221,7 @@ func (db *DB) Get(key string, version int) (*KeyValue, error) {
 		}
 		version = int(max)
 	}
-	val, err := db.db.Get(encodeKey(bkey, version), nil)
+	val, err := db.db.Get(nil, encodeKey(bkey, version))
 	if err != nil {
 		return nil, err
 	}
@@ -285,3 +285,5 @@ func (db *DB) Keys(start, end string, limit int) ([]string, error) {
 	}
 	return res, nil
 }
+
+// TODO move uint32 to uint64 and uses UnixNano instead of Unix for timestamp
