@@ -38,11 +38,19 @@ func vkvHandler(db *vkv.DB) func(http.ResponseWriter, *http.Request) {
 			}
 			res, err := db.Get(vars["key"], iversion)
 			if err != nil {
+				if err == vkv.ErrNotFound {
+					http.Error(w, http.StatusText(404), 404)
+					return
+				}
 				panic(err)
 			}
 			WriteJSON(w, res)
 		case "HEAD":
-			exists := true
+			vars := mux.Vars(r)
+			exists, err := db.Check(vars["key"])
+			if err != nil {
+				panic(err)
+			}
 			if exists {
 				return
 			}

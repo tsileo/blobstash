@@ -213,6 +213,18 @@ func (db *DB) Put(key, value string, version int) (*KeyValue, error) {
 	}, nil
 }
 
+func (db *DB) Check(key string) (bool, error) {
+	bkey := []byte(key)
+	exists, err := db.db.Get(nil, encodeMeta(KvKeyIndex, bkey))
+	if err != nil {
+		return false, err
+	}
+	if len(exists) == 0 {
+		return false, nil
+	}
+	return true, nil
+}
+
 // Get returns the latest value for the given key,
 // if version == -1, the latest version will be returned.
 func (db *DB) Get(key string, version int) (*KeyValue, error) {
