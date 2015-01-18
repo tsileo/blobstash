@@ -54,6 +54,11 @@ func TestDB(t *testing.T) {
 	if valUint != uint64(10) {
 		t.Errorf("Key foo3 should be set to 10, got %v", valUint)
 	}
+	rnotfound, err := db.Get("test_key_1", -1)
+	if err != ErrNotFound {
+		t.Errorf("key %v shouldn't exists got %v/%v", rnotfound, err)
+	}
+
 	keys, err := db.Keys("", "\xff", 0)
 	check(err)
 	if len(keys) != 0 {

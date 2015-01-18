@@ -13,6 +13,7 @@ package vkv
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"io"
 	"os"
 	"sync"
@@ -31,6 +32,8 @@ const (
 	KvVersionMin
 	KvVersionMax
 )
+
+var ErrNotFound = errors.New("vkv: key does not exist")
 
 // KeyValue holds a singke key value pair, along with the version (the creation timestamp)
 type KeyValue struct {
@@ -200,7 +203,7 @@ func (db *DB) Put(key, value string, version int) (*KeyValue, error) {
 	if err := db.db.Set(kmember, []byte(value)); err != nil {
 		return nil, err
 	}
-	if err := db.db.Set(encodeMeta(KvKeyIndex, bkey), []byte{}); err != nil {
+	if err := db.db.Set(encodeMeta(KvKeyIndex, bkey), []byte{1}); err != nil {
 		return nil, err
 	}
 	return &KeyValue{
@@ -214,6 +217,13 @@ func (db *DB) Put(key, value string, version int) (*KeyValue, error) {
 // if version == -1, the latest version will be returned.
 func (db *DB) Get(key string, version int) (*KeyValue, error) {
 	bkey := []byte(key)
+	exists, err := db.db.Get(nil, encodeMeta(KvKeyIndex, bkey))
+	if err != nil {
+		return nil, err
+	}
+	if len(exists) == 0 {
+		return nil, ErrNotFound
+	}
 	if version == -1 {
 		max, err := db.getUint64(encodeMeta(KvVersionMax, bkey))
 		if err != nil {
@@ -239,6 +249,13 @@ func (db *DB) Versions(key string, start, end, limit int) (*KeyValueVersions, er
 		Versions: []*KeyValue{},
 	}
 	bkey := []byte(key)
+	exists, err := db.db.Get(nil, encodeMeta(KvKeyIndex, bkey))
+	if err != nil {
+		return nil, err
+	}
+	if len(exists) == 0 {
+		return nil, ErrNotFound
+	}
 	enum, _, err := db.db.Seek(encodeKey(bkey, start))
 	if err != nil {
 		return nil, err
