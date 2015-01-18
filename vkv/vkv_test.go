@@ -73,5 +73,15 @@ func TestDB(t *testing.T) {
 	}
 	versions, err := db.Versions("test_key_1", 0, int(time.Now().UTC().UnixNano()), 0)
 	check(err)
-	t.Logf("v:%q", versions)
+	if len(versions.Versions) != 2 {
+		t.Errorf("key test_key_1 should have 2 versions, got %d", len(versions.Versions))
+	}
+	if versions.Versions[1].Value != res2.Value {
+		t.Errorf("bad KeyValue result got %+v, expected %+v", versions.Versions[0].Value, res2.Value)
+	}
+	keys, err = db.Keys("", "\xff", 0)
+	check(err)
+	if len(keys) != 1 || keys[0] != res2.Key {
+		t.Errorf("bad Keys() result, expected [%v], got %q", res2.Key, keys)
+	}
 }
