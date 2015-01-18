@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/karlseguin/typed"
 	"github.com/tsileo/blobstash/backend"
 )
 
@@ -32,13 +31,10 @@ type Rule struct {
 	Backend string
 }
 
-func decodeRules(trules []typed.Typed) []*Rule {
+func decodeRules(trules []interface{}) []*Rule {
 	rules := []*Rule{}
 	for _, root := range trules {
-		r, ok := root["0"].([]interface{})
-		if !ok {
-			panic("rules must be array")
-		}
+		r := root.([]interface{})
 		rule := &Rule{
 			Backend: r[1].(string),
 			Conds:   []string{},
@@ -73,7 +69,7 @@ type Router struct {
 	Rules    []*Rule
 }
 
-func New(trules []typed.Typed) *Router {
+func New(trules []interface{}) *Router {
 	rules := decodeRules(trules)
 	return &Router{
 		Backends: map[string]backend.BlobHandler{},
@@ -98,6 +94,8 @@ func (router *Router) Route(req *Request) string {
 // checkRule check if the rule match the given Request
 func checkRule(rule string, req *Request) bool {
 	switch {
+	case rule == "default":
+		return true
 	case rule == "if-meta":
 		if req.MetaBlob {
 			return true
@@ -107,8 +105,6 @@ func checkRule(rule string, req *Request) bool {
 		if strings.ToLower(req.Namespace) == strings.ToLower(ns) {
 			return true
 		}
-	case rule == "default":
-		return true
 	default:
 		panic(fmt.Errorf("failed to parse rule \"%v\"", rule))
 	}

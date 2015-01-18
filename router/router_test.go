@@ -1,9 +1,8 @@
 package router
 
 import (
+	"encoding/json"
 	"testing"
-
-	"github.com/karlseguin/typed"
 )
 
 func check(err error) {
@@ -42,8 +41,14 @@ var testConfData2 = []struct {
 	{&Request{Read, false, "homeserver"}, "blobHandler"},
 }
 
+func decodeJsonRules(js string) ([]interface{}, error) {
+	res := []interface{}{}
+	err := json.Unmarshal([]byte(js), &res)
+	return res, err
+}
+
 func TestRouter(t *testing.T) {
-	tConf1, err := typed.JsonStringArray(testConf1)
+	tConf1, err := decodeJsonRules(testConf1)
 	check(err)
 	routerConfig := New(tConf1)
 	for _, tdata := range testConfData1 {
@@ -52,7 +57,7 @@ func TestRouter(t *testing.T) {
 			t.Errorf("Bad routing result for req %+v, expected:%v, got:%v", tdata.req, tdata.expectedBackend, backend)
 		}
 	}
-	tConf2, err := typed.JsonStringArray(testConf2)
+	tConf2, err := decodeJsonRules(testConf2)
 	check(err)
 	routerConfig = New(tConf2)
 	check(err)
