@@ -1,8 +1,12 @@
 package server2
 
 import (
+	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 
 	"github.com/tsileo/blobstash/api"
 	"github.com/tsileo/blobstash/backend"
@@ -32,7 +36,8 @@ type Server struct {
 
 	KvUpdate chan *vkv.KeyValue
 
-	wg sync.WaitGroup
+	stop chan struct{}
+	wg   sync.WaitGroup
 }
 
 func New(conf map[string]interface{}) *Server {
@@ -48,6 +53,7 @@ func New(conf map[string]interface{}) *Server {
 		Backends: map[string]backend.BlobHandler{},
 		DB:       db,
 		KvUpdate: make(chan *vkv.KeyValue),
+		stop:     make(chan struct{}, 1),
 	}
 	// TODO hook vkv and pathutil
 	backends := conf["backends"].(map[string]interface{})
@@ -68,15 +74,35 @@ func (s *Server) Run() error {
 			panic(err)
 		}
 	}()
-	r := api.New(s.DB, s.KvUpdate)
+	r := api.New(s.wg, s.DB, s.KvUpdate)
 	http.Handle("/", r)
-	return http.ListenAndServe(":8050", nil)
-
+	go func() {
+		if err := http.ListenAndServe(":8050", nil); err != nil {
+			panic(err)
+		}
+	}()
+	cs := make(chan os.Signal, 1)
+	signal.Notify(cs, os.Interrupt,
+		syscall.SIGHUP,
+		syscall.SIGINT,
+		syscall.SIGTERM,
+		syscall.SIGQUIT)
+	for {
+		select {
+		case _ = <-s.stop:
+			break
+		case sig := <-cs:
+			log.Printf("server: Captured %v\n", sig)
+			break
+		}
+		s.Close()
+		os.Exit(0)
+	}
 }
 
 func (s *Server) Close() {
-	close(s.KvUpdate)
 	s.wg.Wait()
+	close(s.KvUpdate)
 	s.DB.Close()
 	for _, b := range s.Backends {
 		b.Close()

@@ -110,16 +110,9 @@ func vkvKeysHandler(db *vkv.DB) func(http.ResponseWriter, *http.Request) {
 }
 
 func New(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue) *mux.Router {
-	//db, err := vkv.New("devdb")
-	//if err != nil {
-	//	panic(err)
-	//}
-	//defer db.Close()
 	r := mux.NewRouter()
 	r.HandleFunc("/api/v1/vkv/keys", vkvKeysHandler(db))
 	r.HandleFunc("/api/v1/vkv/key/{key}", vkvHandler(wg, db, kvUpdate))
 	r.HandleFunc("/api/v1/vkv/key/{key}/versions", vkvVersionsHandler(db))
-	//http.Handle("/", r)
-	//http.ListenAndServe(":8050", nil)
 	return r
 }
