@@ -34,8 +34,9 @@ type Rule struct {
 func decodeRules(trules []interface{}) []*Rule {
 	rules := []*Rule{}
 	for _, root := range trules {
-		r := root.([]interface{})
-		rule := &Rule{
+		r, _ := root.([]interface{})
+		var rule *Rule
+		rule = &Rule{
 			Backend: r[1].(string),
 			Conds:   []string{},
 		}
@@ -78,7 +79,12 @@ func New(trules []interface{}) *Router {
 }
 
 // Route the request and return the backend key that match the request
-func (router *Router) Route(req *Request) string {
+func (router *Router) Route(req *Request) backend.BlobHandler {
+	return router.Backends[router.route(req)]
+}
+
+// Route the request and return the backend key that match the request
+func (router *Router) route(req *Request) string {
 	for _, rule := range router.Rules {
 		match := true
 		for _, cond := range rule.Conds {
@@ -91,7 +97,7 @@ func (router *Router) Route(req *Request) string {
 	return ""
 }
 
-// checkRule check if the rule match the given Request
+// checkRule checks if the rule match the given Request
 func checkRule(rule string, req *Request) bool {
 	switch {
 	case rule == "default":
@@ -109,4 +115,14 @@ func checkRule(rule string, req *Request) bool {
 		panic(fmt.Errorf("failed to parse rule \"%v\"", rule))
 	}
 	return false
+}
+
+// ResolveBackends constructs the list of needed backend key
+// by inspecting the rules
+func (router *Router) ResolveBackends() []string {
+	res := []string{}
+	for _, r := range router.Rules {
+		res = append(res, r.Backend)
+	}
+	return res
 }

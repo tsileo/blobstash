@@ -146,6 +146,27 @@ func NewFromConfig(conf *simplejson.Json) *BlobsFileBackend {
 		conf.Get("write-only").MustBool(false))
 }
 
+// NewFromConfig initialize a BlobsFileBackend from a JSON object.
+func NewFromConfig2(conf map[string]interface{}) *BlobsFileBackend {
+	path := "./backend_blobsfile"
+	if _, pathOk := conf["path"]; pathOk {
+		path = conf["path"].(string)
+	}
+	maxsize := 0
+	if _, maxsizeOk := conf["blobsfile-max-size"]; maxsizeOk {
+		maxsize = conf["blobsfile-max-size"].(int)
+	}
+	compression := false
+	if _, cOk := conf["compression"]; cOk {
+		compression = conf["compression"].(bool)
+	}
+	writeonly := false
+	if _, wOk := conf["write-only"]; wOk {
+		writeonly = conf["write-only"].(bool)
+	}
+	return New(path, int64(maxsize), compression, writeonly)
+}
+
 // Len compute the number of blobs stored
 func (backend *BlobsFileBackend) Len() int {
 	storedBlobs := make(chan string)

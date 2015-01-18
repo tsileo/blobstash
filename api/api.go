@@ -1,7 +1,7 @@
 /*
 
 */
-package main
+package api
 
 import (
 	"encoding/json"
@@ -22,7 +22,7 @@ func WriteJSON(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(js)
 }
-func vkvHandler(db *vkv.DB) func(http.ResponseWriter, *http.Request) {
+func vkvHandler(db *vkv.DB, kvUpdate chan *vkv.KeyValue) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
@@ -61,6 +61,7 @@ func vkvHandler(db *vkv.DB) func(http.ResponseWriter, *http.Request) {
 			k := vars["key"]
 			v := r.FormValue("value")
 			res, err := db.Put(k, v, -1)
+			kvUpdate <- res
 			if err != nil {
 				panic(err)
 			}
@@ -88,15 +89,16 @@ func vkvVersionsHandler(db *vkv.DB) func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-func main() {
-	db, err := vkv.New("devdb")
-	if err != nil {
-		panic(err)
-	}
-	defer db.Close()
+func New(db *vkv.DB, kvUpdate chan *vkv.KeyValue) *mux.Router {
+	//db, err := vkv.New("devdb")
+	//if err != nil {
+	//	panic(err)
+	//}
+	//defer db.Close()
 	r := mux.NewRouter()
-	r.HandleFunc("/api/v1/vkv/{key}", vkvHandler(db))
-	r.HandleFunc("/api/v1/vkv/{key}/versions", vkvVersionsHandler(db))
-	http.Handle("/", r)
-	http.ListenAndServe(":8050", nil)
+	r.HandleFunc("/api/v1/vkv/key/{key}", vkvHandler(db, kvUpdate))
+	r.HandleFunc("/api/v1/vkv/key/{key}/versions", vkvVersionsHandler(db))
+	//http.Handle("/", r)
+	//http.ListenAndServe(":8050", nil)
+	return r
 }

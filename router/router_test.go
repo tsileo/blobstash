@@ -52,7 +52,7 @@ func TestRouter(t *testing.T) {
 	check(err)
 	routerConfig := New(tConf1)
 	for _, tdata := range testConfData1 {
-		backend := routerConfig.Route(tdata.req)
+		backend := routerConfig.route(tdata.req)
 		if backend != tdata.expectedBackend {
 			t.Errorf("Bad routing result for req %+v, expected:%v, got:%v", tdata.req, tdata.expectedBackend, backend)
 		}
@@ -62,7 +62,7 @@ func TestRouter(t *testing.T) {
 	routerConfig = New(tConf2)
 	check(err)
 	for _, tdata := range testConfData2 {
-		backend := routerConfig.Route(tdata.req)
+		backend := routerConfig.route(tdata.req)
 		if backend != tdata.expectedBackend {
 			t.Errorf("Bad routing result for req %+v, expected:%v, got:%v", tdata.req, tdata.expectedBackend, backend)
 		}
