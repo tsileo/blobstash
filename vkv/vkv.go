@@ -80,60 +80,60 @@ func (db *DB) Destroy() error {
 	return nil
 }
 
-// Store a uint32 as binary data.
-func (db *DB) putUint32(key []byte, value uint32) error {
+// Store a uint64 as binary data.
+func (db *DB) putUint64(key []byte, value uint64) error {
 	db.mu.Lock()
 	defer db.mu.Unlock()
-	val := make([]byte, 4)
-	binary.LittleEndian.PutUint32(val[:], value)
+	val := make([]byte, 8)
+	binary.LittleEndian.PutUint64(val[:], value)
 	err := db.db.Set(key, val)
 	return err
 }
 
-// Retrieve a binary stored uint32.
-func (db *DB) getUint32(key []byte) (uint32, error) {
+// Retrieve a binary stored uint64.
+func (db *DB) getUint64(key []byte) (uint64, error) {
 	data, err := db.db.Get(nil, key)
 	if err != nil || data == nil {
 		return 0, err
 	}
-	return binary.LittleEndian.Uint32(data), nil
+	return binary.LittleEndian.Uint64(data), nil
 }
 
-// Increment a binary stored uint32.
-func (db *DB) incrUint32(key []byte, step int) error {
+// Increment a binary stored uint64.
+func (db *DB) incrUint64(key []byte, step int) error {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	data, err := db.db.Get(nil, key)
-	var value uint32
+	var value uint64
 	if err != nil {
 		return err
 	}
 	if data == nil {
 		value = 0
 	} else {
-		value = binary.LittleEndian.Uint32(data)
+		value = binary.LittleEndian.Uint64(data)
 	}
-	val := make([]byte, 4)
-	binary.LittleEndian.PutUint32(val[:], value+uint32(step))
+	val := make([]byte, 8)
+	binary.LittleEndian.PutUint64(val[:], value+uint64(step))
 	err = db.db.Set(key, val)
 	return err
 }
 
-func encodeKey(key []byte, index int) []byte {
-	indexbyte := make([]byte, 4)
-	binary.BigEndian.PutUint32(indexbyte, uint32(index))
-	k := make([]byte, len(key)+9)
+func encodeKey(key []byte, version int) []byte {
+	versionbyte := make([]byte, 8)
+	binary.BigEndian.PutUint64(versionbyte, uint64(version))
+	k := make([]byte, len(key)+13)
 	k[0] = KvItem
 	binary.LittleEndian.PutUint32(k[1:5], uint32(len(key)))
 	copy(k[5:], key)
-	copy(k[5+len(key):], indexbyte)
+	copy(k[5+len(key):], versionbyte)
 	return k
 }
 
 // Extract the index from the raw key
 func decodeKey(key []byte) (string, int) {
 	klen := int(binary.LittleEndian.Uint32(key[1:5]))
-	index := int(binary.BigEndian.Uint32(key[len(key)-4:]))
+	index := int(binary.BigEndian.Uint64(key[len(key)-8:]))
 	member := make([]byte, klen)
 	copy(member, key[5:5+klen])
 	return string(member), index
@@ -150,7 +150,7 @@ func encodeMeta(keyByte byte, key []byte) []byte {
 func (db *DB) VersionCnt(key string) (int, error) {
 	bkey := []byte(key)
 	cardkey := encodeMeta(KvVersionCnt, bkey)
-	card, err := db.getUint32(encodeMeta(Meta, cardkey))
+	card, err := db.getUint64(encodeMeta(Meta, cardkey))
 	return int(card), err
 }
 
@@ -161,11 +161,11 @@ func (db *DB) Put(key, value string, version int) (*KeyValue, error) {
 		version = int(time.Now().UTC().UnixNano())
 	}
 	bkey := []byte(key)
-	cmin, err := db.getUint32(encodeMeta(KvVersionMin, bkey))
+	cmin, err := db.getUint64(encodeMeta(KvVersionMin, bkey))
 	if err != nil {
 		return nil, err
 	}
-	cmax, err := db.getUint32(encodeMeta(KvVersionMax, bkey))
+	cmax, err := db.getUint64(encodeMeta(KvVersionMax, bkey))
 	if err != nil {
 		return nil, err
 	}
@@ -177,12 +177,12 @@ func (db *DB) Put(key, value string, version int) (*KeyValue, error) {
 		}
 	}
 	if llen == 0 || int(cmin) > version {
-		if err := db.putUint32(encodeMeta(KvVersionMin, bkey), uint32(version)); err != nil {
+		if err := db.putUint64(encodeMeta(KvVersionMin, bkey), uint64(version)); err != nil {
 			return nil, err
 		}
 	}
 	if cmax == 0 || int(cmax) < version {
-		if err := db.putUint32(encodeMeta(KvVersionMax, bkey), uint32(version)); err != nil {
+		if err := db.putUint64(encodeMeta(KvVersionMax, bkey), uint64(version)); err != nil {
 			return nil, err
 		}
 	}
@@ -193,7 +193,7 @@ func (db *DB) Put(key, value string, version int) (*KeyValue, error) {
 	}
 	if cval == nil {
 		cardkey := encodeMeta(KvVersionCnt, bkey)
-		if err := db.incrUint32(encodeMeta(Meta, cardkey), 1); err != nil {
+		if err := db.incrUint64(encodeMeta(Meta, cardkey), 1); err != nil {
 			return nil, err
 		}
 	}
@@ -215,7 +215,7 @@ func (db *DB) Put(key, value string, version int) (*KeyValue, error) {
 func (db *DB) Get(key string, version int) (*KeyValue, error) {
 	bkey := []byte(key)
 	if version == -1 {
-		max, err := db.getUint32(encodeMeta(KvVersionMax, bkey))
+		max, err := db.getUint64(encodeMeta(KvVersionMax, bkey))
 		if err != nil {
 			return nil, err
 		}
@@ -285,5 +285,3 @@ func (db *DB) Keys(start, end string, limit int) ([]string, error) {
 	}
 	return res, nil
 }
-
-// TODO move uint32 to uint64 and uses UnixNano instead of Unix for timestamp
