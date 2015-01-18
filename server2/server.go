@@ -74,7 +74,7 @@ func (s *Server) Run() error {
 			panic(err)
 		}
 	}()
-	r := api.New(s.wg, s.DB, s.KvUpdate)
+	r := api.New(s.wg, s.DB, s.KvUpdate, s.Router)
 	http.Handle("/", r)
 	go func() {
 		if err := http.ListenAndServe(":8050", nil); err != nil {
