@@ -40,7 +40,6 @@ import (
 	_ "syscall"
 
 	"code.google.com/p/snappy-go/snappy"
-	"github.com/bitly/go-simplejson"
 	"github.com/dchest/blake2b"
 
 	bbackend "github.com/tsileo/blobstash/backend"
@@ -139,15 +138,7 @@ func New(dir string, maxBlobsFileSize int64, compression, writeOnly bool) *Blobs
 }
 
 // NewFromConfig initialize a BlobsFileBackend from a JSON object.
-func NewFromConfig(conf *simplejson.Json) *BlobsFileBackend {
-	return New(conf.Get("path").MustString("./backend_blobsfile"),
-		conf.Get("blobsfile-max-size").MustInt64(0),
-		conf.Get("compression").MustBool(false),
-		conf.Get("write-only").MustBool(false))
-}
-
-// NewFromConfig initialize a BlobsFileBackend from a JSON object.
-func NewFromConfig2(conf map[string]interface{}) *BlobsFileBackend {
+func NewFromConfig(conf map[string]interface{}) *BlobsFileBackend {
 	path := "./backend_blobsfile"
 	if _, pathOk := conf["path"]; pathOk {
 		path = conf["path"].(string)

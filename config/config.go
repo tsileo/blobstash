@@ -1,4 +1,4 @@
-package config2
+package config
 
 import (
 	"fmt"
@@ -83,7 +83,7 @@ func NewFromConfig(conf map[string]interface{}) backend.BlobHandler {
 	backendArgs := conf["backend-args"].(map[string]interface{})
 	switch {
 	case backendType == "blobsfile":
-		return blobsfile.NewFromConfig2(backendArgs)
+		return blobsfile.NewFromConfig(backendArgs)
 	case backendType == "glacier":
 		return NewGlacierFromConfig(backendArgs)
 	case backendType == "encrypt":

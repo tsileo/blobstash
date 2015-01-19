@@ -1,4 +1,4 @@
-package server2
+package server
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 
 	"github.com/tsileo/blobstash/api"
 	"github.com/tsileo/blobstash/backend"
-	"github.com/tsileo/blobstash/config2"
+	"github.com/tsileo/blobstash/config"
 	"github.com/tsileo/blobstash/meta"
 	"github.com/tsileo/blobstash/router"
 	"github.com/tsileo/blobstash/vkv"
@@ -63,7 +63,7 @@ func New(conf map[string]interface{}) *Server {
 	// TODO hook vkv and pathutil
 	backends := conf["backends"].(map[string]interface{})
 	for _, b := range server.Router.ResolveBackends() {
-		server.Backends[b] = config2.NewFromConfig(backends[b].(map[string]interface{}))
+		server.Backends[b] = config.NewFromConfig(backends[b].(map[string]interface{}))
 		server.Router.Backends[b] = server.Backends[b]
 	}
 	server.metaHandler = meta.New(server.Router)
