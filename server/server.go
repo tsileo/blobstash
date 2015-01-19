@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"sync"
 	"syscall"
 
@@ -16,6 +17,8 @@ import (
 	"github.com/tsileo/blobstash/router"
 	"github.com/tsileo/blobstash/vkv"
 )
+
+var version = "0.0.0"
 
 var defaultConf = map[string]interface{}{
 	"backends": map[string]interface{}{
@@ -91,7 +94,10 @@ func (s *Server) processBlobs() {
 }
 
 func (s *Server) Run() error {
+	log.Printf("Starting blobstash version %v; %v (%v/%v)", version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+	// Start meta handler: watch for kv update and create meta blob
 	go s.metaHandler.WatchKvUpdate(s.wg, s.blobs, s.KvUpdate)
+	// Scan existing meta blob
 	go func() {
 		s.wg.Add(1)
 		defer s.wg.Done()
@@ -99,16 +105,20 @@ func (s *Server) Run() error {
 			panic(err)
 		}
 	}()
+	// Start the worker for handling blob upload
 	for i := 0; i < 25; i++ {
 		go s.processBlobs()
 	}
+	// Start the HTTP API
 	r := api.New(s.wg, s.DB, s.KvUpdate, s.Router, s.blobs)
 	http.Handle("/", r)
 	go func() {
 		if err := http.ListenAndServe(":8050", nil); err != nil {
 			panic(err)
 		}
+		log.Printf("server: HTTP API listening on 0.0.0.0:8050")
 	}()
+	// Listen for shutdown signal
 	cs := make(chan os.Signal, 1)
 	signal.Notify(cs, os.Interrupt,
 		syscall.SIGHUP,
