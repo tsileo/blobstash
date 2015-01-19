@@ -149,6 +149,9 @@ func blobUploadHandler(blobrouter *router.Router) func(http.ResponseWriter, *htt
 					http.Error(w, "blob corrupted, hash does not match", http.StatusInternalServerError)
 					return
 				}
+				if backend.Exists(hash) {
+					continue
+				}
 				if err := backend.Put(hash, blob); err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return

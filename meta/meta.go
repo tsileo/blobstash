@@ -38,6 +38,9 @@ func (mh *MetaHandler) WatchKvUpdate(wg sync.WaitGroup, kvUpdate <-chan *vkv.Key
 			backend := mh.router.Route(req)
 			blob := CreateMetaBlob(kv)
 			hash := fmt.Sprintf("%x", blake2b.Sum256(blob))
+			if backend.Exists(hash) {
+				return
+			}
 			if err := backend.Put(hash, blob); err != nil {
 				panic(err)
 			}

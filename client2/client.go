@@ -2,11 +2,13 @@ package client
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 )
 
 // ErrBlobNotFound is returned from a get/stat request
@@ -29,6 +31,10 @@ type KeyValueVersions struct {
 	Versions []*KeyValue `json:"versions"`
 }
 
+type KeysResponse struct {
+	Keys []string `json:"keys"`
+}
+
 type KvStore struct {
 	ServerAddr string
 	client     *http.Client
@@ -45,19 +51,115 @@ func NewKvStore(serverAddr string) *KvStore {
 }
 
 func (kvs *KvStore) Put(key, value string, version int) (*KeyValue, error) {
-
+	data := url.Values{}
+	data.Set("value", value)
+	// TODO handle version
+	body := bytes.NewBufferString(data.Encode())
+	request, err := http.NewRequest("PUT", bs.ServerAddr+"/api/v1/vkv/key/"+key, body)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := bs.client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	body.Reset()
+	body.ReadFrom(resp.Body)
+	resp.Body.Close()
+	switch resp.StatusCode {
+	case 200:
+		kv := &KeyValue{}
+		if err := json.Unmarshal(body.Bytes(), kv); err != nil {
+			return nil, err
+		}
+		return kv, nil
+	default:
+		return fmt.Errorf("failed to put key %v: %v", key, body.String())
+	}
 }
 
 func (kvs *KvStore) Get(key string, version int) (*KeyValue, error) {
+	request, err := http.NewRequest("GET", bs.ServerAddr+"/api/v1/blobstore/blob/"+key, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := bs.client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case resp.StatusCode == 200:
+		kv := &KeyValue{}
+		if err := json.Unmarshal(body, kv); err != nil {
+			return nil, err
+		}
+		return kv, nil
+	case resp.StatusCode == 404:
+		return nil, ErrBlobNotFound
+	default:
+		return nil, fmt.Errorf("failed to get key %v: %v", key, string(body))
+	}
 
 }
 
 func (kvs *KvStore) Versions(key string, start, end, limit int) (*KeyValueVersions, error) {
-
+	// TODO handle start, end and limit
+	request, err := http.NewRequest("GET", bs.ServerAddr+"/api/v1/vkv/key/"+key+"/versions", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := bs.client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case resp.StatusCode == 200:
+		kvversions := &KeyValueVersions{}
+		if err := json.Unmarshal(body, kvversions); err != nil {
+			return nil, err
+		}
+		return kvversions, nil
+	case resp.StatusCode == 404:
+		return nil, ErrBlobNotFound
+	default:
+		return nil, fmt.Errorf("failed to get key %v: %v", key, string(body))
+	}
 }
 
 func (kvs *KvStore) Keys(start, end string, limit int) ([]string, error) {
-
+	request, err := http.NewRequest("GET", bs.ServerAddr+"/api/v1/vkv/keys", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := bs.client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case resp.StatusCode == 200:
+		keys := &KeysResponse{}
+		if err := json.Unmarshal(body, keys); err != nil {
+			return nil, err
+		}
+		return keys.Keys, nil
+	default:
+		return nil, fmt.Errorf("failed to get blob %v: %v", hash, string(body))
+	}
 }
 
 type BlobStore struct {
