@@ -26,6 +26,16 @@ type Request struct {
 	Namespace string
 }
 
+type Blob struct {
+	Req  *Request
+	Hash string
+	Blob []byte
+}
+
+func (b *Blob) String() string {
+	return fmt.Sprintf("[blob hash=%v,meta=%v]", b.Hash, b.Req.MetaBlob)
+}
+
 type Rule struct {
 	Conds   []string
 	Backend string

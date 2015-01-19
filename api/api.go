@@ -114,16 +114,11 @@ func vkvKeysHandler(db *vkv.DB) func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-func blobUploadHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Request) {
+func blobUploadHandler(blobs chan<- *router.Blob) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		//POST takes the uploaded file(s) and saves it to disk.
 		case "POST":
-			req := &router.Request{
-				Type: router.Write,
-			}
-			backend := blobrouter.Route(req)
-
 			//parse the multipart form in the request
 			mr, err := r.MultipartReader()
 			if err != nil {
@@ -149,13 +144,10 @@ func blobUploadHandler(blobrouter *router.Router) func(http.ResponseWriter, *htt
 					http.Error(w, "blob corrupted, hash does not match", http.StatusInternalServerError)
 					return
 				}
-				if backend.Exists(hash) {
-					continue
+				req := &router.Request{
+					Type: router.Write,
 				}
-				if err := backend.Put(hash, blob); err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-					return
-				}
+				blobs <- &router.Blob{Hash: hash, Req: req, Blob: blob}
 			}
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -191,9 +183,9 @@ func blobHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Requ
 	}
 }
 
-func New(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blobrouter *router.Router) *mux.Router {
+func New(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blobrouter *router.Router, blobs chan<- *router.Blob) *mux.Router {
 	r := mux.NewRouter()
-	r.HandleFunc("/api/v1/blobstore/upload", blobUploadHandler(blobrouter))
+	r.HandleFunc("/api/v1/blobstore/upload", blobUploadHandler(blobs))
 	r.HandleFunc("/api/v1/blobstore/blob/{hash}", blobHandler(blobrouter))
 	r.HandleFunc("/api/v1/vkv/keys", vkvKeysHandler(db))
 	r.HandleFunc("/api/v1/vkv/key/{key}", vkvHandler(wg, db, kvUpdate))

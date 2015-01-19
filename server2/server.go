@@ -1,6 +1,7 @@
 package server2
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -35,9 +36,11 @@ type Server struct {
 	metaHandler *meta.MetaHandler
 
 	KvUpdate chan *vkv.KeyValue
+	blobs    chan *router.Blob
 
-	stop chan struct{}
-	wg   sync.WaitGroup
+	shutdown chan struct{}
+	stop     chan struct{}
+	wg       sync.WaitGroup
 }
 
 func New(conf map[string]interface{}) *Server {
@@ -53,7 +56,9 @@ func New(conf map[string]interface{}) *Server {
 		Backends: map[string]backend.BlobHandler{},
 		DB:       db,
 		KvUpdate: make(chan *vkv.KeyValue),
-		stop:     make(chan struct{}, 1),
+		shutdown: make(chan struct{}, 1),
+		stop:     make(chan struct{}),
+		blobs:    make(chan *router.Blob),
 	}
 	// TODO hook vkv and pathutil
 	backends := conf["backends"].(map[string]interface{})
@@ -65,8 +70,28 @@ func New(conf map[string]interface{}) *Server {
 	return server
 }
 
+func (s *Server) processBlobs() {
+	s.wg.Add(1)
+	defer s.wg.Done()
+	for {
+		select {
+		case blob := <-s.blobs:
+			log.Printf("processBlobs: %+v", blob)
+			backend := s.Router.Route(blob.Req)
+			exists := backend.Exists(blob.Hash)
+			if !exists {
+				if err := backend.Put(blob.Hash, blob.Blob); err != nil {
+					panic(fmt.Errorf("processBlobs error: %v", err))
+				}
+			}
+		case <-s.stop:
+			return
+		}
+	}
+}
+
 func (s *Server) Run() error {
-	go s.metaHandler.WatchKvUpdate(s.wg, s.KvUpdate)
+	go s.metaHandler.WatchKvUpdate(s.wg, s.blobs, s.KvUpdate)
 	go func() {
 		s.wg.Add(1)
 		defer s.wg.Done()
@@ -74,7 +99,10 @@ func (s *Server) Run() error {
 			panic(err)
 		}
 	}()
-	r := api.New(s.wg, s.DB, s.KvUpdate, s.Router)
+	for i := 0; i < 25; i++ {
+		go s.processBlobs()
+	}
+	r := api.New(s.wg, s.DB, s.KvUpdate, s.Router, s.blobs)
 	http.Handle("/", r)
 	go func() {
 		if err := http.ListenAndServe(":8050", nil); err != nil {
@@ -89,7 +117,7 @@ func (s *Server) Run() error {
 		syscall.SIGQUIT)
 	for {
 		select {
-		case _ = <-s.stop:
+		case <-s.shutdown:
 			break
 		case sig := <-cs:
 			log.Printf("server: Captured %v\n", sig)
@@ -101,6 +129,7 @@ func (s *Server) Run() error {
 }
 
 func (s *Server) Close() {
+	close(s.stop)
 	s.wg.Wait()
 	close(s.KvUpdate)
 	s.DB.Close()

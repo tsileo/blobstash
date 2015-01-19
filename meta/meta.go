@@ -19,32 +19,38 @@ var (
 
 type MetaHandler struct {
 	router *router.Router
+	stop   chan struct{}
 }
 
 func New(r *router.Router) *MetaHandler {
-	return &MetaHandler{router: r}
+	return &MetaHandler{router: r, stop: make(chan struct{})}
+}
+func (mh *MetaHandler) Stop() {
+	close(mh.stop)
+}
+func (mh *MetaHandler) processKvUpdate(wg sync.WaitGroup, blobs chan<- *router.Blob, kvUpdate <-chan *vkv.KeyValue) {
+	wg.Add(1)
+	defer wg.Done()
+	for kv := range kvUpdate {
+		log.Printf("MetaHandler get kvupdate: %+v", kv)
+		blob := CreateMetaBlob(kv)
+		req := &router.Request{
+			MetaBlob: true,
+			Type:     router.Write,
+		}
+		hash := fmt.Sprintf("%x", blake2b.Sum256(blob))
+		select {
+		case blobs <- &router.Blob{Req: req, Hash: hash, Blob: blob}:
+		case <-mh.stop:
+			log.Printf("metaHandler: quitting")
+			return
+		}
+	}
 }
 
-func (mh *MetaHandler) WatchKvUpdate(wg sync.WaitGroup, kvUpdate <-chan *vkv.KeyValue) error {
-	for kv := range kvUpdate {
-		go func(kv *vkv.KeyValue) {
-			wg.Add(1)
-			defer wg.Done()
-			log.Printf("MetaHandler get kvupdate: %+v", kv)
-			req := &router.Request{
-				MetaBlob: true,
-				Type:     router.Write,
-			}
-			backend := mh.router.Route(req)
-			blob := CreateMetaBlob(kv)
-			hash := fmt.Sprintf("%x", blake2b.Sum256(blob))
-			if backend.Exists(hash) {
-				return
-			}
-			if err := backend.Put(hash, blob); err != nil {
-				panic(err)
-			}
-		}(kv)
+func (mh *MetaHandler) WatchKvUpdate(wg sync.WaitGroup, blobs chan<- *router.Blob, kvUpdate <-chan *vkv.KeyValue) error {
+	for i := 0; i < 20; i++ {
+		go mh.processKvUpdate(wg, blobs, kvUpdate)
 	}
 	return nil
 }
