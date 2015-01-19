@@ -239,7 +239,7 @@ func (bs *BlobStore) Stat(hash string) (bool, error) {
 
 func (bs *BlobStore) Stop() {
 	//close(bs.stop)
-	//bs.wg.Wait()
+	bs.wg.Wait()
 }
 
 func (bs *BlobStore) processBlobs() {
@@ -255,6 +255,7 @@ func (bs *BlobStore) processBlobs() {
 		if err := bs.put(blob.Hash, data); err != nil {
 			panic(err)
 		}
+		bs.wg.Done()
 		//case <-bs.stop:
 		//	return
 		//}
@@ -270,6 +271,7 @@ func (bs *BlobStore) ProcessBlobs() {
 
 func (bs *BlobStore) Put(hash string, blob []byte) error {
 	if bs.pipeline {
+		bs.wg.Add(1)
 		bs.blobs <- &Blob{Hash: hash, Blob: base64.StdEncoding.EncodeToString(blob)}
 		return nil
 	}

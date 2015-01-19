@@ -86,7 +86,7 @@ func TestDB(t *testing.T) {
 	}
 	keys, err = db.Keys("", "\xff", 0)
 	check(err)
-	if len(keys) != 1 || keys[0] != res2.Key {
+	if len(keys) != 1 || keys[0].Key != res2.Key {
 		t.Errorf("bad Keys() result, expected [%v], got %q", res2.Key, keys)
 	}
 }

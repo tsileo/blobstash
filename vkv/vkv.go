@@ -293,8 +293,8 @@ func (db *DB) Versions(key string, start, end, limit int) (*KeyValueVersions, er
 }
 
 // Return a lexicographical range
-func (db *DB) Keys(start, end string, limit int) ([]string, error) {
-	res := []string{}
+func (db *DB) Keys(start, end string, limit int) ([]*KeyValue, error) {
+	res := []*KeyValue{}
 	enum, _, err := db.db.Seek(encodeMeta(KvKeyIndex, []byte(start)))
 	if err != nil {
 		return nil, err
@@ -309,7 +309,11 @@ func (db *DB) Keys(start, end string, limit int) ([]string, error) {
 		if bytes.Compare(k, endBytes) > 0 || (limit != 0 && i > limit) {
 			return res, nil
 		}
-		res = append(res, string(k[1:]))
+		kv, err := db.Get(string(k[1:]), -1)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, kv)
 		i++
 	}
 	return res, nil

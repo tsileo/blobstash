@@ -69,7 +69,16 @@ func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue) func
 			vars := mux.Vars(r)
 			k := vars["key"]
 			v := r.FormValue("value")
-			res, err := db.Put(k, v, -1)
+			sversion := r.FormValue("version")
+			version := -1
+			if sversion != "" {
+				iversion, err := strconv.Atoi(sversion)
+				if err != nil {
+					http.Error(w, "bad version", 500)
+				}
+				version = iversion
+			}
+			res, err := db.Put(k, v, version)
 			kvUpdate <- res
 			if err != nil {
 				panic(err)
@@ -85,6 +94,7 @@ func vkvVersionsHandler(db *vkv.DB) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
+			// TODO handle start/end/limit
 			vars := mux.Vars(r)
 			res, err := db.Versions(vars["key"], 0, int(time.Now().UTC().UnixNano()), 0)
 			if err != nil {
@@ -102,7 +112,20 @@ func vkvKeysHandler(db *vkv.DB) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
-			res, err := db.Keys("", "\xff", 0)
+			q := r.URL.Query()
+			end := q.Get("end")
+			if end == "" {
+				end = "\xff"
+			}
+			limit := 0
+			if q.Get("limit") != "" {
+				ilimit, err := strconv.Atoi(q.Get("limit"))
+				if err != nil {
+					http.Error(w, "bad limit", 500)
+				}
+				limit = ilimit
+			}
+			res, err := db.Keys(q.Get("start"), end, limit)
 			if err != nil {
 				panic(err)
 			}
