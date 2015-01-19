@@ -1,9 +1,7 @@
-package config
+package config2
 
 import (
 	"fmt"
-
-	"github.com/bitly/go-simplejson"
 
 	"github.com/tsileo/blobstash/backend"
 	"github.com/tsileo/blobstash/backend/blobsfile"
@@ -17,53 +15,75 @@ const defaultS3Location = "us-east-1"
 
 // TODO move this into another package and move the new from config here
 
-func NewEncryptFromConfig(conf *simplejson.Json) backend.BlobHandler {
-	return encrypt.New(conf.Get("key-path").MustString(), NewFromConfig(conf.Get("dest")))
+func NewEncryptFromConfig(conf map[string]interface{}) backend.BlobHandler {
+	return encrypt.New(conf["key-path"].(string), NewFromConfig(conf["dest"].(map[string]interface{})))
 }
 
-func NewS3FromConfig(conf *simplejson.Json) backend.BlobHandler {
-	bucket := conf.Get("bucket").MustString()
+func NewS3FromConfig(conf map[string]interface{}) backend.BlobHandler {
+	bucket := conf["bucket"].(string)
 	if bucket == "" {
 		panic(fmt.Errorf("no bucket specified for S3Backend"))
 	}
-	return s3.New(bucket, conf.Get("location").MustString(defaultS3Location))
+	location := defaultS3Location
+	_, locationOk := conf["location"]
+	if locationOk {
+		location = conf["location"].(string)
+	}
+	return s3.New(bucket, location)
 }
 
-func NewGlacierFromConfig(conf *simplejson.Json) backend.BlobHandler {
-	vault := conf.Get("vault").MustString()
+func NewGlacierFromConfig(conf map[string]interface{}) backend.BlobHandler {
+	vault := conf["vault"].(string)
 	if vault == "" {
 		panic(fmt.Errorf("no vault specified for GalcierBackend"))
 	}
-	region := conf.Get("region").MustString()
-	cacheDir := conf.Get("cache-dir").MustString(fmt.Sprintf("glacier-cache-%v", vault))
-	compression := conf.Get("compression").MustBool(false)
+	region := conf["region"].(string)
+	cacheDir := fmt.Sprintf("glacier-cache-%v", vault)
+	_, cacheDirOk := conf["cache-dir"]
+	if cacheDirOk {
+		cacheDir = conf["cache-dir"].(string)
+	}
+	compression := false
+	_, compressionOk := conf["compression"]
+	if compressionOk {
+		compression = conf["compression"].(bool)
+	}
 	return glacier.New(vault, region, cacheDir, compression)
 }
 
-func NewMirrorFromConfig(conf *simplejson.Json) backend.BlobHandler {
+func NewMirrorFromConfig(conf map[string]interface{}) backend.BlobHandler {
 	backends := []backend.BlobHandler{}
-	for index, _ := range conf.Get("backends").MustArray() {
-		backends = append(backends, NewFromConfig(conf.Get("backends").GetIndex(index)))
+	backs := conf["backends"]
+	if backs != nil {
+		for _, b := range backs.([]interface{}) {
+			bconf := b.(map[string]interface{})
+			backends = append(backends, NewFromConfig(bconf))
+		}
 	}
 	wbackends := []backend.BlobHandler{}
-	for index, _ := range conf.Get("write-backends").MustArray() {
-		wbackends = append(wbackends, NewFromConfig(conf.Get("write-backends").GetIndex(index)))
+	backs = conf["write-backends"]
+	if backs != nil {
+		for _, b := range backs.([]interface{}) {
+			bconf := b.(map[string]interface{})
+			wbackends = append(wbackends, NewFromConfig(bconf))
+		}
 	}
 	return mirror.New(backends, wbackends)
 }
 
-func NewFromConfig(conf *simplejson.Json) backend.BlobHandler {
-	backendType := conf.Get("backend-type").MustString("")
+func NewFromConfig(conf map[string]interface{}) backend.BlobHandler {
+	backendType := conf["backend-type"].(string)
 	if backendType == "" {
 		panic(fmt.Errorf("backend-type key missing from backend config %+v", conf))
 	}
-	backendArgs, ok := conf.CheckGet("backend-args")
+	_, ok := conf["backend-args"]
 	if !ok {
 		panic(fmt.Errorf("backend-args key missing from backend config %v", backendType))
 	}
+	backendArgs := conf["backend-args"].(map[string]interface{})
 	switch {
 	case backendType == "blobsfile":
-		return blobsfile.NewFromConfig(backendArgs)
+		return blobsfile.NewFromConfig2(backendArgs)
 	case backendType == "glacier":
 		return NewGlacierFromConfig(backendArgs)
 	case backendType == "encrypt":
