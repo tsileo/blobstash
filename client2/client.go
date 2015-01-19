@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 )
 
@@ -34,7 +35,7 @@ type KeyValueVersions struct {
 }
 
 type KeysResponse struct {
-	Keys []string `json:"keys"`
+	Keys []*KeyValue `json:"keys"`
 }
 
 type KvStore struct {
@@ -55,9 +56,10 @@ func NewKvStore(serverAddr string) *KvStore {
 func (kvs *KvStore) Put(key, value string, version int) (*KeyValue, error) {
 	data := url.Values{}
 	data.Set("value", value)
-	// TODO handle version
-	body := bytes.NewBufferString(data.Encode())
-	request, err := http.NewRequest("PUT", kvs.ServerAddr+"/api/v1/vkv/key/"+key, body)
+	//if version != -1 {
+	//	data.Set("version", strconv.Itoa(version))
+	//}
+	request, err := http.NewRequest("PUT", kvs.ServerAddr+"/api/v1/vkv/key/"+key, strings.NewReader(data.Encode())) //data.Encode()))
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +67,7 @@ func (kvs *KvStore) Put(key, value string, version int) (*KeyValue, error) {
 	if err != nil {
 		return nil, err
 	}
-	body.Reset()
+	var body bytes.Buffer
 	body.ReadFrom(resp.Body)
 	resp.Body.Close()
 	switch resp.StatusCode {
@@ -138,8 +140,8 @@ func (kvs *KvStore) Versions(key string, start, end, limit int) (*KeyValueVersio
 	}
 }
 
-func (kvs *KvStore) Keys(start, end string, limit int) ([]string, error) {
-	request, err := http.NewRequest("GET", kvs.ServerAddr+"/api/v1/vkv/keys", nil)
+func (kvs *KvStore) Keys(start, end string, limit int) ([]*KeyValue, error) {
+	request, err := http.NewRequest("GET", kvs.ServerAddr+"/api/v1/vkv/keys?start="+start+"&end="+end, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +239,7 @@ func (bs *BlobStore) Stat(hash string) (bool, error) {
 	}
 }
 
-func (bs *BlobStore) Stop() {
+func (bs *BlobStore) WaitBlobs() {
 	//close(bs.stop)
 	bs.wg.Wait()
 }

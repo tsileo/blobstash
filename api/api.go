@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
+	"net/url"
 	"strconv"
 	"sync"
 	"time"
@@ -68,8 +70,13 @@ func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue) func
 			defer wg.Done()
 			vars := mux.Vars(r)
 			k := vars["key"]
-			v := r.FormValue("value")
-			sversion := r.FormValue("version")
+			hah, err := ioutil.ReadAll(r.Body)
+			values, err := url.ParseQuery(string(hah))
+			if err != nil {
+				panic(err)
+			}
+			v := values.Get("value")
+			sversion := "" //r.FormValue("version")
 			version := -1
 			if sversion != "" {
 				iversion, err := strconv.Atoi(sversion)
