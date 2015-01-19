@@ -2,6 +2,7 @@ package client2
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"sync"
 )
 
 // ErrBlobNotFound is returned from a get/stat request
@@ -162,7 +164,16 @@ func (kvs *KvStore) Keys(start, end string, limit int) ([]string, error) {
 	}
 }
 
+type Blob struct {
+	Hash string
+	Blob string
+}
+
 type BlobStore struct {
+	pipeline   bool
+	wg         sync.WaitGroup
+	stop       chan struct{}
+	blobs      chan *Blob
 	ServerAddr string
 	client     *http.Client
 }
@@ -174,6 +185,9 @@ func NewBlobStore(serverAddr string) *BlobStore {
 	return &BlobStore{
 		ServerAddr: serverAddr,
 		client:     &http.Client{},
+		blobs:      make(chan *Blob),
+		stop:       make(chan struct{}),
+		pipeline:   false,
 	}
 }
 
@@ -223,8 +237,47 @@ func (bs *BlobStore) Stat(hash string) (bool, error) {
 	}
 }
 
-// Put upload the given blob, the caller is responsible for computing the SHA-1 hash
+func (bs *BlobStore) Stop() {
+	//close(bs.stop)
+	//bs.wg.Wait()
+}
+
+func (bs *BlobStore) processBlobs() {
+	//bs.wg.Add(1)
+	//defer bs.wg.Done()
+	for blob := range bs.blobs {
+		//select {
+		//case blob := <-bs.blobs:
+		data, err := base64.StdEncoding.DecodeString(blob.Blob)
+		if err != nil {
+			panic(err)
+		}
+		if err := bs.put(blob.Hash, data); err != nil {
+			panic(err)
+		}
+		//case <-bs.stop:
+		//	return
+		//}
+	}
+}
+
+func (bs *BlobStore) ProcessBlobs() {
+	for i := 0; i < 25; i++ {
+		go bs.processBlobs()
+	}
+	bs.pipeline = true
+}
+
 func (bs *BlobStore) Put(hash string, blob []byte) error {
+	if bs.pipeline {
+		bs.blobs <- &Blob{Hash: hash, Blob: base64.StdEncoding.EncodeToString(blob)}
+		return nil
+	}
+	return bs.put(hash, blob)
+}
+
+// Put upload the given blob, the caller is responsible for computing the SHA-1 hash
+func (bs *BlobStore) put(hash string, blob []byte) error {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 	part, err := writer.CreateFormFile(hash, hash)
