@@ -1,4 +1,4 @@
-package client
+package client2
 
 import (
 	"bytes"
@@ -55,11 +55,11 @@ func (kvs *KvStore) Put(key, value string, version int) (*KeyValue, error) {
 	data.Set("value", value)
 	// TODO handle version
 	body := bytes.NewBufferString(data.Encode())
-	request, err := http.NewRequest("PUT", bs.ServerAddr+"/api/v1/vkv/key/"+key, body)
+	request, err := http.NewRequest("PUT", kvs.ServerAddr+"/api/v1/vkv/key/"+key, body)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := bs.client.Do(request)
+	resp, err := kvs.client.Do(request)
 	if err != nil {
 		return nil, err
 	}
@@ -74,16 +74,16 @@ func (kvs *KvStore) Put(key, value string, version int) (*KeyValue, error) {
 		}
 		return kv, nil
 	default:
-		return fmt.Errorf("failed to put key %v: %v", key, body.String())
+		return nil, fmt.Errorf("failed to put key %v: %v", key, body.String())
 	}
 }
 
 func (kvs *KvStore) Get(key string, version int) (*KeyValue, error) {
-	request, err := http.NewRequest("GET", bs.ServerAddr+"/api/v1/blobstore/blob/"+key, nil)
+	request, err := http.NewRequest("GET", kvs.ServerAddr+"/api/v1/blobstore/blob/"+key, nil)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := bs.client.Do(request)
+	resp, err := kvs.client.Do(request)
 	if err != nil {
 		return nil, err
 	}
@@ -109,11 +109,11 @@ func (kvs *KvStore) Get(key string, version int) (*KeyValue, error) {
 
 func (kvs *KvStore) Versions(key string, start, end, limit int) (*KeyValueVersions, error) {
 	// TODO handle start, end and limit
-	request, err := http.NewRequest("GET", bs.ServerAddr+"/api/v1/vkv/key/"+key+"/versions", nil)
+	request, err := http.NewRequest("GET", kvs.ServerAddr+"/api/v1/vkv/key/"+key+"/versions", nil)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := bs.client.Do(request)
+	resp, err := kvs.client.Do(request)
 	if err != nil {
 		return nil, err
 	}
@@ -137,11 +137,11 @@ func (kvs *KvStore) Versions(key string, start, end, limit int) (*KeyValueVersio
 }
 
 func (kvs *KvStore) Keys(start, end string, limit int) ([]string, error) {
-	request, err := http.NewRequest("GET", bs.ServerAddr+"/api/v1/vkv/keys", nil)
+	request, err := http.NewRequest("GET", kvs.ServerAddr+"/api/v1/vkv/keys", nil)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := bs.client.Do(request)
+	resp, err := kvs.client.Do(request)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +158,7 @@ func (kvs *KvStore) Keys(start, end string, limit int) ([]string, error) {
 		}
 		return keys.Keys, nil
 	default:
-		return nil, fmt.Errorf("failed to get blob %v: %v", hash, string(body))
+		return nil, fmt.Errorf("failed to get keys: %v", string(body))
 	}
 }
 
@@ -241,6 +241,7 @@ func (bs *BlobStore) Put(hash string, blob []byte) error {
 	if err != nil {
 		return err
 	}
+	request.Header.Add("Content-Type", writer.FormDataContentType())
 	resp, err := bs.client.Do(request)
 	if err != nil {
 		return err
