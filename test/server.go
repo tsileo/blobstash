@@ -1,27 +1,26 @@
 package test
 
 import (
-	"os"
-	"io/ioutil"
-	"os/exec"
-	"path/filepath"
 	"bytes"
 	"fmt"
-	"time"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
-
-	"github.com/garyburd/redigo/redis"
+	"time"
 )
 
 type TestServer struct {
 	t *testing.T
 
-	binDir string // Path to the bin/ dir of $GOPATH
+	binDir  string // Path to the bin/ dir of $GOPATH
 	rootDir string // The root of the repository
 	tempDir string
 
-	server *exec.Cmd // Server process
-	buf bytes.Buffer // Store server stdin/stdout
+	server *exec.Cmd    // Server process
+	buf    bytes.Buffer // Store server stdin/stdout
 
 	donec chan struct{} // Notify server shutdown
 
@@ -68,34 +67,29 @@ func (server *TestServer) BuildServer() (string, error) {
 
 // Ready try to ping the server
 func (server *TestServer) Ready() bool {
-	c, err := redis.Dial("tcp", ":9735")
-	if err != nil {
-		return false
+	res, err := http.Get("http://127.0.0.1:8050")
+	if err == nil {
+		res.Body.Close()
+		return true
 	}
-	defer c.Close()
-	if _, err := c.Do("PING"); err != nil {
-		return false
-	}
-	return true
+	return false
 }
 
 func (server *TestServer) Shutdown() {
-	server.t.Log("Server shutdown")
-	c, _ := redis.Dial("tcp", ":9735")
-	c.Do("SHUTDOWN")
+	server.server.Process.Kill()
 	server.Wait()
 }
 
 // TillReady block until the server is ready
 func (server *TestServer) TillReady() error {
-	for !server.Ready() {
-		if server.err != nil {
-			return server.err
+	for i := 0; i < 100; i++ {
+		if server.Ready() {
+			server.t.Log("Server is ready.")
+			return nil
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	server.t.Log("Server is ready.")
-	return nil
+	return fmt.Errorf("timeout")
 }
 
 // Start actuallty start the server
@@ -120,12 +114,10 @@ func (server *TestServer) Start() error {
 	}
 	waitc := make(chan error, 1)
 	go func() {
-		waitc <-server.server.Wait()
+		waitc <- server.server.Wait()
 	}()
 	select {
 	case serverErr := <-waitc:
-		os.RemoveAll("/tmp/blobdb_meta")
-		os.RemoveAll("/tmp/blobdb_blobs")
 		os.RemoveAll(server.tempDir)
 		server.donec <- struct{}{}
 		return fmt.Errorf("server exited: %v", serverErr)
