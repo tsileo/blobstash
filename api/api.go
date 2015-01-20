@@ -76,7 +76,7 @@ func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue) func
 				panic(err)
 			}
 			v := values.Get("value")
-			sversion := "" //r.FormValue("version")
+			sversion := values.Get("version")
 			version := -1
 			if sversion != "" {
 				iversion, err := strconv.Atoi(sversion)
@@ -86,10 +86,10 @@ func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue) func
 				version = iversion
 			}
 			res, err := db.Put(k, v, version)
-			kvUpdate <- res
 			if err != nil {
 				panic(err)
 			}
+			kvUpdate <- res
 			WriteJSON(w, res)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)

@@ -6,21 +6,22 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"runtime"
+	"path/filepath"
 	"sync"
 	"syscall"
 
 	"github.com/tsileo/blobstash/api"
 	"github.com/tsileo/blobstash/backend"
 	"github.com/tsileo/blobstash/config"
+	"github.com/tsileo/blobstash/config/pathutil"
 	"github.com/tsileo/blobstash/meta"
 	"github.com/tsileo/blobstash/router"
 	"github.com/tsileo/blobstash/vkv"
 )
 
-var version = "0.0.0"
+var Version = "0.0.0"
 
-var defaultConf = map[string]interface{}{
+var DefaultConf = map[string]interface{}{
 	"backends": map[string]interface{}{
 		"blobs": map[string]interface{}{
 			"backend-type": "blobsfile",
@@ -48,9 +49,11 @@ type Server struct {
 
 func New(conf map[string]interface{}) *Server {
 	if conf == nil {
-		conf = defaultConf
+		conf = DefaultConf
 	}
-	db, err := vkv.New("devdb")
+	vardir := pathutil.VarDir()
+	os.MkdirAll(vardir, 0700)
+	db, err := vkv.New(filepath.Join(vardir, "vkv.db"))
 	if err != nil {
 		panic(err)
 	}
@@ -63,7 +66,6 @@ func New(conf map[string]interface{}) *Server {
 		stop:     make(chan struct{}),
 		blobs:    make(chan *router.Blob),
 	}
-	// TODO hook vkv and pathutil
 	backends := conf["backends"].(map[string]interface{})
 	for _, b := range server.Router.ResolveBackends() {
 		server.Backends[b] = config.NewFromConfig(backends[b].(map[string]interface{}))
@@ -94,7 +96,6 @@ func (s *Server) processBlobs() {
 }
 
 func (s *Server) Run() error {
-	log.Printf("Starting blobstash version %v; %v (%v/%v)", version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
 	// Start meta handler: watch for kv update and create meta blob
 	go s.metaHandler.WatchKvUpdate(s.wg, s.blobs, s.KvUpdate)
 	// Scan existing meta blob

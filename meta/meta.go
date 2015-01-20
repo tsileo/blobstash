@@ -32,7 +32,7 @@ func (mh *MetaHandler) processKvUpdate(wg sync.WaitGroup, blobs chan<- *router.B
 	wg.Add(1)
 	defer wg.Done()
 	for kv := range kvUpdate {
-		log.Printf("MetaHandler get kvupdate: %+v", kv)
+		log.Printf("metaHandler: kvupdate: %+v", kv)
 		blob := CreateMetaBlob(kv)
 		req := &router.Request{
 			MetaBlob: true,
