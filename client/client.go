@@ -83,7 +83,7 @@ func (kvs *KvStore) Put(key, value string, version int) (*KeyValue, error) {
 }
 
 func (kvs *KvStore) Get(key string, version int) (*KeyValue, error) {
-	request, err := http.NewRequest("GET", kvs.ServerAddr+"/api/v1/blobstore/blob/"+key, nil)
+	request, err := http.NewRequest("GET", kvs.ServerAddr+"/api/v1/vkv/key/"+key, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +104,7 @@ func (kvs *KvStore) Get(key string, version int) (*KeyValue, error) {
 		}
 		return kv, nil
 	case resp.StatusCode == 404:
-		return nil, ErrBlobNotFound
+		return nil, ErrKeyNotFound
 	default:
 		return nil, fmt.Errorf("failed to get key %v: %v", key, string(body))
 	}

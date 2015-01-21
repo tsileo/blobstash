@@ -113,11 +113,11 @@ func (s *Server) Run() error {
 	// Start the HTTP API
 	r := api.New(s.wg, s.DB, s.KvUpdate, s.Router, s.blobs)
 	http.Handle("/", r)
+	log.Printf("server: HTTP API listening on 0.0.0.0:8050")
 	go func() {
 		if err := http.ListenAndServe(":8050", nil); err != nil {
 			panic(err)
 		}
-		log.Printf("server: HTTP API listening on 0.0.0.0:8050")
 	}()
 	// Listen for shutdown signal
 	cs := make(chan os.Signal, 1)
