@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -242,11 +243,18 @@ func (bs *BlobStore) Stat(hash string) (bool, error) {
 func (bs *BlobStore) WaitBlobs() {
 	//close(bs.stop)
 	bs.wg.Wait()
+	close(bs.blobs)
 }
 
 func (bs *BlobStore) processBlobs() {
 	//bs.wg.Add(1)
 	//defer bs.wg.Done()
+	bb := NewBlobsBuffer(bs)
+	defer func() {
+		log.Printf("upload last blobs")
+		bb.Upload()
+		bb.Close()
+	}()
 	for blob := range bs.blobs {
 		//select {
 		//case blob := <-bs.blobs:
@@ -254,9 +262,18 @@ func (bs *BlobStore) processBlobs() {
 		if err != nil {
 			panic(err)
 		}
-		if err := bs.put(blob.Hash, data); err != nil {
+		if err := bb.AddBlob(blob.Hash, data); err != nil {
 			panic(err)
 		}
+		if bb.size >= 2 {
+			if err := bb.Upload(); err != nil {
+				panic(err)
+			}
+		}
+		//if mpw.Cnt >=
+		//if err := bs.put(blob.Hash, data); err != nil {
+		//	panic(err)
+		//}
 		bs.wg.Done()
 		//case <-bs.stop:
 		//	return
@@ -265,9 +282,11 @@ func (bs *BlobStore) processBlobs() {
 }
 
 func (bs *BlobStore) ProcessBlobs() {
-	for i := 0; i < 25; i++ {
-		go bs.processBlobs()
-	}
+	go func() {
+		for i := 0; i < 15; i++ {
+			go bs.processBlobs()
+		}
+	}()
 	bs.pipeline = true
 }
 
@@ -280,30 +299,98 @@ func (bs *BlobStore) Put(hash string, blob []byte) error {
 	return bs.put(hash, blob)
 }
 
-// Put upload the given blob, the caller is responsible for computing the SHA-1 hash
-func (bs *BlobStore) put(hash string, blob []byte) error {
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile(hash, hash)
+type MultipartWriter struct {
+	Buffer *bytes.Buffer
+	Writer *multipart.Writer
+	Blobs  int
+}
+
+func NewMultipartWriter() *MultipartWriter {
+	buf := &bytes.Buffer{}
+	return &MultipartWriter{
+		Buffer: buf,
+		Writer: multipart.NewWriter(buf),
+	}
+}
+
+func (mpw *MultipartWriter) Close() error {
+	return mpw.Writer.Close()
+}
+
+func (mpw *MultipartWriter) FormDataContentType() string {
+	return mpw.Writer.FormDataContentType()
+}
+
+func (mpw *MultipartWriter) AddBlob(hash string, blob []byte) error {
+	part, err := mpw.Writer.CreateFormFile(hash, hash)
 	if err != nil {
 		return err
 	}
 	if _, err := part.Write(blob); err != nil {
 		return err
 	}
-	if err := writer.Close(); err != nil {
+	mpw.Blobs++
+	return nil
+}
+
+type BlobsBuffer struct {
+	mpw  *MultipartWriter
+	bs   *BlobStore
+	size int
+	sync.Mutex
+}
+
+func NewBlobsBuffer(bs *BlobStore) *BlobsBuffer {
+	return &BlobsBuffer{
+		bs:  bs,
+		mpw: NewMultipartWriter(),
+	}
+}
+func (bb *BlobsBuffer) AddBlob(hash string, blob []byte) error {
+	bb.Lock()
+	defer bb.Unlock()
+	bb.size++
+	return bb.mpw.AddBlob(hash, blob)
+}
+
+func (bb *BlobsBuffer) Upload() error {
+	if bb.size > 0 {
+		bb.Lock()
+		cmpw := bb.mpw
+		bb.size = 0
+		bb.Unlock()
+		bb.mpw = NewMultipartWriter()
+		if err := bb.bs.putmpw(cmpw); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (bb *BlobsBuffer) Close() {
+}
+
+// Put upload the given blob, the caller is responsible for computing the blake2b hash
+func (bs *BlobStore) put(hash string, blob []byte) error {
+	mpw := NewMultipartWriter()
+	if err := mpw.AddBlob(hash, blob); err != nil {
 		return err
 	}
-	request, err := http.NewRequest("POST", bs.ServerAddr+"/api/v1/blobstore/upload", body)
+	return bs.putmpw(mpw)
+}
+
+func (bs *BlobStore) putmpw(mpw *MultipartWriter) error {
+	mpw.Close()
+	request, err := http.NewRequest("POST", bs.ServerAddr+"/api/v1/blobstore/upload", mpw.Buffer)
 	if err != nil {
 		return err
 	}
-	request.Header.Add("Content-Type", writer.FormDataContentType())
+	request.Header.Add("Content-Type", mpw.FormDataContentType())
 	resp, err := bs.client.Do(request)
 	if err != nil {
 		return err
 	}
-	body.Reset()
+	var body bytes.Buffer
 	body.ReadFrom(resp.Body)
 	resp.Body.Close()
 	if resp.StatusCode != 200 {

@@ -33,7 +33,7 @@ type Blob struct {
 }
 
 func (b *Blob) String() string {
-	return fmt.Sprintf("[blob hash=%v, meta=%v]", b.Hash, b.Req.MetaBlob)
+	return fmt.Sprintf("[blob hash=%v, size=%d, meta=%v]", b.Hash, len(b.Blob), b.Req.MetaBlob)
 }
 
 type Rule struct {
