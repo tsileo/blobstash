@@ -66,12 +66,20 @@ func TestDB(t *testing.T) {
 	}
 	res, err := db.Put("test_key_1", "test_value_1", -1)
 	check(err)
+	res.db = nil
 	res2, err := db.Get("test_key_1", -1)
 	if !reflect.DeepEqual(res, res2) {
 		t.Errorf("bad KeyValue result got %+v, expected %+v", res2, res)
 	}
 	res, err = db.Put("test_key_1", "test_value_1.1", -1)
 	check(err)
+	check(res.SetMetaBlob("fakeblobhash"))
+	h, err := db.MetaBlob(res.Key, res.Version)
+	check(err)
+	if h != "fakeblobhash" {
+		t.Errorf("failed to get meta blob, got %v, exepected \"fakeblobhash\"", h)
+	}
+	res.db = nil
 	res2, err = db.Get("test_key_1", -1)
 	if !reflect.DeepEqual(res, res2) {
 		t.Errorf("bad KeyValue result got %+v, expected %+v", res2, res)

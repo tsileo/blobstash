@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -249,12 +248,11 @@ func (bs *BlobStore) WaitBlobs() {
 func (bs *BlobStore) processBlobs() {
 	//bs.wg.Add(1)
 	//defer bs.wg.Done()
-	bb := NewBlobsBuffer(bs)
-	defer func() {
-		log.Printf("upload last blobs")
-		bb.Upload()
-		bb.Close()
-	}()
+	//bb := NewBlobsBuffer(bs)
+	//defer func() {
+	//	bb.Upload()
+	//	bb.Close()
+	//}()
 	for blob := range bs.blobs {
 		//select {
 		//case blob := <-bs.blobs:
@@ -262,18 +260,18 @@ func (bs *BlobStore) processBlobs() {
 		if err != nil {
 			panic(err)
 		}
-		if err := bb.AddBlob(blob.Hash, data); err != nil {
-			panic(err)
-		}
-		if bb.size >= 2 {
-			if err := bb.Upload(); err != nil {
-				panic(err)
-			}
-		}
-		//if mpw.Cnt >=
-		//if err := bs.put(blob.Hash, data); err != nil {
+		//if err := bb.AddBlob(blob.Hash, data); err != nil {
 		//	panic(err)
 		//}
+		//if bb.size >= 10 {
+		//	if err := bb.Upload(); err != nil {
+		//		panic(err)
+		//	}
+		//}
+		//if mpw.Cnt >=
+		if err := bs.put(blob.Hash, data); err != nil {
+			panic(err)
+		}
 		bs.wg.Done()
 		//case <-bs.stop:
 		//	return

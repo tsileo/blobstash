@@ -6,6 +6,29 @@ The change history for all keys are kept and versioned by timestamp.
 
 Keys are sorted lexicographically.
 
+## How data is stored ?
+
+Key index (for faster exists check):
+
+    KvKeyIndex + key => 1
+
+Meta index (to track the serialized meta blob for each version of a key, and be able to remove it)
+
+    KvItemMeta + key + version => hash of meta blob
+
+Key value:
+
+    KvItem + (key length as binary encoded uint32) + kv key + index (uint64) => value
+
+Version boundaries for each kv the min/max version is stored for iteration/seeking:
+
+    Meta + KvVersionMin/KvVersionMax + kv key => binary encoded uint64
+
+Number of versions for each key:
+
+    Meta + KvVersionCnt + kv key => binary encoded uint64
+
+
 */
 
 package vkv
@@ -28,6 +51,7 @@ const (
 	Meta
 	KvKeyIndex
 	KvItem
+	KvItemMeta
 	KvVersionCnt
 	KvVersionMin
 	KvVersionMax
@@ -40,6 +64,11 @@ type KeyValue struct {
 	Key     string `json:"key,omitempty"`
 	Value   string `json:"value"`
 	Version int    `json:"version"`
+	db      *DB
+}
+
+func (kvi *KeyValue) SetMetaBlob(hash string) error {
+	return kvi.db.setmetablob(kvi.Key, kvi.Version, hash)
 }
 
 // KeyValueVersions holds the full history for a key value pair
@@ -157,6 +186,19 @@ func (db *DB) VersionCnt(key string) (int, error) {
 	return int(card), err
 }
 
+// MetaBlob retrns the meta blob where this key/version is stored
+func (db *DB) MetaBlob(key string, version int) (string, error) {
+	bhash, err := db.db.Get(nil, encodeMeta(KvItemMeta, encodeKey([]byte(key), version)))
+	if err != nil {
+		return "", err
+	}
+	return string(bhash), nil
+}
+
+func (db *DB) setmetablob(key string, version int, hash string) error {
+	return db.db.Set(encodeMeta(KvItemMeta, encodeKey([]byte(key), version)), []byte(hash))
+}
+
 // Put updates the value for the given version associated with key,
 // if version == -1, version will be set to time.Now().UTC().UnixNano().
 func (db *DB) Put(key, value string, version int) (*KeyValue, error) {
@@ -194,6 +236,7 @@ func (db *DB) Put(key, value string, version int) (*KeyValue, error) {
 	if err != nil {
 		return nil, err
 	}
+	// TODO prevent overwriting an existing version
 	if cval == nil {
 		cardkey := encodeMeta(KvVersionCnt, bkey)
 		if err := db.incrUint64(encodeMeta(Meta, cardkey), 1); err != nil {
@@ -210,6 +253,7 @@ func (db *DB) Put(key, value string, version int) (*KeyValue, error) {
 		Key:     key,
 		Value:   value,
 		Version: version,
+		db:      db,
 	}, nil
 }
 

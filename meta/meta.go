@@ -39,6 +39,9 @@ func (mh *MetaHandler) processKvUpdate(wg sync.WaitGroup, blobs chan<- *router.B
 			Type:     router.Write,
 		}
 		hash := fmt.Sprintf("%x", blake2b.Sum256(blob))
+		if err := kv.SetMetaBlob(hash); err != nil {
+			panic(err)
+		}
 		select {
 		case blobs <- &router.Blob{Req: req, Hash: hash, Blob: blob}:
 		case <-mh.stop:
