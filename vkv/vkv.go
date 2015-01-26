@@ -186,6 +186,11 @@ func (db *DB) VersionCnt(key string) (int, error) {
 	return int(card), err
 }
 
+func (db *DB) DeleteVersion(key string, version int) error {
+	// TODO
+	return nil
+}
+
 // MetaBlob retrns the meta blob where this key/version is stored
 func (db *DB) MetaBlob(key string, version int) (string, error) {
 	bhash, err := db.db.Get(nil, encodeMeta(KvItemMeta, encodeKey([]byte(key), version)))

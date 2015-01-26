@@ -33,9 +33,9 @@ func WriteJSON(w http.ResponseWriter, data interface{}) {
 
 func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
 		switch r.Method {
 		case "GET":
-			vars := mux.Vars(r)
 			iversion := -1
 			version := r.URL.Query().Get("version")
 			if version != "" {
@@ -55,7 +55,6 @@ func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue) func
 			}
 			WriteJSON(w, res)
 		case "HEAD":
-			vars := mux.Vars(r)
 			exists, err := db.Check(vars["key"])
 			if err != nil {
 				panic(err)
@@ -65,10 +64,29 @@ func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue) func
 			}
 			http.Error(w, http.StatusText(404), 404)
 			return
+		case "DELETE":
+			k := vars["key"]
+			sversion := r.URL.Query().Get("version")
+			if sversion == "" {
+				http.Error(w, "version missing", 500)
+				return
+			}
+			version, err := strconv.Atoi(sversion)
+			if err != nil {
+				http.Error(w, "bad version", 500)
+				return
+			}
+			hash, err := db.MetaBlob(k, version)
+			if err != nil {
+				panic(err)
+			}
+			// TODO delete blob
+			if err := db.DeleteVersion(k, version); err != nil {
+				panic(err)
+			}
 		case "PUT":
 			wg.Add(1)
 			defer wg.Done()
-			vars := mux.Vars(r)
 			k := vars["key"]
 			hah, err := ioutil.ReadAll(r.Body)
 			values, err := url.ParseQuery(string(hah))
@@ -82,6 +100,7 @@ func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue) func
 				iversion, err := strconv.Atoi(sversion)
 				if err != nil {
 					http.Error(w, "bad version", 500)
+					return
 				}
 				version = iversion
 			}
