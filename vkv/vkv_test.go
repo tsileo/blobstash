@@ -66,6 +66,7 @@ func TestDB(t *testing.T) {
 	}
 	res, err := db.Put("test_key_1", "test_value_1", -1)
 	check(err)
+	v1 := res.Version
 	res.db = nil
 	res2, err := db.Get("test_key_1", -1)
 	if !reflect.DeepEqual(res, res2) {
@@ -96,5 +97,17 @@ func TestDB(t *testing.T) {
 	check(err)
 	if len(keys) != 1 || keys[0].Key != res2.Key {
 		t.Errorf("bad Keys() result, expected [%v], got %q", res2.Key, keys)
+	}
+	check(db.DeleteVersion(res2.Key, res2.Version))
+	cnt, err := db.VersionCnt(res2.Key)
+	check(err)
+	if cnt != 1 {
+		t.Errorf("key test_key_1 should have 1 version, got %d", cnt)
+	}
+	check(db.DeleteVersion(res2.Key, v1))
+	exists, err := db.Check(res2.Key)
+	check(err)
+	if exists {
+		t.Errorf("key test_key_1 shouldn't exists")
 	}
 }

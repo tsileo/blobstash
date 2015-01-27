@@ -146,7 +146,7 @@ func (db *DB) incrUint64(key []byte, step int) error {
 		value = binary.LittleEndian.Uint64(data)
 	}
 	val := make([]byte, 8)
-	binary.LittleEndian.PutUint64(val[:], value+uint64(step))
+	binary.LittleEndian.PutUint64(val[:], uint64(int(value)+step))
 	err = db.db.Set(key, val)
 	return err
 }
@@ -187,7 +187,33 @@ func (db *DB) VersionCnt(key string) (int, error) {
 }
 
 func (db *DB) DeleteVersion(key string, version int) error {
-	// TODO
+	bkey := []byte(key)
+	kmember := encodeKey(bkey, version)
+	if err := db.db.Delete(kmember); err != nil {
+		return err
+	}
+	cardkey := encodeMeta(KvVersionCnt, bkey)
+	if err := db.incrUint64(encodeMeta(Meta, cardkey), -1); err != nil {
+		return err
+	}
+	card, err := db.getUint64(encodeMeta(Meta, cardkey))
+	if err != nil {
+		return err
+	}
+	if card == 0 {
+		if err := db.db.Delete(encodeMeta(KvKeyIndex, bkey)); err != nil {
+			return err
+		}
+		if err := db.db.Delete(encodeMeta(KvVersionMin, bkey)); err != nil {
+			return err
+		}
+		if err := db.db.Delete(encodeMeta(KvVersionMax, bkey)); err != nil {
+			return err
+		}
+		if err := db.db.Delete(encodeMeta(Meta, cardkey)); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
