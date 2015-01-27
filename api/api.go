@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -81,10 +80,15 @@ func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue) func
 			if err != nil {
 				panic(err)
 			}
-			log.Printf("%v", hash)
-			// TODO delete blob
 			if err := db.DeleteVersion(k, version); err != nil {
 				panic(err)
+			}
+			req := &router.Request{
+				Type:     router.Read,
+				MetaBlob: true,
+			}
+			if err := blobrouter.Route(req).Delete(hash); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
 		case "PUT":
 			wg.Add(1)
@@ -232,9 +236,9 @@ func blobHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Requ
 			http.Error(w, http.StatusText(404), 404)
 			return
 		case "DELETE":
-			//if err := backend.Delete(vars["hash"]); err != nil {
-			//	panic(err)
-			//}
+			if err := backend.Delete(vars["hash"]); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
 			return
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
