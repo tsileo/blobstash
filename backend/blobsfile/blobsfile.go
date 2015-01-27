@@ -276,9 +276,6 @@ func (backend *BlobsFileBackend) reindex() error {
 			if _, err := blobsfile.Read(flags); err != nil {
 				return err
 			}
-			if flags[0]&Deleted != 0 {
-				continue
-			}
 			if _, err := blobsfile.Read(blobSizeEncoded); err != nil {
 				return err
 			}
@@ -288,13 +285,18 @@ func (backend *BlobsFileBackend) reindex() error {
 			if err != nil || read != int(blobSize) {
 				return fmt.Errorf("error while reading raw blob: %v", err)
 			}
+			if flags[0] == Deleted {
+				log.Printf("blob deleted, continue indexing")
+				offset += Overhead + int(blobSize)
+				continue
+			}
 			blobPos := &BlobPos{n: n, offset: offset, size: int(blobSize)}
 			offset += Overhead + int(blobSize)
 			var blob []byte
 			if backend.snappyCompression {
 				blobDecoded, err := snappy.Decode(nil, rawBlob)
 				if err != nil {
-					return fmt.Errorf("failed to decode blob")
+					return fmt.Errorf("failed to decode blob: %v %v %v", err, blobSize, flags)
 				}
 				blob = blobDecoded
 			} else {
@@ -596,7 +598,8 @@ func (backend *BlobsFileBackend) Delete(hash string) error {
 		panic("backend BlobsFileBackend not loaded")
 	}
 	if backend.writeOnly {
-		panic("backend is in write-only mode")
+		return nil
+		//panic("backend is in write-only mode")
 	}
 	blobPos, err := backend.index.GetPos(hash)
 	if err != nil {
@@ -614,6 +617,7 @@ func (backend *BlobsFileBackend) Delete(hash string) error {
 		if err != nil {
 			return fmt.Errorf("failed to open blobsfile %v", backend.filename(blobPos.n), err)
 		}
+		defer f.Close()
 	}
 	// Add Deleted to the flag
 	if _, err := f.WriteAt([]byte{Deleted}, int64(blobPos.offset+hashSize)); err != nil {

@@ -97,6 +97,19 @@ func FullTest(t *testing.T, b BlobHandler, writeOnlyMode, readOnlyMode bool) {
 				t.Fatalf(fmt.Sprintf("Error put blob #%v %+v: %v", i, blob, err))
 			}
 		}
+		t.Logf("Testing Delete")
+		dblob := RandomBlob(nil)
+		if err := b.Put(dblob.Hash, dblob.Data); err != nil {
+			t.Fatalf(fmt.Sprintf("Error put blob %+v: %v", dblob, err))
+		}
+		if err := b.Delete(dblob.Hash); err != nil {
+			t.Fatalf("failed to delete blob %+v: %v", dblob, err)
+		}
+		if !writeOnlyMode {
+			if exists := b.Exists(dblob.Hash); exists {
+				t.Fatalf("blob %+v have been deleted, it shouldn't exists")
+			}
+		}
 	}
 	if !writeOnlyMode {
 		t.Logf("Testing Get")

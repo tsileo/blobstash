@@ -11,6 +11,7 @@ var ErrWriteOnly = errors.New("backend is write-only")
 type BlobHandler interface {
 	Put(hash string, data []byte) error
 	Exists(hash string) bool
+	Delete(hash string) error
 	Get(hash string) (data []byte, err error)
 	Enumerate(chan<- string) error
 	Close()
