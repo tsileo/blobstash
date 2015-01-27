@@ -10,7 +10,7 @@ var ErrWriteOnly = errors.New("backend is write-only")
 // all the method a "blob backend" must implement.
 type BlobHandler interface {
 	Put(hash string, data []byte) error
-	Exists(hash string) bool
+	Exists(hash string) (bool, error)
 	Delete(hash string) error
 	Get(hash string) (data []byte, err error)
 	Enumerate(chan<- string) error

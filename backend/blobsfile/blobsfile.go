@@ -513,12 +513,15 @@ func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
 	return
 }
 
-func (backend *BlobsFileBackend) Exists(hash string) bool {
-	blobPos, _ := backend.index.GetPos(hash)
-	if blobPos != nil {
-		return true
+func (backend *BlobsFileBackend) Exists(hash string) (bool, error) {
+	blobPos, err := backend.index.GetPos(hash)
+	if err != nil {
+		return false, err
 	}
-	return false
+	if blobPos != nil {
+		return true, nil
+	}
+	return false, nil
 }
 
 func (backend *BlobsFileBackend) decodeBlob(data []byte) (size int, blob []byte) {

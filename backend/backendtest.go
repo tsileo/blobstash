@@ -106,7 +106,7 @@ func FullTest(t *testing.T, b BlobHandler, writeOnlyMode, readOnlyMode bool) {
 			t.Fatalf("failed to delete blob %+v: %v", dblob, err)
 		}
 		if !writeOnlyMode {
-			if exists := b.Exists(dblob.Hash); exists {
+			if exists, _ := b.Exists(dblob.Hash); exists {
 				t.Fatalf("blob %+v have been deleted, it shouldn't exists")
 			}
 		}
@@ -129,11 +129,11 @@ func FullTest(t *testing.T, b BlobHandler, writeOnlyMode, readOnlyMode bool) {
 
 	t.Logf("Testing Exists")
 
-	if res := b.Exists("d9fb9b3717dbf4cf657b503c0a4f42469309359a"); res {
+	if res, _ := b.Exists("d9fb9b3717dbf4cf657b503c0a4f42469309359a"); res {
 		t.Fatalf(fmt.Sprintf("Blob %v shouldn't exists", "d9fb9b3717dbf4cf657b503c0a4f42469309359a"))
 	}
 
-	if res := b.Exists(eblobs[0]); !res {
+	if res, _ := b.Exists(eblobs[0]); !res {
 		t.Fatalf(fmt.Sprintf("Blob %v should exists", eblobs[0]))
 	}
 

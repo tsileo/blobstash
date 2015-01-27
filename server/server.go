@@ -83,7 +83,10 @@ func (s *Server) processBlobs() {
 		case blob := <-s.blobs:
 			log.Printf("processBlobs: %+v", blob)
 			backend := s.Router.Route(blob.Req)
-			exists := backend.Exists(blob.Hash)
+			exists, err := backend.Exists(blob.Hash)
+			if err != nil {
+				panic(fmt.Errorf("processBlobs error: %v", err))
+			}
 			if !exists {
 				if err := backend.Put(blob.Hash, blob.Blob); err != nil {
 					panic(fmt.Errorf("processBlobs error: %v", err))
