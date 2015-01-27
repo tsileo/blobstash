@@ -10,7 +10,7 @@ New blobs are appended to the current file, and when the file exceed the limit, 
 
 Blobs are stored with its hash and its size (for a total overhead of 24 bytes) followed by the blob itself, thus allowing re-indexing.
 
-	Blob hash (20 bytesà + Blob size (4 byte, uint32 binary encoded) + Blob data
+	Blob hash (32 bytes) + Blob size (4 byte, uint32 binary encoded) + Blob data
 
 Blobs are indexed by a BlobPos entry (value stored as string):
 
@@ -55,7 +55,7 @@ const (
 )
 
 const (
-	Overhead = 36 // 24 bytes of meta-data are stored for each blob
+	Overhead = 37 // 37 bytes of meta-data are stored for each blob: 32 byte hash + 1 byte flag + 4 byte blob len
 	hashSize = 32
 )
 
@@ -65,6 +65,13 @@ var (
 	bytesDownloaded = expvar.NewMap("blobsfile-bytes-downloaded")
 	blobsUploaded   = expvar.NewMap("blobsfile-blobs-uploaded")
 	blobsDownloaded = expvar.NewMap("blobsfile-blobs-downloaded")
+)
+
+// Blob flags
+const (
+	Deleted byte = 1 << iota
+	Compressed
+	Encrypted
 )
 
 type BlobsFileBackend struct {
@@ -261,15 +268,14 @@ func (backend *BlobsFileBackend) reindex() error {
 			// SCAN
 			blobHash := make([]byte, hashSize)
 			blobSizeEncoded := make([]byte, 4)
-			_, err := blobsfile.Read(blobHash)
-			if err == io.EOF {
+			flags := make([]byte, 1)
+			if _, err := blobsfile.Read(blobHash); err == io.EOF {
 				break
 			}
-			_, err = blobsfile.Read(blobSizeEncoded)
-			if err == io.EOF {
-				break
+			if _, err := blobsfile.Read(flags); err != nil {
+				return err
 			}
-			if err != nil {
+			if _, err := blobsfile.Read(blobSizeEncoded); err != nil {
 				return err
 			}
 			blobSize := binary.LittleEndian.Uint32(blobSizeEncoded)
@@ -510,7 +516,8 @@ func (backend *BlobsFileBackend) Exists(hash string) bool {
 }
 
 func (backend *BlobsFileBackend) decodeBlob(data []byte) (size int, blob []byte) {
-	size = int(binary.LittleEndian.Uint32(data[hashSize:Overhead]))
+	//flag := data[hashSize]
+	size = int(binary.LittleEndian.Uint32(data[hashSize+1 : Overhead]))
 	blob = make([]byte, size)
 	copy(blob, data[Overhead:])
 	if backend.snappyCompression {
@@ -542,7 +549,9 @@ func (backend *BlobsFileBackend) encodeBlob(blob []byte) (size int, data []byte)
 	size = len(blob)
 	data = make([]byte, len(blob)+Overhead)
 	copy(data[:], h.Sum(nil))
-	binary.LittleEndian.PutUint32(data[hashSize:], uint32(size))
+	// set the flag
+	data[hashSize] = 0
+	binary.LittleEndian.PutUint32(data[hashSize+1:], uint32(size))
 	copy(data[Overhead:], blob)
 	return
 }

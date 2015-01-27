@@ -226,6 +226,11 @@ func blobHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Requ
 			}
 			http.Error(w, http.StatusText(404), 404)
 			return
+		case "DELETE":
+			//if err := backend.Delete(vars["hash"]); err != nil {
+			//	panic(err)
+			//}
+			return
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
