@@ -1,30 +1,26 @@
 BlobStash
 =========
 
-**BlobStash** is a content-addressable blob store, bundled with a key value store, it includes:
+**BlobStash** is both a content-addressed blob store and a key value store accessible via an HTTP API.
 
-- a HTTP blob store, for get/put/exists operations on blob.
-- a versioned key value store, available over HTTP.
+Key value pairs are stored as "meta" blobs.
 
 Initially created to power [BlobSnap](https://github.com/tsileo/blobsnap).
 
-**Still in early development.**
-
 ## Features
 
-- [BLAKE2b](https://blake2.net) as hashing algorithm for the blob store
-- Immutability, less risk of losing data
-- A full featured Go [client](http://godoc.org/github.com/tsileo/blobstash/client)
+- [BLAKE2b](https://blake2.net) as hashing algorithm for the content-addressed blob store
 - Backend routing, you can define rules to specify where blobs should be stored ("if-meta"...)
 - Optional encryption (using [go.crypto/nacl secretbox](http://godoc.org/code.google.com/p/go.crypto/nacl))
 - Possibility to incrementally archive blobs to AWS Glacier (with a recovery command-line tool)
+- A full featured Go [client](http://godoc.org/github.com/tsileo/blobstash/client)
 
 ## Getting started
 
 ```console
 $ go get github.com/tsileo/blobstash/cmd/blobstash
 $ $GOPATH/bin/blobstash
-2014/07/29 19:54:34 Starting blobstash version 0.1.0; go1.3 (linux/amd64)
+2014/07/29 19:54:34 Starting blobstash version 0.1.0; go1.4 (linux/amd64)
 2014/07/29 19:54:34 BlobsFileBackend: starting, opening index
 2014/07/29 19:54:34 BlobsFileBackend: scanning BlobsFiles...
 2014/07/29 19:54:34 BlobsFileBackend: opening /home/thomas/var/blobstash/blobs/blobs-00000 for writing
@@ -54,7 +50,6 @@ $ curl -XPUT http://127.0.0.1:8050/api/v1/vkv/key/k1 -d value=v1
 {"key":"k1","value":"v1","version":1421705651367957723}
 ```
 
-
 ```console
 $ curl http://127.0.0.1:8050/api/v1/vkv/key/k1            
 {"key":"k1","value":"v1","version":1421705651367957723}
@@ -69,9 +64,8 @@ The backend handle operations:
 - Put
 - Exists
 - Get
+- Delete
 - Enumerate
-
-You can combine backend as you wish, e.g. Mirror( Encrypt( S3() ), BlobsFile() ).
 
 ### Available backends
 
@@ -81,6 +75,8 @@ You can combine backend as you wish, e.g. Mirror( Encrypt( S3() ), BlobsFile() )
 - AWS Glacier (only as a backup)
 - A remote BlobDB instance? (not started yet)
 - Submit a pull request!
+
+You can combine backend as you wish, e.g. Mirror( Encrypt( S3() ), BlobsFile() ).
 
 ## Routing
 
