@@ -119,7 +119,7 @@ func (index *BlobsIndex) Remove() {
 	os.RemoveAll(index.path)
 }
 
-// SetPos create a new BlobPos entry in the index for the given hash.
+// SetPos creates a new BlobPos entry in the index for the given hash.
 func (index *BlobsIndex) SetPos(hexHash string, pos *BlobPos) error {
 	index.Lock()
 	defer index.Unlock()
@@ -128,6 +128,17 @@ func (index *BlobsIndex) SetPos(hexHash string, pos *BlobPos) error {
 		return err
 	}
 	return index.db.Set(formatKey(BlobPosKey, hash), pos.Value())
+}
+
+// DeletePos deletes the stored BlobPos for the given hash.
+func (index *BlobsIndex) DeletePos(hexHash string) error {
+	index.Lock()
+	defer index.Unlock()
+	hash, err := hex.DecodeString(hexHash)
+	if err != nil {
+		return err
+	}
+	return index.db.Delete(formatKey(BlobPosKey, hash))
 }
 
 // GetPos retrieve the stored BlobPos for the given hash.

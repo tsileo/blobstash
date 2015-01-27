@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -80,6 +81,7 @@ func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue) func
 			if err != nil {
 				panic(err)
 			}
+			log.Printf("%v", hash)
 			// TODO delete blob
 			if err := db.DeleteVersion(k, version); err != nil {
 				panic(err)

@@ -40,6 +40,7 @@ import (
 	_ "syscall"
 
 	"code.google.com/p/snappy-go/snappy"
+	"github.com/cznic/fileutil"
 	"github.com/dchest/blake2b"
 
 	bbackend "github.com/tsileo/blobstash/backend"
@@ -274,6 +275,9 @@ func (backend *BlobsFileBackend) reindex() error {
 			}
 			if _, err := blobsfile.Read(flags); err != nil {
 				return err
+			}
+			if flags[0]&Deleted != 0 {
+				continue
 			}
 			if _, err := blobsfile.Read(blobSizeEncoded); err != nil {
 				return err
@@ -585,6 +589,45 @@ func (backend *BlobsFileBackend) Get(hash string) ([]byte, error) {
 	bytesDownloaded.Add(backend.Directory, int64(blobSize))
 	blobsUploaded.Add(backend.Directory, 1)
 	return blob, nil
+}
+
+func (backend *BlobsFileBackend) Delete(hash string) error {
+	if !backend.loaded {
+		panic("backend BlobsFileBackend not loaded")
+	}
+	if backend.writeOnly {
+		panic("backend is in write-only mode")
+	}
+	blobPos, err := backend.index.GetPos(hash)
+	if err != nil {
+		return fmt.Errorf("Error fetching GetPos: %v", err)
+	}
+	if blobPos == nil {
+		return fmt.Errorf("Blob %v not found in index", err)
+	}
+	var f *os.File
+	// check if the file is already open for writing
+	if blobPos.n == backend.n {
+		f = backend.current
+	} else {
+		f, err = os.OpenFile(backend.filename(blobPos.n), os.O_RDWR, 0666)
+		if err != nil {
+			return fmt.Errorf("failed to open blobsfile %v", backend.filename(blobPos.n), err)
+		}
+	}
+	// Add Deleted to the flag
+	if _, err := f.WriteAt([]byte{Deleted}, int64(blobPos.offset+hashSize)); err != nil {
+		return err
+	}
+	// Delete the index entry
+	if err := backend.index.DeletePos(hash); err != nil {
+		return err
+	}
+	// Punch a hole in the file if possible
+	if err := fileutil.PunchHole(f, int64(blobPos.offset+Overhead), int64(blobPos.size)); err != nil {
+		return fmt.Errorf("failed to punch hole: %v", err)
+	}
+	return nil
 }
 
 func (backend *BlobsFileBackend) Enumerate(blobs chan<- string) error {
