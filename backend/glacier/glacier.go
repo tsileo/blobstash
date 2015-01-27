@@ -124,7 +124,11 @@ func (backend *GlacierBackend) Put(hash string, data []byte) (err error) {
 	return
 }
 
-func (backend *GlacierBackend) Exists(hash string) bool {
+func (backend *GlacierBackend) Delete(hash string) error {
+	return backend.cache.Delete(hash)
+}
+
+func (backend *GlacierBackend) Exists(hash string) (bool, error) {
 	return backend.cache.Exists(hash)
 }
 

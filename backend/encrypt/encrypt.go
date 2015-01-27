@@ -135,11 +135,19 @@ func (b *EncryptBackend) Put(hash string, rawData []byte) (err error) {
 	return
 }
 
-func (b *EncryptBackend) Exists(hash string) bool {
+func (b *EncryptBackend) Delete(hash string) error {
+	if err := b.dest.Delete(b.index[hash]); err != nil {
+		return err
+	}
+	delete(b.index, hash)
+	return nil
+}
+
+func (b *EncryptBackend) Exists(hash string) (bool, error) {
 	b.Lock()
 	defer b.Unlock()
 	_, exists := b.index[hash]
-	return exists
+	return exists, nil
 }
 
 func (b *EncryptBackend) Done() error {

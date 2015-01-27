@@ -19,9 +19,10 @@ import (
 	"strings"
 	"time"
 
+	"sync"
+
 	ks3 "github.com/kr/s3"
 	"github.com/kr/s3/s3util"
-	"sync"
 )
 
 func do(verb, url string, body io.Reader, c *s3util.Config) (int, error) {
@@ -212,16 +213,15 @@ func (backend *S3Backend) Get(hash string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (backend *S3Backend) Exists(hash string) bool {
+func (backend *S3Backend) Exists(hash string) (bool, error) {
 	r, err := do("HEAD", backend.bucket(hash), nil, nil)
-	if r == 200 {
-		return true
-	} else if r == 404 {
-		return false
-	} else {
-		log.Printf("S3Backend: error performing HEAD request for blob %v, err:%v", hash, err)
+	if err != nil {
+		return false, fmt.Errorf("S3Backend: error performing HEAD request for blob %v, err:%v", hash, err)
 	}
-	return false
+	if r == 200 {
+		return true, nil
+	}
+	return false, nil
 }
 
 func (backend *S3Backend) Delete(hash string) error {

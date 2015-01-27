@@ -222,7 +222,10 @@ func blobHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Requ
 			w.Write(blob)
 			return
 		case "HEAD":
-			exists := backend.Exists(vars["hash"])
+			exists, err := backend.Exists(vars["hash"])
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
 			if exists {
 				return
 			}

@@ -85,11 +85,20 @@ func (backend *MirrorBackend) Put(hash string, data []byte) (err error) {
 	return
 }
 
-func (backend *MirrorBackend) Exists(hash string) bool {
+func (backend *MirrorBackend) Exists(hash string) (bool, error) {
 	for _, b := range backend.readWriteBackends {
 		return b.Exists(hash)
 	}
-	return false
+	return false, nil
+}
+
+func (backend *MirrorBackend) Delete(hash string) error {
+	for _, b := range backend.backends {
+		if err := b.Delete(hash); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (backend *MirrorBackend) Get(hash string) (data []byte, err error) {
