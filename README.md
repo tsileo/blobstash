@@ -3,7 +3,7 @@ BlobStash
 
 **BlobStash** is both a content-addressed blob store and a key value store accessible via an HTTP API.
 
-Key value pairs are stored as "meta" blobs.
+Key value pairs are stored as "meta" blobs, this mean you can build application on top of BlobStash without the need for another database.
 
 Initially created to power [BlobSnap](https://github.com/tsileo/blobsnap).
 
@@ -120,4 +120,4 @@ BTC 1HpHxwNUmXfrU9MR9WTj8Mpg1YUEry9MF4
 
 ## License
 
-Copyright (c) 2014 Thomas Sileo and contributors. Released under the MIT license.
+Copyright (c) 2014-2015 Thomas Sileo and contributors. Released under the MIT license.

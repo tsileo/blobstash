@@ -31,7 +31,7 @@ func WriteJSON(w http.ResponseWriter, data interface{}) {
 	w.Write(js)
 }
 
-func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue) func(http.ResponseWriter, *http.Request) {
+func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blobrouter *router.Router) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		switch r.Method {
@@ -251,7 +251,7 @@ func New(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blobrouter 
 	r.HandleFunc("/api/v1/blobstore/upload", blobUploadHandler(blobs))
 	r.HandleFunc("/api/v1/blobstore/blob/{hash}", blobHandler(blobrouter))
 	r.HandleFunc("/api/v1/vkv/keys", vkvKeysHandler(db))
-	r.HandleFunc("/api/v1/vkv/key/{key}", vkvHandler(wg, db, kvUpdate))
+	r.HandleFunc("/api/v1/vkv/key/{key}", vkvHandler(wg, db, kvUpdate, blobrouter))
 	r.HandleFunc("/api/v1/vkv/key/{key}/versions", vkvVersionsHandler(db))
 	return r
 }

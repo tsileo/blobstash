@@ -204,6 +204,9 @@ func (db *DB) DeleteVersion(key string, version int) error {
 		if err := db.db.Delete(encodeMeta(KvKeyIndex, bkey)); err != nil {
 			return err
 		}
+		if err := db.db.Delete(encodeMeta(KvItemMeta, encodeKey(bkey, version))); err != nil {
+			return err
+		}
 		if err := db.db.Delete(encodeMeta(KvVersionMin, bkey)); err != nil {
 			return err
 		}
