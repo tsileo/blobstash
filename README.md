@@ -20,17 +20,14 @@ Initially created to power [BlobSnap](https://github.com/tsileo/blobsnap).
 ```console
 $ go get github.com/tsileo/blobstash/cmd/blobstash
 $ $GOPATH/bin/blobstash
-2014/07/29 19:54:34 Starting blobstash version 0.1.0; go1.4 (linux/amd64)
-2014/07/29 19:54:34 BlobsFileBackend: starting, opening index
-2014/07/29 19:54:34 BlobsFileBackend: scanning BlobsFiles...
-2014/07/29 19:54:34 BlobsFileBackend: opening /home/thomas/var/blobstash/blobs/blobs-00000 for writing
-2014/07/29 19:54:34 BlobsFileBackend: running fallocate on BlobsFile /home/thomas/var/blobstash/blobs/blobs-00000
-2014/07/29 19:54:34 BlobsFileBackend: snappyCompression = true
-2014/07/29 19:54:34 BlobsFileBackend: backend id => blobsfile-/home/thomas/var/blobstash/blobs
-2014/07/29 19:54:34 server: http server listening on http://:9736
-2014/07/29 19:54:34 server: listening on tcp://:9735
-2014/07/29 19:54:34 scanning meta blobs blobsfile-/home/thomas/var/blobstash/blobs
-2014/07/29 19:54:34 scan result for blobsfile-/home/thomas/var/blobstash/blobs: {Blobs:0 MetaBlobs:0 Applied:0 Size:0}
+2015/01/28 23:03:00 Starting blobstash version 0.0.0; go1.4 (linux/amd64)
+2015/01/28 23:03:00 BlobsFileBackend: starting, opening index
+2015/01/28 23:03:00 BlobsFileBackend: scanning BlobsFiles...
+2015/01/28 23:03:00 BlobsFileBackend: opening /home/thomas/var/blobstash/blobs/blobs-00000 for writing
+2015/01/28 23:03:00 BlobsFileBackend: running fallocate on BlobsFile /home/thomas/var/blobstash/blobs/blobs-00000
+2015/01/28 23:03:00 BlobsFileBackend: snappyCompression = false
+2015/01/28 23:03:00 BlobsFileBackend: backend id => blobsfile-/home/thomas/var/blobstash/blobs
+2015/01/28 23:03:00 server: HTTP API listening on 0.0.0.0:8050
 ```
 
 ## Blob store
