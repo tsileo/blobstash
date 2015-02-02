@@ -3,6 +3,7 @@ package meta
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"sync"
@@ -15,6 +16,8 @@ import (
 var (
 	MetaBlobHeader   = "#blobstash/meta\n"
 	MetaBlobOverhead = len(MetaBlobHeader)
+	NsBlobHeader     = "#blobstash/ns\n"
+	NsBlobOverhead   = len(NsBlobHeader)
 )
 
 type MetaHandler struct {
@@ -65,6 +68,27 @@ func (mh *MetaHandler) Scan() error {
 
 func IsMetaBlob(blob []byte) bool {
 	return bytes.Equal(blob[0:MetaBlobOverhead], []byte(MetaBlobHeader))
+}
+
+func IsNsBlob(blob []byte) bool {
+	return bytes.Equal(blob[0:NsBlobOverhead], []byte(NsBlobHeader))
+}
+
+func CreateNsBlob(hexHash, namespace string) []byte {
+	var buf bytes.Buffer
+	buf.Write([]byte(NsBlobHeader))
+	hash, err := hex.DecodeString(hexHash)
+	if err != nil {
+		panic(err)
+	}
+	buf.Write(hash)
+	buf.WriteString(namespace)
+	return buf.Bytes()
+}
+func DecodeNsBlob(blob []byte) (string, string) {
+	hash := fmt.Sprintf("%x", blob[NsBlobOverhead:NsBlobOverhead+32])
+	namespace := string(blob[NsBlobOverhead+32:])
+	return hash, namespace
 }
 
 func CreateMetaBlob(kv *vkv.KeyValue) []byte {

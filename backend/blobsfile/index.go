@@ -102,7 +102,7 @@ func NewIndex(path string) (*BlobsIndex, error) {
 	if _, err := os.Stat(db_path); os.IsNotExist(err) {
 		createOpen = kv.Create
 	}
-	db, err := createOpen(db_path, opts())
+	db, err := createOpen(db_path, &kv.Options{})
 	return &BlobsIndex{db: db, path: db_path}, err
 }
 

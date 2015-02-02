@@ -200,7 +200,8 @@ func blobUploadHandler(blobs chan<- *router.Blob) func(http.ResponseWriter, *htt
 					return
 				}
 				req := &router.Request{
-					Type: router.Write,
+					Type:      router.Write,
+					Namespace: r.URL.Query().Get("ns"),
 				}
 				blobs <- &router.Blob{Hash: hash, Req: req, Blob: blob}
 			}
@@ -214,7 +215,8 @@ func blobHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Requ
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		req := &router.Request{
-			Type: router.Read,
+			Type:      router.Read,
+			Namespace: r.URL.Query().Get("ns"),
 		}
 		backend := blobrouter.Route(req)
 		switch r.Method {
@@ -246,9 +248,49 @@ func blobHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Requ
 	}
 }
 
+func blobsHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		req := &router.Request{
+			Type:      router.Read,
+			Namespace: r.URL.Query().Get("ns"),
+		}
+		backend := blobrouter.Route(req)
+		switch r.Method {
+		case "GET":
+			//start := r.URL.Query().Get("start")
+			//end := r.URL.Query().Get("end")
+			//slimit := r.URL.Query().Get("limit")
+			//limit := 0
+			//if slimit != "" {
+			//	lim, err := strconv.Atoi(slimit)
+			//	if err != nil {
+			//		panic(err)
+			//	}
+			//	limit = lim
+			//}
+			blobs := make(chan string)
+			errc := make(chan error, 1)
+			go func() {
+				errc <- backend.Enumerate(blobs)
+			}()
+			res := []string{}
+			for blob := range blobs {
+				res = append(res, blob)
+			}
+			if err := <-errc; err != nil {
+				panic(err)
+			}
+			WriteJSON(w, map[string]interface{}{"blobs": res})
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}
+}
+
 func New(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blobrouter *router.Router, blobs chan<- *router.Blob) *mux.Router {
 	r := mux.NewRouter()
 	r.HandleFunc("/api/v1/blobstore/upload", blobUploadHandler(blobs))
+	r.HandleFunc("/api/v1/blobstore/blobs", blobsHandler(blobrouter))
 	r.HandleFunc("/api/v1/blobstore/blob/{hash}", blobHandler(blobrouter))
 	r.HandleFunc("/api/v1/vkv/keys", vkvKeysHandler(db))
 	r.HandleFunc("/api/v1/vkv/key/{key}", vkvHandler(wg, db, kvUpdate, blobrouter))
