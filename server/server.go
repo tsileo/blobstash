@@ -71,7 +71,7 @@ func New(conf map[string]interface{}) *Server {
 		server.Backends[b] = config.NewFromConfig(backends[b].(map[string]interface{}))
 		server.Router.Backends[b] = server.Backends[b]
 	}
-	server.metaHandler = meta.New(server.Router)
+	server.metaHandler = meta.New(server.Router, server.DB)
 	return server
 }
 

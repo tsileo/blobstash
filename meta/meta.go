@@ -22,11 +22,16 @@ var (
 
 type MetaHandler struct {
 	router *router.Router
+	db     *vkv.DB
 	stop   chan struct{}
 }
 
-func New(r *router.Router) *MetaHandler {
-	return &MetaHandler{router: r, stop: make(chan struct{})}
+func New(r *router.Router, db *vkv.DB) *MetaHandler {
+	return &MetaHandler{
+		router: r,
+		stop:   make(chan struct{}),
+		db:     db,
+	}
 }
 func (mh *MetaHandler) Stop() {
 	close(mh.stop)
@@ -62,7 +67,39 @@ func (mh *MetaHandler) WatchKvUpdate(wg sync.WaitGroup, blobs chan<- *router.Blo
 }
 
 func (mh *MetaHandler) Scan() error {
-	// TODO scan for meta blobs with a local cache.
+	blobs := make(chan string)
+	errc := make(chan error, 1)
+	req := &router.Request{
+		MetaBlob: true,
+		Type:     router.Read,
+	}
+	backend := mh.router.Route(req)
+	go func() {
+		errc <- backend.Enumerate(blobs)
+	}()
+	for h := range blobs {
+		blob, err := backend.Get(h)
+		if err != nil {
+			return err
+		}
+		if IsMetaBlob(blob) {
+			kv, err := DecodeMetaBlob(blob)
+			if err != nil {
+				return err
+			}
+			log.Printf("Scan: applying %+v", kv)
+			rkv, err := mh.db.Put(kv.Key, kv.Value, kv.Version)
+			if err != nil {
+				return err
+			}
+			if err := rkv.SetMetaBlob(h); err != nil {
+				return err
+			}
+		}
+	}
+	if err := <-errc; err != nil {
+		return err
+	}
 	return nil
 }
 
