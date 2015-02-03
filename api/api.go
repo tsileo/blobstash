@@ -200,8 +200,8 @@ func blobUploadHandler(blobs chan<- *router.Blob) func(http.ResponseWriter, *htt
 					return
 				}
 				req := &router.Request{
-					Type:      router.Write,
-					Namespace: r.URL.Query().Get("ns"),
+					Type: router.Write,
+					//	Namespace: r.URL.Query().Get("ns"),
 				}
 				blobs <- &router.Blob{Hash: hash, Req: req, Blob: blob}
 			}
@@ -215,8 +215,8 @@ func blobHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Requ
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		req := &router.Request{
-			Type:      router.Read,
-			Namespace: r.URL.Query().Get("ns"),
+			Type: router.Read,
+			//	Namespace: r.URL.Query().Get("ns"),
 		}
 		backend := blobrouter.Route(req)
 		switch r.Method {
@@ -251,8 +251,8 @@ func blobHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Requ
 func blobsHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		req := &router.Request{
-			Type:      router.Read,
-			Namespace: r.URL.Query().Get("ns"),
+			Type: router.Read,
+			//	Namespace: r.URL.Query().Get("ns"),
 		}
 		backend := blobrouter.Route(req)
 		switch r.Method {

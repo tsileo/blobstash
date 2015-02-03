@@ -7,27 +7,12 @@ package nsdb
 import (
 	"bytes"
 	"encoding/hex"
-	"errors"
 	"io"
 	"os"
 	"sync"
 
 	"github.com/cznic/kv"
 )
-
-// Define namespaces for raw key sorted in db.
-const (
-	Empty byte = iota
-	Meta
-	KvKeyIndex
-	KvItem
-	KvItemMeta
-	KvVersionCnt
-	KvVersionMin
-	KvVersionMax
-)
-
-var ErrNotFound = errors.New("nsdb: key does not exist")
 
 type DB struct {
 	db   *kv.DB
