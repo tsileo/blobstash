@@ -50,6 +50,7 @@ const (
 	Empty byte = iota
 	Meta
 	KvKeyIndex
+	KvMetaIndex
 	KvItem
 	KvItemMeta
 	KvVersionCnt
@@ -217,7 +218,20 @@ func (db *DB) DeleteVersion(key string, version int) error {
 			return err
 		}
 	}
+	// TODO delete encodeMeta(KvMetaIndex, []byte(hash)
 	return nil
+}
+
+// MetaBlobApplied returns true if the meta blob is already applied
+func (db *DB) MetaBlobApplied(hash string) (bool, error) {
+	res, err := db.db.Get(nil, encodeMeta(KvMetaIndex, []byte(hash)))
+	if err != nil {
+		return false, err
+	}
+	if len(res) == 0 {
+		return false, nil
+	}
+	return true, nil
 }
 
 // MetaBlob retrns the meta blob where this key/version is stored
@@ -230,6 +244,9 @@ func (db *DB) MetaBlob(key string, version int) (string, error) {
 }
 
 func (db *DB) setmetablob(key string, version int, hash string) error {
+	if err := db.db.Set(encodeMeta(KvMetaIndex, []byte(hash)), []byte{1}); err != nil {
+		return err
+	}
 	return db.db.Set(encodeMeta(KvItemMeta, encodeKey([]byte(key), version)), []byte(hash))
 }
 

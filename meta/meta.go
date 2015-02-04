@@ -77,7 +77,17 @@ func (mh *MetaHandler) Scan() error {
 	go func() {
 		errc <- backend.Enumerate(blobs)
 	}()
+	var i, j int
 	for h := range blobs {
+		i++
+		applied, err := mh.db.MetaBlobApplied(h)
+		if err != nil {
+			return err
+		}
+		if applied {
+			continue
+		}
+		// TODO a local cache for non meta blobs
 		blob, err := backend.Get(h)
 		if err != nil {
 			return err
@@ -95,11 +105,13 @@ func (mh *MetaHandler) Scan() error {
 			if err := rkv.SetMetaBlob(h); err != nil {
 				return err
 			}
+			j++
 		}
 	}
 	if err := <-errc; err != nil {
 		return err
 	}
+	log.Printf("Scan: done, %d blobs scanned, %d blobs applied", i, j)
 	return nil
 }
 
