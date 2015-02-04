@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -215,6 +216,39 @@ func (bs *BlobStore) Get(hash string) ([]byte, error) {
 		return nil, ErrBlobNotFound
 	default:
 		return nil, fmt.Errorf("failed to get blob %v: %v", hash, string(body))
+	}
+}
+
+type BlobsResp struct {
+	Blobs []string `json:"blobs"`
+}
+
+func (bs *BlobStore) Enumerate(blobs chan<- string, start, end string, limit int) error {
+	request, err := http.NewRequest("GET", bs.ServerAddr+"/api/v1/blobstore/blobs?start="+start+"&end="+end+"&limit="+strconv.Itoa(limit), nil)
+	if err != nil {
+		return err
+	}
+	resp, err := bs.client.Do(request)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	switch {
+	case resp.StatusCode == 200:
+		br := &BlobsResp{}
+		if err := json.Unmarshal(body, br); err != nil {
+			return err
+		}
+		for _, h := range br.Blobs {
+			blobs <- h
+		}
+		return nil
+	default:
+		return fmt.Errorf("failed to enumerate blobs: %v", string(body))
 	}
 }
 
