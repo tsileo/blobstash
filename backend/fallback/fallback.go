@@ -30,6 +30,14 @@ func New(b backend.BlobHandler, cacheDir string) *FallbackBackend {
 	return fb
 }
 
+func (backend *FallbackBackend) Close() {
+	return
+}
+
+func (backend *FallbackBackend) Done() error {
+	return nil
+}
+
 func (backend *FallbackBackend) CatchUp() {
 Loop:
 	for {

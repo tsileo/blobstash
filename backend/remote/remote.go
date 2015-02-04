@@ -26,6 +26,10 @@ func (backend *RemoteBackend) Close() {
 	return
 }
 
+func (backend *RemoteBackend) Done() error {
+	return nil
+}
+
 func (backend *RemoteBackend) Put(hash string, data []byte) (err error) {
 	return backend.bs.Put(hash, data)
 }

@@ -70,7 +70,9 @@ The backend handle operations:
 - AWS S3
 - Mirror
 - AWS Glacier (only as a backup)
-- A remote BlobDB instance? (not started yet)
+- A remote BlobStash instance
+- Fallback backend (store failed upload locally and try to reupload them periodically)
+
 - Submit a pull request!
 
 You can combine backend as you wish, e.g. Mirror( Encrypt( S3() ), BlobsFile() ).
