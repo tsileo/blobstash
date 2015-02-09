@@ -57,9 +57,9 @@ func NewKvStore(serverAddr string) *KvStore {
 func (kvs *KvStore) Put(key, value string, version int) (*KeyValue, error) {
 	data := url.Values{}
 	data.Set("value", value)
-	//if version != -1 {
-	//	data.Set("version", strconv.Itoa(version))
-	//}
+	if version != -1 {
+		data.Set("version", strconv.Itoa(version))
+	}
 	request, err := http.NewRequest("PUT", kvs.ServerAddr+"/api/v1/vkv/key/"+key, strings.NewReader(data.Encode())) //data.Encode()))
 	if err != nil {
 		return nil, err
@@ -141,8 +141,15 @@ func (kvs *KvStore) Versions(key string, start, end, limit int) (*KeyValueVersio
 	}
 }
 
+// NextKey returns the next key for lexigraphical (key = NextKey(lastkey))
+func NextKey(key string) string {
+	bkey := []byte(key)
+	bkey[len(bkey)-1]++
+	return string(bkey)
+}
+
 func (kvs *KvStore) Keys(start, end string, limit int) ([]*KeyValue, error) {
-	request, err := http.NewRequest("GET", kvs.ServerAddr+"/api/v1/vkv/keys?start="+start+"&end="+end, nil)
+	request, err := http.NewRequest("GET", kvs.ServerAddr+"/api/v1/vkv/keys?start="+start+"&end="+fmt.Sprintf("%v&limit=%d", end, limit), nil)
 	if err != nil {
 		return nil, err
 	}

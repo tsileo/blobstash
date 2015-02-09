@@ -31,6 +31,8 @@ func New(b backend.BlobHandler, cacheDir string) *FallbackBackend {
 }
 
 func (backend *FallbackBackend) Close() {
+	backend.Backend.Close()
+	backend.Fallback.Close()
 	return
 }
 
