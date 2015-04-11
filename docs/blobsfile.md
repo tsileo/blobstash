@@ -1,6 +1,6 @@
 # BlobsFile
 
-**BlobsFile** is the default blob backend, yt stores multiple blobs (optionally compressed with Snappy) inside "BlobsFile"/fat file/packed file (256MB by default, every new file are "fallocate"d).
+**BlobsFile** is the default blob backend, mutliple blobs are stored (optionally compressed with Snappy) inside "BlobsFile"/fat file/packed file (256MB by default, every new file are "fallocate"d).
 
 Blobs are indexed by a small [kv](https://github.com/cznic/kv) database.
 
