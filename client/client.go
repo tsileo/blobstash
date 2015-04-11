@@ -144,7 +144,14 @@ func (kvs *KvStore) Versions(key string, start, end, limit int) (*KeyValueVersio
 // NextKey returns the next key for lexigraphical (key = NextKey(lastkey))
 func NextKey(key string) string {
 	bkey := []byte(key)
-	bkey[len(bkey)-1]++
+	i := len(bkey)
+	for i > 0 {
+		i--
+		bkey[i]++
+		if bkey[i] != 0 {
+			break
+		}
+	}
 	return string(bkey)
 }
 
