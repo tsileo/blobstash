@@ -54,9 +54,16 @@ func (backend *S3Backend) String() string {
 	return fmt.Sprintf("s3-%v", backend.Bucket)
 }
 
-func (backend *S3Backend) bucket(key string) string {
-	//"https://%v.s3.amazonaws.com/%v" https://s3-us-west-2.amazonaws.com/mybucket".
-	return fmt.Sprintf("https://%v.s3-%v.amazonaws.com%v", backend.Bucket, backend.Location, key)
+func (backend *S3Backend) bucket(dir string) string {
+	// dir must end with a slash
+	return fmt.Sprintf("https://%v.s3-%v.amazonaws.com/%v", backend.Bucket, backend.Location, dir)
+}
+
+func (backend *S3Backend) key(key string) string {
+	if key != "" {
+		key = key[0:2] + "/" + key
+	}
+	return backend.bucket("") + key
 }
 
 func (backend *S3Backend) Close() {
@@ -71,7 +78,7 @@ func (backend *S3Backend) upload(hash string, data []byte) error {
 	backend.Lock()
 	defer backend.Unlock()
 	r := bytes.NewBuffer(data)
-	w, err := s3util.Create(fmt.Sprintf("%v/%v", backend.bucket(""), hash), nil, nil)
+	w, err := s3util.Create(backend.key(hash), nil, nil)
 	if err != nil {
 		return err
 	}
@@ -99,7 +106,7 @@ func (backend *S3Backend) Put(hash string, data []byte) error {
 }
 
 func (backend *S3Backend) Get(hash string) ([]byte, error) {
-	r, err := s3util.Open(backend.bucket("/"+hash), nil)
+	r, err := s3util.Open(backend.key(hash), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +118,7 @@ func (backend *S3Backend) Get(hash string) ([]byte, error) {
 }
 
 func (backend *S3Backend) Exists(hash string) (bool, error) {
-	r, err := http.NewRequest("HEAD", backend.bucket("/"+hash), nil)
+	r, err := http.NewRequest("HEAD", backend.key(hash), nil)
 	r.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
 	ks3.Sign(r, *backend.keys)
 	resp, err := http.DefaultClient.Do(r)
@@ -125,10 +132,7 @@ func (backend *S3Backend) Exists(hash string) (bool, error) {
 }
 
 func (backend *S3Backend) Delete(hash string) error {
-	if hash != "" {
-		hash = "/" + hash
-	}
-	r, err := http.NewRequest("DELETE", backend.bucket(hash), nil)
+	r, err := http.NewRequest("DELETE", backend.key(hash), nil)
 	if err != nil {
 		return err
 	}
@@ -153,8 +157,22 @@ func (backend *S3Backend) Enumerate(blobs chan<- string) error {
 			return err
 		}
 		for _, info := range infos {
-			c := info.Sys().(*s3util.Stat)
-			blobs <- c.Key
+			sf, err := s3util.NewFile(backend.bucket(info.Name()+"/"), nil)
+			if err != nil {
+				return err
+			}
+			var subinfos []os.FileInfo
+			for {
+				subinfos, err = sf.Readdir(0)
+				if err == io.EOF {
+					break
+				} else if err != nil {
+					return err
+				}
+				for _, subinfo := range subinfos {
+					blobs <- subinfo.Name()[3:] //subinfo.Sys().(*s3util.Stat).Key
+				}
+			}
 		}
 	}
 	return nil
@@ -166,7 +184,7 @@ func (backend *S3Backend) Drop() error {
 	blobs := make(chan string)
 	go backend.Enumerate(blobs)
 	for blob := range blobs {
-		if err := backend.Delete("/" + blob); err != nil {
+		if err := backend.Delete(blob); err != nil {
 			return err
 		}
 	}
