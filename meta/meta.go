@@ -116,10 +116,17 @@ func (mh *MetaHandler) Scan() error {
 }
 
 func IsMetaBlob(blob []byte) bool {
+	// TODO add a test with a tiny blob
+	if len(blob) < MetaBlobOverhead {
+		return false
+	}
 	return bytes.Equal(blob[0:MetaBlobOverhead], []byte(MetaBlobHeader))
 }
 
 func IsNsBlob(blob []byte) bool {
+	if len(blob) < NsBlobOverhead {
+		return false
+	}
 	return bytes.Equal(blob[0:NsBlobOverhead], []byte(NsBlobHeader))
 }
 
