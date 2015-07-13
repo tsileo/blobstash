@@ -5,7 +5,7 @@ BlobStash
 
 Key value pairs are stored as "meta" blobs, this mean you can build application on top of BlobStash without the need for another database.
 
-Initially created to power [BlobSnap](https://github.com/tsileo/blobsnap).
+Initially created to power [BlobSnap](https://github.com/tsileo/blobsnap) and [Blobs](http://blobs.co).
 
 ## Features
 
@@ -115,7 +115,7 @@ Feel free to open an issue if you have any ideas/suggestions!
 
 [![Flattr this git repo](http://api.flattr.com/button/flattr-badge-large.png)](https://flattr.com/submit/auto?user_id=tsileo&url=https%3A%2F%2Fgithub.com%2Ftsileo%2Fblobstash)
 
-BTC 1HpHxwNUmXfrU9MR9WTj8Mpg1YUEry9MF4
+BTC 12XKk3jEG9KZdZu2Jpr4DHgKVRqwctitvj
 
 ## License
 
