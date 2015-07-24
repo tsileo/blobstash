@@ -25,7 +25,7 @@ import (
 
 	"github.com/dchest/blake2b"
 
-	"code.google.com/p/snappy-go/snappy"
+	"github.com/golang/snappy"
 	"golang.org/x/crypto/nacl/secretbox"
 )
 
@@ -114,10 +114,8 @@ func (b *EncryptBackend) Put(hash string, rawData []byte) (err error) {
 		return err
 	}
 	// First we compress the data with snappy
-	data, err := snappy.Encode(nil, rawData)
-	if err != nil {
-		return
-	}
+	data := snappy.Encode(nil, rawData)
+
 	var out bytes.Buffer
 	out.WriteString("#blobstash/secretbox\n")
 	out.WriteString(fmt.Sprintf("%v\n", hash))

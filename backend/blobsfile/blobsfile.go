@@ -39,9 +39,9 @@ import (
 	"sync"
 	_ "syscall"
 
-	"code.google.com/p/snappy-go/snappy"
 	"github.com/cznic/fileutil"
 	"github.com/dchest/blake2b"
+	"github.com/golang/snappy"
 
 	bbackend "github.com/tsileo/blobstash/backend"
 	"github.com/tsileo/blobstash/config/pathutil"
@@ -549,10 +549,7 @@ func (backend *BlobsFileBackend) encodeBlob(blob []byte) (size int, data []byte)
 	h.Write(blob)
 
 	if backend.snappyCompression {
-		dataEncoded, err := snappy.Encode(nil, blob)
-		if err != nil {
-			panic(fmt.Errorf("Failed to encode blob with Snappy: %v", err))
-		}
+		dataEncoded := snappy.Encode(nil, blob)
 		blob = dataEncoded
 	}
 	size = len(blob)

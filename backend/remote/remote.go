@@ -3,6 +3,7 @@ package remote
 import (
 	"fmt"
 
+	"github.com/tsileo/blobstash/backend"
 	"github.com/tsileo/blobstash/client"
 )
 
@@ -18,34 +19,34 @@ func New(addr string) *RemoteBackend {
 	}
 }
 
-func (backend *RemoteBackend) String() string {
-	return fmt.Sprintf("remote-%v", backend.addr)
+func (b *RemoteBackend) String() string {
+	return fmt.Sprintf("remote-%v", b.addr)
 }
 
-func (backend *RemoteBackend) Close() {
+func (b *RemoteBackend) Close() {
 	return
 }
 
-func (backend *RemoteBackend) Done() error {
+func (b *RemoteBackend) Done() error {
 	return nil
 }
 
-func (backend *RemoteBackend) Put(hash string, data []byte) (err error) {
-	return backend.bs.Put(hash, data)
+func (b *RemoteBackend) Put(hash string, data []byte) (err error) {
+	return b.bs.Put(hash, data)
 }
 
-func (backend *RemoteBackend) Exists(hash string) (bool, error) {
-	return backend.bs.Stat(hash)
+func (b *RemoteBackend) Exists(hash string) (bool, error) {
+	return b.bs.Stat(hash)
 }
 
-func (backend *RemoteBackend) Delete(hash string) error {
-	return backend.bs.Delete(hash)
+func (b *RemoteBackend) Delete(hash string) error {
+	return backend.ErrWriteOnly
 }
 
-func (backend *RemoteBackend) Get(hash string) (data []byte, err error) {
-	return backend.bs.Get(hash)
+func (b *RemoteBackend) Get(hash string) (data []byte, err error) {
+	return b.bs.Get(hash)
 }
 
-func (backend *RemoteBackend) Enumerate(blobs chan<- string) error {
-	return backend.bs.Enumerate(blobs, "", "\xff", 0)
+func (b *RemoteBackend) Enumerate(blobs chan<- string) error {
+	return b.bs.Enumerate(blobs, "", "\xff", 0)
 }

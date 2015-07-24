@@ -8,15 +8,16 @@ package test
 
 import (
 	"crypto/rand"
-	"github.com/bradfitz/iter"
+	"fmt"
 	"io"
 	"io/ioutil"
 	mrand "math/rand"
 	"os"
-	"fmt"
 	"path/filepath"
 	"sync"
 	"testing"
+
+	"github.com/bradfitz/iter"
 
 	"github.com/dchest/blake2b"
 )
