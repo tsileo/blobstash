@@ -91,10 +91,12 @@ func (backend *FallbackBackend) Exists(hash string) (bool, error) {
 }
 
 func (backend *FallbackBackend) Put(hash string, data []byte) (err error) {
-	err := backend.Backend.Put(hash, data)
+	err = backend.Backend.Put(hash, data)
 	if err == nil {
 		return nil
 	}
+
 	log.Printf("Fallback: write to %v failed, fallback to %v", backend.Backend, backend.Fallback)
+
 	return backend.Fallback.Put(hash, data)
 }
