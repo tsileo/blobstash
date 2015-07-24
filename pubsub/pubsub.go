@@ -6,7 +6,7 @@ import (
 
 type PubSub struct {
 	Channel string
-	Msgc chan interface{}
+	Msgc    chan interface{}
 }
 
 func NewPubSub(channel string) *PubSub {

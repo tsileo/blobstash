@@ -2,8 +2,8 @@ package encrypt
 
 import (
 	"os"
-	"testing"
 	"path/filepath"
+	"testing"
 
 	"github.com/tsileo/blobstash/backend"
 	"github.com/tsileo/blobstash/backend/blobsfile"

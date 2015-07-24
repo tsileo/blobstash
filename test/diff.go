@@ -1,8 +1,8 @@
 package test
 
 import (
-	"os/exec"
 	"fmt"
+	"os/exec"
 )
 
 func Diff(path1, path2 string) error {
