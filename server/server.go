@@ -127,6 +127,7 @@ func (s *Server) BlobStore() *embed.BlobStore {
 
 func (s *Server) Run() error {
 	// Start the HTTP API
+	s.Embed()
 	r := api.New(s.wg, s.DB, s.KvUpdate, s.Router, s.blobs)
 	http.Handle("/", r)
 	log.Printf("server: HTTP API listening on 0.0.0.0:8050")
