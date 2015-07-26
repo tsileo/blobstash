@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/tsileo/blobstash/client/response"
 	"github.com/tsileo/blobstash/router"
 	"github.com/tsileo/blobstash/vkv"
 )
@@ -27,25 +28,64 @@ func NewKvStore(db *vkv.DB, kvUpdate chan *vkv.KeyValue, blobrouter *router.Rout
 	}
 }
 
-func (kvs *KvStore) Put(key, value string, version int) (*vkv.KeyValue, error) {
+func (kvs *KvStore) Put(key, value string, version int) (*response.KeyValue, error) {
 	res, err := kvs.db.Put(key, value, version)
 	if err != nil {
 		return nil, err
 	}
 	kvs.kvUpdate <- res
-	return res, nil
+	return &response.KeyValue{
+		Key:     res.Key,
+		Value:   res.Value,
+		Version: res.Version,
+	}, nil
 }
 
-func (kvs *KvStore) Get(key string, version int) (*vkv.KeyValue, error) {
-	return kvs.db.Get(key, version)
+func (kvs *KvStore) Get(key string, version int) (*response.KeyValue, error) {
+	res, err := kvs.db.Get(key, version)
+	if err != nil {
+		return nil, err
+	}
+	return &response.KeyValue{
+		Key:     res.Key,
+		Value:   res.Value,
+		Version: res.Version,
+	}, nil
 }
 
-func (kvs *KvStore) Versions(key string, start, end, limit int) (*vkv.KeyValueVersions, error) {
-	return kvs.db.Versions(key, start, end, limit)
+func (kvs *KvStore) Versions(key string, start, end, limit int) (*response.KeyValueVersions, error) {
+	res, err := kvs.db.Versions(key, start, end, limit)
+	if err != nil {
+		return nil, err
+	}
+	versions := []*response.KeyValue{}
+	for _, v := range res.Versions {
+		versions = append(versions, &response.KeyValue{
+			Key:     v.Key,
+			Value:   v.Value,
+			Version: v.Version,
+		})
+	}
+	return &response.KeyValueVersions{
+		Key:      res.Key,
+		Versions: versions,
+	}, nil
 }
 
-func (kvs *KvStore) Keys(start, end string, limit int) ([]*vkv.KeyValue, error) {
-	return kvs.db.Keys(start, end, limit)
+func (kvs *KvStore) Keys(start, end string, limit int) ([]*response.KeyValue, error) {
+	res, err := kvs.db.Keys(start, end, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := []*response.KeyValue{}
+	for _, kv := range res {
+		out = append(out, &response.KeyValue{
+			Key:     kv.Key,
+			Value:   kv.Value,
+			Version: kv.Version,
+		})
+	}
+	return out, nil
 }
 
 type Blob struct {
@@ -66,6 +106,12 @@ func NewBlobStore(rblobs chan<- *router.Blob, blobrouter *router.Router) *BlobSt
 		rblobs:     rblobs,
 		blobrouter: blobrouter,
 	}
+}
+func (bs *BlobStore) ProcessBlobs() {
+	return
+}
+func (bs *BlobStore) WaitBlobs() {
+	return
 }
 
 // Get fetch the given blob.

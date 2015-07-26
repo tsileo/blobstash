@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/tsileo/blobstash/client/response"
 )
 
 // ErrBlobNotFound is returned from a get/stat request
@@ -21,23 +23,6 @@ var ErrBlobNotFound = errors.New("blob not found")
 var ErrKeyNotFound = errors.New("key doest not exist")
 
 var defaultServerAddr = "http://localhost:8050"
-
-// KeyValue holds a singke key value pair, along with the version (the creation timestamp)
-type KeyValue struct {
-	Key     string `json:"key,omitempty"`
-	Value   string `json:"value"`
-	Version int    `json:"version"`
-}
-
-// KeyValueVersions holds the full history for a key value pair
-type KeyValueVersions struct {
-	Key      string      `json:"key"`
-	Versions []*KeyValue `json:"versions"`
-}
-
-type KeysResponse struct {
-	Keys []*KeyValue `json:"keys"`
-}
 
 type KvStore struct {
 	ServerAddr string
@@ -54,7 +39,7 @@ func NewKvStore(serverAddr string) *KvStore {
 	}
 }
 
-func (kvs *KvStore) Put(key, value string, version int) (*KeyValue, error) {
+func (kvs *KvStore) Put(key, value string, version int) (*response.KeyValue, error) {
 	data := url.Values{}
 	data.Set("value", value)
 	if version != -1 {
@@ -73,7 +58,7 @@ func (kvs *KvStore) Put(key, value string, version int) (*KeyValue, error) {
 	resp.Body.Close()
 	switch resp.StatusCode {
 	case 200:
-		kv := &KeyValue{}
+		kv := &response.KeyValue{}
 		if err := json.Unmarshal(body.Bytes(), kv); err != nil {
 			return nil, err
 		}
@@ -83,7 +68,7 @@ func (kvs *KvStore) Put(key, value string, version int) (*KeyValue, error) {
 	}
 }
 
-func (kvs *KvStore) Get(key string, version int) (*KeyValue, error) {
+func (kvs *KvStore) Get(key string, version int) (*response.KeyValue, error) {
 	request, err := http.NewRequest("GET", kvs.ServerAddr+"/api/v1/vkv/key/"+key, nil)
 	if err != nil {
 		return nil, err
@@ -99,7 +84,7 @@ func (kvs *KvStore) Get(key string, version int) (*KeyValue, error) {
 	}
 	switch {
 	case resp.StatusCode == 200:
-		kv := &KeyValue{}
+		kv := &response.KeyValue{}
 		if err := json.Unmarshal(body, kv); err != nil {
 			return nil, err
 		}
@@ -112,7 +97,7 @@ func (kvs *KvStore) Get(key string, version int) (*KeyValue, error) {
 
 }
 
-func (kvs *KvStore) Versions(key string, start, end, limit int) (*KeyValueVersions, error) {
+func (kvs *KvStore) Versions(key string, start, end, limit int) (*response.KeyValueVersions, error) {
 	// TODO handle start, end and limit
 	request, err := http.NewRequest("GET", kvs.ServerAddr+"/api/v1/vkv/key/"+key+"/versions", nil)
 	if err != nil {
@@ -129,7 +114,7 @@ func (kvs *KvStore) Versions(key string, start, end, limit int) (*KeyValueVersio
 	}
 	switch {
 	case resp.StatusCode == 200:
-		kvversions := &KeyValueVersions{}
+		kvversions := &response.KeyValueVersions{}
 		if err := json.Unmarshal(body, kvversions); err != nil {
 			return nil, err
 		}
@@ -155,7 +140,7 @@ func NextKey(key string) string {
 	return string(bkey)
 }
 
-func (kvs *KvStore) Keys(start, end string, limit int) ([]*KeyValue, error) {
+func (kvs *KvStore) Keys(start, end string, limit int) ([]*response.KeyValue, error) {
 	request, err := http.NewRequest("GET", kvs.ServerAddr+"/api/v1/vkv/keys?start="+start+"&end="+fmt.Sprintf("%v&limit=%d", end, limit), nil)
 	if err != nil {
 		return nil, err
@@ -171,7 +156,7 @@ func (kvs *KvStore) Keys(start, end string, limit int) ([]*KeyValue, error) {
 	}
 	switch {
 	case resp.StatusCode == 200:
-		keys := &KeysResponse{}
+		keys := &response.KeysResponse{}
 		if err := json.Unmarshal(body, keys); err != nil {
 			return nil, err
 		}
