@@ -136,6 +136,11 @@ func (s *Server) Run() error {
 			panic(err)
 		}
 	}()
+	s.TillShutdown()
+}
+
+// TillShutdown blocks until a kill signal is catched.
+func (s *Server) TillShutdown() {
 	// Listen for shutdown signal
 	cs := make(chan os.Signal, 1)
 	signal.Notify(cs, os.Interrupt,
