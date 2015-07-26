@@ -14,6 +14,7 @@ import (
 	"github.com/tsileo/blobstash/backend"
 	"github.com/tsileo/blobstash/config"
 	"github.com/tsileo/blobstash/config/pathutil"
+	"github.com/tsileo/blobstash/embed"
 	"github.com/tsileo/blobstash/meta"
 	"github.com/tsileo/blobstash/router"
 	"github.com/tsileo/blobstash/vkv"
@@ -98,7 +99,7 @@ func (s *Server) processBlobs() {
 	}
 }
 
-func (s *Server) Run() error {
+func (s *Server) Embed() {
 	// Start meta handler: watch for kv update and create meta blob
 	go s.metaHandler.WatchKvUpdate(s.wg, s.blobs, s.KvUpdate)
 	// Scan existing meta blob
@@ -113,6 +114,18 @@ func (s *Server) Run() error {
 	for i := 0; i < 25; i++ {
 		go s.processBlobs()
 	}
+}
+
+// KvStore return a kv client, written for embedded client
+func (s *Server) KvStore() *embed.KvStore {
+	return embed.NewKvStore(s.DB, s.KvUpdate, s.Router)
+}
+
+func (s *Server) BlobStore() *embed.BlobStore {
+	return embed.NewBlobStore(s.blobs, s.Router)
+}
+
+func (s *Server) Run() error {
 	// Start the HTTP API
 	r := api.New(s.wg, s.DB, s.KvUpdate, s.Router, s.blobs)
 	http.Handle("/", r)

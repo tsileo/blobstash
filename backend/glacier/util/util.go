@@ -26,7 +26,7 @@ func getRegion(name string) *aws.Region {
 			return region
 		}
 	}
-	return aws.USEast1
+	return aws.USWest1
 }
 
 // GetCon create a new glacier.Connection using environment variables.
