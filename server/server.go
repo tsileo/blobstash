@@ -125,7 +125,7 @@ func (s *Server) BlobStore() *embed.BlobStore {
 	return embed.NewBlobStore(s.blobs, s.Router)
 }
 
-func (s *Server) Run() error {
+func (s *Server) Run() {
 	// Start the HTTP API
 	s.Embed()
 	r := api.New(s.wg, s.DB, s.KvUpdate, s.Router, s.blobs)
