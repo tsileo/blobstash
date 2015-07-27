@@ -43,6 +43,7 @@ type Server struct {
 	KvUpdate chan *vkv.KeyValue
 	blobs    chan *router.Blob
 
+	ready    chan struct{}
 	shutdown chan struct{}
 	stop     chan struct{}
 	wg       sync.WaitGroup
@@ -63,6 +64,7 @@ func New(conf map[string]interface{}) *Server {
 		Backends: map[string]backend.BlobHandler{},
 		DB:       db,
 		KvUpdate: make(chan *vkv.KeyValue),
+		ready:    make(chan struct{}, 1),
 		shutdown: make(chan struct{}, 1),
 		stop:     make(chan struct{}),
 		blobs:    make(chan *router.Blob),
@@ -99,7 +101,13 @@ func (s *Server) processBlobs() {
 	}
 }
 
-func (s *Server) Embed() {
+// TillReady blocks until all blobs get scanned (and all meta blobs applied if needed)
+func (s *Server) TillReady() {
+	<-s.ready
+}
+
+// SetUp should be called instead of Run in embedded mode
+func (s *Server) SetUp() {
 	// Start meta handler: watch for kv update and create meta blob
 	go s.metaHandler.WatchKvUpdate(s.wg, s.blobs, s.KvUpdate)
 	// Scan existing meta blob
@@ -109,6 +117,7 @@ func (s *Server) Embed() {
 		if err := s.metaHandler.Scan(); err != nil {
 			panic(err)
 		}
+		s.ready <- struct{}{}
 	}()
 	// Start the worker for handling blob upload
 	for i := 0; i < 25; i++ {
@@ -121,13 +130,15 @@ func (s *Server) KvStore() *embed.KvStore {
 	return embed.NewKvStore(s.DB, s.KvUpdate, s.Router)
 }
 
+// BlobStore returns a blob store clienm for embedded usge
 func (s *Server) BlobStore() *embed.BlobStore {
 	return embed.NewBlobStore(s.blobs, s.Router)
 }
 
+// Run runs the server and block until the server is shutdown
 func (s *Server) Run() {
 	// Start the HTTP API
-	s.Embed()
+	s.SetUp()
 	r := api.New(s.wg, s.DB, s.KvUpdate, s.Router, s.blobs)
 	http.Handle("/", r)
 	log.Printf("server: HTTP API listening on 0.0.0.0:8050")
