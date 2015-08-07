@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/dchest/blake2b"
 	"github.com/tsileo/blobstash/router"
@@ -67,6 +68,7 @@ func (mh *MetaHandler) WatchKvUpdate(wg sync.WaitGroup, blobs chan<- *router.Blo
 }
 
 func (mh *MetaHandler) Scan() error {
+	start := time.Now()
 	blobs := make(chan string)
 	errc := make(chan error, 1)
 	req := &router.Request{
@@ -111,7 +113,7 @@ func (mh *MetaHandler) Scan() error {
 	if err := <-errc; err != nil {
 		return err
 	}
-	log.Printf("Scan: done, %d blobs scanned, %d blobs applied", i, j)
+	log.Printf("Scan: done, %d blobs scanned in %v, %d blobs applied", i, time.Since(start), j)
 	return nil
 }
 

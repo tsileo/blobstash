@@ -6,6 +6,7 @@ type KvStorer interface {
 	Put(string, string, int) (*response.KeyValue, error)
 	Get(string, int) (*response.KeyValue, error)
 	Versions(string, int, int, int) (*response.KeyValueVersions, error)
+	Keys(string, string, int) ([]*response.KeyValue, error)
 }
 
 type BlobStorer interface {
