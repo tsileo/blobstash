@@ -13,21 +13,23 @@ Initially created to power [BlobSnap](https://github.com/tsileo/blobsnap) and [B
 - Backend routing, you can define rules to specify where blobs should be stored ("if-meta"...)
 - Optional encryption (using [go.crypto/nacl secretbox](http://godoc.org/code.google.com/p/go.crypto/nacl))
 - Possibility to incrementally archive blobs to AWS Glacier (with a recovery command-line tool)
-- A full featured Go [client](http://godoc.org/github.com/tsileo/blobstash/client)
+- A full featured Go [client](http://godoc.org/github.com/tsileo/blobstash/client) using the HTTP API
+- Can be embedded in your go app ([embedded client](http://godoc.org/github.com/tsileo/blobstash/embed))
 
 ## Getting started
 
 ```console
 $ go get github.com/tsileo/blobstash/cmd/blobstash
 $ $GOPATH/bin/blobstash
-2015/01/28 23:03:00 Starting blobstash version 0.0.0; go1.4 (linux/amd64)
-2015/01/28 23:03:00 BlobsFileBackend: starting, opening index
-2015/01/28 23:03:00 BlobsFileBackend: scanning BlobsFiles...
-2015/01/28 23:03:00 BlobsFileBackend: opening /home/thomas/var/blobstash/blobs/blobs-00000 for writing
-2015/01/28 23:03:00 BlobsFileBackend: running fallocate on BlobsFile /home/thomas/var/blobstash/blobs/blobs-00000
-2015/01/28 23:03:00 BlobsFileBackend: snappyCompression = false
-2015/01/28 23:03:00 BlobsFileBackend: backend id => blobsfile-/home/thomas/var/blobstash/blobs
-2015/01/28 23:03:00 server: HTTP API listening on 0.0.0.0:8050
+2015/08/13 21:32:27 Starting blobstash version 0.0.0; go1.4 (linux/amd64)
+2015/08/13 21:32:27 BlobsFileBackend: starting, opening index
+2015/08/13 21:32:27 BlobsFileBackend: scanning BlobsFiles...
+2015/08/13 21:32:27 BlobsFileBackend: /data/blobs/blobs-00000 loaded
+2015/08/13 21:32:27 BlobsFileBackend: opening /data/blobs/blobs-00000 for writing
+2015/08/13 21:32:27 BlobsFileBackend: snappyCompression = false
+2015/08/13 21:32:27 BlobsFileBackend: backend id => blobsfile-/data/blobs
+2015/08/13 21:32:27 server: HTTP API listening on 0.0.0.0:8050
+2015/08/13 21:32:38 Scan: done, 10596 blobs scanned in 11.114966366s, 0 blobs applied
 ```
 
 ## Blob store
@@ -96,6 +98,26 @@ The minimal router config is:
 
 ```json
 [["default", "blobHandler"]]
+```
+
+## Embedded mode
+
+```go
+package main
+
+import (
+	"github.com/tsileo/blobstash/server"
+)
+
+func main() {
+	blobstash := server.New(nil)
+	blobstash.SetUp()
+	// wait till all meta blobs get scanned
+	blobstash.TillReady()
+	bs := blobstash.BlobStore()
+	kvs := blobstash.KvStore()
+	blobstash.TillShutdown()
+}
 ```
 
 ## Roadmap / Ideas
