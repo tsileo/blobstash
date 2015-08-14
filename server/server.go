@@ -27,11 +27,12 @@ var DefaultConf = map[string]interface{}{
 		"blobs": map[string]interface{}{
 			"backend-type": "blobsfile",
 			"backend-args": map[string]interface{}{
-				"path": "blobs",
+				"path": "$VAR/blobs",
 			},
 		},
 	},
-	"router": []interface{}{[]interface{}{"default", "blobs"}},
+	"router":    []interface{}{[]interface{}{"default", "blobs"}},
+	"data_path": pathutil.VarDir(),
 }
 
 type Server struct {
@@ -53,7 +54,7 @@ func New(conf map[string]interface{}) *Server {
 	if conf == nil {
 		conf = DefaultConf
 	}
-	vardir := pathutil.VarDir()
+	vardir := conf["data_path"].(string)
 	os.MkdirAll(vardir, 0700)
 	db, err := vkv.New(filepath.Join(vardir, "vkv.db"))
 	if err != nil {
