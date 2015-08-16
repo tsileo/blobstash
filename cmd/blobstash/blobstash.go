@@ -12,6 +12,7 @@ import (
 	"github.com/codegangsta/cli"
 
 	"github.com/tsileo/blobstash/config/pathutil"
+	"github.com/tsileo/blobstash/logger"
 	"github.com/tsileo/blobstash/server"
 )
 
@@ -34,7 +35,9 @@ func main() {
 }
 
 func start(config_path string) {
-	log.Printf("Starting blobstash version %v; %v (%v/%v)", server.Version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+	logger.InitLogger("debug")
+	l := logger.Log
+	l.Info(fmt.Sprintf("Starting blobstash version %v; %v (%v/%v)", server.Version, runtime.Version(), runtime.GOOS, runtime.GOARCH))
 	if config_path == "" {
 		config_path = filepath.Join(pathutil.ConfigDir(), "server-config.json")
 	}
