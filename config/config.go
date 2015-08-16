@@ -19,7 +19,11 @@ func NewEncryptFromConfig(conf map[string]interface{}) backend.BlobHandler {
 	return encrypt.New(conf["key-path"].(string), NewFromConfig(conf["dest"].(map[string]interface{})))
 }
 
-func NewS3FromConfig(conf map[string]interface{}) backend.BlobHandler {
+func NewS3FromConfig(conf *s3.Config) backend.BlobHandler {
+	return NewS3(conf.Map())
+}
+
+func NewS3(conf map[string]interface{}) backend.BlobHandler {
 	bucket := conf["bucket"].(string)
 	if bucket == "" {
 		panic(fmt.Errorf("no bucket specified for S3Backend"))
@@ -51,7 +55,25 @@ func NewGlacierFromConfig(conf map[string]interface{}) backend.BlobHandler {
 	return glacier.New(vault, region, cacheDir, compression)
 }
 
-func NewMirrorFromConfig(conf map[string]interface{}) backend.BlobHandler {
+func NewMirrorFromConfig(conf *mirror.Config) backend.BlobHandler {
+	backends := []backend.BlobHandler{}
+	backs := conf.Backends
+	if backs != nil {
+		for _, b := range backs {
+			backends = append(backends, NewFromConfig2(b))
+		}
+	}
+	wbackends := []backend.BlobHandler{}
+	backs = conf.WriteBackends
+	if backs != nil {
+		for _, b := range backs {
+			wbackends = append(wbackends, NewFromConfig2(b))
+		}
+	}
+	return mirror.New(backends, wbackends)
+}
+
+func NewMirror(conf map[string]interface{}) backend.BlobHandler {
 	backends := []backend.BlobHandler{}
 	backs := conf["backends"]
 	if backs != nil {
@@ -71,6 +93,18 @@ func NewMirrorFromConfig(conf map[string]interface{}) backend.BlobHandler {
 	return mirror.New(backends, wbackends)
 }
 
+func NewFromConfig2(conf backend.Config) backend.BlobHandler {
+	switch conf.Backend() {
+	case "mirror":
+		return NewMirrorFromConfig(conf.(*mirror.Config))
+	case "s3":
+		return NewS3FromConfig(conf.(*s3.Config))
+	case "blobsfile":
+		return blobsfile.NewFromConfig2(conf.(*blobsfile.Config))
+	default:
+		return nil
+	}
+}
 func NewFromConfig(conf map[string]interface{}) backend.BlobHandler {
 	backendType := conf["backend-type"].(string)
 	if backendType == "" {
@@ -89,9 +123,9 @@ func NewFromConfig(conf map[string]interface{}) backend.BlobHandler {
 	case backendType == "encrypt":
 		return NewEncryptFromConfig(backendArgs)
 	case backendType == "s3":
-		return NewS3FromConfig(backendArgs)
+		return NewS3(backendArgs)
 	case backendType == "mirror":
-		return NewMirrorFromConfig(backendArgs)
+		return NewMirror(backendArgs)
 	default:
 		panic(fmt.Errorf("backend %v unknown", backendType))
 	}

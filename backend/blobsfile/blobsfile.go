@@ -42,6 +42,7 @@ import (
 
 	"github.com/cznic/fileutil"
 	"github.com/dchest/blake2b"
+	"github.com/fatih/structs"
 	"github.com/golang/snappy"
 
 	bbackend "github.com/tsileo/blobstash/backend"
@@ -75,6 +76,21 @@ const (
 	Compressed
 	Encrypted
 )
+
+type Config struct {
+	Dir              string `structs:"path"`
+	Compression      int64  `structs:"compression"`
+	WriteOnly        bool   `structs:"write-only"`
+	MaxBlobsFileSize int64  `structs:"blobsfile-max-size"`
+}
+
+func (c *Config) Backend() string {
+	return "blobsfile"
+}
+
+func (c *Config) Map() map[string]interface{} {
+	return structs.Map(c)
+}
 
 type BlobsFileBackend struct {
 	// Directory which holds the blobsfile
@@ -142,6 +158,11 @@ func New(dir string, maxBlobsFileSize int64, compression, writeOnly bool) *Blobs
 	log.Printf("BlobsFileBackend: snappyCompression = %v", backend.snappyCompression)
 	log.Printf("BlobsFileBackend: backend id => %v", backend.String())
 	return backend
+}
+
+// NewFromConfig initialize a BlobsFileBackend from a JSON object.
+func NewFromConfig2(conf *Config) *BlobsFileBackend {
+	return NewFromConfig(conf.Map())
 }
 
 // NewFromConfig initialize a BlobsFileBackend from a JSON object.

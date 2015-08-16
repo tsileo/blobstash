@@ -6,6 +6,11 @@ import (
 
 var ErrWriteOnly = errors.New("backend is write-only")
 
+type Config interface {
+	Map() map[string]interface{}
+	Backend() string
+}
+
 // BlobHandler is the interface that defines
 // all the method a "blob backend" must implement.
 type BlobHandler interface {

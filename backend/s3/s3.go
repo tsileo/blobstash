@@ -19,9 +19,30 @@ import (
 
 	"sync"
 
+	"github.com/fatih/structs"
 	ks3 "github.com/kr/s3"
 	"github.com/kr/s3/s3util"
+	"github.com/tsileo/blobstash/backend"
 )
+
+type Config struct {
+	Bucket   string `structs:"bucket"`
+	Location string `structs:"location"`
+}
+
+func (c *Config) Backend() string {
+	return "s3"
+}
+
+func (c *Config) Map() map[string]interface{} {
+	return structs.Map(c)
+}
+
+type MirrorBackend struct {
+	backends          []backend.BlobHandler
+	readWriteBackends []backend.BlobHandler
+	writeBackends     []backend.BlobHandler
+}
 
 type S3Backend struct {
 	Bucket    string

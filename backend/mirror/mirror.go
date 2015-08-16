@@ -23,6 +23,19 @@ var (
 	blobsDownloaded = expvar.NewMap("mirror-blobs-downloaded")
 )
 
+type Config struct {
+	WriteBackends []backend.Config
+	Backends      []backend.Config
+}
+
+func (c *Config) Backend() string {
+	return "mirror"
+}
+
+func (c *Config) Map() map[string]interface{} {
+	return nil
+}
+
 type MirrorBackend struct {
 	backends          []backend.BlobHandler
 	readWriteBackends []backend.BlobHandler
