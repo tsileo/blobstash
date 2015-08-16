@@ -26,8 +26,10 @@ import (
 )
 
 type Config struct {
-	Bucket   string `structs:"bucket,omitempty"`
-	Location string `structs:"location,omitempty"`
+	Bucket       string `structs:"bucket,omitempty"`
+	Location     string `structs:"location,omitempty"`
+	AwsAccessKey string `structs:"aws_access_key,omitempty"`
+	AwsSecretKey string `structs:"aws_secret_key,omitempty"`
 }
 
 func (c *Config) Backend() string {
@@ -42,6 +44,10 @@ func (c *Config) Config() map[string]interface{} {
 }
 
 func (c *Config) Map() map[string]interface{} {
+	if c.AwsAccessKey != "" {
+		s3util.DefaultConfig.AccessKey = c.AwsAccessKey
+		s3util.DefaultConfig.SecretKey = c.AwsSecretKey
+	}
 	return structs.Map(c)
 }
 
@@ -62,7 +68,7 @@ func New(bucket, location string) *S3Backend {
 		SecretKey: os.Getenv("S3_SECRET_KEY"),
 	}
 
-	if keys.AccessKey == "" || keys.SecretKey == "" {
+	if s3util.DefaultConfig.AccessKey == "" && (keys.AccessKey == "" || keys.SecretKey == "") {
 		panic("S3_ACCESS_KEY or S3_SECRET_KEY not set")
 	}
 
