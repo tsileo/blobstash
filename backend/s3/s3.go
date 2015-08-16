@@ -26,12 +26,19 @@ import (
 )
 
 type Config struct {
-	Bucket   string `structs:"bucket"`
-	Location string `structs:"location"`
+	Bucket   string `structs:"bucket,omitempty"`
+	Location string `structs:"location,omitempty"`
 }
 
 func (c *Config) Backend() string {
 	return "s3"
+}
+
+func (c *Config) Config() map[string]interface{} {
+	return map[string]interface{}{
+		"backend-type": c.Backend(),
+		"backend-args": c.Map(),
+	}
 }
 
 func (c *Config) Map() map[string]interface{} {

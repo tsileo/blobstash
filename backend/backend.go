@@ -7,6 +7,7 @@ import (
 var ErrWriteOnly = errors.New("backend is write-only")
 
 type Config interface {
+	Config() map[string]interface{}
 	Map() map[string]interface{}
 	Backend() string
 }

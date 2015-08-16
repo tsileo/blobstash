@@ -44,9 +44,11 @@ import (
 	"github.com/dchest/blake2b"
 	"github.com/fatih/structs"
 	"github.com/golang/snappy"
+	log2 "gopkg.in/inconshreveable/log15.v2"
 
 	bbackend "github.com/tsileo/blobstash/backend"
 	"github.com/tsileo/blobstash/config/pathutil"
+	"github.com/tsileo/blobstash/logger"
 )
 
 const (
@@ -78,14 +80,21 @@ const (
 )
 
 type Config struct {
-	Dir              string `structs:"path"`
-	Compression      int64  `structs:"compression"`
-	WriteOnly        bool   `structs:"write-only"`
-	MaxBlobsFileSize int64  `structs:"blobsfile-max-size"`
+	Dir              string `structs:"path,omitempty"`
+	Compression      int64  `structs:"compression,omitempty"`
+	WriteOnly        bool   `structs:"write-only,omitempty"`
+	MaxBlobsFileSize int64  `structs:"blobsfile-max-size,omitempty"`
 }
 
 func (c *Config) Backend() string {
 	return "blobsfile"
+}
+
+func (c *Config) Config() map[string]interface{} {
+	return map[string]interface{}{
+		"backend-type": c.Backend(),
+		"backend-args": c.Map(),
+	}
 }
 
 func (c *Config) Map() map[string]interface{} {
@@ -93,6 +102,7 @@ func (c *Config) Map() map[string]interface{} {
 }
 
 type BlobsFileBackend struct {
+	log log2.Logger
 	// Directory which holds the blobsfile
 	Directory string
 
@@ -146,6 +156,7 @@ func New(dir string, maxBlobsFileSize int64, compression, writeOnly bool) *Blobs
 		writeOnly:         writeOnly,
 		maxBlobsFileSize:  maxBlobsFileSize,
 		reindexMode:       reindex,
+		log:               logger.Log.New("backend", "blobsfile"),
 	}
 
 	loader := backend.load
@@ -158,11 +169,6 @@ func New(dir string, maxBlobsFileSize int64, compression, writeOnly bool) *Blobs
 	log.Printf("BlobsFileBackend: snappyCompression = %v", backend.snappyCompression)
 	log.Printf("BlobsFileBackend: backend id => %v", backend.String())
 	return backend
-}
-
-// NewFromConfig initialize a BlobsFileBackend from a JSON object.
-func NewFromConfig2(conf *Config) *BlobsFileBackend {
-	return NewFromConfig(conf.Map())
 }
 
 // NewFromConfig initialize a BlobsFileBackend from a JSON object.
@@ -414,7 +420,7 @@ func (backend *BlobsFileBackend) loadWriteOnly() error {
 
 // Open a file for write
 func (backend *BlobsFileBackend) wopen(n int) error {
-	log.Printf("BlobsFileBackend: opening %v for writing", backend.filename(n))
+	backend.log.Info("opening blobsfile for writing", "name", backend.filename(n))
 	// Close the already opened file if any
 	if backend.current != nil {
 		if err := backend.current.Close(); err != nil {

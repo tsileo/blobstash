@@ -24,12 +24,19 @@ var (
 )
 
 type Config struct {
-	WriteBackends []backend.Config
-	Backends      []backend.Config
+	WriteBackends []backend.Config `structs:"write-backends,omitempty"`
+	Backends      []backend.Config `structs:"backends,omitempty"`
 }
 
 func (c *Config) Backend() string {
 	return "mirror"
+}
+
+func (c *Config) Config() map[string]interface{} {
+	return map[string]interface{}{
+		"backend-type": c.Backend(),
+		"backend-args": c.Map(),
+	}
 }
 
 func (c *Config) Map() map[string]interface{} {

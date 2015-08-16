@@ -19,11 +19,7 @@ func NewEncryptFromConfig(conf map[string]interface{}) backend.BlobHandler {
 	return encrypt.New(conf["key-path"].(string), NewFromConfig(conf["dest"].(map[string]interface{})))
 }
 
-func NewS3FromConfig(conf *s3.Config) backend.BlobHandler {
-	return NewS3(conf.Map())
-}
-
-func NewS3(conf map[string]interface{}) backend.BlobHandler {
+func NewS3FromConfig(conf map[string]interface{}) backend.BlobHandler {
 	bucket := conf["bucket"].(string)
 	if bucket == "" {
 		panic(fmt.Errorf("no bucket specified for S3Backend"))
@@ -98,9 +94,9 @@ func NewFromConfig2(conf backend.Config) backend.BlobHandler {
 	case "mirror":
 		return NewMirrorFromConfig(conf.(*mirror.Config))
 	case "s3":
-		return NewS3FromConfig(conf.(*s3.Config))
+		return NewS3FromConfig(conf.Map())
 	case "blobsfile":
-		return blobsfile.NewFromConfig2(conf.(*blobsfile.Config))
+		return blobsfile.NewFromConfig(conf.Map())
 	default:
 		return nil
 	}
@@ -123,7 +119,7 @@ func NewFromConfig(conf map[string]interface{}) backend.BlobHandler {
 	case backendType == "encrypt":
 		return NewEncryptFromConfig(backendArgs)
 	case backendType == "s3":
-		return NewS3(backendArgs)
+		return NewS3FromConfig(backendArgs)
 	case backendType == "mirror":
 		return NewMirror(backendArgs)
 	default:
