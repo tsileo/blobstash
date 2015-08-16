@@ -134,7 +134,6 @@ type BlobsFileBackend struct {
 }
 
 func New(dir string, maxBlobsFileSize int64, compression, writeOnly bool) *BlobsFileBackend {
-	log.Println("BlobsFileBackend: starting, opening index")
 	dir = strings.Replace(dir, "$VAR", pathutil.VarDir(), -1)
 	os.MkdirAll(dir, 0700)
 	var reindex bool
@@ -156,9 +155,9 @@ func New(dir string, maxBlobsFileSize int64, compression, writeOnly bool) *Blobs
 		writeOnly:         writeOnly,
 		maxBlobsFileSize:  maxBlobsFileSize,
 		reindexMode:       reindex,
-		log:               logger.Log.New("backend", "blobsfile"),
 	}
-
+	backend.log = logger.Log.New("backend", backend.String())
+	backend.log.Debug("Started")
 	loader := backend.load
 	if backend.writeOnly {
 		loader = backend.loadWriteOnly
@@ -166,8 +165,9 @@ func New(dir string, maxBlobsFileSize int64, compression, writeOnly bool) *Blobs
 	if err := loader(); err != nil {
 		panic(fmt.Errorf("Error loading %T: %v", backend, err))
 	}
-	log.Printf("BlobsFileBackend: snappyCompression = %v", backend.snappyCompression)
-	log.Printf("BlobsFileBackend: backend id => %v", backend.String())
+	if backend.snappyCompression {
+		backend.log.Debug("snappy compression enabled")
+	}
 	return backend
 }
 
@@ -217,7 +217,7 @@ func (backend *BlobsFileBackend) CloseOpenFiles() {
 }
 
 func (backend *BlobsFileBackend) Close() {
-	log.Println("BlobsFileBackend: closing index")
+	backend.log.Debug("closing index...")
 	backend.index.Close()
 }
 
@@ -272,7 +272,7 @@ func (backend *BlobsFileBackend) String() string {
 
 // reindex scans all BlobsFile and reconstruct the index from scratch.
 func (backend *BlobsFileBackend) reindex() error {
-	log.Printf("BlobsFileBackend: re-indexing BlobsFiles...")
+	backend.log.Info("re-indexing BlobsFiles...")
 	if backend.writeOnly {
 		panic("can't re-index in write-only mode")
 	}
@@ -312,7 +312,7 @@ func (backend *BlobsFileBackend) reindex() error {
 				return fmt.Errorf("error while reading raw blob: %v", err)
 			}
 			if flags[0] == Deleted {
-				log.Printf("blob deleted, continue indexing")
+				backend.log.Debug("blob deleted, continue indexing")
 				offset += Overhead + int(blobSize)
 				continue
 			}
@@ -341,7 +341,7 @@ func (backend *BlobsFileBackend) reindex() error {
 		n++
 	}
 	if n == 0 {
-		log.Println("BlobsFileBackend: no BlobsFiles found for re-indexing")
+		backend.log.Debug("no BlobsFiles found for re-indexing")
 		return nil
 	}
 	if err := backend.saveN(); err != nil {
@@ -352,7 +352,7 @@ func (backend *BlobsFileBackend) reindex() error {
 
 // Open all the blobs-XXXXX (read-only) and open the last for write
 func (backend *BlobsFileBackend) load() error {
-	log.Printf("BlobsFileBackend: scanning BlobsFiles...")
+	backend.log.Debug("BlobsFileBackend: scanning BlobsFiles...")
 	n := 0
 	for {
 		err := backend.ropen(n)
@@ -362,7 +362,7 @@ func (backend *BlobsFileBackend) load() error {
 		if err != nil {
 			return err
 		}
-		log.Printf("BlobsFileBackend: %v loaded", backend.filename(n))
+		backend.log.Debug("BlobsFile loaded", "name", backend.filename(n))
 		n++
 	}
 	if n == 0 {
@@ -525,7 +525,7 @@ func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
 
 	if backend.size > backend.maxBlobsFileSize {
 		backend.n++
-		log.Printf("BlobsFileBackend: creating a new BlobsFile")
+		backend.log.Debug("creating a new BlobsFile")
 		if err := backend.wopen(backend.n); err != nil {
 			panic(err)
 		}

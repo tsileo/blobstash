@@ -15,14 +15,14 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"time"
-
 	"sync"
+	"time"
 
 	"github.com/fatih/structs"
 	ks3 "github.com/kr/s3"
 	"github.com/kr/s3/s3util"
-	"github.com/tsileo/blobstash/backend"
+	"github.com/tsileo/blobstash/logger"
+	log2 "gopkg.in/inconshreveable/log15.v2"
 )
 
 type Config struct {
@@ -45,13 +45,8 @@ func (c *Config) Map() map[string]interface{} {
 	return structs.Map(c)
 }
 
-type MirrorBackend struct {
-	backends          []backend.BlobHandler
-	readWriteBackends []backend.BlobHandler
-	writeBackends     []backend.BlobHandler
-}
-
 type S3Backend struct {
+	log       log2.Logger
 	Bucket    string
 	Location  string
 	BucketURL string
@@ -74,7 +69,8 @@ func New(bucket, location string) *S3Backend {
 	s3util.DefaultConfig.AccessKey = keys.AccessKey
 	s3util.DefaultConfig.SecretKey = keys.SecretKey
 	backend := &S3Backend{Bucket: bucket, Location: location, keys: &keys}
-	log.Printf("S3Backend: backend id => %v", backend.String())
+	backend.log = logger.Log.New("backend", backend.String())
+	backend.log.Debug("Started")
 	return backend
 }
 
