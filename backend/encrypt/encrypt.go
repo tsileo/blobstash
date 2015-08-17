@@ -43,6 +43,29 @@ func GenerateNonce(nonce *[24]byte) (err error) {
 	return
 }
 
+type Config struct {
+	KeyPath     string         `structs:"key_path,omitempty"`
+	DestBackend backend.Config `structs:"backend,omitempty"`
+}
+
+func (c *Config) Backend() string {
+	return "encrypt"
+}
+
+func (c *Config) Config() map[string]interface{} {
+	return map[string]interface{}{
+		"backend-type": c.Backend(),
+		"backend-args": c.Map(),
+	}
+}
+
+func (c *Config) Map() map[string]interface{} {
+	return map[string]interface{}{
+		"key-path": c.KeyPath,
+		"dest":     c.DestBackend.Config(),
+	}
+}
+
 type EncryptBackend struct {
 	dest backend.BlobHandler
 	// index map the plain text hash to encrypted hash
