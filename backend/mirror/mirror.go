@@ -10,10 +10,11 @@ package mirror
 import (
 	"expvar"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/tsileo/blobstash/backend"
+	"github.com/tsileo/blobstash/logger"
+	log2 "gopkg.in/inconshreveable/log15.v2"
 )
 
 var (
@@ -40,32 +41,43 @@ func (c *Config) Config() map[string]interface{} {
 }
 
 func (c *Config) Map() map[string]interface{} {
-	return nil
+	wbackends := []interface{}{}
+	backends := []interface{}{}
+	for _, b := range c.Backends {
+		backends = append(backends, b.Config())
+	}
+	for _, b := range c.WriteBackends {
+		wbackends = append(wbackends, b.Config())
+	}
+	return map[string]interface{}{
+		"backends":       backends,
+		"write-backends": wbackends,
+	}
 }
 
 type MirrorBackend struct {
+	log               log2.Logger
 	backends          []backend.BlobHandler
 	readWriteBackends []backend.BlobHandler
 	writeBackends     []backend.BlobHandler
 }
 
 func New(rwbackends []backend.BlobHandler, wbackends []backend.BlobHandler) *MirrorBackend {
-	log.Println("MirrorBackend: starting")
 	b := &MirrorBackend{
 		backends:          []backend.BlobHandler{},
 		readWriteBackends: []backend.BlobHandler{},
 		writeBackends:     []backend.BlobHandler{},
 	}
 	for _, mBackend := range rwbackends {
-		log.Printf("MirrorBackend: adding Write/Read backend %v", mBackend.String())
 		b.readWriteBackends = append(b.readWriteBackends, mBackend)
 		b.backends = append(b.backends, mBackend)
 	}
 	for _, mBackend := range wbackends {
-		log.Printf("MirrorBackend: adding Write-only backend %v", mBackend.String())
 		b.writeBackends = append(b.writeBackends, mBackend)
 		b.backends = append(b.backends, mBackend)
 	}
+	b.log = logger.Log.New("backend", b.String())
+	b.log.Debug("started")
 	return b
 }
 
@@ -131,7 +143,7 @@ func (backend *MirrorBackend) Get(hash string) (data []byte, err error) {
 			bytesDownloaded.Add(b.String(), int64(len(data)))
 			return
 		} else {
-			log.Printf("MirrorBackend: error fetching blob %v from backend %b", hash, b.String())
+			backend.log.Error("error fetching blob", "hash", hash)
 		}
 	}
 	return

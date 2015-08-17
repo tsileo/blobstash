@@ -72,8 +72,10 @@ func New(bucket, location string) *S3Backend {
 		panic("S3_ACCESS_KEY or S3_SECRET_KEY not set")
 	}
 
-	s3util.DefaultConfig.AccessKey = keys.AccessKey
-	s3util.DefaultConfig.SecretKey = keys.SecretKey
+	if s3util.DefaultConfig.AccessKey == "" {
+		s3util.DefaultConfig.AccessKey = keys.AccessKey
+		s3util.DefaultConfig.SecretKey = keys.SecretKey
+	}
 	backend := &S3Backend{Bucket: bucket, Location: location, keys: &keys}
 	backend.log = logger.Log.New("backend", backend.String())
 	backend.log.Debug("Started")
