@@ -29,6 +29,16 @@ type Config struct {
 	Backends      []backend.Config `structs:"backends,omitempty"`
 }
 
+func (c *Config) AppendWriteBackend(b backend.Config) {
+	c.WriteBackends = append(c.WriteBackends, b)
+
+}
+
+func (c *Config) AppendBackend(b backend.Config) {
+	c.Backends = append(c.Backends, b)
+
+}
+
 func (c *Config) Backend() string {
 	return "mirror"
 }
