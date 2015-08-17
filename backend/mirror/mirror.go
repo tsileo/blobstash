@@ -25,8 +25,8 @@ var (
 )
 
 type Config struct {
-	WriteBackends []backend.Config `structs:"write-backends,omitempty"`
-	Backends      []backend.Config `structs:"backends,omitempty"`
+	WriteBackends []backend.Config
+	Backends      []backend.Config
 }
 
 func (c *Config) AppendWriteBackend(b backend.Config) {

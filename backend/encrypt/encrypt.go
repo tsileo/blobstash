@@ -44,8 +44,8 @@ func GenerateNonce(nonce *[24]byte) (err error) {
 }
 
 type Config struct {
-	KeyPath     string         `structs:"key_path,omitempty"`
-	DestBackend backend.Config `structs:"backend,omitempty"`
+	KeyPath     string
+	DestBackend backend.Config
 }
 
 func (c *Config) Backend() string {
