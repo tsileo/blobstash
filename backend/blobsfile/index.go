@@ -106,7 +106,14 @@ func NewIndex(path string) (*BlobsIndex, error) {
 	return &BlobsIndex{db: db, path: db_path}, err
 }
 
-// Close cleanly close the kv db.
+func (index *BlobsIndex) FormatBlobPosKey(key string) []byte {
+	return formatKey(BlobPosKey, []byte(key))
+}
+
+func (index *BlobsIndex) DB() *kv.DB {
+	return index.db
+}
+
 func (index *BlobsIndex) Close() {
 	index.Lock()
 	defer index.Unlock()
