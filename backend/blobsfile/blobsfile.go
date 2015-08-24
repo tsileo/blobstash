@@ -250,6 +250,9 @@ func (backend *BlobsFileBackend) Remove() {
 	backend.index.Remove()
 }
 
+func (backend *BlobsFileBackend) GetN() (int, error) {
+	return backend.index.GetN()
+}
 func (backend *BlobsFileBackend) saveN() error {
 	return backend.index.SetN(backend.n)
 }
@@ -586,6 +589,10 @@ func (backend *BlobsFileBackend) encodeBlob(blob []byte) (size int, data []byte)
 	binary.LittleEndian.PutUint32(data[hashSize+1:], uint32(size))
 	copy(data[Overhead:], blob)
 	return
+}
+
+func (backend *BlobsFileBackend) BlobPos(hash string) (*BlobPos, error) {
+	return backend.index.GetPos(hash)
 }
 
 func (backend *BlobsFileBackend) Get(hash string) ([]byte, error) {

@@ -100,7 +100,7 @@ func New(keyPath string, dest backend.BlobHandler) *EncryptBackend {
 		key:   &Key,
 	}
 	b.log = logger.Log.New("backend", b.String())
-	b.log.Debug("started", "dest", dest.String(), "key", keyPath)
+	b.log.Debug("started", "key", keyPath)
 	b.log.Debug("Scanning all blobs to discover plain-text blobs hashes")
 	blobsCnt := 0
 	// Scan the blobs to discover the plain text blob hashes and build the in-memory index

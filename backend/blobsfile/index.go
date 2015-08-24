@@ -53,6 +53,10 @@ type BlobPos struct {
 	size   int
 }
 
+func (blob *BlobPos) Size() int {
+	return blob.size
+}
+
 // Value serialize a BlobsPos as string
 // (value is encoded as uvarint: n + offset + size)
 func (blob BlobPos) Value() []byte {

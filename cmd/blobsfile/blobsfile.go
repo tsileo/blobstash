@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/codegangsta/cli"
+	"github.com/dustin/go-humanize"
 	"github.com/tsileo/blobstash/backend/blobsfile"
 )
 
@@ -70,6 +71,39 @@ func main() {
 					return
 				}
 				fmt.Printf("%s", blob)
+			},
+		},
+		{
+			Name:  "info",
+			Usage: "Display basic info, will reindex if necessary",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) {
+				path := c.Args().First()
+				conf := &blobsfile.Config{Dir: path}
+				backend := blobsfile.NewFromConfig(conf.Map())
+				defer backend.Close()
+				hashes := make(chan string)
+				errs := make(chan error)
+				go func() {
+					errs <- backend.Enumerate(hashes)
+				}()
+				blobsCnt := 0
+				size := 0
+				for hash := range hashes {
+					blobpos, err := backend.BlobPos(hash)
+					if err != nil {
+						fmt.Printf("failed to fetch blobpos for %v: %v", hash, err)
+						return
+					}
+					size += blobpos.Size()
+					blobsCnt++
+				}
+				if err := <-errs; err != nil {
+					fmt.Printf("failed to enumerate blobs: %v", err)
+					return
+				}
+				n, _ := backend.GetN()
+				fmt.Printf("%v blobs in %v BlobsFile(s). Total blobs size is %v", blobsCnt, n+1, humanize.Bytes(uint64(size)))
 			},
 		},
 	}
