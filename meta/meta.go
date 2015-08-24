@@ -5,13 +5,14 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
 	"github.com/dchest/blake2b"
+	"github.com/tsileo/blobstash/logger"
 	"github.com/tsileo/blobstash/router"
 	"github.com/tsileo/blobstash/vkv"
+	log2 "gopkg.in/inconshreveable/log15.v2"
 )
 
 var (
@@ -25,6 +26,7 @@ type MetaHandler struct {
 	router *router.Router
 	db     *vkv.DB
 	stop   chan struct{}
+	log    log2.Logger
 }
 
 func New(r *router.Router, db *vkv.DB) *MetaHandler {
@@ -32,6 +34,7 @@ func New(r *router.Router, db *vkv.DB) *MetaHandler {
 		router: r,
 		stop:   make(chan struct{}),
 		db:     db,
+		log:    logger.Log.New("submodule", "meta"),
 	}
 }
 func (mh *MetaHandler) Stop() {
@@ -41,7 +44,7 @@ func (mh *MetaHandler) processKvUpdate(wg sync.WaitGroup, blobs chan<- *router.B
 	wg.Add(1)
 	defer wg.Done()
 	for kv := range kvUpdate {
-		log.Printf("metaHandler: kvupdate: %+v", kv)
+		mh.log.Debug(fmt.Sprintf("kvupdate: %+v", kv))
 		blob := CreateMetaBlob(kv)
 		req := &router.Request{
 			MetaBlob: true,
@@ -54,7 +57,7 @@ func (mh *MetaHandler) processKvUpdate(wg sync.WaitGroup, blobs chan<- *router.B
 		select {
 		case blobs <- &router.Blob{Req: req, Hash: hash, Blob: blob}:
 		case <-mh.stop:
-			log.Printf("metaHandler: quitting")
+			mh.log.Info("Stopping...")
 			return
 		}
 	}
@@ -68,6 +71,7 @@ func (mh *MetaHandler) WatchKvUpdate(wg sync.WaitGroup, blobs chan<- *router.Blo
 }
 
 func (mh *MetaHandler) Scan() error {
+	mh.log.Info("Scanning meta blobs...")
 	start := time.Now()
 	blobs := make(chan string)
 	errc := make(chan error, 1)
@@ -99,7 +103,7 @@ func (mh *MetaHandler) Scan() error {
 			if err != nil {
 				return err
 			}
-			log.Printf("Scan: applying %+v", kv)
+			mh.log.Info(fmt.Sprintf("Applying meta blob %+v", kv))
 			rkv, err := mh.db.Put(kv.Key, kv.Value, kv.Version)
 			if err != nil {
 				return err
@@ -113,7 +117,7 @@ func (mh *MetaHandler) Scan() error {
 	if err := <-errc; err != nil {
 		return err
 	}
-	log.Printf("Scan: done, %d blobs scanned in %v, %d blobs applied", i, time.Since(start), j)
+	mh.log.Info("Scan done", "scanned", i, "applied", j, "duration", time.Since(start))
 	return nil
 }
 

@@ -18,8 +18,8 @@ import (
 	"expvar"
 	"fmt"
 	"io"
-	"log"
 	"sync"
+	"time"
 
 	"github.com/tsileo/blobstash/backend"
 	"github.com/tsileo/blobstash/backend/s3"
@@ -101,7 +101,9 @@ func New(keyPath string, dest backend.BlobHandler) *EncryptBackend {
 	}
 	b.log = logger.Log.New("backend", b.String())
 	b.log.Debug("started", "key", keyPath)
-	b.log.Debug("Scanning all blobs to discover plain-text blobs hashes")
+	b.log.Debug("Discovering plain-text blobs hashes...")
+	b.log.Debug("This may take a while")
+	start := time.Now()
 	blobsCnt := 0
 	// Scan the blobs to discover the plain text blob hashes and build the in-memory index
 	hashes := make(chan string)
@@ -131,12 +133,12 @@ func New(keyPath string, dest backend.BlobHandler) *EncryptBackend {
 	}
 	if err := <-errs; err != nil {
 		if err == backend.ErrWriteOnly {
-			log.Printf("EncryptBackend: no scan in write-only mode")
+			b.log.Debug("no scan in write-only mode")
 		} else {
 			panic(err)
 		}
 	}
-	log.Printf("EncryptBackend: %v blobs successfully scanned", blobsCnt)
+	b.log.Debug(fmt.Sprintf("%v blobs successfully scanned", blobsCnt), "duration", time.Since(start))
 	return b
 }
 
