@@ -22,11 +22,14 @@ import (
 	"sync"
 
 	"github.com/tsileo/blobstash/backend"
+	"github.com/tsileo/blobstash/backend/s3"
+	"github.com/tsileo/blobstash/logger"
 
 	"github.com/dchest/blake2b"
 
 	"github.com/golang/snappy"
 	"golang.org/x/crypto/nacl/secretbox"
+	log2 "gopkg.in/inconshreveable/log15.v2"
 )
 
 var (
@@ -74,6 +77,7 @@ type EncryptBackend struct {
 	// holds the encryption key
 	key *[32]byte
 
+	log log2.Logger
 	sync.Mutex
 }
 
@@ -87,14 +91,17 @@ type EncryptBackend struct {
 // [encrypted data]
 //
 func New(keyPath string, dest backend.BlobHandler) *EncryptBackend {
-	log.Printf("EncryptBackend: starting with dest %v", dest.String())
 	if err := LoadKey(keyPath); err != nil {
 		panic(err)
 	}
-	log.Printf("EncryptBackend: loaded key at %v", keyPath)
-	b := &EncryptBackend{dest: dest, index: make(map[string]string), key: &Key}
-	log.Printf("EncryptBackend: backend id => %v", b.String())
-	log.Println("EncryptBackend: scanning blobs to discover plain-text blobs hashes")
+	b := &EncryptBackend{
+		dest:  dest,
+		index: make(map[string]string),
+		key:   &Key,
+	}
+	b.log = logger.Log.New("backend", b.String())
+	b.log.Debug("started", "dest", dest.String(), "key", keyPath)
+	b.log.Debug("Scanning all blobs to discover plain-text blobs hashes")
 	blobsCnt := 0
 	// Scan the blobs to discover the plain text blob hashes and build the in-memory index
 	hashes := make(chan string)
@@ -103,7 +110,17 @@ func New(keyPath string, dest backend.BlobHandler) *EncryptBackend {
 		errs <- b.dest.Enumerate(hashes)
 	}()
 	for hash := range hashes {
-		scanner := b.scanner(hash)
+		var scanner *bufio.Scanner
+		if s3b, ok := dest.(*s3.S3Backend); ok {
+			res, err := s3b.PlainText(hash)
+			if err != nil {
+				panic(err)
+			}
+			buf := bytes.NewBuffer(res)
+			scanner = bufio.NewScanner(buf)
+		} else {
+			scanner = b.scanner(hash)
+		}
 		plainHash, err := scanHash(scanner)
 		if err != nil {
 			panic(err)

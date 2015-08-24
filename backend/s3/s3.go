@@ -12,7 +12,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"sync"
@@ -61,8 +61,6 @@ type S3Backend struct {
 }
 
 func New(bucket, location string) *S3Backend {
-	log.Printf("S3Backend: starting")
-	log.Printf("s3Backend: bucket:%v/location:%v", bucket, location)
 	keys := ks3.Keys{
 		AccessKey: os.Getenv("S3_ACCESS_KEY"),
 		SecretKey: os.Getenv("S3_SECRET_KEY"),
@@ -72,13 +70,16 @@ func New(bucket, location string) *S3Backend {
 		panic("S3_ACCESS_KEY or S3_SECRET_KEY not set")
 	}
 
-	if s3util.DefaultConfig.AccessKey == "" {
+	if s3util.DefaultConfig.AccessKey != "" {
+		keys.AccessKey = s3util.DefaultConfig.AccessKey
+		keys.SecretKey = s3util.DefaultConfig.SecretKey
+	} else {
 		s3util.DefaultConfig.AccessKey = keys.AccessKey
 		s3util.DefaultConfig.SecretKey = keys.SecretKey
 	}
 	backend := &S3Backend{Bucket: bucket, Location: location, keys: &keys}
 	backend.log = logger.Log.New("backend", backend.String())
-	backend.log.Debug("Started")
+	backend.log.Debug("Started", "bucket", bucket, "location", location)
 	return backend
 }
 
@@ -149,6 +150,23 @@ func (backend *S3Backend) Get(hash string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+func (backend *S3Backend) PlainText(hash string) ([]byte, error) {
+	r, err := http.NewRequest("GET", backend.key(hash), nil)
+	r.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
+	r.Header.Set("Range", fmt.Sprintf("bytes=0-85"))
+	ks3.Sign(r, *backend.keys)
+	resp, err := http.DefaultClient.Do(r)
+	defer resp.Body.Close()
+	res, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("S3Backend: error performing GET range request for blob %v, err:%v", hash, err)
+	}
+	if resp.StatusCode == 206 {
+		return res, nil
+	}
+	return nil, fmt.Errorf("req failed %v: %s", resp.StatusCode, res)
+}
+
 func (backend *S3Backend) Exists(hash string) (bool, error) {
 	r, err := http.NewRequest("HEAD", backend.key(hash), nil)
 	r.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
@@ -212,7 +230,7 @@ func (backend *S3Backend) Enumerate(blobs chan<- string) error {
 
 // Delete all keys in a bucket (assumes the directory is flat/no sub-directories).
 func (backend *S3Backend) Drop() error {
-	log.Printf("S3Backend: dropping bucket...")
+	backend.log.Debug("dropping bucket...")
 	blobs := make(chan string)
 	go backend.Enumerate(blobs)
 	for blob := range blobs {
