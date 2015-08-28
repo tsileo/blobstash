@@ -18,6 +18,7 @@ import (
 	"github.com/tsileo/blobstash/meta"
 	"github.com/tsileo/blobstash/router"
 	"github.com/tsileo/blobstash/vkv"
+	log2 "gopkg.in/inconshreveable/log15.v2"
 )
 
 var Version = "0.0.0"
@@ -36,6 +37,7 @@ var DefaultConf = map[string]interface{}{
 }
 
 type Server struct {
+	Log         log2.Logger
 	Router      *router.Router
 	Backends    map[string]backend.BlobHandler
 	DB          *vkv.DB
@@ -44,6 +46,7 @@ type Server struct {
 	KvUpdate chan *vkv.KeyValue
 	blobs    chan *router.Blob
 
+	resync   bool
 	ready    chan struct{}
 	shutdown chan struct{}
 	stop     chan struct{}
@@ -72,6 +75,7 @@ func New(conf map[string]interface{}) *Server {
 		shutdown: make(chan struct{}, 1),
 		stop:     make(chan struct{}),
 		blobs:    make(chan *router.Blob),
+		resync:   conf["resync"].(bool),
 	}
 	backends := conf["backends"].(map[string]interface{})
 	for _, b := range server.Router.ResolveBackends() {
@@ -115,14 +119,16 @@ func (s *Server) SetUp() {
 	// Start meta handler: watch for kv update and create meta blob
 	go s.metaHandler.WatchKvUpdate(s.wg, s.blobs, s.KvUpdate)
 	// Scan existing meta blob
-	go func() {
-		s.wg.Add(1)
-		defer s.wg.Done()
-		if err := s.metaHandler.Scan(); err != nil {
-			panic(err)
-		}
-		s.ready <- struct{}{}
-	}()
+	if s.resync {
+		go func() {
+			s.wg.Add(1)
+			defer s.wg.Done()
+			if err := s.metaHandler.Scan(); err != nil {
+				panic(err)
+			}
+			s.ready <- struct{}{}
+		}()
+	}
 	// Start the worker for handling blob upload
 	for i := 0; i < 25; i++ {
 		go s.processBlobs()
@@ -145,7 +151,7 @@ func (s *Server) Run() {
 	s.SetUp()
 	r := api.New(s.wg, s.DB, s.KvUpdate, s.Router, s.blobs)
 	http.Handle("/", r)
-	log.Printf("server: HTTP API listening on 0.0.0.0:8050")
+	s.Log.Info("server: HTTP API listening on 0.0.0.0:8050")
 	go func() {
 		if err := http.ListenAndServe(":8050", nil); err != nil {
 			panic(err)
@@ -168,7 +174,8 @@ func (s *Server) TillShutdown() {
 		case <-s.shutdown:
 			break
 		case sig := <-cs:
-			log.Printf("server: Captured %v\n", sig)
+			s.Log.Debug("captured signal", "signal", sig)
+			s.Log.Info("shutting down...")
 			break
 		}
 		s.Close()

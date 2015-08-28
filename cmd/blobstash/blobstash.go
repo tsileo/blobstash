@@ -21,6 +21,15 @@ func main() {
 	app.Name = "blobstash"
 	app.Version = server.Version
 	app.Usage = ""
+	app.Flags = []cli.Flag{
+		cli.StringFlag{
+			Name:  "loglevel",
+			Value: "info",
+		},
+		cli.StringFlag{
+			Name: "resync",
+		},
+	}
 	app.Action = func(c *cli.Context) {
 		var path string
 		args := c.Args()
@@ -29,13 +38,13 @@ func main() {
 		} else {
 			path = args[0]
 		}
-		start(path)
+		start(path, c.String("loglevel"), c.Bool("resync"))
 	}
 	app.Run(os.Args)
 }
 
-func start(config_path string) {
-	logger.InitLogger("debug")
+func start(config_path, loglevel string, resync bool) {
+	logger.InitLogger(loglevel)
 	l := logger.Log
 	l.Info(fmt.Sprintf("Starting blobstash version %v; %v (%v/%v)", server.Version, runtime.Version(), runtime.GOOS, runtime.GOARCH))
 	if config_path == "" {
@@ -59,5 +68,8 @@ func start(config_path string) {
 	if err := json.Unmarshal(dat, &conf); err != nil {
 		panic(fmt.Errorf("failed decode config file (invalid json): %v", err))
 	}
-	server.New(conf).Run()
+	conf["resync"] = resync
+	s := server.New(conf)
+	s.Log = l
+	s.Run()
 }
