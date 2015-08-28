@@ -70,6 +70,5 @@ func start(config_path, loglevel string, resync bool) {
 	}
 	conf["resync"] = resync
 	s := server.New(conf)
-	s.Log = l
 	s.Run()
 }

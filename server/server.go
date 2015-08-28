@@ -15,6 +15,7 @@ import (
 	"github.com/tsileo/blobstash/config"
 	"github.com/tsileo/blobstash/config/pathutil"
 	"github.com/tsileo/blobstash/embed"
+	"github.com/tsileo/blobstash/logger"
 	"github.com/tsileo/blobstash/meta"
 	"github.com/tsileo/blobstash/router"
 	"github.com/tsileo/blobstash/vkv"
@@ -76,6 +77,7 @@ func New(conf map[string]interface{}) *Server {
 		stop:     make(chan struct{}),
 		blobs:    make(chan *router.Blob),
 		resync:   conf["resync"].(bool),
+		Log:      logger.Log,
 	}
 	backends := conf["backends"].(map[string]interface{})
 	for _, b := range server.Router.ResolveBackends() {
@@ -128,6 +130,8 @@ func (s *Server) SetUp() {
 			}
 			s.ready <- struct{}{}
 		}()
+	} else {
+		s.ready <- struct{}{}
 	}
 	// Start the worker for handling blob upload
 	for i := 0; i < 25; i++ {
