@@ -98,8 +98,9 @@ func main() {
 					size += blobpos.Size()
 					blobsCnt++
 					if c.Bool("check") {
-						_, err := backend.Get(hash)
-						if err != nil {
+						// this will cause the raw data hash to be recomputed
+						// and checked against the hash.
+						if _, err := backend.Get(hash); err != nil {
 							panic(err)
 						}
 					}
@@ -109,7 +110,10 @@ func main() {
 					return
 				}
 				n, _ := backend.GetN()
-				fmt.Printf("%v blobs in %v BlobsFile(s). Total blobs size is %v", blobsCnt, n+1, humanize.Bytes(uint64(size)))
+				fmt.Printf("%v blobs in %v BlobsFile(s). Total blobs size is %v.", blobsCnt, n+1, humanize.Bytes(uint64(size)))
+				if c.Bool("check") {
+					fmt.Printf(" No blobs are corrupted.")
+				}
 			},
 		},
 	}
