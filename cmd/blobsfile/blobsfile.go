@@ -76,7 +76,7 @@ func main() {
 		{
 			Name:  "info",
 			Usage: "Display basic info, will reindex if necessary",
-			Flags: commonFlags,
+			Flags: append(commonFlags, cli.BoolFlag{Name: "check", Usage: "Check blobs for integrity"}),
 			Action: func(c *cli.Context) {
 				path := c.Args().First()
 				conf := &blobsfile.Config{Dir: path}
@@ -97,6 +97,12 @@ func main() {
 					}
 					size += blobpos.Size()
 					blobsCnt++
+					if c.Bool("check") {
+						_, err := backend.Get(hash)
+						if err != nil {
+							panic(err)
+						}
+					}
 				}
 				if err := <-errs; err != nil {
 					fmt.Printf("failed to enumerate blobs: %v", err)
