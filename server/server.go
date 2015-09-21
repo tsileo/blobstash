@@ -19,6 +19,7 @@ import (
 	"github.com/tsileo/blobstash/meta"
 	"github.com/tsileo/blobstash/router"
 	"github.com/tsileo/blobstash/vkv"
+	"github.com/tsileo/blobstash/vkv/hub"
 	log2 "gopkg.in/inconshreveable/log15.v2"
 )
 
@@ -52,6 +53,7 @@ type Server struct {
 	shutdown chan struct{}
 	stop     chan struct{}
 	wg       sync.WaitGroup
+	watchHub *hub.Hub
 }
 
 func New(conf map[string]interface{}) *Server {
@@ -78,6 +80,7 @@ func New(conf map[string]interface{}) *Server {
 		blobs:    make(chan *router.Blob),
 		resync:   conf["resync"].(bool),
 		Log:      logger.Log,
+		watchHub: hub.NewHub(),
 	}
 	backends := conf["backends"].(map[string]interface{})
 	for _, b := range server.Router.ResolveBackends() {
@@ -119,7 +122,7 @@ func (s *Server) TillReady() {
 // SetUp should be called instead of Run in embedded mode
 func (s *Server) SetUp() {
 	// Start meta handler: watch for kv update and create meta blob
-	go s.metaHandler.WatchKvUpdate(s.wg, s.blobs, s.KvUpdate)
+	go s.metaHandler.WatchKvUpdate(s.wg, s.blobs, s.KvUpdate, s.watchHub)
 	// Scan existing meta blob
 	if s.resync {
 		go func() {
@@ -153,7 +156,7 @@ func (s *Server) BlobStore() *embed.BlobStore {
 func (s *Server) Run() {
 	// Start the HTTP API
 	s.SetUp()
-	r := api.New(s.wg, s.DB, s.KvUpdate, s.Router, s.blobs)
+	r := api.New(s.wg, s.DB, s.KvUpdate, s.Router, s.blobs, s.watchHub)
 	http.Handle("/", r)
 	s.Log.Info("server: HTTP API listening on 0.0.0.0:8050")
 	go func() {

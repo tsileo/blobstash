@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -17,8 +18,10 @@ import (
 
 	"github.com/dchest/blake2b"
 	"github.com/gorilla/mux"
+	"github.com/janberktold/sse"
 	"github.com/tsileo/blobstash/router"
 	"github.com/tsileo/blobstash/vkv"
+	"github.com/tsileo/blobstash/vkv/hub"
 )
 
 func WriteJSON(w http.ResponseWriter, data interface{}) {
@@ -287,7 +290,29 @@ func blobsHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Req
 	}
 }
 
-func New(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blobrouter *router.Router, blobs chan<- *router.Blob) *mux.Router {
+func vkvWatchKeyHandler(vkvhub *hub.Hub) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		defer func() {
+			log.Printf("WATCH CLOSE")
+		}()
+		conn, _ := sse.Upgrade(w, r)
+		notify := w.(http.CloseNotifier).CloseNotify()
+		stream := vkvhub.Sub(vars["key"])
+	L:
+		for {
+			select {
+			case <-notify:
+				log.Printf("Close")
+				vkvhub.Unsub(vars["key"], stream)
+				break L
+			case m := <-stream:
+				conn.WriteString(m)
+			}
+		}
+	}
+}
+func New(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blobrouter *router.Router, blobs chan<- *router.Blob, vkvHub *hub.Hub) *mux.Router {
 	r := mux.NewRouter()
 	r.HandleFunc("/api/v1/blobstore/upload", blobUploadHandler(blobs))
 	r.HandleFunc("/api/v1/blobstore/blobs", blobsHandler(blobrouter))
@@ -295,5 +320,6 @@ func New(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blobrouter 
 	r.HandleFunc("/api/v1/vkv/keys", vkvKeysHandler(db))
 	r.HandleFunc("/api/v1/vkv/key/{key}", vkvHandler(wg, db, kvUpdate, blobrouter))
 	r.HandleFunc("/api/v1/vkv/key/{key}/versions", vkvVersionsHandler(db))
+	r.HandleFunc("/api/v1/vkv/key/{key}/watch", vkvWatchKeyHandler(vkvHub))
 	return r
 }

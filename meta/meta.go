@@ -12,6 +12,7 @@ import (
 	"github.com/tsileo/blobstash/logger"
 	"github.com/tsileo/blobstash/router"
 	"github.com/tsileo/blobstash/vkv"
+	"github.com/tsileo/blobstash/vkv/hub"
 	log2 "gopkg.in/inconshreveable/log15.v2"
 )
 
@@ -40,11 +41,12 @@ func New(r *router.Router, db *vkv.DB) *MetaHandler {
 func (mh *MetaHandler) Stop() {
 	close(mh.stop)
 }
-func (mh *MetaHandler) processKvUpdate(wg sync.WaitGroup, blobs chan<- *router.Blob, kvUpdate <-chan *vkv.KeyValue) {
+func (mh *MetaHandler) processKvUpdate(wg sync.WaitGroup, blobs chan<- *router.Blob, kvUpdate <-chan *vkv.KeyValue, vkvhub *hub.Hub) {
 	wg.Add(1)
 	defer wg.Done()
 	for kv := range kvUpdate {
 		mh.log.Debug(fmt.Sprintf("kvupdate: %+v", kv))
+		go vkvhub.Pub(kv.Key, fmt.Sprintf("%d:%s", kv.Version, kv.Value))
 		blob := CreateMetaBlob(kv)
 		req := &router.Request{
 			MetaBlob: true,
@@ -63,9 +65,9 @@ func (mh *MetaHandler) processKvUpdate(wg sync.WaitGroup, blobs chan<- *router.B
 	}
 }
 
-func (mh *MetaHandler) WatchKvUpdate(wg sync.WaitGroup, blobs chan<- *router.Blob, kvUpdate <-chan *vkv.KeyValue) error {
+func (mh *MetaHandler) WatchKvUpdate(wg sync.WaitGroup, blobs chan<- *router.Blob, kvUpdate <-chan *vkv.KeyValue, vkvhub *hub.Hub) error {
 	for i := 0; i < 20; i++ {
-		go mh.processKvUpdate(wg, blobs, kvUpdate)
+		go mh.processKvUpdate(wg, blobs, kvUpdate, vkvhub)
 	}
 	return nil
 }
