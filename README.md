@@ -44,6 +44,8 @@ $ curl -F "c0f1480a26c2fd4deb8e738a52b7530ed111b9bcd17bbb09259ce03f129988c5=ok" 
 
 Updates on keys are store in blobs, and automatically handled by BlobStash.
 
+Perfect to keep a mutable pointer.
+
 ```console
 $ curl -XPUT http://127.0.0.1:8050/api/v1/vkv/key/k1 -d value=v1
 {"key":"k1","value":"v1","version":1421705651367957723}
@@ -53,6 +55,20 @@ $ curl -XPUT http://127.0.0.1:8050/api/v1/vkv/key/k1 -d value=v1
 $ curl http://127.0.0.1:8050/api/v1/vkv/key/k1            
 {"key":"k1","value":"v1","version":1421705651367957723}
 ```
+
+## Extensions
+
+BlobStash comes with few bundled extensions making it easier to build your own app on top of it.
+
+Extensions only uses the blob store and the key value store, nothing else.
+
+### (WIP) Files
+
+A multipart file upload handler and a downalod handler.
+
+### (WIP) JSON Store
+
+A full-featured JSON store with an embedded LUA query engine.
 
 ## Backend
 
@@ -119,6 +135,14 @@ func main() {
 	blobstash.TillShutdown()
 }
 ```
+
+## Projects built on top of BlobStash
+
+ - [BlobSnap](https://github.com/tsileo/blobsnap)
+ - [BlobFS](https://github.com/tsileo/blobfs)
+ - [BlobFS-web](https://github.com/tsileo/blobfs-web)
+
+Make a pull request if your project uses BlobStash as data store.
 
 ## Roadmap / Ideas
 

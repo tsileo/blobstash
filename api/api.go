@@ -322,6 +322,7 @@ func New(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blobrouter 
 	r.HandleFunc("/api/v1/vkv/key/{key}", vkvHandler(wg, db, kvUpdate, blobrouter))
 	r.HandleFunc("/api/v1/vkv/key/{key}/versions", vkvVersionsHandler(db))
 	r.HandleFunc("/api/v1/vkv/key/{key}/watch", vkvWatchKeyHandler(vkvHub))
+	// FIXME allowedorigins from config
 	c := cors.New(cors.Options{
 		AllowedOrigins: []string{"*"},
 	})
