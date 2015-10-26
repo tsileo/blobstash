@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/dchest/blake2b"
@@ -50,6 +51,63 @@ func WriteJSON(w http.ResponseWriter, data interface{}) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(js)
+}
+
+func DocsHandler(blobrouter *router.Router, db *vkv.DB) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// FIXME(ts) set the collection in path
+		collection := r.URL.Query().Get("collection")
+		if collection == "" {
+			panic("missing collection query arg")
+		}
+		q := r.URL.Query()
+		start := fmt.Sprint("docstore:%v:%v", collection, q.Get("start"))
+		// TODO(ts) check the \xff
+		end := fmt.Sprint("docstore:%v:%v", collection, q.Get("end")+"\xff")
+		limit := 0
+		if q.Get("limit") != "" {
+			ilimit, err := strconv.Atoi(q.Get("limit"))
+			if err != nil {
+				http.Error(w, "bad limit", 500)
+			}
+			limit = ilimit
+		}
+		res, err := db.Keys(q.Get("start"), end, limit)
+		if err != nil {
+			panic(err)
+		}
+		var docs []map[string]interface{}
+		for _, kv := range res {
+			_id, err := id.FromHex(kv.Key)
+			if err != nil {
+				panic(err)
+			}
+			hash, err := _id.Hash()
+			if err != nil {
+				panic("failed to extract hash")
+			}
+			// Fetch the blob
+			req := &router.Request{
+				Type: router.Read,
+				//	Namespace: r.URL.Query().Get("ns"),
+			}
+			backend := blobrouter.Route(req)
+			blob, err := backend.Get(hash)
+			if err != nil {
+				panic(err)
+			}
+			// Build the doc
+			doc := map[string]interface{}{}
+			if err := json.Marshal(blob, &doc); err != nil {
+				panic(err)
+			}
+			doc["_id"] = _id
+			doc["_hash"] = hash
+			doc["_created_at"] = _id.TS()
+			docs = append(docs, doc)
+		}
+		WriteJSON(w, map[string]interface{}{"data": res, "start": start, "end": end, "limit": limit})
+	}
 }
 
 func NewDocHandler(blobs chan<- *router.Blob, blobrouter *router.Router, db *vkv.DB, kvUpdate chan *vkv.KeyValue) func(http.ResponseWriter, *http.Request) {
