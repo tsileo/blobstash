@@ -4,6 +4,8 @@ package id implements a MongoDB ObjectId like object.
 
 Cursor stored the timestamp and a hash.
 
+	(<timestamp encoded in big endian uint32> 4 bytes) + (<hash> 32 bytes) = 36 bytes
+
 */
 package id
 
