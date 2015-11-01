@@ -34,10 +34,17 @@ func New(ts int, hash string) (*ID, error) {
 	return &ID{b}, nil
 }
 
+// Raw returns the raw cursor
+func (id *ID) Raw() []byte {
+	return id.data
+}
+
+// String implements Stringer interface
 func (id *ID) String() string {
 	return hex.EncodeToString(id.data)
 }
 
+// Hash returns the hash component
 func (id *ID) Hash() (string, error) {
 	if len(id.data) == 36 {
 		return hex.EncodeToString(id.data[4:]), nil
@@ -45,6 +52,7 @@ func (id *ID) Hash() (string, error) {
 	return "", errors.New("bad data")
 }
 
+// Ts returns the timestamp component
 func (id *ID) Ts() int {
 	return int(binary.BigEndian.Uint32(id.data[0:4]))
 }
@@ -66,6 +74,7 @@ func (id *ID) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// FromHex build an `ID` from an hex encoded string
 func FromHex(data string) (*ID, error) {
 	if len(data) != 72 {
 		return nil, fmt.Errorf("invalid Cursor data: %v", string(data))

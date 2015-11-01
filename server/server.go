@@ -10,11 +10,14 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/gorilla/mux"
+	"github.com/rs/cors"
 	"github.com/tsileo/blobstash/api"
 	"github.com/tsileo/blobstash/backend"
 	"github.com/tsileo/blobstash/config"
 	"github.com/tsileo/blobstash/config/pathutil"
 	"github.com/tsileo/blobstash/embed"
+	"github.com/tsileo/blobstash/ext/docstore"
 	"github.com/tsileo/blobstash/logger"
 	"github.com/tsileo/blobstash/meta"
 	"github.com/tsileo/blobstash/router"
@@ -156,8 +159,17 @@ func (s *Server) BlobStore() *embed.BlobStore {
 func (s *Server) Run() {
 	// Start the HTTP API
 	s.SetUp()
-	r := api.New(s.wg, s.DB, s.KvUpdate, s.Router, s.blobs, s.watchHub)
-	http.Handle("/", r)
+	r := mux.NewRouter()
+	ekvstore := s.KvStore()
+	eblobstore := s.BlobStore()
+	dc := docstore.New(ekvstore, eblobstore)
+	dc.RegisterRoute(r.PathPrefix("/api/ext/docstore/v1").Subrouter())
+	api.New(r.PathPrefix("/api/v1").Subrouter(), s.wg, s.DB, s.KvUpdate, s.Router, s.blobs, s.watchHub)
+	// FIXME allowedorigins from config
+	c := cors.New(cors.Options{
+		AllowedOrigins: []string{"*"},
+	})
+	http.Handle("/", c.Handler(r))
 	s.Log.Info("server: HTTP API listening on 0.0.0.0:8050")
 	go func() {
 		if err := http.ListenAndServe(":8050", nil); err != nil {

@@ -17,11 +17,11 @@ import (
 )
 
 func main() {
-	app := cli.NewApp()
-	app.Name = "blobstash"
-	app.Version = server.Version
-	app.Usage = ""
-	app.Flags = []cli.Flag{
+	app2 := cli.NewApp()
+	app2.Name = "blobstash"
+	app2.Version = server.Version
+	app2.Usage = ""
+	app2.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:  "loglevel",
 			Value: "info",
@@ -30,7 +30,7 @@ func main() {
 			Name: "resync",
 		},
 	}
-	app.Action = func(c *cli.Context) {
+	app2.Action = func(c *cli.Context) {
 		var path string
 		args := c.Args()
 		if len(args) == 0 {
@@ -40,7 +40,7 @@ func main() {
 		}
 		start(path, c.String("loglevel"), c.Bool("resync"))
 	}
-	app.Run(os.Args)
+	app2.Run(os.Args)
 }
 
 func start(config_path, loglevel string, resync bool) {

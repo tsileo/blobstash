@@ -32,13 +32,20 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dchest/blake2b"
+	"github.com/gorilla/mux"
+	"github.com/tsileo/blobstash/client/interface"
 	"github.com/tsileo/blobstash/ext/docstore/id"
-	"github.com/tsileo/blobstash/router"
-	"github.com/tsileo/blobstash/vkv"
 )
+
+var KeyFmt = "docstore:%s:%s"
+
+func hashFromKey(col, key string) string {
+	return strings.Replace(key, fmt.Sprintf("docstore:%s:", col), "", 1)
+}
 
 // TODO(ts) full text indexing, find a way to get the config index
 
@@ -53,110 +60,81 @@ func WriteJSON(w http.ResponseWriter, data interface{}) {
 	w.Write(js)
 }
 
-func DocsHandler(blobrouter *router.Router, db *vkv.DB) func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// FIXME(ts) set the collection in path
-		collection := r.URL.Query().Get("collection")
-		if collection == "" {
-			panic("missing collection query arg")
-		}
-		q := r.URL.Query()
-		start := fmt.Sprint("docstore:%v:%v", collection, q.Get("start"))
-		// TODO(ts) check the \xff
-		end := fmt.Sprint("docstore:%v:%v", collection, q.Get("end")+"\xff")
-		limit := 0
-		if q.Get("limit") != "" {
-			ilimit, err := strconv.Atoi(q.Get("limit"))
-			if err != nil {
-				http.Error(w, "bad limit", 500)
-			}
-			limit = ilimit
-		}
-		res, err := db.Keys(q.Get("start"), end, limit)
-		if err != nil {
-			panic(err)
-		}
-		var docs []map[string]interface{}
-		for _, kv := range res {
-			_id, err := id.FromHex(kv.Key)
-			if err != nil {
-				panic(err)
-			}
-			hash, err := _id.Hash()
-			if err != nil {
-				panic("failed to extract hash")
-			}
-			// Fetch the blob
-			req := &router.Request{
-				Type: router.Read,
-				//	Namespace: r.URL.Query().Get("ns"),
-			}
-			backend := blobrouter.Route(req)
-			blob, err := backend.Get(hash)
-			if err != nil {
-				panic(err)
-			}
-			// Build the doc
-			doc := map[string]interface{}{}
-			if err := json.Marshal(blob, &doc); err != nil {
-				panic(err)
-			}
-			doc["_id"] = _id
-			doc["_hash"] = hash
-			doc["_created_at"] = _id.TS()
-			docs = append(docs, doc)
-		}
-		WriteJSON(w, map[string]interface{}{"data": res, "start": start, "end": end, "limit": limit})
+type DocStoreExt struct {
+	kvStore   client.KvStorer
+	blobStore client.BlobStorer
+}
+
+func New(kvStore client.KvStorer, blobStore client.BlobStorer) *DocStoreExt {
+	return &DocStoreExt{
+		kvStore:   kvStore,
+		blobStore: blobStore,
 	}
 }
 
-func NewDocHandler(blobs chan<- *router.Blob, blobrouter *router.Router, db *vkv.DB, kvUpdate chan *vkv.KeyValue) func(http.ResponseWriter, *http.Request) {
+func (docstore *DocStoreExt) RegisterRoute(r *mux.Router) {
+	r.HandleFunc("/{collection}", docstore.DocsHandler())
+	r.HandleFunc("/{collection}/{_id}", docstore.DocHandler())
+}
+
+func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		collection := vars["collection"]
+		if collection == "" {
+			panic("missing collection query arg")
+		}
 		switch r.Method {
 		case "GET":
-			// FIXME(ts) set the collection in path
-			collection := r.URL.Query().Get("collection")
-			if collection == "" {
-				panic("missing collection query arg")
+			q := r.URL.Query()
+			start := fmt.Sprintf(KeyFmt, collection, q.Get("start"))
+			// TODO(ts) check the \xff
+			end := fmt.Sprintf(KeyFmt, collection, q.Get("end")+"\xff")
+			limit := 0
+			if q.Get("limit") != "" {
+				ilimit, err := strconv.Atoi(q.Get("limit"))
+				if err != nil {
+					http.Error(w, "bad limit", 500)
+				}
+				limit = ilimit
 			}
-			sid := r.URL.Query().Get("_id")
-			if sid != "" {
-				panic("missing _id query arg")
-			}
-			// Parse the hex ID
-			_id, err := id.FromHex(sid)
-			if err != nil {
-				panic(fmt.Sprintf("invalid _id: %v", err))
-			}
-			hash, err := _id.Hash()
-			if err != nil {
-				panic("failed to extract hash")
-			}
-			// Fetch the blob
-			req := &router.Request{
-				Type: router.Read,
-				//	Namespace: r.URL.Query().Get("ns"),
-			}
-			backend := blobrouter.Route(req)
-			blob, err := backend.Get(hash)
+			res, err := docstore.kvStore.Keys(start, end, limit)
 			if err != nil {
 				panic(err)
 			}
-			// Build the doc
-			doc := map[string]interface{}{}
-			if err := json.Marshal(blob, &doc); err != nil {
-				panic(err)
+			var docs []map[string]interface{}
+			for _, kv := range res {
+				_id, err := id.FromHex(hashFromKey(collection, kv.Key))
+				if err != nil {
+					panic(err)
+				}
+				hash, err := _id.Hash()
+				if err != nil {
+					panic("failed to extract hash")
+				}
+				// Fetch the blob
+				blob, err := docstore.blobStore.Get(hash)
+				if err != nil {
+					panic(err)
+				}
+				// Build the doc
+				doc := map[string]interface{}{}
+				if err := json.Unmarshal(blob, &doc); err != nil {
+					panic(err)
+				}
+				doc["_id"] = _id
+				doc["_hash"] = hash
+				doc["_created_at"] = _id.Ts()
+				docs = append(docs, doc)
 			}
-			doc["_id"] = _id
-			doc["_hash"] = hash
-			doc["_created_at"] = _id.TS()
-			WriteJSON(w, doc)
+			WriteJSON(w, map[string]interface{}{"data": docs,
+				"_meta": map[string]interface{}{
+					"start": start,
+					"end":   end,
+					"limit": limit,
+				},
+			})
 		case "POST":
-			// FIXME(ts) set the collection in path
-			collection := r.URL.Query().Get("collection")
-			if collection == "" {
-				panic("missing collection query arg")
-			}
 			// Read the whole body
 			blob, err := ioutil.ReadAll(r.Body)
 			if err != nil {
@@ -169,29 +147,63 @@ func NewDocHandler(blobs chan<- *router.Blob, blobrouter *router.Router, db *vkv
 			}
 			// Store the payload in a blob
 			hash := fmt.Sprintf("%x", blake2b.Sum256(blob))
-			req := &router.Request{
-				Type: router.Write,
-				//	Namespace: r.URL.Query().Get("ns"),
-			}
-			blobs <- &router.Blob{Hash: hash, Req: req, Blob: blob}
+			docstore.blobStore.Put(hash, blob)
 			// Create a pointer in the key-value store
 			now := time.Now().UTC().Unix()
 			_id, err := id.New(int(now), hash)
 			if err != nil {
 				panic(err)
 			}
-			res, err := db.Put(fmt.Sprintf("docstore:%v:%v", collection, _id.String()), "", -1)
-			if err != nil {
+			if _, err := docstore.kvStore.Put(fmt.Sprintf(KeyFmt, collection, _id.String()), "", -1); err != nil {
 				panic(err)
 			}
-			kvUpdate <- res
 			// Returns the doc along with its new ID
 			doc["_id"] = _id
 			doc["_hash"] = hash
-			doc["_created_at"] = id.TS()
+			doc["_created_at"] = _id.Ts()
 			WriteJSON(w, doc)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}
+}
+
+func (docstore *DocStoreExt) DocHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case "GET":
+			vars := mux.Vars(r)
+			collection := vars["collection"]
+			if collection == "" {
+				panic("missing collection query arg")
+			}
+			sid := vars["_id"]
+			if sid == "" {
+				panic("missing _id query arg")
+			}
+			// Parse the hex ID
+			_id, err := id.FromHex(sid)
+			if err != nil {
+				panic(fmt.Sprintf("invalid _id: %v", err))
+			}
+			hash, err := _id.Hash()
+			if err != nil {
+				panic("failed to extract hash")
+			}
+			// Fetch the blob
+			blob, err := docstore.blobStore.Get(hash)
+			if err != nil {
+				panic(err)
+			}
+			// Build the doc
+			doc := map[string]interface{}{}
+			if err := json.Unmarshal(blob, &doc); err != nil {
+				panic(err)
+			}
+			doc["_id"] = _id
+			doc["_hash"] = hash
+			doc["_created_at"] = _id.Ts()
+			WriteJSON(w, doc)
 		}
 	}
 }

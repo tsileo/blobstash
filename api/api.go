@@ -1,6 +1,6 @@
 /*
 
-*/
+ */
 package api
 
 import (
@@ -19,7 +19,6 @@ import (
 	"github.com/dchest/blake2b"
 	"github.com/gorilla/mux"
 	"github.com/janberktold/sse"
-	"github.com/rs/cors"
 	"github.com/tsileo/blobstash/router"
 	"github.com/tsileo/blobstash/vkv"
 	"github.com/tsileo/blobstash/vkv/hub"
@@ -313,18 +312,12 @@ func vkvWatchKeyHandler(vkvhub *hub.Hub) func(http.ResponseWriter, *http.Request
 		}
 	}
 }
-func New(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blobrouter *router.Router, blobs chan<- *router.Blob, vkvHub *hub.Hub) http.Handler {
-	r := mux.NewRouter()
-	r.HandleFunc("/api/v1/blobstore/upload", blobUploadHandler(blobs))
-	r.HandleFunc("/api/v1/blobstore/blobs", blobsHandler(blobrouter))
-	r.HandleFunc("/api/v1/blobstore/blob/{hash}", blobHandler(blobrouter))
-	r.HandleFunc("/api/v1/vkv/keys", vkvKeysHandler(db))
-	r.HandleFunc("/api/v1/vkv/key/{key}", vkvHandler(wg, db, kvUpdate, blobrouter))
-	r.HandleFunc("/api/v1/vkv/key/{key}/versions", vkvVersionsHandler(db))
-	r.HandleFunc("/api/v1/vkv/key/{key}/watch", vkvWatchKeyHandler(vkvHub))
-	// FIXME allowedorigins from config
-	c := cors.New(cors.Options{
-		AllowedOrigins: []string{"*"},
-	})
-	return c.Handler(r)
+func New(r *mux.Router, wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blobrouter *router.Router, blobs chan<- *router.Blob, vkvHub *hub.Hub) {
+	r.HandleFunc("/blobstore/upload", blobUploadHandler(blobs))
+	r.HandleFunc("/blobstore/blobs", blobsHandler(blobrouter))
+	r.HandleFunc("/blobstore/blob/{hash}", blobHandler(blobrouter))
+	r.HandleFunc("/vkv/keys", vkvKeysHandler(db))
+	r.HandleFunc("/vkv/key/{key}", vkvHandler(wg, db, kvUpdate, blobrouter))
+	r.HandleFunc("/vkv/key/{key}/versions", vkvVersionsHandler(db))
+	r.HandleFunc("/vkv/key/{key}/watch", vkvWatchKeyHandler(vkvHub))
 }
