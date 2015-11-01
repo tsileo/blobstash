@@ -47,6 +47,12 @@ func hashFromKey(col, key string) string {
 	return strings.Replace(key, fmt.Sprintf("docstore:%s:", col), "", 1)
 }
 
+const (
+	FlagNoIndex byte = iota // Won't be indexed by Bleve
+	FlagIndexed
+	FlagDeleted
+)
+
 // TODO(ts) full text indexing, find a way to get the config index
 
 // FIXME(ts) move this in utils/http
@@ -154,7 +160,7 @@ func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Reque
 			if err != nil {
 				panic(err)
 			}
-			if _, err := docstore.kvStore.Put(fmt.Sprintf(KeyFmt, collection, _id.String()), "", -1); err != nil {
+			if _, err := docstore.kvStore.Put(fmt.Sprintf(KeyFmt, collection, _id.String()), string([]byte{FlagNoIndex}), -1); err != nil {
 				panic(err)
 			}
 			// Returns the doc along with its new ID
