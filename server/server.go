@@ -41,6 +41,8 @@ var DefaultConf = map[string]interface{}{
 	"data_path": pathutil.VarDir(),
 }
 
+// FIXME(ts) create ext interface with io.Closer and store them in a map as server attribute.
+
 type Server struct {
 	Log         log2.Logger
 	Router      *router.Router
@@ -162,7 +164,7 @@ func (s *Server) Run() {
 	r := mux.NewRouter()
 	ekvstore := s.KvStore()
 	eblobstore := s.BlobStore()
-	dc := docstore.New(ekvstore, eblobstore)
+	dc := docstore.New(s.Log.New("ext", "docstore"), ekvstore, eblobstore)
 	dc.RegisterRoute(r.PathPrefix("/api/ext/docstore/v1").Subrouter())
 	api.New(r.PathPrefix("/api/v1").Subrouter(), s.wg, s.DB, s.KvUpdate, s.Router, s.blobs, s.watchHub)
 	// FIXME allowedorigins from config

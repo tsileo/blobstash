@@ -11,9 +11,9 @@ The resulting id will have a length of 72 characters encoded as hex.
 
 The JSON document will be stored as is and kvk entry will reference it.
 
-	docstore:<collection>:<id> => (empty)
+	docstore:<collection>:<id> => <flag (1 byte)>
 
-The pointer contains an empty value since the hash is contained in the id.
+The pointer just contains a one byte flag as value since the hash is contained in the id.
 
 Document will be automatically sorted by creation time thanks to the ID.
 
@@ -31,14 +31,19 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/blevesearch/bleve"
 	"github.com/dchest/blake2b"
 	"github.com/gorilla/mux"
 	"github.com/tsileo/blobstash/client/interface"
+	"github.com/tsileo/blobstash/config/pathutil"
 	"github.com/tsileo/blobstash/ext/docstore/id"
+	log "gopkg.in/inconshreveable/log15.v2"
 )
 
 var KeyFmt = "docstore:%s:%s"
@@ -66,16 +71,41 @@ func WriteJSON(w http.ResponseWriter, data interface{}) {
 	w.Write(js)
 }
 
+func openIndex(path string) (bleve.Index, error) {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		mapping := bleve.NewIndexMapping()
+		return bleve.New(path, mapping)
+	}
+	return bleve.Open(path)
+}
+
 type DocStoreExt struct {
 	kvStore   client.KvStorer
 	blobStore client.BlobStorer
+
+	index bleve.Index
+
+	logger log.Logger
 }
 
-func New(kvStore client.KvStorer, blobStore client.BlobStorer) *DocStoreExt {
+func New(logger log.Logger, kvStore client.KvStorer, blobStore client.BlobStorer) *DocStoreExt {
+	indexPath := filepath.Join(pathutil.VarDir(), "docstore.bleve")
+	index, err := openIndex(indexPath)
+	if err != nil {
+		// TODO(ts) returns an error instead
+		panic(err)
+	}
+	logger.Debug("Bleve index init", "index-path", indexPath)
 	return &DocStoreExt{
 		kvStore:   kvStore,
 		blobStore: blobStore,
+		index:     index,
+		logger:    logger,
 	}
+}
+
+func (docstore *DocStoreExt) Close() error {
+	return docstore.index.Close()
 }
 
 func (docstore *DocStoreExt) RegisterRoute(r *mux.Router) {
