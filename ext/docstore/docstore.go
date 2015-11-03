@@ -110,7 +110,25 @@ func (docstore *DocStoreExt) Close() error {
 
 func (docstore *DocStoreExt) RegisterRoute(r *mux.Router) {
 	r.HandleFunc("/{collection}", docstore.DocsHandler())
+	r.HandleFunc("/{collection}/search", docstore.SearchHandler())
 	r.HandleFunc("/{collection}/{_id}", docstore.DocHandler())
+}
+
+func (docstore *DocStoreExt) SearchHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		collection := vars["collection"]
+		if collection == "" {
+			panic("missing collection query arg")
+		}
+		query := bleve.NewQueryStringQuery(r.URL.Query().Get("q"))
+		searchRequest := bleve.NewSearchRequest(query)
+		searchResult, err := docstore.index.Search(searchRequest)
+		if err != nil {
+			panic(err)
+		}
+		WriteJSON(w, searchResult)
+	}
 }
 
 func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Request) {
@@ -190,6 +208,7 @@ func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Reque
 			if err != nil {
 				panic(err)
 			}
+			// FIXME(ts) detect the IndexFullText header and the flag `FlagIndexed`
 			if _, err := docstore.kvStore.Put(fmt.Sprintf(KeyFmt, collection, _id.String()), string([]byte{FlagNoIndex}), -1); err != nil {
 				panic(err)
 			}
@@ -197,6 +216,11 @@ func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Reque
 			doc["_id"] = _id
 			doc["_hash"] = hash
 			doc["_created_at"] = _id.Ts()
+			if r.Header.Get("BlobStash-DocStore-IndexFullText") != "" {
+				if err := docstore.index.Index(_id.String(), doc); err != nil {
+					panic(err)
+				}
+			}
 			WriteJSON(w, doc)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
