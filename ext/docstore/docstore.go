@@ -28,6 +28,7 @@ package docstore
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -127,7 +128,18 @@ func (docstore *DocStoreExt) SearchHandler() func(http.ResponseWriter, *http.Req
 		if err != nil {
 			panic(err)
 		}
-		WriteJSON(w, searchResult)
+		var docs []map[string]interface{}
+		for _, sr := range searchResult.Hits {
+			doc, err := docstore.fetchDoc(collection, sr.ID)
+			if err != nil {
+				panic(err)
+			}
+			docs = append(docs, doc)
+		}
+		WriteJSON(w, map[string]interface{}{
+			"_meta": searchResult,
+			"data":  docs,
+		})
 	}
 }
 
@@ -158,27 +170,10 @@ func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Reque
 			}
 			var docs []map[string]interface{}
 			for _, kv := range res {
-				_id, err := id.FromHex(hashFromKey(collection, kv.Key))
+				doc, err := docstore.fetchDoc(collection, hashFromKey(collection, kv.Key))
 				if err != nil {
 					panic(err)
 				}
-				hash, err := _id.Hash()
-				if err != nil {
-					panic("failed to extract hash")
-				}
-				// Fetch the blob
-				blob, err := docstore.blobStore.Get(hash)
-				if err != nil {
-					panic(err)
-				}
-				// Build the doc
-				doc := map[string]interface{}{}
-				if err := json.Unmarshal(blob, &doc); err != nil {
-					panic(err)
-				}
-				doc["_id"] = _id
-				doc["_hash"] = hash
-				doc["_created_at"] = _id.Ts()
 				docs = append(docs, doc)
 			}
 			WriteJSON(w, map[string]interface{}{"data": docs,
@@ -199,6 +194,12 @@ func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Reque
 			if err := json.Unmarshal(blob, &doc); err != nil {
 				panic(err)
 			}
+			docFlag := FlagNoIndex
+			// Should the doc be full-text indexed?
+			indexHeader := r.Header.Get("BlobStash-DocStore-IndexFullText")
+			if indexHeader != "" {
+				docFlag = FlagIndexed
+			}
 			// Store the payload in a blob
 			hash := fmt.Sprintf("%x", blake2b.Sum256(blob))
 			docstore.blobStore.Put(hash, blob)
@@ -208,15 +209,14 @@ func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Reque
 			if err != nil {
 				panic(err)
 			}
-			// FIXME(ts) detect the IndexFullText header and the flag `FlagIndexed`
-			if _, err := docstore.kvStore.Put(fmt.Sprintf(KeyFmt, collection, _id.String()), string([]byte{FlagNoIndex}), -1); err != nil {
+			if _, err := docstore.kvStore.Put(fmt.Sprintf(KeyFmt, collection, _id.String()), string([]byte{docFlag}), -1); err != nil {
 				panic(err)
 			}
 			// Returns the doc along with its new ID
 			doc["_id"] = _id
 			doc["_hash"] = hash
 			doc["_created_at"] = _id.Ts()
-			if r.Header.Get("BlobStash-DocStore-IndexFullText") != "" {
+			if indexHeader != "" {
 				if err := docstore.index.Index(_id.String(), doc); err != nil {
 					panic(err)
 				}
@@ -226,6 +226,34 @@ func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Reque
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
 	}
+}
+
+func (docstore *DocStoreExt) fetchDoc(collection, sid string) (map[string]interface{}, error) {
+	if collection == "" {
+		return nil, errors.New("missing collection query arg")
+	}
+	_id, err := id.FromHex(sid)
+	if err != nil {
+		return nil, fmt.Errorf("invalid _id: %v", err)
+	}
+	hash, err := _id.Hash()
+	if err != nil {
+		return nil, errors.New("failed to extract hash")
+	}
+	// Fetch the blob
+	blob, err := docstore.blobStore.Get(hash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch blob %v", hash)
+	}
+	// Build the doc
+	doc := map[string]interface{}{}
+	if err := json.Unmarshal(blob, &doc); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal blob: %s", blob)
+	}
+	doc["_id"] = _id
+	doc["_hash"] = hash
+	doc["_created_at"] = _id.Ts()
+	return doc, nil
 }
 
 func (docstore *DocStoreExt) DocHandler() func(http.ResponseWriter, *http.Request) {
@@ -241,28 +269,10 @@ func (docstore *DocStoreExt) DocHandler() func(http.ResponseWriter, *http.Reques
 			if sid == "" {
 				panic("missing _id query arg")
 			}
-			// Parse the hex ID
-			_id, err := id.FromHex(sid)
-			if err != nil {
-				panic(fmt.Sprintf("invalid _id: %v", err))
-			}
-			hash, err := _id.Hash()
-			if err != nil {
-				panic("failed to extract hash")
-			}
-			// Fetch the blob
-			blob, err := docstore.blobStore.Get(hash)
+			doc, err := docstore.fetchDoc(collection, sid)
 			if err != nil {
 				panic(err)
 			}
-			// Build the doc
-			doc := map[string]interface{}{}
-			if err := json.Unmarshal(blob, &doc); err != nil {
-				panic(err)
-			}
-			doc["_id"] = _id
-			doc["_hash"] = hash
-			doc["_created_at"] = _id.Ts()
 			WriteJSON(w, doc)
 		}
 	}
