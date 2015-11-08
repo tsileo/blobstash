@@ -110,6 +110,7 @@ func (docstore *DocStoreExt) Close() error {
 }
 
 func (docstore *DocStoreExt) RegisterRoute(r *mux.Router) {
+	r.HandleFunc("/", docstore.CollectionsHandler())
 	r.HandleFunc("/{collection}", docstore.DocsHandler())
 	r.HandleFunc("/{collection}/search", docstore.SearchHandler())
 	r.HandleFunc("/{collection}/{_id}", docstore.DocHandler())
@@ -140,6 +141,48 @@ func (docstore *DocStoreExt) SearchHandler() func(http.ResponseWriter, *http.Req
 			"_meta": searchResult,
 			"data":  docs,
 		})
+	}
+}
+
+// NextKey returns the next key for lexigraphical (key = NextKey(lastkey))
+func NextKey(key string) string {
+	bkey := []byte(key)
+	i := len(bkey)
+	for i > 0 {
+		i--
+		bkey[i]++
+		if bkey[i] != 0 {
+			break
+		}
+	}
+	return string(bkey)
+}
+func (docstore *DocStoreExt) CollectionsHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case "GET":
+			collections := []string{}
+			lastKey := ""
+			for {
+				ksearch := fmt.Sprintf("docstore:%v", lastKey)
+				res, err := docstore.kvStore.Keys(ksearch, ksearch+"\xff", 1)
+				docstore.logger.Debug("loop", "ksearch", ksearch, "len_res", len(res))
+				if err != nil {
+					panic(err)
+				}
+				if len(res) == 0 {
+					break
+				}
+				col := strings.Split(res[0].Key, ":")[1]
+				lastKey = NextKey(col)
+				collections = append(collections, col)
+			}
+			WriteJSON(w, map[string]interface{}{
+				"collections": collections,
+			})
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
 	}
 }
 
