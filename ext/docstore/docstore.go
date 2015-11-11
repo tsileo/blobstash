@@ -34,6 +34,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -196,10 +197,17 @@ func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Reque
 		switch r.Method {
 		case "GET":
 			q := r.URL.Query()
-			start := fmt.Sprintf(KeyFmt, collection, q.Get("start"))
+			start := fmt.Sprintf(KeyFmt, collection, "") // q.Get("start"))
 			// TODO(ts) check the \xff
-			end := fmt.Sprintf(KeyFmt, collection, q.Get("end")+"\xff")
-			limit := 0
+			end := fmt.Sprintf(KeyFmt, collection, "\xff") // q.Get("end")+"\xff")
+			query := map[string]interface{}{}
+			jsQuery := q.Get("query")
+			if jsQuery != "" {
+				if err := json.Unmarshal([]byte(jsQuery), &query); err != nil {
+					panic(err)
+				}
+			}
+			limit := 50
 			if q.Get("limit") != "" {
 				ilimit, err := strconv.Atoi(q.Get("limit"))
 				if err != nil {
@@ -217,12 +225,23 @@ func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Reque
 				if err != nil {
 					panic(err)
 				}
-				docs = append(docs, doc)
+				if len(query) == 0 {
+					// No query, so we just add every docs
+					docs = append(docs, doc)
+				} else {
+					ok := true
+					for key, eval := range query {
+						if val, check := doc[key]; check {
+							ok = ok && reflect.DeepEqual(eval, val)
+						}
+					}
+					if ok {
+						docs = append(docs, doc)
+					}
+				}
 			}
 			WriteJSON(w, map[string]interface{}{"data": docs,
 				"_meta": map[string]interface{}{
-					"start": start,
-					"end":   end,
 					"limit": limit,
 				},
 			})
