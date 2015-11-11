@@ -60,6 +60,12 @@ const (
 	FlagDeleted
 )
 
+type executionStats struct {
+	nReturned           int
+	totalDocsExamined   int
+	executionTimeMillis int
+}
+
 // TODO(ts) full text indexing, find a way to get the config index
 
 // FIXME(ts) move this in utils/http
@@ -158,6 +164,7 @@ func NextKey(key string) string {
 	}
 	return string(bkey)
 }
+
 func (docstore *DocStoreExt) CollectionsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -194,6 +201,7 @@ func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Reque
 		if collection == "" {
 			panic("missing collection query arg")
 		}
+		// FIXME(ts) returns the execution stats and add a debug mode in the CLI
 		switch r.Method {
 		case "GET":
 			q := r.URL.Query()
