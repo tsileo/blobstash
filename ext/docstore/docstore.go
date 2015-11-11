@@ -165,8 +165,8 @@ func (docstore *DocStoreExt) CollectionsHandler() func(http.ResponseWriter, *htt
 			lastKey := ""
 			for {
 				ksearch := fmt.Sprintf("docstore:%v", lastKey)
-				res, err := docstore.kvStore.Keys(ksearch, ksearch+"\xff", 1)
-				docstore.logger.Debug("loop", "ksearch", ksearch, "len_res", len(res))
+				res, err := docstore.kvStore.Keys(ksearch, "\xff", 1)
+				// docstore.logger.Debug("loop", "ksearch", ksearch, "len_res", len(res))
 				if err != nil {
 					panic(err)
 				}
