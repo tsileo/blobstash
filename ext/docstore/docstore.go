@@ -61,9 +61,9 @@ const (
 )
 
 type executionStats struct {
-	nReturned           int
-	totalDocsExamined   int
-	executionTimeMillis int
+	NReturned           int `json:"nReturned"`
+	TotalDocsExamined   int `json:"totalDocsExamined"`
+	ExecutionTimeMillis int `json:"executionTimeMillis"`
 }
 
 // TODO(ts) full text indexing, find a way to get the config index
@@ -196,15 +196,21 @@ func (docstore *DocStoreExt) CollectionsHandler() func(http.ResponseWriter, *htt
 
 func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		tstart := time.Now()
+		q := r.URL.Query()
 		vars := mux.Vars(r)
 		collection := vars["collection"]
 		if collection == "" {
 			panic("missing collection query arg")
 		}
+		explainMode := false
+		if r.Header.Get("DocStore-Explain-Mode") != "" || q.Get("explain") != "" {
+			explainMode = true
+		}
 		// FIXME(ts) returns the execution stats and add a debug mode in the CLI
 		switch r.Method {
 		case "GET":
-			q := r.URL.Query()
+			stats := &executionStats{}
 			start := fmt.Sprintf(KeyFmt, collection, "") // q.Get("start"))
 			// TODO(ts) check the \xff
 			end := fmt.Sprintf(KeyFmt, collection, "\xff") // q.Get("end")+"\xff")
@@ -223,7 +229,9 @@ func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Reque
 				}
 				limit = ilimit
 			}
-			res, err := docstore.kvStore.Keys(start, end, limit)
+			// FIXME(ts) we may have to scan all the docs for answering the query
+			// so this call should be in a for loop
+			res, err := docstore.kvStore.Keys(start, end, int(float64(limit)*1.6)) // Prefetch more docs
 			if err != nil {
 				panic(err)
 			}
@@ -233,6 +241,7 @@ func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Reque
 				if err != nil {
 					panic(err)
 				}
+				stats.TotalDocsExamined++
 				if len(query) == 0 {
 					// No query, so we just add every docs
 					docs = append(docs, doc)
@@ -245,13 +254,22 @@ func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Reque
 					}
 					if ok {
 						docs = append(docs, doc)
+						stats.NReturned++
 					}
 				}
 			}
+			duration := time.Since(tstart)
+			docstore.logger.Debug("Query debug", "duration", duration, "nReturned",
+				stats.NReturned, "scanned", stats.TotalDocsExamined)
+			stats.ExecutionTimeMillis = int(duration.Nanoseconds() / 1e6)
+			meta := map[string]interface{}{
+				"limit": limit,
+			}
+			if explainMode {
+				meta["explain"] = stats
+			}
 			WriteJSON(w, map[string]interface{}{"data": docs,
-				"_meta": map[string]interface{}{
-					"limit": limit,
-				},
+				"_meta": meta,
 			})
 		case "POST":
 			// Read the whole body
