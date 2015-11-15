@@ -194,8 +194,65 @@ func (docstore *DocStoreExt) CollectionsHandler() func(http.ResponseWriter, *htt
 	}
 }
 
-func handleQuery(query, doc map[string]interface{}) bool {
+func flattenList(l []interface{}, parent, delimiter string) map[string]interface{} {
+	out := map[string]interface{}{}
+	var key string
+	for i, ival := range l {
+		if len(parent) > 0 {
+			key = parent + delimiter + strconv.Itoa(i)
+		} else {
+			key = strconv.Itoa(i)
+		}
+		switch val := ival.(type) {
+		case nil, int, float64, string, bool:
+			out[key] = val
+		case []interface{}:
+			tmpout := flattenList(val, key, delimiter)
+			for tmpkey, tmpval := range tmpout {
+				out[tmpkey] = tmpval
+			}
+		case map[string]interface{}:
+			tmpout := flattenMap(val, key, delimiter)
+			for tmpkey, tmpval := range tmpout {
+				out[tmpkey] = tmpval
+			}
+
+		default:
+		}
+	}
+	return out
+}
+
+func flattenMap(m map[string]interface{}, parent, delimiter string) map[string]interface{} {
+	out := map[string]interface{}{}
+	for key, ival := range m {
+		if len(parent) > 0 {
+			key = parent + delimiter + key
+		}
+		switch val := ival.(type) {
+		case nil, int, float64, string, bool:
+			out[key] = val
+		case []interface{}:
+			tmpout := flattenList(val, key, delimiter)
+			for tmpk, tmpv := range tmpout {
+				out[tmpk] = tmpv
+			}
+		case map[string]interface{}:
+			tmpout := flattenMap(val, key, delimiter)
+			for tmpk, tmpv := range tmpout {
+				out[tmpk] = tmpv
+			}
+		default:
+		}
+	}
+	return out
+}
+
+func handleQuery(query, odoc map[string]interface{}) bool {
 	ok := true
+	// Dot-notation handling
+	doc := flattenMap(odoc, "", ".")
+	// fmt.Printf("FLATTENED: %+v\n", doc)
 	for key, eval := range query {
 		switch {
 		case key == "$or":
@@ -218,6 +275,8 @@ func handleQuery(query, doc map[string]interface{}) bool {
 			// basic `{ <field>: <value> }` query
 			if val, check := doc[key]; check {
 				ok = ok && reflect.DeepEqual(eval, val)
+			} else {
+				ok = false
 			}
 		}
 	}

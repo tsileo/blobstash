@@ -80,7 +80,7 @@ Refers to MongpDB documentation: [query documents](https://docs.mongodb.org/manu
 
 #### Features
 
-- [ ] dot-notation support
+- [x] dot-notation support
 - [x] `{}` - Select all documents
 - [x] `{ <field>: <value> }` - equality, AND conditions
 
