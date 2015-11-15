@@ -66,9 +66,52 @@ Extensions only uses the blob store and the key value store, nothing else.
 
 A multipart file upload handler and a downalod handler.
 
-### (WIP) JSON Store
+### Document Store
 
-A full-featured JSON store with an embedded LUA query engine.
+A JSON document store running on top of an HTTP API. Support a subset of the MongoDB Query language.
+
+JSON documents are stored as blobs and the key-value store handle the indexing.
+
+Perfect for building app desined to only store your own data.
+
+### Supported MongoDB query operators
+
+Refers to MongpDB documentation: [query documents](https://docs.mongodb.org/manual/tutorial/query-documents/) and [query operators](https://docs.mongodb.org/manual/reference/operator/query/#query-selectors).
+
+#### Features
+
+- [ ] dot-notation support
+- [x] `{}` - Select all documents
+- [x] `{ <field>: <value> }` - equality, AND conditions
+
+#### Query operators
+
+##### Comparison
+
+- [ ] `$eq`
+- [ ] `$gt`
+- [ ] `$gte`
+- [ ] `$lt`
+- [ ] `$lte`
+- [ ] `$ne`
+- [ ] `$in`
+- [ ] `$nin`
+
+##### Logical
+
+- [ ] `$or`
+- [ ] `$and`
+- [ ] `$not`
+- [ ] `$nor`
+
+##### Element
+
+- [ ] `$exists`
+- [ ] `$type`
+
+##### Evalutation
+
+- [ ] `$regex`
 
 ## Backend
 
