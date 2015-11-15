@@ -194,6 +194,36 @@ func (docstore *DocStoreExt) CollectionsHandler() func(http.ResponseWriter, *htt
 	}
 }
 
+func handleQuery(query, doc map[string]interface{}) bool {
+	ok := true
+	for key, eval := range query {
+		switch {
+		case key == "$or":
+			res := false
+			for _, iexpr := range eval.([]interface{}) {
+				expr := iexpr.(map[string]interface{})
+				res = res || handleQuery(expr, doc)
+			}
+			if !res {
+				ok = false
+			}
+		case key == "$and":
+			res := true
+			for _, iexpr := range eval.([]interface{}) {
+				expr := iexpr.(map[string]interface{})
+				res = res && handleQuery(expr, doc)
+			}
+			ok = res
+		default:
+			// basic `{ <field>: <value> }` query
+			if val, check := doc[key]; check {
+				ok = ok && reflect.DeepEqual(eval, val)
+			}
+		}
+	}
+	return ok
+}
+
 func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tstart := time.Now()
@@ -246,13 +276,7 @@ func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Reque
 					// No query, so we just add every docs
 					docs = append(docs, doc)
 				} else {
-					ok := true
-					for key, eval := range query {
-						if val, check := doc[key]; check {
-							ok = ok && reflect.DeepEqual(eval, val)
-						}
-					}
-					if ok {
+					if handleQuery(query, doc) {
 						docs = append(docs, doc)
 						stats.NReturned++
 					}

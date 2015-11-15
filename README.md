@@ -99,8 +99,8 @@ Refers to MongpDB documentation: [query documents](https://docs.mongodb.org/manu
 
 ##### Logical
 
-- [ ] `$or`
-- [ ] `$and`
+- [x] `$or`
+- [x] `$and`
 - [ ] `$not`
 - [ ] `$nor`
 
