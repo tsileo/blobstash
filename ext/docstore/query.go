@@ -71,8 +71,8 @@ func matchQuery(query, odoc map[string]interface{}) bool {
 	// Flatten the map to handle dot-notation handling
 	doc := flattenMap(odoc, "", ".")
 	for key, eval := range query {
-		switch {
-		case key == "$or":
+		switch key {
+		case "$or":
 			res := false
 			for _, iexpr := range eval.([]interface{}) {
 				expr := iexpr.(map[string]interface{})
@@ -81,7 +81,7 @@ func matchQuery(query, odoc map[string]interface{}) bool {
 			if !res {
 				ok = false
 			}
-		case key == "$and":
+		case "$and":
 			res := true
 			for _, iexpr := range eval.([]interface{}) {
 				expr := iexpr.(map[string]interface{})
@@ -89,11 +89,68 @@ func matchQuery(query, odoc map[string]interface{}) bool {
 			}
 			ok = res
 		default:
+			val, check := doc[key]
+			if !check {
+				return false
+			}
+			switch eeval := eval.(type) {
 			// basic `{ <field>: <value> }` query
-			if val, check := doc[key]; check {
+			case nil, int, float64, string, bool, []interface{}:
 				ok = ok && reflect.DeepEqual(eval, val)
-			} else {
-				ok = false
+			// query like `{ <field>: { <$operator>: <value> } }`
+			case map[string]interface{}:
+				for k, v := range eeval {
+					switch k {
+					case "$eq":
+						ok = ok && reflect.DeepEqual(v, val)
+					case "$gt":
+						switch vv := v.(type) {
+						case float64:
+							ok = ok && val.(float64) > vv
+						case int:
+							ok = ok && val.(float64) > float64(vv)
+						default:
+							// FIXME(ts) should log a warning or a custom error
+							return false
+						}
+					case "$gte":
+						switch vv := v.(type) {
+						case float64:
+							ok = ok && val.(float64) >= vv
+						case int:
+							ok = ok && val.(float64) >= float64(vv)
+						default:
+							// FIXME(ts) should log a warning or a custom error
+							return false
+						}
+					case "$lt":
+						switch vv := v.(type) {
+						case float64:
+							ok = ok && val.(float64) < vv
+						case int:
+							ok = ok && val.(float64) < float64(vv)
+						default:
+							// FIXME(ts) should log a warning or a custom error
+							return false
+						}
+					case "$lte":
+						switch vv := v.(type) {
+						case float64:
+							ok = ok && val.(float64) <= vv
+						case int:
+							ok = ok && val.(float64) <= float64(vv)
+						default:
+							// FIXME(ts) should log a warning or a custom error
+							return false
+						}
+					default:
+						// Unsupported operators
+						// FIXME(ts) should log a warning here or a custom error
+						return false
+					}
+				}
+			default:
+				panic("shouldn't happen")
 			}
 		}
 	}

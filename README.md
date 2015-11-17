@@ -88,11 +88,11 @@ Refers to MongpDB documentation: [query documents](https://docs.mongodb.org/manu
 
 ##### Comparison
 
-- [ ] `$eq`
-- [ ] `$gt`
-- [ ] `$gte`
-- [ ] `$lt`
-- [ ] `$lte`
+- [x] `$eq`
+- [x] `$gt`
+- [x] `$gte`
+- [x] `$lt`
+- [x] `$lte`
 - [ ] `$ne`
 - [ ] `$in`
 - [ ] `$nin`
