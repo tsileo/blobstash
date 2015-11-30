@@ -45,6 +45,7 @@ import (
 	"github.com/tsileo/blobstash/config/pathutil"
 	"github.com/tsileo/blobstash/ext/docstore/id"
 	log "gopkg.in/inconshreveable/log15.v2"
+	logext "gopkg.in/inconshreveable/log15.v2/ext"
 )
 
 var KeyFmt = "docstore:%s:%s"
@@ -193,6 +194,14 @@ func (docstore *DocStoreExt) CollectionsHandler() func(http.ResponseWriter, *htt
 	}
 }
 
+// isQueryAll returns `true` if there's no query.
+func isQueryAll(q string) bool {
+	if q == "" || q == "{}" {
+		return true
+	}
+	return false
+}
+
 func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tstart := time.Now()
@@ -230,7 +239,16 @@ func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Reque
 			}
 			// FIXME(ts) we may have to scan all the docs for answering the query
 			// so this call should be in a for loop
-			res, err := docstore.kvStore.Keys(start, end, int(float64(limit)*1.6)) // Prefetch more docs
+			qLimit := limit
+			if !isQueryAll(jsQuery) {
+				// Prefetch more docs since there's a lot of chance the query will
+				// match every documents
+				qLimit = int(float64(limit) * 1.6)
+			}
+			qLogger := docstore.logger.New("query", jsQuery, "id", logext.RandId(8))
+			qLogger.Info("new query")
+			qLogger.Debug("first internal query", "limit", qLimit, "start", start, "end", end)
+			res, err := docstore.kvStore.Keys(start, end, qLimit) // Prefetch more docs
 			if err != nil {
 				panic(err)
 			}
@@ -245,15 +263,14 @@ func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Reque
 					// No query, so we just add every docs
 					docs = append(docs, doc)
 				} else {
-					if matchQuery(query, doc) {
+					if matchQuery(qLogger, query, doc) {
 						docs = append(docs, doc)
 						stats.NReturned++
 					}
 				}
 			}
 			duration := time.Since(tstart)
-			docstore.logger.Debug("Query debug", "duration", duration, "nReturned",
-				stats.NReturned, "scanned", stats.TotalDocsExamined)
+			qLogger.Debug("scan done", "duration", duration, "nReturned", stats.NReturned, "scanned", stats.TotalDocsExamined)
 			stats.ExecutionTimeMillis = int(duration.Nanoseconds() / 1e6)
 			meta := map[string]interface{}{
 				"limit": limit,

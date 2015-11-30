@@ -1,11 +1,16 @@
 package docstore
 
 import (
-	"fmt"
+	"errors"
 	"reflect"
 	"strconv"
 	"strings"
+
+	log "gopkg.in/inconshreveable/log15.v2"
 )
+
+var ErrKeyNotFound = errors.New("Key not found")
+var ErrUnsupportedOperator = errors.New("Unsupported query operator")
 
 // flattenList takes a `[]interface{}` and flatten/explode each items a map key.
 // e.g.: ["s1", "s2"] => {"0": "s1", "1": "s2"}
@@ -65,31 +70,32 @@ func flattenMap(m map[string]interface{}, parent, delimiter string) map[string]i
 	return out
 }
 
-func getPath(path string, doc map[string]interface{}) interface{} {
+func getPath(path string, doc map[string]interface{}) (interface{}, error) {
 	keys := strings.Split(path, ".")
 	for i, key := range keys {
 		if val, ok := doc[key]; ok {
 			if i == len(keys)-1 {
-				return val
+				return val, nil
 			}
 			if mval, ok := val.(map[string]interface{}); ok {
 				doc = mval
 			} else {
-				return nil
+				// The key exists, but it's not a map
+				return nil, ErrKeyNotFound
 			}
 		} else {
-			return nil
-			// TODO(ts) may be better to return an error to help
-			// make the difference between nil value and non existent key
+			// The key doesn't exist
+			return nil, ErrKeyNotFound
 		}
 	}
-	return doc
+	return doc, nil
 }
 
 // matchQuery takes a MongoDB-like query object and returns wether or not
 // the given document match the query.
 // The document will be flattened before the checks, to handle the dot-notation.
-func matchQuery(query, odoc map[string]interface{}) bool {
+func matchQuery(qLogger log.Logger, query, odoc map[string]interface{}) bool {
+	logger := qLogger.New("subquery", query, "doc", odoc)
 	ok := true
 	// Flatten the map to handle dot-notation handling
 	doc := flattenMap(odoc, "", ".")
@@ -99,7 +105,7 @@ func matchQuery(query, odoc map[string]interface{}) bool {
 			res := false
 			for _, iexpr := range eval.([]interface{}) {
 				expr := iexpr.(map[string]interface{})
-				res = res || matchQuery(expr, doc)
+				res = res || matchQuery(qLogger, expr, doc)
 			}
 			if !res {
 				ok = false
@@ -108,15 +114,16 @@ func matchQuery(query, odoc map[string]interface{}) bool {
 			res := true
 			for _, iexpr := range eval.([]interface{}) {
 				expr := iexpr.(map[string]interface{})
-				res = res && matchQuery(expr, doc)
+				res = res && matchQuery(qLogger, expr, doc)
 			}
 			ok = res
 		default:
 			// TODO(ts) make this part cleaner
 			// (check orignal doc VS flattend doc)
 			val, check := doc[key]
-			oval := getPath(key, odoc)
-			if !check && oval == nil {
+			oval, err := getPath(key, odoc)
+			if !check && err != nil {
+				logger.Debug("key not found")
 				return false
 			}
 			// `val` (the value of the queried doc) must be:
