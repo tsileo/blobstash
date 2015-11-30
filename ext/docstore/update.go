@@ -2,6 +2,7 @@ package docstore
 
 import (
 	"fmt"
+	"strings"
 )
 
 func updateDoc(doc, update map[string]interface{}) (map[string]interface{}, error) {
@@ -18,8 +19,23 @@ func updateDoc(doc, update map[string]interface{}) (map[string]interface{}, erro
 				return nil, fmt.Errorf("\"$set\" argument must be a map")
 			}
 			for uk, uv := range toset {
+				rpointer := res
 				// FIXME(tsileo) dot notation handling
-				res[uk] = uv
+				if strings.Contains(uk, ".") {
+					path := strings.Split(uk, ".")
+					for i, key := range path {
+						if i == len(path)-1 {
+							// If it's the last key of the path, then update the value
+							rpointer[key] = uv
+						} else {
+							// FIXME(ts) create object if it does not exists
+							rpointer = rpointer[key].(map[string]interface{})
+						}
+					}
+
+				} else {
+					res[uk] = uv
+				}
 			}
 			// case "$inc":
 			// ...

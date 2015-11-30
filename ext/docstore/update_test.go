@@ -20,11 +20,16 @@ func TestUpdate(t *testing.T) {
 	}
 	newDoc, err := updateDoc(testDoc, map[string]interface{}{
 		"$set": map[string]interface{}{
-			"k2": false,
+			"k2":     false,
+			"k3.k31": "tested",
+			"k3.k32": "just added",
 		},
 	})
 	check(err)
 	if newDoc["k2"] != false {
 		t.Errorf("\"k2\" should be `true`")
+	}
+	if newDoc["k3"].(map[string]interface{})["k31"] != "tested" {
+		t.Errorf("\"k3.k31\" should be \"tested\", got %v", newDoc["k3"].(map[string]interface{})["k31"])
 	}
 }
