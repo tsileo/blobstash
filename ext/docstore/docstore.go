@@ -303,11 +303,14 @@ func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Reque
 			docstore.blobStore.Put(hash, blob)
 			// Create a pointer in the key-value store
 			now := time.Now().UTC().Unix()
-			_id, err := id.New(int(now), hash)
+			_id, err := id.New(int(now))
 			if err != nil {
 				panic(err)
 			}
-			if _, err := docstore.kvStore.Put(fmt.Sprintf(KeyFmt, collection, _id.String()), string([]byte{docFlag}), -1); err != nil {
+			bash := make([]byte, len(hash)+1)
+			bash[0] = docFlag
+			copy(bash[1:], []byte(hash)[:])
+			if _, err := docstore.kvStore.Put(fmt.Sprintf(KeyFmt, collection, _id.String()), string(bash), -1); err != nil {
 				panic(err)
 			}
 			// Returns the doc along with its new ID
@@ -330,14 +333,15 @@ func (docstore *DocStoreExt) fetchDoc(collection, sid string) (map[string]interf
 	if collection == "" {
 		return nil, errors.New("missing collection query arg")
 	}
+	kv, err := docstore.kvStore.Get(fmt.Sprintf(KeyFmt, collection, sid), -1)
+	if err != nil {
+		return nil, fmt.Errorf("kvstore get err: %v", err)
+	}
 	_id, err := id.FromHex(sid)
 	if err != nil {
 		return nil, fmt.Errorf("invalid _id: %v", err)
 	}
-	hash, err := _id.Hash()
-	if err != nil {
-		return nil, errors.New("failed to extract hash")
-	}
+	hash := kv.Value[1:len(kv.Value)]
 	// Fetch the blob
 	blob, err := docstore.blobStore.Get(hash)
 	if err != nil {
