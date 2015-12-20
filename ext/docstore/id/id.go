@@ -4,7 +4,7 @@ package id implements a MongoDB ObjectId like object.
 
 Cursor stored the timestamp and a hash.
 
-	(<timestamp encoded in big endian uint32> 4 bytes) + (4 random bytes / 4 bytes counter starting with random value) = 12 bytes
+	(<timestamp encoded in big endian uint32> 4 bytes) + (5 random bytes / 3 bytes counter starting with random value) = 12 bytes
 
 	24 bytes hex-encoded
 */
@@ -15,18 +15,21 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"sync"
 )
 
+var mutex = &sync.Mutex{}
 var counter = []byte("")
 
 func init() {
-	counter = make([]byte, 4)
+	counter = make([]byte, 3)
 	if _, err := rand.Read(counter); err != nil {
 		panic(err)
 	}
 }
 
 func nextCounter() []byte {
+	mutex.Lock()
 	i := len(counter)
 	for i > 0 {
 		i--
@@ -35,7 +38,11 @@ func nextCounter() []byte {
 			break
 		}
 	}
-	return counter
+	mutex.Unlock()
+	out := make([]byte, 3)
+	copy(out[:], counter[:])
+	return out
+
 }
 
 // Cursor hold a hex/byte representation of a timestamp and a hash
@@ -46,12 +53,12 @@ type ID struct {
 func New(ts int) (*ID, error) {
 	b := make([]byte, 12)
 	binary.BigEndian.PutUint32(b[:], uint32(ts))
-	randomCompoment := make([]byte, 4)
+	randomCompoment := make([]byte, 5)
 	if _, err := rand.Read(randomCompoment); err != nil {
 		return nil, err
 	}
 	copy(b[4:], randomCompoment[:])
-	copy(b[8:], nextCounter())
+	copy(b[9:], nextCounter())
 	return &ID{b}, nil
 }
 
