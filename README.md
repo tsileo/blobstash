@@ -52,7 +52,7 @@ $ curl -XPUT http://127.0.0.1:8050/api/v1/vkv/key/k1 -d value=v1
 ```
 
 ```console
-$ curl http://127.0.0.1:8050/api/v1/vkv/key/k1            
+$ curl http://127.0.0.1:8050/api/v1/vkv/key/k1
 {"key":"k1","value":"v1","version":1421705651367957723}
 ```
 
@@ -64,7 +64,7 @@ Extensions only uses the blob store and the key value store, nothing else.
 
 ### (WIP) Files
 
-A multipart file upload handler and a downalod handler.
+A multipart file upload handler and a download handler.
 
 ### Document Store
 
@@ -72,46 +72,9 @@ A JSON document store running on top of an HTTP API. Support a subset of the Mon
 
 JSON documents are stored as blobs and the key-value store handle the indexing.
 
-Perfect for building app desined to only store your own data.
+Perfect for building app designed to only store your own data.
 
-### Supported MongoDB query operators
-
-Refers to MongpDB documentation: [query documents](https://docs.mongodb.org/manual/tutorial/query-documents/) and [query operators](https://docs.mongodb.org/manual/reference/operator/query/#query-selectors).
-
-#### Features
-
-- [x] dot-notation support
-- [x] `{}` - Select all documents
-- [x] `{ <field>: <value> }` - equality, AND conditions
-
-#### Query operators
-
-##### Comparison
-
-- [x] `$eq`
-- [x] `$gt`
-- [x] `$gte`
-- [x] `$lt`
-- [x] `$lte`
-- [ ] `$ne`
-- [ ] `$in`
-- [ ] `$nin`
-
-##### Logical
-
-- [x] `$or`
-- [x] `$and`
-- [ ] `$not`
-- [ ] `$nor`
-
-##### Element
-
-- [ ] `$exists`
-- [ ] `$type`
-
-##### Evalutation
-
-- [ ] `$regex`
+See [here for more details](docs/docstore.md).
 
 ## Backend
 
