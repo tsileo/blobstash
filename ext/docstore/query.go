@@ -138,12 +138,13 @@ func matchQuery(qLogger log.Logger, query, odoc map[string]interface{}) bool {
 					res = res || matchQueryValue(eval, li)
 				}
 				if res {
-					return true
+					ok = ok && true
 				}
 			default:
-				return matchQueryValue(eval, val)
+				ok = ok && matchQueryValue(eval, val)
 			}
 		}
+		// logger.Debug("subquery res", "ok", ok, "key", key, "eval", eval)
 	}
 	return ok
 }
