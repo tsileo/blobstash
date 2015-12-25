@@ -18,6 +18,7 @@ import (
 	"github.com/tsileo/blobstash/config/pathutil"
 	"github.com/tsileo/blobstash/embed"
 	"github.com/tsileo/blobstash/ext/docstore"
+	"github.com/tsileo/blobstash/ext/lua"
 	"github.com/tsileo/blobstash/logger"
 	"github.com/tsileo/blobstash/meta"
 	"github.com/tsileo/blobstash/router"
@@ -164,8 +165,8 @@ func (s *Server) Run() {
 	r := mux.NewRouter()
 	ekvstore := s.KvStore()
 	eblobstore := s.BlobStore()
-	dc := docstore.New(s.Log.New("ext", "docstore"), ekvstore, eblobstore)
-	dc.RegisterRoute(r.PathPrefix("/api/ext/docstore/v1").Subrouter())
+	docstore.New(s.Log.New("ext", "docstore"), ekvstore, eblobstore).RegisterRoute(r.PathPrefix("/api/ext/docstore/v1").Subrouter())
+	lua.New(s.Log.New("ext", "lua")).RegisterRoute(r.PathPrefix("/api/ext/lua/v1").Subrouter())
 	api.New(r.PathPrefix("/api/v1").Subrouter(), s.wg, s.DB, s.KvUpdate, s.Router, s.blobs, s.watchHub)
 	// FIXME allowedorigins from config
 	c := cors.New(cors.Options{
