@@ -1,19 +1,18 @@
 package lua
 
 import (
-	"fmt"
+	"net/http"
+	"time"
+
 	"github.com/gorilla/mux"
 	"github.com/stevedonovan/luar"
 	log "gopkg.in/inconshreveable/log15.v2"
 	logext "gopkg.in/inconshreveable/log15.v2/ext"
-	"net/http"
 )
 
 const test = `
-for i = 1,10 do
-    Print(MSG,i)
-end
 resp.SetStatus(404)
+log("it works")
 resp.Write("Not Found")
 `
 
@@ -52,20 +51,25 @@ func (lua *LuaExt) RegisterRoute(r *mux.Router) {
 
 func (lua *LuaExt) ScriptHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
 		reqLogger := lua.logger.New("id", logext.RandId(8))
+		reqLogger.Debug("Starting script execution")
+		log := func(msg string) {
+			reqLogger.Debug(msg, "t", time.Since(start), "context", "Lua script")
+		}
 		L := luar.Init()
 		defer L.Close()
 		resp := &Resp{}
 		luar.Register(L, "", luar.Map{
-			"resp":  resp,
-			"Print": fmt.Println,
+			"resp": resp,
+			"log":  log,
 		})
 
 		L.DoString(test)
 		// TODO(tsileo) add header reading/writing
 		w.WriteHeader(resp.Status)
 		w.Write(resp.Body)
-		reqLogger.Debug("resp", "resp", resp)
+		reqLogger.Info("Script executed", "resp", resp, "duration", time.Since(start))
 
 	}
 }
