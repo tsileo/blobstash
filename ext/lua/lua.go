@@ -1,4 +1,4 @@
-package main
+package lua
 
 import (
 	"fmt"
@@ -63,8 +63,8 @@ func (lua *LuaExt) ScriptHandler() func(http.ResponseWriter, *http.Request) {
 
 		L.DoString(test)
 		// TODO(tsileo) add header reading/writing
-		w.Write(resp.Body)
 		w.WriteHeader(resp.Status)
+		w.Write(resp.Body)
 		reqLogger.Debug("resp", "resp", resp)
 
 	}
