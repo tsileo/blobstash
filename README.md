@@ -62,10 +62,6 @@ BlobStash comes with few bundled extensions making it easier to build your own a
 
 Extensions only uses the blob store and the key value store, nothing else.
 
-### (WIP) Files
-
-A multipart file upload handler and a download handler.
-
 ### Document Store
 
 A JSON document store running on top of an HTTP API. Support a subset of the MongoDB Query language.
@@ -75,6 +71,14 @@ JSON documents are stored as blobs and the key-value store handle the indexing.
 Perfect for building app designed to only store your own data.
 
 See [here for more details](docs/docstore.md).
+
+### (WIP) Lua scripting
+
+You can create custom API endpoint running [Lua](http://www.lua.org/) script (with helper for accessing the blobstore/key-value store/document store).
+
+### (WIP) Files
+
+A multipart file upload handler and a download handler.
 
 ## Backend
 
