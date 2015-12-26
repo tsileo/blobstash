@@ -14,17 +14,30 @@ import (
 // TODO add request id as args in New
 
 type RequestModule struct {
-	req *http.Request
+	req   *http.Request
+	reqId string
 }
 
-func New(req *http.Request) *RequestModule {
+func New(req *http.Request, reqId string) *RequestModule {
 	return &RequestModule{
-		req: req,
+		req:   req,
+		reqId: reqId,
 	}
 }
 
 func (req *RequestModule) Loader(L *lua.LState) int {
-	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{})
+	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
+		"headers": req.headers,
+	})
 	L.Push(mod)
+	return 1
+}
+
+func (req *RequestModule) headers(L *lua.LState) int {
+	luaTable := L.NewTable()
+	for key := range req.req.Header {
+		L.RawSet(luaTable, lua.LString(key), lua.LString(req.req.Header.Get(key)))
+	}
+	L.Push(luaTable)
 	return 1
 }

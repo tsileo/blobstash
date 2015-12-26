@@ -11,16 +11,20 @@ import (
 	logext "gopkg.in/inconshreveable/log15.v2/ext"
 
 	loggerModule "github.com/tsileo/blobstash/ext/lua/modules/logger"
+	requestModule "github.com/tsileo/blobstash/ext/lua/modules/request"
 	responseModule "github.com/tsileo/blobstash/ext/lua/modules/response"
 )
 
 const test = `
 local log = require('logger')
 local resp = require('response')
+local req = require('request')
 
 log.info('it works')
 resp.write('Nothing to see here!')
+resp.header('My-Header', 'value')
 resp.status(404)
+log.info(req.headers())
 `
 
 // TODO(tsileo) Load script from filesystem/laoded via HTTP POST
@@ -44,11 +48,14 @@ func (lua *LuaExt) ScriptHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// httpClient := &http.Client{}
 		start := time.Now()
-		reqLogger := lua.logger.New("id", logext.RandId(8))
+		reqId := logext.RandId(8)
+		reqLogger := lua.logger.New("id", reqId)
 		reqLogger.Debug("Starting script execution")
 		logger := loggerModule.New(reqLogger.New("ctx", "inside script"), start)
 		response := responseModule.New()
+		request := requestModule.New(r, reqId)
 		L := luamod.NewState()
+		L.PreloadModule("request", request.Loader)
 		L.PreloadModule("response", response.Loader)
 		L.PreloadModule("logger", logger.Loader)
 		if err := L.DoString(test); err != nil {
