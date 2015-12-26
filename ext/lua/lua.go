@@ -9,6 +9,8 @@ import (
 	luamod "github.com/yuin/gopher-lua"
 	log "gopkg.in/inconshreveable/log15.v2"
 	logext "gopkg.in/inconshreveable/log15.v2/ext"
+
+	loggerModule "github.com/tsileo/blobstash/ext/lua/modules/logger"
 )
 
 const test = `
@@ -16,31 +18,10 @@ local log = require('logger')
 log.info('it works')
 `
 
-type Resp struct {
-	Body   []byte
-	Status int
-}
-
-func NewResp() *Resp {
-	return &Resp{
-		Status: 200,
-	}
-}
-
-func (r *Resp) SetStatus(status int) {
-	r.Status = status
-}
-
-func (r *Resp) Write(data string) {
-	r.Body = append(r.Body, []byte(data)...)
-}
-
 // TODO(tsileo) Load script from filesystem/laoded via HTTP POST
 // TODO(tsileo) Find a way to give unique url to script: UUID?
 
 type LuaExt struct {
-	luaPool *lStatePool
-
 	logger log.Logger
 }
 
@@ -54,40 +35,13 @@ func (lua *LuaExt) RegisterRoute(r *mux.Router) {
 	r.HandleFunc("/", lua.ScriptHandler())
 }
 
-type LoggerModule struct {
-	logger log.Logger
-	start  time.Time
-}
-
-func (logger *LoggerModule) Loader(L *luamod.LState) int {
-	mod := L.SetFuncs(L.NewTable(), map[string]luamod.LGFunction{
-		"info":  logger.info,
-		"debug": logger.debug,
-	})
-	L.Push(mod)
-	return 1
-}
-
-func (logger *LoggerModule) debug(L *luamod.LState) int {
-	logger.logger.Debug(L.ToString(1), "t", time.Since(logger.start))
-	return 0
-}
-
-func (logger *LoggerModule) info(L *luamod.LState) int {
-	logger.logger.Info(L.ToString(1), "t", time.Since(logger.start))
-	return 0
-}
-
 func (lua *LuaExt) ScriptHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// httpClient := &http.Client{}
 		start := time.Now()
 		reqLogger := lua.logger.New("id", logext.RandId(8))
 		reqLogger.Debug("Starting script execution")
-		loggerModule := &LoggerModule{
-			start:  start,
-			logger: reqLogger.New("ctx", "inside script"),
-		}
+		loggerModule := loggerModule.New(reqLogger.New("ctx", "inside script"), start)
 		L := luamod.NewState()
 		L.PreloadModule("logger", loggerModule.Loader)
 		if err := L.DoString(test); err != nil {
@@ -95,11 +49,9 @@ func (lua *LuaExt) ScriptHandler() func(http.ResponseWriter, *http.Request) {
 			panic(err)
 		}
 		defer L.Close()
-		resp := &Resp{Status: 200}
 		// TODO(tsileo) add header reading/writing
-		w.WriteHeader(resp.Status)
-		w.Write(resp.Body)
-		reqLogger.Info("Script executed", "resp", resp, "duration", time.Since(start))
-
+		// w.WriteHeader(resp.Status)
+		// w.Write(resp.Body)
+		reqLogger.Info("Script executed", "duration", time.Since(start))
 	}
 }
