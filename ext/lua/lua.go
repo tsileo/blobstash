@@ -11,11 +11,16 @@ import (
 	logext "gopkg.in/inconshreveable/log15.v2/ext"
 
 	loggerModule "github.com/tsileo/blobstash/ext/lua/modules/logger"
+	responseModule "github.com/tsileo/blobstash/ext/lua/modules/response"
 )
 
 const test = `
 local log = require('logger')
+local resp = require('response')
+
 log.info('it works')
+resp.write('Nothing to see here!')
+resp.status(404)
 `
 
 // TODO(tsileo) Load script from filesystem/laoded via HTTP POST
@@ -41,17 +46,18 @@ func (lua *LuaExt) ScriptHandler() func(http.ResponseWriter, *http.Request) {
 		start := time.Now()
 		reqLogger := lua.logger.New("id", logext.RandId(8))
 		reqLogger.Debug("Starting script execution")
-		loggerModule := loggerModule.New(reqLogger.New("ctx", "inside script"), start)
+		logger := loggerModule.New(reqLogger.New("ctx", "inside script"), start)
+		response := responseModule.New()
 		L := luamod.NewState()
-		L.PreloadModule("logger", loggerModule.Loader)
+		L.PreloadModule("response", response.Loader)
+		L.PreloadModule("logger", logger.Loader)
 		if err := L.DoString(test); err != nil {
 			// FIXME better error, with debug mode?
 			panic(err)
 		}
 		defer L.Close()
+		response.WriteTo(w)
 		// TODO(tsileo) add header reading/writing
-		// w.WriteHeader(resp.Status)
-		// w.Write(resp.Body)
-		reqLogger.Info("Script executed", "duration", time.Since(start))
+		reqLogger.Info("Script executed", "response", response, "duration", time.Since(start))
 	}
 }
