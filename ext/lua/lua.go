@@ -6,7 +6,7 @@ import (
 
 	_ "github.com/cjoudrey/gluahttp"
 	"github.com/gorilla/mux"
-	"github.com/yuin/gopher-lua"
+	luamod "github.com/yuin/gopher-lua"
 	log "gopkg.in/inconshreveable/log15.v2"
 	logext "gopkg.in/inconshreveable/log15.v2/ext"
 )
@@ -45,12 +45,8 @@ type LuaExt struct {
 }
 
 func New(logger log.Logger) *LuaExt {
-	luaPool := &lStatePool{
-		saved: make([]*lua.LState, 0, 4),
-	}
 	return &LuaExt{
-		luaPool: luaPool,
-		logger:  logger,
+		logger: logger,
 	}
 }
 
@@ -63,21 +59,21 @@ type LoggerModule struct {
 	start  time.Time
 }
 
-func (logger *LoggerModule) Loader(L *lua.LState) int {
-	// register functions to the table
-	exports := map[string]lua.LGFunction{
-		"info": logger.info,
-	}
-	mod := L.SetFuncs(L.NewTable(), exports)
-	// register other stuff
-	// L.SetField(mod, "name", lua.LString("value"))
-
-	// returns the module
+func (logger *LoggerModule) Loader(L *luamod.LState) int {
+	mod := L.SetFuncs(L.NewTable(), map[string]luamod.LGFunction{
+		"info":  logger.info,
+		"debug": logger.debug,
+	})
 	L.Push(mod)
 	return 1
 }
 
-func (logger *LoggerModule) info(L *lua.LState) int {
+func (logger *LoggerModule) debug(L *luamod.LState) int {
+	logger.logger.Debug(L.ToString(1), "t", time.Since(logger.start))
+	return 0
+}
+
+func (logger *LoggerModule) info(L *luamod.LState) int {
 	logger.logger.Info(L.ToString(1), "t", time.Since(logger.start))
 	return 0
 }
@@ -92,13 +88,13 @@ func (lua *LuaExt) ScriptHandler() func(http.ResponseWriter, *http.Request) {
 			start:  start,
 			logger: reqLogger.New("ctx", "inside script"),
 		}
-		L := lua.luaPool.Get()
+		L := luamod.NewState()
 		L.PreloadModule("logger", loggerModule.Loader)
 		if err := L.DoString(test); err != nil {
 			// FIXME better error, with debug mode?
 			panic(err)
 		}
-		defer lua.luaPool.Put(L)
+		defer L.Close()
 		resp := &Resp{Status: 200}
 		// TODO(tsileo) add header reading/writing
 		w.WriteHeader(resp.Status)
