@@ -11,6 +11,8 @@ import (
 	"github.com/yuin/gopher-lua"
 )
 
+// TODO add request id as args in New
+
 type RequestModule struct {
 	req *http.Request
 }

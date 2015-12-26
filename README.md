@@ -76,6 +76,9 @@ See [here for more details](docs/docstore.md).
 
 You can create custom API endpoint running [Lua](http://www.lua.org/) script (with helper for accessing the blobstore/key-value store/document store).
 
+ - [ ] Sharing script
+ - [ ] Lua iCal feed script
+
 ### (WIP) Files
 
 A multipart file upload handler and a download handler.
