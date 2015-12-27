@@ -26,6 +26,7 @@ import (
 	responseModule "github.com/tsileo/blobstash/ext/lua/modules/response"
 )
 
+// do return end
 const test = `
 local log = require('logger')
 local resp = require('response')
