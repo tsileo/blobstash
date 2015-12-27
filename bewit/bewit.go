@@ -1,8 +1,14 @@
+/*
+
+Package bewit implement Hawk bewit authentication mechanism
+
+See https://github.com/hueniverse/hawk
+
+*/
 package bewit
 
 import (
 	"crypto/sha256"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -33,7 +39,6 @@ func New(url string, delay time.Duration) (string, error) {
 		Key:  key,
 		Hash: sha256.New,
 	}, delay)
-	fmt.Printf("hawkAuth=%+v\n", auth)
 	if err != nil {
 		return "", err
 	}
@@ -43,7 +48,6 @@ func New(url string, delay time.Duration) (string, error) {
 // Check will try to authenticate the `bewit` parameter for the given request
 func Check(r *http.Request) error {
 	hawkAuth, err := hawk.NewAuthFromRequest(r, credentialsLookupFunc, nonceCheckFunc)
-	fmt.Printf("hawkAuth=%+v\n", hawkAuth)
 	if err != nil {
 		return err
 	}

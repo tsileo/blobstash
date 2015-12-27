@@ -1,3 +1,10 @@
+/*
+
+Package bewit implement a Lua module to use Hawk bewit authentication mechanism
+
+See https://github.com/hueniverse/hawk
+
+*/
 package bewit
 
 import (
