@@ -28,10 +28,11 @@ func New(request *http.Request, reqId string) *RequestModule {
 
 func (req *RequestModule) Loader(L *lua.LState) int {
 	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
-		"headers": req.headers,
-		"header":  req.header,
-		"method":  req.method,
-		"body":    req.body,
+		"headers":  req.headers,
+		"header":   req.header,
+		"method":   req.method,
+		"body":     req.body,
+		"formdata": req.formdata,
 	})
 	L.Push(mod)
 	return 1
@@ -69,4 +70,15 @@ func (req *RequestModule) body(L *lua.LState) int {
 	L.Push(lua.LString(string(body)))
 	L.Push(lua.LString(""))
 	return 2
+}
+
+// Return the form-encoded data as a Lua tabl
+func (req *RequestModule) formdata(L *lua.LState) int {
+	luaTable := L.NewTable()
+	req.request.ParseForm()
+	for key, values := range req.request.Form {
+		L.RawSet(luaTable, lua.LString(key), lua.LString(values[0]))
+	}
+	L.Push(luaTable)
+	return 1
 }

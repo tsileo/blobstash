@@ -37,9 +37,10 @@ func (resp *ResponseModule) WriteTo(w http.ResponseWriter) error {
 
 func (resp *ResponseModule) Loader(L *lua.LState) int {
 	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
-		"status": resp.status,
-		"write":  resp.write,
-		"header": resp.header,
+		"status":    resp.status,
+		"write":     resp.write,
+		"writejson": resp.writejson,
+		"header":    resp.header,
 	})
 	L.Push(mod)
 	return 1
@@ -57,5 +58,12 @@ func (resp *ResponseModule) status(L *lua.LState) int {
 
 func (resp *ResponseModule) write(L *lua.LState) int {
 	resp.body.WriteString(L.ToString(1))
+	return 0
+}
+
+// Output JSON, the payload must already be JSON encoded
+func (resp *ResponseModule) writejson(L *lua.LState) int {
+	resp.body.WriteString(L.ToString(1))
+	resp.headers["Content-Type"] = "application/json"
 	return 0
 }
