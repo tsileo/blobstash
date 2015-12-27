@@ -79,6 +79,8 @@ You can create custom API endpoint running [Lua](http://www.lua.org/) script (wi
  - [ ] Sharing script
  - [ ] Lua iCal feed script
 
+See the [Lua API here](docs/lua.md).
+
 ### (WIP) Files
 
 A multipart file upload handler and a download handler.
