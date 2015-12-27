@@ -13,7 +13,6 @@ import (
 	"github.com/gorilla/mux"
 	luajson "github.com/layeh/gopher-json"
 	"github.com/russross/blackfriday"
-	"github.com/tsileo/blobstash/bewit"
 	"github.com/tsileo/blobstash/client/interface"
 	luamod "github.com/yuin/gopher-lua"
 	log "gopkg.in/inconshreveable/log15.v2"
@@ -50,7 +49,6 @@ log.info(string.format("body=%s\nmethod=%s", json.decode(req.body()), req.method
 // log.info(string.format('body=%s', body))
 // TODO(tsileo) Load script from filesystem/laoded via HTTP POST
 // TODO(tsileo) Find a way to give unique url to script: UUID?
-// TODO(tsileo) Hawk Bewit support
 
 type LuaExt struct {
 	logger log.Logger
@@ -120,13 +118,10 @@ func setCustomGlobals(L *luamod.LState) {
 		return 1
 	}))
 
-	L.SetGlobal("bewit", L.NewFunction(func(L *luamod.LState) int {
-		token, err := bewit.New(L.ToString(2), time.Hour*1)
-		if err != nil {
-			L.Push(luamod.LString(""))
-			return 1
-		}
-		L.Push(luamod.LString(token))
+	// Return an absoulte URL for the given path
+	L.SetGlobal("url", L.NewFunction(func(L *luamod.LState) int {
+		// FIXME(tsileo) take the host from the req?
+		L.Push(luamod.LString("http://localhost:8050" + L.ToString(1)))
 		return 1
 	}))
 }

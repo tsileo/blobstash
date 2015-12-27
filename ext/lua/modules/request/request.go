@@ -33,6 +33,7 @@ func (req *RequestModule) Loader(L *lua.LState) int {
 		"formdata":  req.formdata,
 		"queryarg":  req.queryarg,
 		"queryargs": req.queryargs,
+		"path":      req.path,
 	})
 	L.Push(mod)
 	return 1
@@ -80,6 +81,13 @@ func (req *RequestModule) formdata(L *lua.LState) int {
 		L.RawSet(luaTable, lua.LString(key), lua.LString(values[0]))
 	}
 	L.Push(luaTable)
+	return 1
+}
+
+// Return the path component
+func (req *RequestModule) path(L *lua.LState) int {
+	res := req.request.URL.Path
+	L.Push(lua.LString(res))
 	return 1
 }
 
