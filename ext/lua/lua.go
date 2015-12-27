@@ -4,8 +4,9 @@ import (
 	"net/http"
 	"time"
 
-	_ "github.com/cjoudrey/gluahttp"
+	"github.com/cjoudrey/gluahttp"
 	"github.com/gorilla/mux"
+	luajson "github.com/layeh/gopher-json"
 	luamod "github.com/yuin/gopher-lua"
 	log "gopkg.in/inconshreveable/log15.v2"
 	logext "gopkg.in/inconshreveable/log15.v2/ext"
@@ -19,14 +20,16 @@ const test = `
 local log = require('logger')
 local resp = require('response')
 local req = require('request')
+local json= require('json')
 
 log.info('it works')
 resp.write('Nothing to see here!')
 resp.header('My-Header', 'value')
 resp.status(404)
-log.info(req.headers())
+log.info(string.format("body=%s\nmethod=%s", json.decode(req.body()), req.method()))
 `
 
+// log.info(string.format('body=%s', body))
 // TODO(tsileo) Load script from filesystem/laoded via HTTP POST
 // TODO(tsileo) Find a way to give unique url to script: UUID?
 
@@ -46,7 +49,7 @@ func (lua *LuaExt) RegisterRoute(r *mux.Router) {
 
 func (lua *LuaExt) ScriptHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// httpClient := &http.Client{}
+		httpClient := &http.Client{}
 		start := time.Now()
 		reqId := logext.RandId(8)
 		reqLogger := lua.logger.New("id", reqId)
@@ -58,6 +61,9 @@ func (lua *LuaExt) ScriptHandler() func(http.ResponseWriter, *http.Request) {
 		L.PreloadModule("request", request.Loader)
 		L.PreloadModule("response", response.Loader)
 		L.PreloadModule("logger", logger.Loader)
+		// 3rd party module
+		luajson.Preload(L)
+		L.PreloadModule("http", gluahttp.NewHttpModule(httpClient).Loader)
 		if err := L.DoString(test); err != nil {
 			// FIXME better error, with debug mode?
 			panic(err)
