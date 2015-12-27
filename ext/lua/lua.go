@@ -1,7 +1,10 @@
 package lua
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"html/template"
 	"net/http"
 	"time"
 
@@ -29,7 +32,11 @@ local json= require('json')
 
 log.info('it works')
 log.info(string.format('ok=%s', req.queryarg('ok')))
-resp.write('Nothing to see here!')
+local tpl = [[<html>
+<head><title>BlobStash</title></head>
+<body><p>Nothing to see here Mr {{ .name }}</p></body>
+</html>]]
+resp.write(render(tpl, json.encode({name = 'Thomas'})))
 resp.header('My-Header', 'value')
 resp.status(404)
 log.info(string.format("body=%s\nmethod=%s", json.decode(req.body()), req.method()))
@@ -84,6 +91,28 @@ func setCustomGlobals(L *luamod.LState) {
 	L.SetGlobal("markdownify", L.NewFunction(func(L *luamod.LState) int {
 		output := blackfriday.MarkdownCommon([]byte(L.ToString(1)))
 		L.Push(luamod.LString(string(output)))
+		return 1
+	}))
+
+	// Render execute a Go template, data must be encoded as JSON
+	L.SetGlobal("render", L.NewFunction(func(L *luamod.LState) int {
+		tplString := L.ToString(1)
+		data := map[string]interface{}{}
+		if err := json.Unmarshal([]byte(L.ToString(2)), &data); err != nil {
+			L.Push(luamod.LString(err.Error()))
+			return 1
+		}
+		tpl, err := template.New("tpl").Parse(tplString)
+		if err != nil {
+			L.Push(luamod.LString(err.Error()))
+			return 1
+		}
+		out := &bytes.Buffer{}
+		if err := tpl.Execute(out, data); err != nil {
+			L.Push(luamod.LString(err.Error()))
+			return 1
+		}
+		L.Push(luamod.LString(out.String()))
 		return 1
 	}))
 }

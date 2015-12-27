@@ -20,6 +20,9 @@ sleep(number)
 
 // Convert the given Markdown to HTML
 markdownify(string) -> string
+
+// Render execute a Go template, the data must be JSON encoded
+render(string, string) -> string
 ```
 
 ### Request
