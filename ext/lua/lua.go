@@ -2,6 +2,7 @@ package lua
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -13,6 +14,7 @@ import (
 	"github.com/gorilla/mux"
 	luajson "github.com/layeh/gopher-json"
 	"github.com/russross/blackfriday"
+	"github.com/tent/hawk-go"
 	"github.com/tsileo/blobstash/client/interface"
 	luamod "github.com/yuin/gopher-lua"
 	log "gopkg.in/inconshreveable/log15.v2"
@@ -30,7 +32,7 @@ local resp = require('response')
 local req = require('request')
 local json= require('json')
 
-log.info('it works')
+log.info(string.format("it works, bewit=%s", bewit("http://localhost:8040/api/ext/lua/v1/")))
 log.info(string.format('ok=%s', req.queryarg('ok')))
 local tpl = [[<html>
 <head><title>BlobStash</title></head>
@@ -46,9 +48,6 @@ log.info(string.format("body=%s\nmethod=%s", json.decode(req.body()), req.method
 // TODO(tsileo) Load script from filesystem/laoded via HTTP POST
 // TODO(tsileo) Find a way to give unique url to script: UUID?
 // TODO(tsileo) Hawk Bewit support
-// TODO(tsileo) Golang template rendering via html.render
-// TODO query args to Lua table
-// TODO lua.md in docs
 
 type LuaExt struct {
 	logger log.Logger
@@ -98,6 +97,8 @@ func setCustomGlobals(L *luamod.LState) {
 	L.SetGlobal("render", L.NewFunction(func(L *luamod.LState) int {
 		tplString := L.ToString(1)
 		data := map[string]interface{}{}
+		// XXX(tsileo) find a better way to handle the data than a JSON encoding/decoding
+		// to share data with Lua
 		if err := json.Unmarshal([]byte(L.ToString(2)), &data); err != nil {
 			L.Push(luamod.LString(err.Error()))
 			return 1
@@ -115,10 +116,45 @@ func setCustomGlobals(L *luamod.LState) {
 		L.Push(luamod.LString(out.String()))
 		return 1
 	}))
+
+	L.SetGlobal("bewit", L.NewFunction(func(L *luamod.LState) int {
+		auth, err := hawk.NewURLAuth(L.ToString(1), &hawk.Credentials{
+			ID:   "myid",
+			Key:  "ok",
+			Hash: sha256.New,
+		}, time.Duration(1*time.Hour))
+		if err != nil {
+			fmt.Printf("BEWIT FAIL:%v")
+			L.Push(luamod.LString(""))
+
+			return 1
+		}
+		L.Push(luamod.LString(auth.Bewit()))
+		return 1
+	}))
+}
+
+func nonceCheckFunc(nonce string, t time.Time, cred *hawk.Credentials) bool {
+	fmt.Printf("noncecheckfunc %v\n", nonce)
+	return true
+
+}
+
+func credentialsLookupFunc(cred *hawk.Credentials) error {
+	cred.Hash = sha256.New
+	cred.Key = "ok"
+	return nil
 }
 
 func (lua *LuaExt) ScriptHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		hawkAuth, err := hawk.NewAuthFromRequest(r, credentialsLookupFunc, nonceCheckFunc)
+		if err != nil {
+			fmt.Printf("hwawk err:%v", err)
+
+		} else {
+			fmt.Printf("HAWK: %+v | %v", hawkAuth, hawkAuth.Valid())
+		}
 		start := time.Now()
 		httpClient := &http.Client{}
 		reqId := logext.RandId(8)
