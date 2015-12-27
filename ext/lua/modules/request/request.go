@@ -28,11 +28,13 @@ func New(request *http.Request, reqId string) *RequestModule {
 
 func (req *RequestModule) Loader(L *lua.LState) int {
 	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
-		"headers":  req.headers,
-		"header":   req.header,
-		"method":   req.method,
-		"body":     req.body,
-		"formdata": req.formdata,
+		"headers":   req.headers,
+		"header":    req.header,
+		"method":    req.method,
+		"body":      req.body,
+		"formdata":  req.formdata,
+		"queryarg":  req.queryarg,
+		"queryargs": req.queryargs,
 	})
 	L.Push(mod)
 	return 1
@@ -72,10 +74,27 @@ func (req *RequestModule) body(L *lua.LState) int {
 	return 2
 }
 
-// Return the form-encoded data as a Lua tabl
+// Return the form-encoded data as a Lua table
 func (req *RequestModule) formdata(L *lua.LState) int {
 	luaTable := L.NewTable()
 	req.request.ParseForm()
+	for key, values := range req.request.Form {
+		L.RawSet(luaTable, lua.LString(key), lua.LString(values[0]))
+	}
+	L.Push(luaTable)
+	return 1
+}
+
+// Return the query argument for the given key
+func (req *RequestModule) queryarg(L *lua.LState) int {
+	res := req.request.URL.Query().Get(L.ToString(1))
+	L.Push(lua.LString(res))
+	return 1
+}
+
+// Return the query arguments as a Lua table
+func (req *RequestModule) queryargs(L *lua.LState) int {
+	luaTable := L.NewTable()
 	for key, values := range req.request.Form {
 		L.RawSet(luaTable, lua.LString(key), lua.LString(values[0]))
 	}

@@ -26,6 +26,7 @@ local req = require('request')
 local json= require('json')
 
 log.info('it works')
+log.info(string.format('ok=%s', req.queryarg('ok')))
 resp.write('Nothing to see here!')
 resp.header('My-Header', 'value')
 resp.status(404)
@@ -37,6 +38,8 @@ log.info(string.format("body=%s\nmethod=%s", json.decode(req.body()), req.method
 // TODO(tsileo) Find a way to give unique url to script: UUID?
 // TODO(tsileo) Hawk Bewit support
 // TODO(tsileo) Golang template rendering via html.render
+// TODO query args to Lua table
+// TODO lua.md in docs
 
 type LuaExt struct {
 	logger log.Logger
