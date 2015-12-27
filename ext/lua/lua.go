@@ -32,6 +32,9 @@ log.info(string.format("body=%s\nmethod=%s", json.decode(req.body()), req.method
 // log.info(string.format('body=%s', body))
 // TODO(tsileo) Load script from filesystem/laoded via HTTP POST
 // TODO(tsileo) Find a way to give unique url to script: UUID?
+// TODO(tsileo) Hawk Bewit support
+// TODO(tsileo) Golang template rendering via html.render
+// TODO(tsileo) Easy way to response JSON with the right content type
 
 type LuaExt struct {
 	logger log.Logger
@@ -47,30 +50,45 @@ func (lua *LuaExt) RegisterRoute(r *mux.Router) {
 	r.HandleFunc("/", lua.ScriptHandler())
 }
 
+func setCustomGlobals(L *luamod.LState) {
+	// Return the server unix timestamp
+	L.SetGlobal("unix", L.NewFunction(func(L *luamod.LState) int {
+		L.Push(luamod.LNumber(time.Now().Unix()))
+		return 1
+	}))
+}
+
 func (lua *LuaExt) ScriptHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		httpClient := &http.Client{}
 		start := time.Now()
+		httpClient := &http.Client{}
 		reqId := logext.RandId(8)
 		reqLogger := lua.logger.New("id", reqId)
 		reqLogger.Debug("Starting script execution")
+
+		// Initialize internal Lua module written in Go
 		logger := loggerModule.New(reqLogger.New("ctx", "inside script"), start)
 		response := responseModule.New()
 		request := requestModule.New(r, reqId)
+
+		// Initialize Lua state
 		L := luamod.NewState()
+		defer L.Close()
+		setCustomGlobals(L)
 		L.PreloadModule("request", request.Loader)
 		L.PreloadModule("response", response.Loader)
 		L.PreloadModule("logger", logger.Loader)
+
 		// 3rd party module
 		luajson.Preload(L)
 		L.PreloadModule("http", gluahttp.NewHttpModule(httpClient).Loader)
+
+		// Execute the code
 		if err := L.DoString(test); err != nil {
 			// FIXME better error, with debug mode?
 			panic(err)
 		}
-		defer L.Close()
 		response.WriteTo(w)
-		// TODO(tsileo) add header reading/writing
 		reqLogger.Info("Script executed", "response", response, "duration", time.Since(start))
 	}
 }
