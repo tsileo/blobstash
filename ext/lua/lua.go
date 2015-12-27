@@ -10,10 +10,12 @@ import (
 	"github.com/gorilla/mux"
 	luajson "github.com/layeh/gopher-json"
 	"github.com/russross/blackfriday"
+	"github.com/tsileo/blobstash/client/interface"
 	luamod "github.com/yuin/gopher-lua"
 	log "gopkg.in/inconshreveable/log15.v2"
 	logext "gopkg.in/inconshreveable/log15.v2/ext"
 
+	blobstoreModule "github.com/tsileo/blobstash/ext/lua/modules/blobstore"
 	loggerModule "github.com/tsileo/blobstash/ext/lua/modules/logger"
 	requestModule "github.com/tsileo/blobstash/ext/lua/modules/request"
 	responseModule "github.com/tsileo/blobstash/ext/lua/modules/response"
@@ -43,11 +45,14 @@ log.info(string.format("body=%s\nmethod=%s", json.decode(req.body()), req.method
 
 type LuaExt struct {
 	logger log.Logger
+
+	blobStore client.BlobStorer
 }
 
-func New(logger log.Logger) *LuaExt {
+func New(logger log.Logger, blobStore client.BlobStorer) *LuaExt {
 	return &LuaExt{
-		logger: logger,
+		logger:    logger,
+		blobStore: blobStore,
 	}
 }
 
@@ -95,6 +100,7 @@ func (lua *LuaExt) ScriptHandler() func(http.ResponseWriter, *http.Request) {
 		logger := loggerModule.New(reqLogger.New("ctx", "inside script"), start)
 		response := responseModule.New()
 		request := requestModule.New(r, reqId)
+		blobstore := blobstoreModule.New(lua.blobStore)
 
 		// Initialize Lua state
 		L := luamod.NewState()
@@ -103,6 +109,7 @@ func (lua *LuaExt) ScriptHandler() func(http.ResponseWriter, *http.Request) {
 		L.PreloadModule("request", request.Loader)
 		L.PreloadModule("response", response.Loader)
 		L.PreloadModule("logger", logger.Loader)
+		L.PreloadModule("blobstore", blobstore.Loader)
 
 		// 3rd party module
 		luajson.Preload(L)

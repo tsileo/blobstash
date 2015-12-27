@@ -166,7 +166,7 @@ func (s *Server) Run() {
 	ekvstore := s.KvStore()
 	eblobstore := s.BlobStore()
 	docstore.New(s.Log.New("ext", "docstore"), ekvstore, eblobstore).RegisterRoute(r.PathPrefix("/api/ext/docstore/v1").Subrouter())
-	lua.New(s.Log.New("ext", "lua")).RegisterRoute(r.PathPrefix("/api/ext/lua/v1").Subrouter())
+	lua.New(s.Log.New("ext", "lua"), eblobstore).RegisterRoute(r.PathPrefix("/api/ext/lua/v1").Subrouter())
 	api.New(r.PathPrefix("/api/v1").Subrouter(), s.wg, s.DB, s.KvUpdate, s.Router, s.blobs, s.watchHub)
 	// FIXME allowedorigins from config
 	c := cors.New(cors.Options{
