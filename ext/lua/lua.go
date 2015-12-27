@@ -2,7 +2,6 @@ package lua
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -14,12 +13,13 @@ import (
 	"github.com/gorilla/mux"
 	luajson "github.com/layeh/gopher-json"
 	"github.com/russross/blackfriday"
-	"github.com/tent/hawk-go"
+	"github.com/tsileo/blobstash/bewit"
 	"github.com/tsileo/blobstash/client/interface"
 	luamod "github.com/yuin/gopher-lua"
 	log "gopkg.in/inconshreveable/log15.v2"
 	logext "gopkg.in/inconshreveable/log15.v2/ext"
 
+	bewitModule "github.com/tsileo/blobstash/ext/lua/modules/bewit"
 	blobstoreModule "github.com/tsileo/blobstash/ext/lua/modules/blobstore"
 	loggerModule "github.com/tsileo/blobstash/ext/lua/modules/logger"
 	requestModule "github.com/tsileo/blobstash/ext/lua/modules/request"
@@ -31,8 +31,10 @@ local log = require('logger')
 local resp = require('response')
 local req = require('request')
 local json= require('json')
+local bewit = require('bewit')
 
-log.info(string.format("it works, bewit=%s", bewit("http://localhost:8040/api/ext/lua/v1/")))
+log.info(string.format("it works, bewit=%s", bewit.new("http://localhost:8050/api/ext/lua/v1/")))
+log.info(string.format("bewit check=%q", bewit.check()))
 log.info(string.format('ok=%s', req.queryarg('ok')))
 local tpl = [[<html>
 <head><title>BlobStash</title></head>
@@ -118,54 +120,29 @@ func setCustomGlobals(L *luamod.LState) {
 	}))
 
 	L.SetGlobal("bewit", L.NewFunction(func(L *luamod.LState) int {
-		auth, err := hawk.NewURLAuth(L.ToString(1), &hawk.Credentials{
-			ID:   "myid",
-			Key:  "ok",
-			Hash: sha256.New,
-		}, time.Duration(1*time.Hour))
+		token, err := bewit.New(L.ToString(2), time.Hour*1)
 		if err != nil {
-			fmt.Printf("BEWIT FAIL:%v")
 			L.Push(luamod.LString(""))
-
 			return 1
 		}
-		L.Push(luamod.LString(auth.Bewit()))
+		L.Push(luamod.LString(token))
 		return 1
 	}))
 }
 
-func nonceCheckFunc(nonce string, t time.Time, cred *hawk.Credentials) bool {
-	fmt.Printf("noncecheckfunc %v\n", nonce)
-	return true
-
-}
-
-func credentialsLookupFunc(cred *hawk.Credentials) error {
-	cred.Hash = sha256.New
-	cred.Key = "ok"
-	return nil
-}
-
 func (lua *LuaExt) ScriptHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		hawkAuth, err := hawk.NewAuthFromRequest(r, credentialsLookupFunc, nonceCheckFunc)
-		if err != nil {
-			fmt.Printf("hwawk err:%v", err)
-
-		} else {
-			fmt.Printf("HAWK: %+v | %v", hawkAuth, hawkAuth.Valid())
-		}
 		start := time.Now()
 		httpClient := &http.Client{}
 		reqId := logext.RandId(8)
 		reqLogger := lua.logger.New("id", reqId)
 		reqLogger.Debug("Starting script execution")
-
 		// Initialize internal Lua module written in Go
 		logger := loggerModule.New(reqLogger.New("ctx", "inside script"), start)
 		response := responseModule.New()
 		request := requestModule.New(r, reqId)
 		blobstore := blobstoreModule.New(lua.blobStore)
+		bewit := bewitModule.New(reqLogger.New("ctx", "bewit module"), r)
 
 		// Initialize Lua state
 		L := luamod.NewState()
@@ -175,6 +152,7 @@ func (lua *LuaExt) ScriptHandler() func(http.ResponseWriter, *http.Request) {
 		L.PreloadModule("response", response.Loader)
 		L.PreloadModule("logger", logger.Loader)
 		L.PreloadModule("blobstore", blobstore.Loader)
+		L.PreloadModule("bewit", bewit.Loader)
 
 		// 3rd party module
 		luajson.Preload(L)
