@@ -24,20 +24,17 @@ func (bs *BlobStoreModule) Loader(L *lua.LState) int {
 
 func (bs *BlobStoreModule) get(L *lua.LState) int {
 	blob, err := bs.blobStore.Get(L.ToString(1))
-	luaErr := lua.LString("")
 	if err != nil {
-		luaErr = lua.LString(err.Error())
+		panic(err)
 	}
+	// FIXME(tsileo) handle blob not found
 	L.Push(lua.LString(string(blob)))
-	L.Push(luaErr)
 	return 1
 }
 
 func (bs *BlobStoreModule) put(L *lua.LState) int {
 	if err := bs.blobStore.Put(L.ToString(1), []byte(L.ToString(2))); err != nil {
-		L.Push(lua.LString(err.Error()))
-	} else {
-		L.Push(lua.LString(""))
+		panic(err)
 	}
-	return 1
+	return 0
 }

@@ -2,6 +2,13 @@
 
 You can create **app**, custom API endpoint running [Lua](http://www.lua.org/) script.
 
+You can't access the document store within Lua app (from now at least), only the Blob store and the Key-Value Store.
+
+## External modules available
+
+- `json`: see https://github.com/layeh/gopher-json
+- `http`: see https://github.com/cjoudrey/gluahttp
+
 ## Examples
 
 ### Hello World
@@ -110,6 +117,27 @@ write(string)
 
 // Output JSON, the payload must already be JSON encoded
 writejson(string)
+```
+
+### BlobStore
+
+```lua
+local bs require('blobstore')
+
+local blob = "data"
+local hash = blake2b(blob)
+
+bs.put(hash, blob)
+
+local blob2 = bs.get(hash)
+```
+
+```c
+// Upload the blob data, first argument is the `blake2b` hash of the blob
+put(string, string)
+
+// Retrieve the blob for the given `blake2b` hash
+get(string) -> string
 ```
 
 ### Logger
