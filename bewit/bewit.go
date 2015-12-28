@@ -15,9 +15,16 @@ import (
 	"github.com/tent/hawk-go"
 )
 
-// FIXME(tsileo) generate/store a secure key
-var key = "mysuperkey"
+var key = ""
 var appID = "luascripts"
+
+func SetKey(bkey []byte) {
+	key = string(bkey)
+}
+
+func SetAppID(newAppID string) {
+	appID = newAppID
+}
 
 // Since we only use hawk bewit auth, there's no nonce handling for us
 func nonceCheckFunc(nonce string, t time.Time, cred *hawk.Credentials) bool {
@@ -27,6 +34,9 @@ func nonceCheckFunc(nonce string, t time.Time, cred *hawk.Credentials) bool {
 }
 
 func credentialsLookupFunc(cred *hawk.Credentials) error {
+	if key == "" {
+		panic("Hawk key not set")
+	}
 	cred.Hash = sha256.New
 	cred.Key = key
 	return nil
@@ -34,6 +44,9 @@ func credentialsLookupFunc(cred *hawk.Credentials) error {
 
 // New returns a `bewit` token valid for the given dealy
 func New(url string, delay time.Duration) (string, error) {
+	if key == "" {
+		panic("Hawk key not set")
+	}
 	auth, err := hawk.NewURLAuth(url, &hawk.Credentials{
 		ID:   appID,
 		Key:  key,

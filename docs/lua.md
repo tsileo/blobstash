@@ -2,6 +2,28 @@
 
 You can create custom API endpoint running [Lua](http://www.lua.org/) your script.
 
+## Examples
+
+### Require authentication
+
+You can still require authentication on a public app.
+
+```lua
+local resp = require('response')
+local req = require('request')
+local log = require('logger')
+
+local auth = req.authorized()
+log.info(string.format("authorized=%s", auth))
+
+if auth then
+  resp.write('ok')
+else
+  resp.authenticate('my app')
+  resp.error(401)
+end
+```
+
 ## API
 
 ### Globals

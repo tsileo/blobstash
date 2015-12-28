@@ -13,29 +13,37 @@ import (
 )
 
 type RequestModule struct {
-	request *http.Request
-	reqId   string
+	request  *http.Request
+	reqId    string
+	authFunc func(*http.Request) bool
 }
 
-func New(request *http.Request, reqId string) *RequestModule {
+func New(request *http.Request, reqId string, authFunc func(*http.Request) bool) *RequestModule {
 	return &RequestModule{
-		request: request,
-		reqId:   reqId,
+		request:  request,
+		reqId:    reqId,
+		authFunc: authFunc,
 	}
 }
 
 func (req *RequestModule) Loader(L *lua.LState) int {
 	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
-		"headers":   req.headers,
-		"header":    req.header,
-		"method":    req.method,
-		"body":      req.body,
-		"formdata":  req.formdata,
-		"queryarg":  req.queryarg,
-		"queryargs": req.queryargs,
-		"path":      req.path,
+		"headers":    req.headers,
+		"header":     req.header,
+		"method":     req.method,
+		"body":       req.body,
+		"formdata":   req.formdata,
+		"queryarg":   req.queryarg,
+		"queryargs":  req.queryargs,
+		"path":       req.path,
+		"authorized": req.authorized,
 	})
 	L.Push(mod)
+	return 1
+}
+
+func (req *RequestModule) authorized(L *lua.LState) int {
+	L.Push(lua.LBool(req.authFunc(req.request)))
 	return 1
 }
 

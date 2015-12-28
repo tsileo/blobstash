@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"net/http"
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/cjoudrey/gluahttp"
@@ -13,13 +16,16 @@ import (
 	"github.com/gorilla/mux"
 	luajson "github.com/layeh/gopher-json"
 	"github.com/russross/blackfriday"
+	"github.com/tsileo/blobstash/bewit"
 	"github.com/tsileo/blobstash/client/interface"
+	serverMiddleware "github.com/tsileo/blobstash/middleware"
 	luamod "github.com/yuin/gopher-lua"
 	log "gopkg.in/inconshreveable/log15.v2"
 	logext "gopkg.in/inconshreveable/log15.v2/ext"
 
 	bewitModule "github.com/tsileo/blobstash/ext/lua/modules/bewit"
 	blobstoreModule "github.com/tsileo/blobstash/ext/lua/modules/blobstore"
+	kvstoreModule "github.com/tsileo/blobstash/ext/lua/modules/kvstore"
 	loggerModule "github.com/tsileo/blobstash/ext/lua/modules/logger"
 	requestModule "github.com/tsileo/blobstash/ext/lua/modules/request"
 	responseModule "github.com/tsileo/blobstash/ext/lua/modules/response"
@@ -50,21 +56,80 @@ log.info(string.format("body=%s\nmethod=%s", json.decode(req.body()), req.method
 // TODO(tsileo) Load script from filesystem/laoded via HTTP POST
 // TODO(tsileo) Find a way to give unique url to script: UUID?
 
-type LuaExt struct {
-	logger log.Logger
-
-	blobStore client.BlobStorer
+type LuaApp struct {
+	AppID  string
+	Name   string
+	Script []byte
+	Hash   string
+	Stats  *LuaAppStats
 }
 
-func New(logger log.Logger, blobStore client.BlobStorer) *LuaExt {
-	return &LuaExt{
-		logger:    logger,
-		blobStore: blobStore,
+type LuaAppStats struct {
+	Requests  int
+	Statuses  map[string]int
+	StartedAt string
+	TotalTime time.Duration
+}
+
+type LuaAppResp struct {
+	AppID               string         `json:"app_id"`
+	Name                string         `json:"name"`
+	Requests            int            `json:"stats_requests"`
+	StartedAt           string         `json:"stats_started_at"`
+	AverageResponseTime string         `json:"stats_avg_response_time"`
+	Statuses            map[string]int `json:"stats_statuses"`
+}
+
+func NewAppStats() *LuaAppStats {
+	return &LuaAppStats{
+		Requests:  0,
+		Statuses:  map[string]int{},
+		StartedAt: time.Now().UTC().Format(time.RFC3339),
+		TotalTime: time.Duration(0),
 	}
 }
 
-func (lua *LuaExt) RegisterRoute(r *mux.Router) {
-	r.HandleFunc("/", lua.ScriptHandler())
+type LuaExt struct {
+	logger log.Logger
+
+	// Key for the Hawk bewit auth
+	hawkKey []byte
+
+	authFunc func(*http.Request) bool
+
+	kvStore   client.KvStorer
+	blobStore client.BlobStorer
+
+	appMutex       sync.Mutex
+	registeredApps map[string]*LuaApp
+}
+
+func New(logger log.Logger, key []byte, authFunc func(*http.Request) bool, kvStore client.KvStorer, blobStore client.BlobStorer) *LuaExt {
+	bewit.SetKey(key)
+	return &LuaExt{
+		hawkKey:        key,
+		logger:         logger,
+		kvStore:        kvStore,
+		blobStore:      blobStore,
+		registeredApps: map[string]*LuaApp{},
+		authFunc:       authFunc,
+	}
+}
+
+func (lua *LuaExt) RegisterRoute(r *mux.Router, middlewares *serverMiddleware.SharedMiddleware) {
+	r.Handle("/", middlewares.Auth(http.HandlerFunc(lua.AppsHandler())))
+	r.Handle("/stats", middlewares.Auth(http.HandlerFunc(lua.AppStatHandler())))
+	r.Handle("/register", middlewares.Auth(http.HandlerFunc(lua.RegisterHandler())))
+	// TODO(tsileo) "/remove" endpoint
+}
+
+func (lua *LuaExt) RegisterAppRoute(r *mux.Router, middlewares *serverMiddleware.SharedMiddleware) {
+	r.HandleFunc("/{appID}", lua.AppHandler())
+}
+
+func (lua *LuaExt) RegisterApp(app *LuaApp) error {
+	// lua.registeredApps[
+	return nil
 }
 
 func setCustomGlobals(L *luamod.LState) {
@@ -96,6 +161,7 @@ func setCustomGlobals(L *luamod.LState) {
 
 	// Render execute a Go template, data must be encoded as JSON
 	L.SetGlobal("render", L.NewFunction(func(L *luamod.LState) int {
+		// TODO(tsileo) turn this into a module with a data attribute that map to a map[string]interface{}
 		tplString := L.ToString(1)
 		data := map[string]interface{}{}
 		// XXX(tsileo) find a better way to handle the data than a JSON encoding/decoding
@@ -126,40 +192,182 @@ func setCustomGlobals(L *luamod.LState) {
 	}))
 }
 
+// FIXME(ts) move this in utils/http
+func WriteJSON(w http.ResponseWriter, data interface{}) {
+	js, err := json.Marshal(data)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(js)
+}
+
+func appToResp(app *LuaApp) *LuaAppResp {
+	return &LuaAppResp{
+		AppID:               app.AppID,
+		Name:                app.Name,
+		Requests:            app.Stats.Requests,
+		Statuses:            app.Stats.Statuses,
+		StartedAt:           app.Stats.StartedAt,
+		AverageResponseTime: time.Duration(float64(app.Stats.TotalTime) / float64(app.Stats.Requests)).String(),
+	}
+
+}
+
+func (lua *LuaExt) AppStatHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		lua.appMutex.Lock()
+		defer lua.appMutex.Unlock()
+		app, ok := lua.registeredApps[r.URL.Query().Get("appID")]
+		if !ok {
+			panic("no such app")
+		}
+		WriteJSON(w, appToResp(app))
+	}
+}
+
+func (lua *LuaExt) AppsHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		lua.appMutex.Lock()
+		defer lua.appMutex.Unlock()
+		apps := []*LuaAppResp{}
+		for _, app := range lua.registeredApps {
+			apps = append(apps, appToResp(app))
+		}
+		WriteJSON(w, map[string]interface{}{
+			"apps": apps,
+		})
+	}
+}
+
+func (lua *LuaExt) RegisterHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		//POST takes the uploaded file(s) and saves it to disk.
+		case "POST":
+			appID := r.URL.Query().Get("appID")
+			if appID == "" {
+				panic("Missing \"appID\"")
+			}
+			//parse the multipart form in the request
+			mr, err := r.MultipartReader()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			for {
+				part, err := mr.NextPart()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				filename := part.FormName()
+				var buf bytes.Buffer
+				buf.ReadFrom(part)
+				blob := buf.Bytes()
+				chash := fmt.Sprintf("%x", blake2b.Sum256(blob))
+				app := &LuaApp{
+					Name:   filename,
+					AppID:  appID,
+					Script: blob,
+					Hash:   chash,
+					Stats:  NewAppStats(),
+				}
+				lua.appMutex.Lock()
+				lua.registeredApps[appID] = app
+				lua.appMutex.Unlock()
+			}
+
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}
+}
+
+func (lua *LuaExt) AppHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+
+		// Try to fetch the app
+		appID := vars["appID"]
+		lua.appMutex.Lock()
+		app, ok := lua.registeredApps[appID]
+		if !ok {
+			lua.appMutex.Unlock()
+			panic("no such app")
+		}
+		script := make([]byte, len(app.Script))
+		copy(script[:], app.Script[:])
+		lua.appMutex.Unlock()
+
+		// Execute the script
+		lua.logger.Info("Starting", "appID", appID)
+		start := time.Now()
+		status := strconv.Itoa(lua.exec(string(script), w, r))
+
+		// Increment the internal stats
+		lua.appMutex.Lock()
+		app, ok = lua.registeredApps[appID]
+		defer lua.appMutex.Unlock()
+		if !ok {
+			panic("App seems to have been deleted")
+		}
+		app.Stats.Requests++
+		if _, ok := app.Stats.Statuses[status]; !ok {
+			app.Stats.Statuses[status] = 1
+		} else {
+			app.Stats.Statuses[status]++
+		}
+		app.Stats.TotalTime += time.Since(start)
+	}
+}
+
 func (lua *LuaExt) ScriptHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		httpClient := &http.Client{}
-		reqId := logext.RandId(8)
-		reqLogger := lua.logger.New("id", reqId)
-		reqLogger.Debug("Starting script execution")
-		// Initialize internal Lua module written in Go
-		logger := loggerModule.New(reqLogger.New("ctx", "inside script"), start)
-		response := responseModule.New()
-		request := requestModule.New(r, reqId)
-		blobstore := blobstoreModule.New(lua.blobStore)
-		bewit := bewitModule.New(reqLogger.New("ctx", "bewit module"), r)
-
-		// Initialize Lua state
-		L := luamod.NewState()
-		defer L.Close()
-		setCustomGlobals(L)
-		L.PreloadModule("request", request.Loader)
-		L.PreloadModule("response", response.Loader)
-		L.PreloadModule("logger", logger.Loader)
-		L.PreloadModule("blobstore", blobstore.Loader)
-		L.PreloadModule("bewit", bewit.Loader)
-
-		// 3rd party module
-		luajson.Preload(L)
-		L.PreloadModule("http", gluahttp.NewHttpModule(httpClient).Loader)
-
-		// Execute the code
-		if err := L.DoString(test); err != nil {
-			// FIXME better error, with debug mode?
-			panic(err)
-		}
-		response.WriteTo(w)
-		reqLogger.Info("Script executed", "response", response, "duration", time.Since(start))
+		lua.exec(test, w, r)
 	}
+}
+
+func (lua *LuaExt) exec(script string, w http.ResponseWriter, r *http.Request) int {
+	start := time.Now()
+	httpClient := &http.Client{}
+	reqId := logext.RandId(8)
+	reqLogger := lua.logger.New("id", reqId)
+	reqLogger.Debug("Starting script execution")
+	// Initialize internal Lua module written in Go
+	logger := loggerModule.New(reqLogger.New("ctx", "inside script"), start)
+	response := responseModule.New()
+	request := requestModule.New(r, reqId, lua.authFunc)
+	blobstore := blobstoreModule.New(lua.blobStore)
+	kvstore := kvstoreModule.New(lua.kvStore)
+	bewit := bewitModule.New(reqLogger.New("ctx", "bewit module"), r)
+
+	// Initialize Lua state
+	L := luamod.NewState()
+	defer L.Close()
+	setCustomGlobals(L)
+	L.PreloadModule("request", request.Loader)
+	L.PreloadModule("response", response.Loader)
+	L.PreloadModule("logger", logger.Loader)
+	L.PreloadModule("blobstore", blobstore.Loader)
+	L.PreloadModule("kvstore", kvstore.Loader)
+	L.PreloadModule("bewit", bewit.Loader)
+
+	// 3rd party module
+	luajson.Preload(L)
+	L.PreloadModule("http", gluahttp.NewHttpModule(httpClient).Loader)
+
+	// Execute the code
+	if err := L.DoString(script); err != nil {
+		// FIXME better error, with debug mode?
+		panic(err)
+	}
+	response.WriteTo(w)
+	reqLogger.Info("Script executed", "response", response, "duration", time.Since(start))
+	return response.Status()
 }

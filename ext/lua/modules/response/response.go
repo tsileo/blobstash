@@ -37,11 +37,12 @@ func (resp *ResponseModule) WriteTo(w http.ResponseWriter) error {
 
 func (resp *ResponseModule) Loader(L *lua.LState) int {
 	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
-		"status":    resp.status,
-		"write":     resp.write,
-		"writejson": resp.writejson,
-		"header":    resp.header,
-		"error":     resp.error,
+		"status":       resp.status,
+		"write":        resp.write,
+		"writejson":    resp.writejson,
+		"header":       resp.header,
+		"error":        resp.error,
+		"authenticate": resp.authenticate,
 	})
 	L.Push(mod)
 	return 1
@@ -60,6 +61,10 @@ func (resp *ResponseModule) status(L *lua.LState) int {
 func (resp *ResponseModule) write(L *lua.LState) int {
 	resp.body.WriteString(L.ToString(1))
 	return 0
+}
+
+func (resp *ResponseModule) Status() int {
+	return resp.statusCode
 }
 
 // Output JSON, the payload must already be JSON encoded
@@ -82,5 +87,11 @@ func (resp *ResponseModule) error(L *lua.LState) int {
 	}
 	resp.body.Reset()
 	resp.body.WriteString(message)
+	return 0
+}
+
+// Set the header for asking Basic Auth credentials (with the given realm)
+func (resp *ResponseModule) authenticate(L *lua.LState) int {
+	resp.headers["WWW-Authenticate"] = "Basic realm=\"" + L.ToString(1) + "\""
 	return 0
 }

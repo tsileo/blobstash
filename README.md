@@ -161,6 +161,7 @@ Make a pull request if your project uses BlobStash as data store.
 
 ## Roadmap / Ideas
 
+- [ ] Integrate with Let's Encrypt (via lego) and enable HTTP2 support
 - A better documentation
 - A web interface
 - An S3-like HTTP API to store archive
