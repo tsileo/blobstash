@@ -52,15 +52,15 @@ resp.status(404)
 log.info(string.format("body=%s\nmethod=%s", json.decode(req.body()), req.method()))
 `
 
-// log.info(string.format('body=%s', body))
-// TODO(tsileo) Load script from filesystem/laoded via HTTP POST
-// TODO(tsileo) Find a way to give unique url to script: UUID?
+// TODO App ACL (public/private)?
+// Store recent log entries
 
 type LuaApp struct {
 	AppID  string
 	Name   string
 	Script []byte
 	Hash   string
+	Public bool
 	Stats  *LuaAppStats
 }
 
@@ -74,6 +74,8 @@ type LuaAppStats struct {
 type LuaAppResp struct {
 	AppID               string         `json:"app_id"`
 	Name                string         `json:"name"`
+	Public              bool           `json:"is_public"`
+	Hash                string         `json:"script_hash"`
 	Requests            int            `json:"stats_requests"`
 	StartedAt           string         `json:"stats_started_at"`
 	AverageResponseTime string         `json:"stats_avg_response_time"`
@@ -207,6 +209,8 @@ func appToResp(app *LuaApp) *LuaAppResp {
 	return &LuaAppResp{
 		AppID:               app.AppID,
 		Name:                app.Name,
+		Hash:                app.Hash,
+		Public:              app.Public,
 		Requests:            app.Stats.Requests,
 		Statuses:            app.Stats.Statuses,
 		StartedAt:           app.Stats.StartedAt,
@@ -250,6 +254,7 @@ func (lua *LuaExt) RegisterHandler() func(http.ResponseWriter, *http.Request) {
 			if appID == "" {
 				panic("Missing \"appID\"")
 			}
+			public, _ := strconv.ParseBool(r.URL.Query().Get("public"))
 			//parse the multipart form in the request
 			mr, err := r.MultipartReader()
 			if err != nil {
@@ -273,6 +278,7 @@ func (lua *LuaExt) RegisterHandler() func(http.ResponseWriter, *http.Request) {
 				chash := fmt.Sprintf("%x", blake2b.Sum256(blob))
 				app := &LuaApp{
 					Name:   filename,
+					Public: public,
 					AppID:  appID,
 					Script: blob,
 					Hash:   chash,
@@ -281,6 +287,7 @@ func (lua *LuaExt) RegisterHandler() func(http.ResponseWriter, *http.Request) {
 				lua.appMutex.Lock()
 				lua.registeredApps[appID] = app
 				lua.appMutex.Unlock()
+				lua.logger.Info("Registered new app", "appID", appID, "app", app)
 			}
 
 		default:
@@ -300,6 +307,17 @@ func (lua *LuaExt) AppHandler() func(http.ResponseWriter, *http.Request) {
 		if !ok {
 			lua.appMutex.Unlock()
 			panic("no such app")
+		}
+		if r.Method == "HEAD" {
+			w.Header().Add("BlobStash-App-Script-Hash", app.Hash)
+			lua.appMutex.Unlock()
+			return
+		}
+		if !app.Public && !lua.authFunc(r) {
+			lua.appMutex.Unlock()
+			w.Header().Set("WWW-Authenticate", "Basic realm=\""+app.AppID+"\"")
+			http.Error(w, "Not Authorized", http.StatusUnauthorized)
+			return
 		}
 		script := make([]byte, len(app.Script))
 		copy(script[:], app.Script[:])
@@ -367,7 +385,10 @@ func (lua *LuaExt) exec(script string, w http.ResponseWriter, r *http.Request) i
 		// FIXME better error, with debug mode?
 		panic(err)
 	}
+
+	// Apply the Response object to the actual response
 	response.WriteTo(w)
+
 	reqLogger.Info("Script executed", "response", response, "duration", time.Since(start))
 	return response.Status()
 }
