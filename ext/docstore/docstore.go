@@ -44,6 +44,7 @@ import (
 	"github.com/tsileo/blobstash/client/interface"
 	"github.com/tsileo/blobstash/config/pathutil"
 	"github.com/tsileo/blobstash/ext/docstore/id"
+	serverMiddleware "github.com/tsileo/blobstash/middleware"
 	log "gopkg.in/inconshreveable/log15.v2"
 	logext "gopkg.in/inconshreveable/log15.v2/ext"
 )
@@ -116,11 +117,11 @@ func (docstore *DocStoreExt) Close() error {
 	return docstore.index.Close()
 }
 
-func (docstore *DocStoreExt) RegisterRoute(r *mux.Router) {
-	r.HandleFunc("/", docstore.CollectionsHandler())
-	r.HandleFunc("/{collection}", docstore.DocsHandler())
-	r.HandleFunc("/{collection}/search", docstore.SearchHandler())
-	r.HandleFunc("/{collection}/{_id}", docstore.DocHandler())
+func (docstore *DocStoreExt) RegisterRoute(r *mux.Router, middlewares *serverMiddleware.SharedMiddleware) {
+	r.Handle("/", middlewares.Auth(http.HandlerFunc(docstore.CollectionsHandler())))
+	r.Handle("/{collection}", middlewares.Auth(http.HandlerFunc(docstore.DocsHandler())))
+	r.Handle("/{collection}/search", middlewares.Auth(http.HandlerFunc(docstore.SearchHandler())))
+	r.Handle("/{collection}/{_id}", middlewares.Auth(http.HandlerFunc(docstore.DocHandler())))
 }
 
 func (docstore *DocStoreExt) SearchHandler() func(http.ResponseWriter, *http.Request) {

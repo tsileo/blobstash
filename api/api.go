@@ -19,6 +19,7 @@ import (
 	"github.com/dchest/blake2b"
 	"github.com/gorilla/mux"
 	"github.com/janberktold/sse"
+	serverMiddleware "github.com/tsileo/blobstash/middleware"
 	"github.com/tsileo/blobstash/router"
 	"github.com/tsileo/blobstash/vkv"
 	"github.com/tsileo/blobstash/vkv/hub"
@@ -312,12 +313,14 @@ func vkvWatchKeyHandler(vkvhub *hub.Hub) func(http.ResponseWriter, *http.Request
 		}
 	}
 }
-func New(r *mux.Router, wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blobrouter *router.Router, blobs chan<- *router.Blob, vkvHub *hub.Hub) {
-	r.HandleFunc("/blobstore/upload", blobUploadHandler(blobs))
-	r.HandleFunc("/blobstore/blobs", blobsHandler(blobrouter))
-	r.HandleFunc("/blobstore/blob/{hash}", blobHandler(blobrouter))
-	r.HandleFunc("/vkv/keys", vkvKeysHandler(db))
-	r.HandleFunc("/vkv/key/{key}", vkvHandler(wg, db, kvUpdate, blobrouter))
-	r.HandleFunc("/vkv/key/{key}/versions", vkvVersionsHandler(db))
-	r.HandleFunc("/vkv/key/{key}/watch", vkvWatchKeyHandler(vkvHub))
+func New(r *mux.Router, middlewares *serverMiddleware.SharedMiddleware, wg sync.WaitGroup, db *vkv.DB,
+	kvUpdate chan *vkv.KeyValue, blobrouter *router.Router, blobs chan<- *router.Blob, vkvHub *hub.Hub) {
+
+	r.Handle("/blobstore/upload", middlewares.Auth(http.HandlerFunc(blobUploadHandler(blobs))))
+	r.Handle("/blobstore/blobs", middlewares.Auth(http.HandlerFunc(blobsHandler(blobrouter))))
+	r.Handle("/blobstore/blob/{hash}", middlewares.Auth(http.HandlerFunc(blobHandler(blobrouter))))
+	r.Handle("/vkv/keys", middlewares.Auth(http.HandlerFunc(vkvKeysHandler(db))))
+	r.Handle("/vkv/key/{key}", middlewares.Auth(http.HandlerFunc(vkvHandler(wg, db, kvUpdate, blobrouter))))
+	r.Handle("/vkv/key/{key}/versions", middlewares.Auth(http.HandlerFunc(vkvVersionsHandler(db))))
+	r.Handle("/vkv/key/{key}/watch", middlewares.Auth(http.HandlerFunc(vkvWatchKeyHandler(vkvHub))))
 }

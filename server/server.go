@@ -1,6 +1,7 @@
 package server
 
 import (
+	"crypto/rand"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,9 +11,11 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/carbocation/interpose/middleware"
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
 	"github.com/tsileo/blobstash/api"
+	"github.com/tsileo/blobstash/auth"
 	"github.com/tsileo/blobstash/backend"
 	"github.com/tsileo/blobstash/config"
 	"github.com/tsileo/blobstash/config/pathutil"
@@ -21,6 +24,7 @@ import (
 	"github.com/tsileo/blobstash/ext/lua"
 	"github.com/tsileo/blobstash/logger"
 	"github.com/tsileo/blobstash/meta"
+	serverMiddleware "github.com/tsileo/blobstash/middleware"
 	"github.com/tsileo/blobstash/router"
 	"github.com/tsileo/blobstash/vkv"
 	"github.com/tsileo/blobstash/vkv/hub"
@@ -160,14 +164,31 @@ func (s *Server) BlobStore() *embed.BlobStore {
 
 // Run runs the server and block until the server is shutdown
 func (s *Server) Run() {
+	// XXX(tsileo) make the key persisiting between restart?
+	hawkKey := make([]byte, 64)
+	if _, err := rand.Read(hawkKey); err != nil {
+		panic(err)
+	}
+	// Set up auth
+	authMiddleware := middleware.BasicAuth("", "token")
+	middlewares := &serverMiddleware.SharedMiddleware{
+		Auth: authMiddleware,
+	}
+	// FIXME token as parameter
+	authFunc := auth.BasicAuthFunc("", "token")
 	// Start the HTTP API
 	s.SetUp()
 	r := mux.NewRouter()
+	// publicRoute := r.PathPrefix("/public").Subrouter()
+	appRoute := r.PathPrefix("/app").Subrouter()
 	ekvstore := s.KvStore()
 	eblobstore := s.BlobStore()
-	docstore.New(s.Log.New("ext", "docstore"), ekvstore, eblobstore).RegisterRoute(r.PathPrefix("/api/ext/docstore/v1").Subrouter())
-	lua.New(s.Log.New("ext", "lua"), eblobstore).RegisterRoute(r.PathPrefix("/api/ext/lua/v1").Subrouter())
-	api.New(r.PathPrefix("/api/v1").Subrouter(), s.wg, s.DB, s.KvUpdate, s.Router, s.blobs, s.watchHub)
+	docstore.New(s.Log.New("ext", "docstore"), ekvstore, eblobstore).RegisterRoute(r.PathPrefix("/api/ext/docstore/v1").Subrouter(), middlewares)
+	luaExt := lua.New(s.Log.New("ext", "lua"), hawkKey, authFunc, ekvstore, eblobstore)
+	luaExt.RegisterRoute(r.PathPrefix("/api/ext/lua/v1").Subrouter(), middlewares)
+	luaExt.RegisterAppRoute(appRoute, middlewares)
+	api.New(r.PathPrefix("/api/v1").Subrouter(), middlewares, s.wg, s.DB, s.KvUpdate, s.Router, s.blobs, s.watchHub)
+
 	// FIXME allowedorigins from config
 	c := cors.New(cors.Options{
 		AllowedOrigins: []string{"*"},
