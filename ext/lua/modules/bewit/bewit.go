@@ -50,6 +50,7 @@ func (bw *BewitModule) check(L *lua.LState) int {
 
 // Return a new bewit token for the given URL valid for the given delay
 func (bw *BewitModule) new(L *lua.LState) int {
+	// FIXME(tsileo) configurable delay for the bewit
 	token, err := bewitAuth.New(L.ToString(1), time.Hour*1)
 	if err != nil {
 		L.Push(lua.LString(""))

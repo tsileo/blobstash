@@ -60,6 +60,9 @@ markdownify(string) -> string
 
 // Render execute a Go template, the data must be JSON encoded
 render(string, string) -> string
+
+// Build an URL using the server hostname
+url(string) -> string
 ```
 
 ### Request
@@ -76,6 +79,9 @@ log.info(string.format("method=%s", req.method()))
 ```c
 // Return the HTTP method (GET, POST...)
 method() -> string
+
+// Return the path component of the URL
+path() -> string
 
 // Return the HTTP header for the given key
 header(string) -> string
@@ -94,6 +100,9 @@ queryarg(string) -> string
 
 // Return the query arguments as a Lua table
 queryargs() -> table
+
+// Return a boolean indicating whether the request is authenticated using a valid API key
+authorized() -> bool
 ```
 
 ### Response
@@ -117,6 +126,12 @@ write(string)
 
 // Output JSON, the payload must already be JSON encoded
 writejson(string)
+
+// Return an error with the given status code and an optional error message
+error(int[, message])
+
+// Set the header for asking Basic Auth credentials (with the given realm)
+authenticate(string)
 ```
 
 ### BlobStore
