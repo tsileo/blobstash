@@ -15,6 +15,7 @@ Initially created to power [BlobSnap](https://github.com/tsileo/blobsnap) and [B
 - Possibility to incrementally archive blobs to AWS Glacier (with a recovery command-line tool)
 - A full featured Go [client](http://godoc.org/github.com/tsileo/blobstash/client) using the HTTP API
 - Can be embedded in your go app ([embedded client](http://godoc.org/github.com/tsileo/blobstash/embed))
+- Create app with a powerful Lua API (like OpenResty)
 
 ## Getting started
 
@@ -74,10 +75,13 @@ See [here for more details](docs/docstore.md).
 
 ### (WIP) Lua scripting
 
-You can create custom API endpoint running [Lua](http://www.lua.org/) script (with helper for accessing the blobstore/key-value store/document store).
+You can create **app**, custom API endpoint running [Lua](http://www.lua.org/) script (like OpenResty).
+
+#### Examples
 
  - [ ] Sharing script
  - [ ] Lua iCal feed script
+ - [ ] PasteBin like script with bewit
 
 See the [Lua API here](docs/lua.md).
 
@@ -161,6 +165,7 @@ Make a pull request if your project uses BlobStash as data store.
 
 ## Roadmap / Ideas
 
+- [ ] A CLI tool to manage Lua app (upload script, show stats, display app)
 - [ ] Integrate with Let's Encrypt (via lego) and enable HTTP2 support
 - A better documentation
 - A web interface

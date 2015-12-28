@@ -1,10 +1,18 @@
 # Lua Extension
 
-You can create custom API endpoint running [Lua](http://www.lua.org/) your script.
+You can create **app**, custom API endpoint running [Lua](http://www.lua.org/) script.
 
 ## Examples
 
-### Require authentication
+### Hello World
+
+```lua
+local resp = require('response')
+
+resp.write('Hello World')
+```
+
+### Requiring authentication
 
 You can still require authentication on a public app.
 

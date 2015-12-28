@@ -165,11 +165,14 @@ func (s *Server) BlobStore() *embed.BlobStore {
 // Run runs the server and block until the server is shutdown
 func (s *Server) Run() {
 	// XXX(tsileo) make the key persisiting between restart?
+	// TODO retrive both key from the KvStore
 	hawkKey := make([]byte, 64)
 	if _, err := rand.Read(hawkKey); err != nil {
 		panic(err)
 	}
 	// Set up auth
+	// TODO Try to retrieve the API key from the KvStore or generate a new (UUID v4)
+	// Maybe handle a master key with multiple key? so key can be revoked?
 	authMiddleware := middleware.BasicAuth("", "token")
 	middlewares := &serverMiddleware.SharedMiddleware{
 		Auth: authMiddleware,
