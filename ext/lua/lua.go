@@ -333,7 +333,7 @@ func (lua *LuaExt) AppHandler() func(http.ResponseWriter, *http.Request) {
 		// Execute the script
 		lua.logger.Info("Starting", "appID", appID)
 		start := time.Now()
-		status := strconv.Itoa(lua.exec(string(script), w, r))
+		status := strconv.Itoa(lua.exec(appID, string(script), w, r))
 
 		// Increment the internal stats
 		lua.appMutex.Lock()
@@ -354,11 +354,11 @@ func (lua *LuaExt) AppHandler() func(http.ResponseWriter, *http.Request) {
 
 func (lua *LuaExt) ScriptHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		lua.exec(test, w, r)
+		lua.exec("test", test, w, r)
 	}
 }
 
-func (lua *LuaExt) exec(script string, w http.ResponseWriter, r *http.Request) int {
+func (lua *LuaExt) exec(appID, script string, w http.ResponseWriter, r *http.Request) int {
 	// FIXME(tsileo) a debug mode, with a defer/recover
 	// also parse the Lu error and show the bugging line!
 	start := time.Now()
@@ -384,7 +384,6 @@ func (lua *LuaExt) exec(script string, w http.ResponseWriter, r *http.Request) i
 	L.PreloadModule("blobstore", blobstore.Loader)
 	L.PreloadModule("kvstore", kvstore.Loader)
 	L.PreloadModule("bewit", bewit.Loader)
-	// TODO(tsileo) a "upload" module
 
 	// 3rd party module
 	luajson.Preload(L)
@@ -392,6 +391,7 @@ func (lua *LuaExt) exec(script string, w http.ResponseWriter, r *http.Request) i
 
 	// Set some global variables
 	L.SetGlobal("reqID", luamod.LString(reqId))
+	L.SetGlobal("appID", luamod.LString(appID))
 
 	// Execute the code
 	if err := L.DoString(script); err != nil {

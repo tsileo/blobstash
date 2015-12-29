@@ -11,6 +11,17 @@ You can access some built-in Lua modules/functions like `string` or `pcall`.
 - `json`: see https://github.com/layeh/gopher-json
 - `http`: see https://github.com/cjoudrey/gluahttp
 
+## Constant available
+
+- `reqID`: the unique request ID
+- `appID`: the current script appID
+
+```lua
+local resp = require('response')
+
+resp.write(string.format("Hello from %s", appID))
+```
+
 ## Examples
 
 ### Hello World
