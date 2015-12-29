@@ -61,6 +61,7 @@ type LuaApp struct {
 	Script []byte
 	Hash   string
 	Public bool
+	InMem  bool // Don't store the script if true
 	Stats  *LuaAppStats
 }
 
@@ -75,6 +76,7 @@ type LuaAppResp struct {
 	AppID               string         `json:"app_id"`
 	Name                string         `json:"name"`
 	Public              bool           `json:"is_public"`
+	InMem               bool           `json:"is_script_in_memory"`
 	Hash                string         `json:"script_hash"`
 	Requests            int            `json:"stats_requests"`
 	StartedAt           string         `json:"stats_started_at"`
@@ -211,6 +213,7 @@ func appToResp(app *LuaApp) *LuaAppResp {
 		Name:                app.Name,
 		Hash:                app.Hash,
 		Public:              app.Public,
+		InMem:               app.InMem,
 		Requests:            app.Stats.Requests,
 		Statuses:            app.Stats.Statuses,
 		StartedAt:           app.Stats.StartedAt,
@@ -255,6 +258,9 @@ func (lua *LuaExt) RegisterHandler() func(http.ResponseWriter, *http.Request) {
 				panic("Missing \"appID\"")
 			}
 			public, _ := strconv.ParseBool(r.URL.Query().Get("public"))
+			inMem, _ := strconv.ParseBool(r.URL.Query().Get("in_memory"))
+			// TODO(tsileo) Handle ACL like "authorized_methods" GET,POST...
+			// FIXME Find a better way to setup the environment
 			//parse the multipart form in the request
 			mr, err := r.MultipartReader()
 			if err != nil {
@@ -282,6 +288,7 @@ func (lua *LuaExt) RegisterHandler() func(http.ResponseWriter, *http.Request) {
 					AppID:  appID,
 					Script: blob,
 					Hash:   chash,
+					InMem:  inMem,
 					Stats:  NewAppStats(),
 				}
 				lua.appMutex.Lock()
@@ -352,6 +359,8 @@ func (lua *LuaExt) ScriptHandler() func(http.ResponseWriter, *http.Request) {
 }
 
 func (lua *LuaExt) exec(script string, w http.ResponseWriter, r *http.Request) int {
+	// FIXME(tsileo) a debug mode, with a defer/recover
+	// also parse the Lu error and show the bugging line!
 	start := time.Now()
 	httpClient := &http.Client{}
 	reqId := logext.RandId(8)
@@ -375,10 +384,14 @@ func (lua *LuaExt) exec(script string, w http.ResponseWriter, r *http.Request) i
 	L.PreloadModule("blobstore", blobstore.Loader)
 	L.PreloadModule("kvstore", kvstore.Loader)
 	L.PreloadModule("bewit", bewit.Loader)
+	// TODO(tsileo) a "upload" module
 
 	// 3rd party module
 	luajson.Preload(L)
 	L.PreloadModule("http", gluahttp.NewHttpModule(httpClient).Loader)
+
+	// Set some global variables
+	L.SetGlobal("reqID", luamod.LString(reqId))
 
 	// Execute the code
 	if err := L.DoString(script); err != nil {

@@ -13,16 +13,18 @@ import (
 )
 
 type RequestModule struct {
-	request  *http.Request
-	reqId    string
-	authFunc func(*http.Request) bool
+	uploadMaxMemory int64
+	request         *http.Request
+	reqId           string
+	authFunc        func(*http.Request) bool
 }
 
 func New(request *http.Request, reqId string, authFunc func(*http.Request) bool) *RequestModule {
 	return &RequestModule{
-		request:  request,
-		reqId:    reqId,
-		authFunc: authFunc,
+		request:         request,
+		reqId:           reqId,
+		authFunc:        authFunc,
+		uploadMaxMemory: 32 * 1024 * 1024, // 32MB max file uplaod FIXME(tsileo) make this configurable
 	}
 }
 
@@ -37,11 +39,14 @@ func (req *RequestModule) Loader(L *lua.LState) int {
 		"queryargs":  req.queryargs,
 		"path":       req.path,
 		"authorized": req.authorized,
+		"upload":     req.upload,
+		"hasupload":  req.hasupload,
 	})
 	L.Push(mod)
 	return 1
 }
 
+// Return a boolean indicating whether the request is authenticated using a valid API key
 func (req *RequestModule) authorized(L *lua.LState) int {
 	L.Push(lua.LBool(req.authFunc(req.request)))
 	return 1
@@ -114,4 +119,46 @@ func (req *RequestModule) queryargs(L *lua.LState) int {
 	}
 	L.Push(luaTable)
 	return 1
+}
+
+// Return true if request contain uploaded files
+func (req *RequestModule) hasupload(L *lua.LState) int {
+	L.Push(lua.LBool(req.request.Header.Get("Content-Type") == "multipart/form-data"))
+	return 1
+}
+
+// Parse the request and extract a table containing form key-values,
+// and a table indexed by uploaded filename returning a table with: filename, size, content key.
+func (req *RequestModule) upload(L *lua.LState) int {
+	if err := req.request.ParseMultipartForm(req.uploadMaxMemory); err != nil {
+		// FIXME(tsileo) return a custom error so the recover can catch it
+		panic(err)
+	}
+
+	valuesTable := L.NewTable()
+	for key, value := range req.request.MultipartForm.Value {
+		L.RawSet(valuesTable, lua.LString(key), lua.LString(value[0]))
+	}
+
+	filesTable := L.NewTable()
+	for _, fileHeaders := range req.request.MultipartForm.File {
+		for _, fileHeader := range fileHeaders {
+			fileTable := L.NewTable()
+			file, err := fileHeader.Open()
+			if err != nil {
+				panic(err)
+			}
+			L.RawSet(fileTable, lua.LString("filename"), lua.LString(fileHeader.Filename))
+			buf, err := ioutil.ReadAll(file)
+			if err != nil {
+				panic(err)
+			}
+			L.RawSet(fileTable, lua.LString("size"), lua.LNumber(float64(len(buf))))
+			L.RawSet(fileTable, lua.LString("content"), lua.LString(string(buf)))
+			L.RawSet(filesTable, lua.LString(fileHeader.Filename), fileTable)
+		}
+	}
+	L.Push(valuesTable)
+	L.Push(filesTable)
+	return 2
 }

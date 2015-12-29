@@ -23,9 +23,15 @@ func (logger *LoggerModule) Loader(L *lua.LState) int {
 	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
 		"info":  logger.info,
 		"debug": logger.debug,
+		"error": logger.error,
 	})
 	L.Push(mod)
 	return 1
+}
+
+func (logger *LoggerModule) error(L *lua.LState) int {
+	logger.logger.Error(L.ToString(1), "t", time.Since(logger.start))
+	return 0
 }
 
 func (logger *LoggerModule) debug(L *lua.LState) int {

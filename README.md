@@ -12,7 +12,6 @@ Initially created to power [BlobSnap](https://github.com/tsileo/blobsnap) and [B
 - [BLAKE2b](https://blake2.net) as hashing algorithm for the content-addressed blob store
 - Backend routing, you can define rules to specify where blobs should be stored ("if-meta"...)
 - Optional encryption (using [go.crypto/nacl secretbox](http://godoc.org/code.google.com/p/go.crypto/nacl))
-- Possibility to incrementally archive blobs to AWS Glacier (with a recovery command-line tool)
 - A full featured Go [client](http://godoc.org/github.com/tsileo/blobstash/client) using the HTTP API
 - Can be embedded in your go app ([embedded client](http://godoc.org/github.com/tsileo/blobstash/embed))
 - Create app with a powerful Lua API (like OpenResty)
@@ -73,21 +72,17 @@ Perfect for building app designed to only store your own data.
 
 See [here for more details](docs/docstore.md).
 
-### (WIP) Lua scripting
+### Lua App/Scripting
 
 You can create **app**, custom API endpoint running [Lua](http://www.lua.org/) script (like OpenResty).
+
+See the [Lua API here](docs/lua.md).
 
 #### Examples
 
  - [ ] Sharing script
  - [ ] Lua iCal feed script
  - [ ] PasteBin like script with bewit
-
-See the [Lua API here](docs/lua.md).
-
-### (WIP) Files
-
-A multipart file upload handler and a download handler.
 
 ## Backend
 
@@ -106,7 +101,7 @@ The backend handle operations:
 - [BlobsFile](docs/blobsfile.md) (local disk)
 - AWS S3
 - Mirror
-- AWS Glacier (only as a backup)
+- AWS Glacier (only as a backup, **development paused**)
 - A remote BlobStash instance
 - Fallback backend (store failed upload locally and try to reupload them periodically)
 
@@ -161,15 +156,18 @@ func main() {
  - [BlobFS](https://github.com/tsileo/blobfs)
  - [BlobFS-web](https://github.com/tsileo/blobfs-web)
 
-Make a pull request if your project uses BlobStash as data store.
+Make a pull request if your project uses BlobStash as data store or if you built an open-source Lua app for BlobStash.
 
 ## Roadmap / Ideas
 
+- [ ] A lua module for nacl box?
+- [ ] A Lua module for the document store
+- [ ] A better template module for Lua app
 - [ ] A CLI tool to manage Lua app (upload script, show stats, display app)
 - [ ] Integrate with Let's Encrypt (via lego) and enable HTTP2 support
 - A better documentation
-- A web interface
-- An S3-like HTTP API to store archive
+- A web interface?
+- An S3-like HTTP API to store archive?
 - Fill an issue!
 
 ## Contribution

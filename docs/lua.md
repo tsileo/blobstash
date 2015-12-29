@@ -4,6 +4,8 @@ You can create **app**, custom API endpoint running [Lua](http://www.lua.org/) s
 
 You can't access the document store within Lua app (from now at least), only the Blob store and the Key-Value Store.
 
+You can access some built-in Lua modules/functions like `string` or `pcall`.
+
 ## External modules available
 
 - `json`: see https://github.com/layeh/gopher-json
@@ -134,10 +136,37 @@ error(int[, message])
 authenticate(string)
 ```
 
+### KvStore
+
+```lua
+local kvs = require('kvstore')
+local log = require('logger')
+
+kvs.put('key', 'value', -1) -- Set the version to the current timestamp
+
+local kv = kvs.get('key', -1) -- Fetch the latest version
+
+log.info(string.format('key=%q,value=%q,version=%d', kv.key, kv.value, kv.version))
+```
+
+```c
+// Get the key at the given version, -1 means latest version
+get(string, int) -> table
+
+// Set the key to value for the given version, -1 means the current timestamp (from server)
+put(string, string, int) -> table
+
+// List the keys between start and end (limit results to n)
+keys(string, string, int) -> table (list)
+
+// Retrieve all the version start < version < end for the given key (limit results to n)
+versions(string, int, int, int) -> table(list)
+```
+
 ### BlobStore
 
 ```lua
-local bs require('blobstore')
+local bs = require('blobstore')
 
 local blob = "data"
 local hash = blake2b(blob)
@@ -153,6 +182,12 @@ put(string, string)
 
 // Retrieve the blob for the given `blake2b` hash
 get(string) -> string
+
+// Check if the blob exist
+stat(string) -> bool
+
+// Return the list of key "start" < key < "end" (limit to n hashes)
+enumerate(string, string, int) -> table
 ```
 
 ### Logger
@@ -161,9 +196,13 @@ get(string) -> string
 local log = require('logger')
 
 log.info('script started')
+
+local res = "ok"
+log.debug(string.format("res=%q", res))
 ```
 
 ```c
 info(string)
 debug(string)
+error(string)
 ```
