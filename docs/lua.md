@@ -92,6 +92,9 @@ sleep(number)
 // Convert the given Markdown to HTML
 markdownify(string) -> string
 
+// Render execute a Go HTML template, data must be a table with string keys
+render(string, string) -> string
+
 // Build an URL using the server hostname
 url(string) -> string
 ```
@@ -182,9 +185,6 @@ write(string)
 
 // Output JSON (with the right Content-Type), the data must be a table (or use `json` module with write).
 jsonify(string)
-
-// Render execute a Go HTML template, data must be a table with string keys
-render(string, string) -> string
 
 // Return an error with the given status code and an optional error message
 error(int[, message])

@@ -10,6 +10,7 @@ import (
 	"html/template"
 	"net/http"
 
+	"github.com/russross/blackfriday"
 	"github.com/tsileo/blobstash/ext/lua/luautil"
 	"github.com/yuin/gopher-lua"
 )
@@ -42,6 +43,8 @@ func (resp *ResponseModule) Loader(L *lua.LState) int {
 		"status":       resp.status,
 		"write":        resp.write,
 		"jsonify":      resp.jsonify,
+		"render":       resp.render,
+		"markdownify":  resp.markdownify,
 		"header":       resp.header,
 		"error":        resp.error,
 		"authenticate": resp.authenticate,
@@ -97,23 +100,4 @@ func (resp *ResponseModule) error(L *lua.LState) int {
 func (resp *ResponseModule) authenticate(L *lua.LState) int {
 	resp.headers["WWW-Authenticate"] = "Basic realm=\"" + L.ToString(1) + "\""
 	return 0
-}
-
-// Render execute a Go HTML template, data must be a table with string keys
-func (resp *ResponseModule) render(L *lua.LState) int {
-	tplString := L.ToString(1)
-	data := luautil.TableToMap(L.ToTable(2))
-	tpl, err := template.New("tpl").Parse(tplString)
-	if err != nil {
-		L.Push(lua.LString(err.Error()))
-		return 1
-	}
-	// TODO(tsileo) add some templatFuncs/template filter
-	out := &bytes.Buffer{}
-	if err := tpl.Execute(out, data); err != nil {
-		L.Push(lua.LString(err.Error()))
-		return 1
-	}
-	L.Push(lua.LString(out.String()))
-	return 1
 }

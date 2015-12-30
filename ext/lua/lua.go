@@ -155,7 +155,7 @@ func setCustomGlobals(L *luamod.LState) {
 		return 1
 	}))
 
-	// Render execute a Go HTML template, data must be a table with string key
+	// Render execute a Go HTML template, data must be a table with string keys
 	L.SetGlobal("render", L.NewFunction(func(L *luamod.LState) int {
 		tplString := L.ToString(1)
 		data := luautil.TableToMap(L.ToTable(2))
