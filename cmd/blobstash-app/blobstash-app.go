@@ -15,6 +15,9 @@ import (
 	"gopkg.in/fsnotify.v1"
 )
 
+// FIXME(tsileo) watch seems to be broken
+// TODO(tsileo) better error handling
+
 var Usage = func() {
 	fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "SUBCOMMAND:\n\tapps stats register watch\n")

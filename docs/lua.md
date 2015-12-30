@@ -173,6 +173,16 @@ resp.stats(404)
 resp.write('Nothing to see here')
 ```
 
+```lua
+local resp = require('response')
+
+-- Set a custom header
+resp.header("My-Custom-Header", "Value")
+
+-- Output JSON with a 200 status code
+resp.jsonify{status = "It Works!"}
+```
+
 ```c
 // Set the HTTP status to the given int
 status(int)
