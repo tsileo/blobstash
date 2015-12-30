@@ -65,6 +65,11 @@ type LuaApp struct {
 	Stats  *LuaAppStats
 }
 
+func (app *LuaApp) String() string {
+	return fmt.Sprintf("[appID=%v, name=%v, hash=%v, public=%v, inMem=%v]",
+		app.AppID, app.Name, app.Hash[:10], app.Public, app.InMem)
+}
+
 type LuaAppStats struct {
 	Requests  int
 	Statuses  map[string]int
@@ -294,7 +299,7 @@ func (lua *LuaExt) RegisterHandler() func(http.ResponseWriter, *http.Request) {
 				lua.appMutex.Lock()
 				lua.registeredApps[appID] = app
 				lua.appMutex.Unlock()
-				lua.logger.Info("Registered new app", "appID", appID, "app", app)
+				lua.logger.Info("Registered new app", "appID", appID, "app", app.String())
 			}
 
 		default:
@@ -315,25 +320,39 @@ func (lua *LuaExt) AppHandler() func(http.ResponseWriter, *http.Request) {
 			lua.appMutex.Unlock()
 			panic("no such app")
 		}
+
+		reqID := logext.RandId(8)
+		reqLogger := lua.logger.New("reqID", reqID, "appID", appID)
+		reqLogger.Info("Starting", "app", app.String())
+
+		w.Header().Add("BlobStash-App-AppID", appID)
+		w.Header().Add("BlobStash-App-ReqID", reqID)
+
+		// Out the hash script on HEAD request to allow app manager/owner
+		// to verify if the script exists, and compare local version
 		if r.Method == "HEAD" {
+			reqLogger.Debug("HEAD request, returning script hash")
 			w.Header().Add("BlobStash-App-Script-Hash", app.Hash)
 			lua.appMutex.Unlock()
 			return
 		}
+
+		// Check the app ACL
 		if !app.Public && !lua.authFunc(r) {
 			lua.appMutex.Unlock()
 			w.Header().Set("WWW-Authenticate", "Basic realm=\""+app.AppID+"\"")
 			http.Error(w, "Not Authorized", http.StatusUnauthorized)
 			return
 		}
+
+		// Copy the script so we can release the mutex
 		script := make([]byte, len(app.Script))
 		copy(script[:], app.Script[:])
 		lua.appMutex.Unlock()
 
 		// Execute the script
-		lua.logger.Info("Starting", "appID", appID)
 		start := time.Now()
-		status := strconv.Itoa(lua.exec(appID, string(script), w, r))
+		status := strconv.Itoa(lua.exec(reqLogger, appID, reqID, string(script), w, r))
 
 		// Increment the internal stats
 		lua.appMutex.Lock()
@@ -352,27 +371,18 @@ func (lua *LuaExt) AppHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-func (lua *LuaExt) ScriptHandler() func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		lua.exec("test", test, w, r)
-	}
-}
-
-func (lua *LuaExt) exec(appID, script string, w http.ResponseWriter, r *http.Request) int {
+func (lua *LuaExt) exec(reqLogger log.Logger, appID, reqId, script string, w http.ResponseWriter, r *http.Request) int {
 	// FIXME(tsileo) a debug mode, with a defer/recover
 	// also parse the Lu error and show the bugging line!
 	start := time.Now()
 	httpClient := &http.Client{}
-	reqId := logext.RandId(8)
-	reqLogger := lua.logger.New("id", reqId)
-	reqLogger.Debug("Starting script execution")
 	// Initialize internal Lua module written in Go
-	logger := loggerModule.New(reqLogger.New("ctx", "inside script"), start)
+	logger := loggerModule.New(reqLogger.New("ctx", "Lua"), start)
 	response := responseModule.New()
 	request := requestModule.New(r, reqId, lua.authFunc)
 	blobstore := blobstoreModule.New(lua.blobStore)
 	kvstore := kvstoreModule.New(lua.kvStore)
-	bewit := bewitModule.New(reqLogger.New("ctx", "bewit module"), r)
+	bewit := bewitModule.New(reqLogger.New("ctx", "Lua bewit module"), r)
 
 	// Initialize Lua state
 	L := luamod.NewState()
