@@ -8,7 +8,9 @@ package request
 import (
 	"io/ioutil"
 	"net/http"
+	"strings"
 
+	"github.com/tsileo/blobstash/ext/lua/luautil"
 	"github.com/yuin/gopher-lua"
 )
 
@@ -17,6 +19,8 @@ type RequestModule struct {
 	request         *http.Request
 	reqId           string
 	authFunc        func(*http.Request) bool
+	cache           []byte // Cache the body, since it can only be streamed once
+	cached          bool
 }
 
 func New(request *http.Request, reqId string, authFunc func(*http.Request) bool) *RequestModule {
@@ -34,13 +38,17 @@ func (req *RequestModule) Loader(L *lua.LState) int {
 		"header":     req.header,
 		"method":     req.method,
 		"body":       req.body,
+		"json":       req.json,
 		"formdata":   req.formdata,
 		"queryarg":   req.queryarg,
 		"queryargs":  req.queryargs,
 		"path":       req.path,
+		"host":       req.host,
+		"url":        req.url,
 		"authorized": req.authorized,
 		"upload":     req.upload,
 		"hasupload":  req.hasupload,
+		"remoteaddr": req.remoteaddr,
 	})
 	L.Push(mod)
 	return 1
@@ -74,16 +82,40 @@ func (req *RequestModule) headers(L *lua.LState) int {
 	return 1
 }
 
-// Return the HTTP request body as a string. Can only be called once.
+// Return the HTTP request body as a string
 func (req *RequestModule) body(L *lua.LState) int {
-	body, err := ioutil.ReadAll(req.request.Body)
-	if err != nil {
-		L.Push(lua.LString(""))
-		L.Push(lua.LString(err.Error()))
+	var body string
+	if req.cached {
+		body = string(req.cache)
+	} else {
+		resp, err := ioutil.ReadAll(req.request.Body)
+		if err != nil {
+			panic(err)
+		}
+		req.cache = resp
+		req.cached = true
+		body = string(resp)
 	}
 	L.Push(lua.LString(string(body)))
-	L.Push(lua.LString(""))
-	return 2
+	return 1
+}
+
+// Return the HTTP request body parsed as JSON
+func (req *RequestModule) json(L *lua.LState) int {
+	var body []byte
+	if req.cached {
+		body = req.cache
+	} else {
+		resp, err := ioutil.ReadAll(req.request.Body)
+		if err != nil {
+			panic(err)
+		}
+		body = resp
+		req.cache = resp
+		req.cached = true
+	}
+	L.Push(luautil.FromJSON(L, body))
+	return 1
 }
 
 // Return the form-encoded data as a Lua table
@@ -94,6 +126,34 @@ func (req *RequestModule) formdata(L *lua.LState) int {
 		L.RawSet(luaTable, lua.LString(key), lua.LString(values[0]))
 	}
 	L.Push(luaTable)
+	return 1
+}
+
+// Return the request referer
+func (req *RequestModule) referer(L *lua.LState) int {
+	res := req.request.Referer()
+	L.Push(lua.LString(res))
+	return 1
+}
+
+// Return the request URL user agent
+func (req *RequestModule) useragent(L *lua.LState) int {
+	res := req.request.UserAgent()
+	L.Push(lua.LString(res))
+	return 1
+}
+
+// Return the request URL
+func (req *RequestModule) url(L *lua.LState) int {
+	res := req.request.URL.String()
+	L.Push(lua.LString(res))
+	return 1
+}
+
+// Return the host component
+func (req *RequestModule) host(L *lua.LState) int {
+	res := req.request.URL.Host
+	L.Push(lua.LString(res))
 	return 1
 }
 
@@ -161,4 +221,39 @@ func (req *RequestModule) upload(L *lua.LState) int {
 	L.Push(valuesTable)
 	L.Push(filesTable)
 	return 2
+}
+
+// Return the client IP
+func (req *RequestModule) remoteaddr(L *lua.LState) int {
+	L.Push(lua.LString(getIpAddress(req.request)))
+	return 1
+}
+
+// Request.RemoteAddress contains port, which we want to remove i.e.:
+// "[::1]:58292" => "[::1]"
+func ipAddrFromRemoteAddr(s string) string {
+	idx := strings.LastIndex(s, ":")
+	if idx == -1 {
+		return s
+	}
+	return s[:idx]
+}
+
+func getIpAddress(r *http.Request) string {
+	hdr := r.Header
+	hdrRealIp := hdr.Get("X-Real-Ip")
+	hdrForwardedFor := hdr.Get("X-Forwarded-For")
+	if hdrRealIp == "" && hdrForwardedFor == "" {
+		return ipAddrFromRemoteAddr(r.RemoteAddr)
+	}
+	if hdrForwardedFor != "" {
+		// X-Forwarded-For is potentially a list of addresses separated with ","
+		parts := strings.Split(hdrForwardedFor, ",")
+		for i, p := range parts {
+			parts[i] = strings.TrimSpace(p)
+		}
+		// TODO: should return first non-local address
+		return parts[0]
+	}
+	return hdrRealIp
 }

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"io"
 	"net/http"
 	"strconv"
 	"sync"
@@ -18,6 +17,8 @@ import (
 	"github.com/russross/blackfriday"
 	"github.com/tsileo/blobstash/bewit"
 	"github.com/tsileo/blobstash/client/interface"
+	hexid "github.com/tsileo/blobstash/ext/docstore/id"
+	"github.com/tsileo/blobstash/ext/lua/luautil"
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
 	luamod "github.com/yuin/gopher-lua"
 	log "gopkg.in/inconshreveable/log15.v2"
@@ -31,29 +32,8 @@ import (
 	responseModule "github.com/tsileo/blobstash/ext/lua/modules/response"
 )
 
-// do return end
-const test = `
-local log = require('logger')
-local resp = require('response')
-local req = require('request')
-local json= require('json')
-local bewit = require('bewit')
-
-log.info(string.format("it works, bewit=%s", bewit.new("http://localhost:8050/api/ext/lua/v1/")))
-log.info(string.format("bewit check=%q", bewit.check()))
-log.info(string.format('ok=%s', req.queryarg('ok')))
-local tpl = [[<html>
-<head><title>BlobStash</title></head>
-<body><p>Nothing to see here Mr {{ .name }}</p></body>
-</html>]]
-resp.write(render(tpl, json.encode({name = 'Thomas'})))
-resp.header('My-Header', 'value')
-resp.status(404)
-log.info(string.format("body=%s\nmethod=%s", json.decode(req.body()), req.method()))
-`
-
-// TODO App ACL (public/private)?
-// Store recent log entries
+// TODO(tsileo) Store recent log entries
+// TODO(tsileo) Remove name from app?
 
 type LuaApp struct {
 	AppID  string
@@ -130,21 +110,28 @@ func (lua *LuaExt) RegisterRoute(r *mux.Router, middlewares *serverMiddleware.Sh
 	r.Handle("/stats", middlewares.Auth(http.HandlerFunc(lua.AppStatHandler())))
 	r.Handle("/register", middlewares.Auth(http.HandlerFunc(lua.RegisterHandler())))
 	// TODO(tsileo) "/remove" endpoint
+	// TODO(tsileo) "/logs" endpoint to stream logs
 }
 
 func (lua *LuaExt) RegisterAppRoute(r *mux.Router, middlewares *serverMiddleware.SharedMiddleware) {
 	r.HandleFunc("/{appID}", lua.AppHandler())
 }
 
-func (lua *LuaExt) RegisterApp(app *LuaApp) error {
-	// lua.registeredApps[
-	return nil
-}
-
 func setCustomGlobals(L *luamod.LState) {
 	// Return the server unix timestamp
 	L.SetGlobal("unix", L.NewFunction(func(L *luamod.LState) int {
 		L.Push(luamod.LNumber(time.Now().Unix()))
+		return 1
+	}))
+
+	// Generate a random hexadecimal ID with the current timestamp as first 4 bytes,
+	// this means keys will be sorted by creation date automatically if sorted lexicographically
+	L.SetGlobal("hexid", L.NewFunction(func(L *luamod.LState) int {
+		id, err := hexid.New(int(time.Now().UTC().Unix()))
+		if err != nil {
+			panic(err)
+		}
+		L.Push(luamod.LString(id.String()))
 		return 1
 	}))
 
@@ -168,22 +155,16 @@ func setCustomGlobals(L *luamod.LState) {
 		return 1
 	}))
 
-	// Render execute a Go template, data must be encoded as JSON
+	// Render execute a Go HTML template, data must be a table with string key
 	L.SetGlobal("render", L.NewFunction(func(L *luamod.LState) int {
-		// TODO(tsileo) turn this into a module with a data attribute that map to a map[string]interface{}
 		tplString := L.ToString(1)
-		data := map[string]interface{}{}
-		// XXX(tsileo) find a better way to handle the data than a JSON encoding/decoding
-		// to share data with Lua
-		if err := json.Unmarshal([]byte(L.ToString(2)), &data); err != nil {
-			L.Push(luamod.LString(err.Error()))
-			return 1
-		}
+		data := luautil.TableToMap(L.ToTable(2))
 		tpl, err := template.New("tpl").Parse(tplString)
 		if err != nil {
 			L.Push(luamod.LString(err.Error()))
 			return 1
 		}
+		// TODO(tsileo) add some templatFuncs/template filter
 		out := &bytes.Buffer{}
 		if err := tpl.Execute(out, data); err != nil {
 			L.Push(luamod.LString(err.Error()))
@@ -192,6 +173,8 @@ func setCustomGlobals(L *luamod.LState) {
 		L.Push(luamod.LString(out.String()))
 		return 1
 	}))
+
+	// TODO(tsileo) a urljoin?
 
 	// Return an absoulte URL for the given path
 	L.SetGlobal("url", L.NewFunction(func(L *luamod.LState) int {
@@ -272,35 +255,29 @@ func (lua *LuaExt) RegisterHandler() func(http.ResponseWriter, *http.Request) {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-
-			for {
-				part, err := mr.NextPart()
-				if err == io.EOF {
-					break
-				}
-				if err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-					return
-				}
-				filename := part.FormName()
-				var buf bytes.Buffer
-				buf.ReadFrom(part)
-				blob := buf.Bytes()
-				chash := fmt.Sprintf("%x", blake2b.Sum256(blob))
-				app := &LuaApp{
-					Name:   filename,
-					Public: public,
-					AppID:  appID,
-					Script: blob,
-					Hash:   chash,
-					InMem:  inMem,
-					Stats:  NewAppStats(),
-				}
-				lua.appMutex.Lock()
-				lua.registeredApps[appID] = app
-				lua.appMutex.Unlock()
-				lua.logger.Info("Registered new app", "appID", appID, "app", app.String())
+			part, err := mr.NextPart()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
 			}
+			filename := part.FormName()
+			var buf bytes.Buffer
+			buf.ReadFrom(part)
+			blob := buf.Bytes()
+			chash := fmt.Sprintf("%x", blake2b.Sum256(blob))
+			app := &LuaApp{
+				Name:   filename,
+				Public: public,
+				AppID:  appID,
+				Script: blob,
+				Hash:   chash,
+				InMem:  inMem,
+				Stats:  NewAppStats(),
+			}
+			lua.appMutex.Lock()
+			lua.registeredApps[appID] = app
+			lua.appMutex.Unlock()
+			lua.logger.Info("Registered new app", "appID", appID, "app", app.String())
 
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -327,12 +304,12 @@ func (lua *LuaExt) AppHandler() func(http.ResponseWriter, *http.Request) {
 
 		w.Header().Add("BlobStash-App-AppID", appID)
 		w.Header().Add("BlobStash-App-ReqID", reqID)
+		w.Header().Add("BlobStash-App-Script-Hash", app.Hash)
 
 		// Out the hash script on HEAD request to allow app manager/owner
 		// to verify if the script exists, and compare local version
 		if r.Method == "HEAD" {
-			reqLogger.Debug("HEAD request, returning script hash")
-			w.Header().Add("BlobStash-App-Script-Hash", app.Hash)
+			reqLogger.Debug("HEAD request, aborting...")
 			lua.appMutex.Unlock()
 			return
 		}
@@ -394,6 +371,7 @@ func (lua *LuaExt) exec(reqLogger log.Logger, appID, reqId, script string, w htt
 	L.PreloadModule("blobstore", blobstore.Loader)
 	L.PreloadModule("kvstore", kvstore.Loader)
 	L.PreloadModule("bewit", bewit.Loader)
+	// TODO(tsileo) cookies module
 
 	// 3rd party module
 	luajson.Preload(L)
@@ -411,6 +389,9 @@ func (lua *LuaExt) exec(reqLogger log.Logger, appID, reqId, script string, w htt
 
 	// Apply the Response object to the actual response
 	response.WriteTo(w)
+	// TODO save the logRecords in the AppStats and find a way to serve them over Server-Sent Events
+	// keep them in memory with the ability to dump them in bulk as blob for later query
+	// logRecords := logger.Records()
 
 	reqLogger.Info("Script executed", "response", response, "duration", time.Since(start))
 	return response.Status()

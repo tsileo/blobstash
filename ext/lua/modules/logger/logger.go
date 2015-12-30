@@ -7,17 +7,32 @@ import (
 	log "gopkg.in/inconshreveable/log15.v2"
 )
 
+type LogRecord struct {
+	Time  time.Time
+	Line  string
+	Level string
+	T     time.Duration
+}
+
 type LoggerModule struct {
-	logger log.Logger
-	start  time.Time
+	logger  log.Logger
+	start   time.Time
+	records []*LogRecord
 }
 
 func New(logger log.Logger, start time.Time) *LoggerModule {
 	return &LoggerModule{
-		start:  start,
-		logger: logger,
+		start:   start,
+		logger:  logger,
+		records: []*LogRecord{},
 	}
 }
+
+func (logger *LoggerModule) Records() []*LogRecord {
+	return logger.records
+}
+
+// TODO(tsileo) save log as `LogRecord`s
 
 func (logger *LoggerModule) Loader(L *lua.LState) int {
 	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{

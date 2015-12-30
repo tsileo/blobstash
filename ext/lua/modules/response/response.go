@@ -7,8 +7,10 @@ package response
 
 import (
 	"bytes"
+	"html/template"
 	"net/http"
 
+	"github.com/tsileo/blobstash/ext/lua/luautil"
 	"github.com/yuin/gopher-lua"
 )
 
@@ -39,7 +41,7 @@ func (resp *ResponseModule) Loader(L *lua.LState) int {
 	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
 		"status":       resp.status,
 		"write":        resp.write,
-		"writejson":    resp.writejson,
+		"jsonify":      resp.jsonify,
 		"header":       resp.header,
 		"error":        resp.error,
 		"authenticate": resp.authenticate,
@@ -67,9 +69,10 @@ func (resp *ResponseModule) Status() int {
 	return resp.statusCode
 }
 
-// Output JSON, the payload must already be JSON encoded
-func (resp *ResponseModule) writejson(L *lua.LState) int {
-	resp.body.WriteString(L.ToString(1))
+// Output JSON (with the right Content-Type), the data must be a table (or use `json` module with write).
+func (resp *ResponseModule) jsonify(L *lua.LState) int {
+	js := luautil.ToJSON(L.ToTable(1))
+	resp.body.Write(js)
 	resp.headers["Content-Type"] = "application/json"
 	return 0
 }
@@ -94,4 +97,23 @@ func (resp *ResponseModule) error(L *lua.LState) int {
 func (resp *ResponseModule) authenticate(L *lua.LState) int {
 	resp.headers["WWW-Authenticate"] = "Basic realm=\"" + L.ToString(1) + "\""
 	return 0
+}
+
+// Render execute a Go HTML template, data must be a table with string keys
+func (resp *ResponseModule) render(L *lua.LState) int {
+	tplString := L.ToString(1)
+	data := luautil.TableToMap(L.ToTable(2))
+	tpl, err := template.New("tpl").Parse(tplString)
+	if err != nil {
+		L.Push(lua.LString(err.Error()))
+		return 1
+	}
+	// TODO(tsileo) add some templatFuncs/template filter
+	out := &bytes.Buffer{}
+	if err := tpl.Execute(out, data); err != nil {
+		L.Push(lua.LString(err.Error()))
+		return 1
+	}
+	L.Push(lua.LString(out.String()))
+	return 1
 }

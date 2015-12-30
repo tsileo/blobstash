@@ -79,6 +79,10 @@ These functions are available globally.
 // Return the server unix timestamp
 unix() -> number
 
+// Generate a random hexadecimal ID with the current timestamp as first 4 bytes,
+// this means keys will be sorted by creation date automatically if sorted lexicographically
+hexid() -> string
+
 // Compute the Blake2B hash for the given string
 blake2b(string) -> string
 
@@ -87,9 +91,6 @@ sleep(number)
 
 // Convert the given Markdown to HTML
 markdownify(string) -> string
-
-// Render execute a Go template, the data must be JSON encoded
-render(string, string) -> string
 
 // Build an URL using the server hostname
 url(string) -> string
@@ -110,6 +111,12 @@ log.info(string.format("method=%s", req.method()))
 // Return the HTTP method (GET, POST...)
 method() -> string
 
+// Return the request URL
+url() -> string
+
+// Return the host component
+host() -> string
+
 // Return the path component of the URL
 path() -> string
 
@@ -119,8 +126,11 @@ header(string) -> string
 // Return all the HTTP headers as a table
 headers() -> table
 
-// Return the HTTP request body as a string (and an error if any). Can only be called once.
-body() -> string, string
+// Return the HTTP request body as a string
+body() -> string
+
+// Return the HTTP request body parsed as JSON
+json() -> table/string/number...
 
 // Return the form-encoded data as a Lua table
 formdata() -> table
@@ -140,6 +150,15 @@ hasupload() -> bool
 // Parse the request and extract a table containing form key-values,
 // and a table indexed by uploaded filename returning a table with: filename, size, content key.
 upload() -> table, table
+
+// Return the client IP
+remoteaddr() -> string
+
+// Return the request URL referer
+referer() -> string
+
+// Return the request URL user agent
+useragent() -> string
 ```
 
 ### Response
@@ -161,8 +180,11 @@ header(string, string)
 // Write to the output buffer
 write(string)
 
-// Output JSON, the payload must already be JSON encoded
-writejson(string)
+// Output JSON (with the right Content-Type), the data must be a table (or use `json` module with write).
+jsonify(string)
+
+// Render execute a Go HTML template, data must be a table with string keys
+render(string, string) -> string
 
 // Return an error with the given status code and an optional error message
 error(int[, message])
