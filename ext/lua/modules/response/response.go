@@ -7,10 +7,8 @@ package response
 
 import (
 	"bytes"
-	"html/template"
 	"net/http"
 
-	"github.com/russross/blackfriday"
 	"github.com/tsileo/blobstash/ext/lua/luautil"
 	"github.com/yuin/gopher-lua"
 )
@@ -43,8 +41,6 @@ func (resp *ResponseModule) Loader(L *lua.LState) int {
 		"status":       resp.status,
 		"write":        resp.write,
 		"jsonify":      resp.jsonify,
-		"render":       resp.render,
-		"markdownify":  resp.markdownify,
 		"header":       resp.header,
 		"error":        resp.error,
 		"authenticate": resp.authenticate,
