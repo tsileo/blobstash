@@ -7,6 +7,8 @@ Key value pairs are stored as "meta" blobs, this mean you can build application 
 
 Initially created to power [BlobSnap](https://github.com/tsileo/blobsnap) and [Blobs](http://blobs.co).
 
+**Still in early development.**
+
 ## Manifesto
 
 You can store all your life's data in BlobStash, from raw blobs to full file systems.
