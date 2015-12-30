@@ -32,6 +32,23 @@ local resp = require('response')
 resp.write('Hello World')
 ```
 
+### File upload
+
+```lua
+local req = require('request')
+local log = require('logger')
+values, files = req.upload()
+
+for key, val in pairs(values) do
+  log.info(string.format("key=%q,value=%q", key, val))
+end
+
+for key, val in pairs(files) do
+  log.info(string.format("key=%q,value=%q,mimetype=%q,size=%d", key, val.filename, val.mimeType, val.size))
+  -- you can access the file content with `val.content`
+end
+```
+
 ### Requiring authentication
 
 You can still require authentication on a public app.
@@ -116,6 +133,13 @@ queryargs() -> table
 
 // Return a boolean indicating whether the request is authenticated using a valid API key
 authorized() -> bool
+
+// Return true if request contain uploaded files
+hasupload() -> bool
+
+// Parse the request and extract a table containing form key-values,
+// and a table indexed by uploaded filename returning a table with: filename, size, content key.
+upload() -> table, table
 ```
 
 ### Response

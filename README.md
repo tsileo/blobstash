@@ -7,14 +7,33 @@ Key value pairs are stored as "meta" blobs, this mean you can build application 
 
 Initially created to power [BlobSnap](https://github.com/tsileo/blobsnap) and [Blobs](http://blobs.co).
 
+## Manifesto
+
+You can store all your life's data in BlobStash, from raw blobs to full file systems.
+
+To store your data and build app, you can use a combination of:
+
+- The Blob store
+- The Key-Value store
+- The JSON document store
+- Build Lua app that runs inside BlobStash, will be accessible over HTTP and can access all the previous APIs.
+
+Everything is private by default, but can support public and semi-private sharing (via Lua scripting and Hawk bewit).
+
+There is an ecosystem of tools build upon BlobStash to get you started:
+
+ - [BlobSnap](https://github.com/tsileo/blobsnap)
+ - [BlobFS](https://github.com/tsileo/blobfs)
+
 ## Features
 
+- All data you put in it is deduplicated (thanks to content-addressing).
+- Create app with a powerful Lua API (like OpenResty)
+- Optional encryption (using [go.crypto/nacl secretbox](http://godoc.org/code.google.com/p/go.crypto/nacl))
 - [BLAKE2b](https://blake2.net) as hashing algorithm for the content-addressed blob store
 - Backend routing, you can define rules to specify where blobs should be stored ("if-meta"...)
-- Optional encryption (using [go.crypto/nacl secretbox](http://godoc.org/code.google.com/p/go.crypto/nacl))
 - A full featured Go [client](http://godoc.org/github.com/tsileo/blobstash/client) using the HTTP API
-- Can be embedded in your go app ([embedded client](http://godoc.org/github.com/tsileo/blobstash/embed))
-- Create app with a powerful Lua API (like OpenResty)
+- Can be embedded in your Go program ([embedded client](http://godoc.org/github.com/tsileo/blobstash/embed))
 
 ## Getting started
 
@@ -165,6 +184,7 @@ Make a pull request if your project uses BlobStash as data store or if you built
 - [ ] A better template module for Lua app
 - [ ] A CLI tool to manage Lua app (upload script, show stats, display app)
 - [ ] Integrate with Let's Encrypt (via lego) and enable HTTP2 support
+- [ ] Snappy encoding support for the HTTP blobstore API
 - A better documentation
 - A web interface?
 - An S3-like HTTP API to store archive?
