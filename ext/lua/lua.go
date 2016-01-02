@@ -302,8 +302,8 @@ func (lua *LuaExt) AppHandler() func(http.ResponseWriter, *http.Request) {
 		reqLogger := lua.logger.New("reqID", reqID, "appID", appID)
 		reqLogger.Info("Starting", "app", app.String())
 
-		w.Header().Add("BlobStash-App-AppID", appID)
-		w.Header().Add("BlobStash-App-ReqID", reqID)
+		w.Header().Add("BlobStash-App-ID", appID)
+		w.Header().Add("BlobStash-App-Req-ID", reqID)
 		w.Header().Add("BlobStash-App-Script-Hash", app.Hash)
 
 		// Out the hash script on HEAD request to allow app manager/owner
@@ -345,6 +345,7 @@ func (lua *LuaExt) AppHandler() func(http.ResponseWriter, *http.Request) {
 			app.Stats.Statuses[status]++
 		}
 		app.Stats.TotalTime += time.Since(start)
+		w.Header().Add("BlobStash-App-Script-Execution-Time", time.Since(start).String())
 	}
 }
 

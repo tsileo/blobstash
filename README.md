@@ -104,6 +104,8 @@ See the [Lua API here](docs/lua.md).
  - [ ] Sharing script
  - [ ] Lua iCal feed script
  - [ ] PasteBin like script with bewit
+ - [ ] IoT data store (temp/humid with avg)
+ - [ ] Pebble app backend example
 
 ## Backend
 
@@ -114,17 +116,18 @@ The backend handle operations:
 - Put
 - Exists
 - Get
-- Delete
 - Enumerate
+
+Delete is not implemented for all backends.
 
 ### Available backends
 
-- [BlobsFile](docs/blobsfile.md) (local disk)
-- AWS S3
-- Mirror
+- [BlobsFile](docs/blobsfile.md) (local disk, the preferred backend)
+- AWS S3 (useful for secondary backups)
+- Mirror (mirror writes to multiple backend)
+- A remote BlobStash instance (working, bot full-featured)
+- Fallback backend (store failed upload locally and try to re-upload them periodically)
 - AWS Glacier (only as a backup, **development paused**)
-- A remote BlobStash instance
-- Fallback backend (store failed upload locally and try to reupload them periodically)
 
 - Submit a pull request!
 

@@ -17,6 +17,7 @@ import (
 
 // FIXME(tsileo) watch seems to be broken
 // TODO(tsileo) better error handling
+// TODO(tsileo) a "log" subcommand
 
 var Usage = func() {
 	fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])

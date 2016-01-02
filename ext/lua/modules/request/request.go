@@ -188,7 +188,7 @@ func (req *RequestModule) hasupload(L *lua.LState) int {
 }
 
 // Parse the request and extract a table containing form key-values,
-// and a table indexed by uploaded filename returning a table with: filename, size, content key.
+// and a table indexed by file name returning a table with: filename, size, content key.
 func (req *RequestModule) upload(L *lua.LState) int {
 	if err := req.request.ParseMultipartForm(req.uploadMaxMemory); err != nil {
 		// FIXME(tsileo) return a custom error so the recover can catch it
@@ -201,22 +201,21 @@ func (req *RequestModule) upload(L *lua.LState) int {
 	}
 
 	filesTable := L.NewTable()
-	for _, fileHeaders := range req.request.MultipartForm.File {
-		for _, fileHeader := range fileHeaders {
-			fileTable := L.NewTable()
-			file, err := fileHeader.Open()
-			if err != nil {
-				panic(err)
-			}
-			L.RawSet(fileTable, lua.LString("filename"), lua.LString(fileHeader.Filename))
-			buf, err := ioutil.ReadAll(file)
-			if err != nil {
-				panic(err)
-			}
-			L.RawSet(fileTable, lua.LString("size"), lua.LNumber(float64(len(buf))))
-			L.RawSet(fileTable, lua.LString("content"), lua.LString(string(buf)))
-			L.RawSet(filesTable, lua.LString(fileHeader.Filename), fileTable)
+	for formKey, fileHeaders := range req.request.MultipartForm.File {
+		fileHeader := fileHeaders[0]
+		fileTable := L.NewTable()
+		file, err := fileHeader.Open()
+		if err != nil {
+			panic(err)
 		}
+		L.RawSet(fileTable, lua.LString("filename"), lua.LString(fileHeader.Filename))
+		buf, err := ioutil.ReadAll(file)
+		if err != nil {
+			panic(err)
+		}
+		L.RawSet(fileTable, lua.LString("size"), lua.LNumber(float64(len(buf))))
+		L.RawSet(fileTable, lua.LString("content"), lua.LString(string(buf)))
+		L.RawSet(filesTable, lua.LString(formKey), fileTable)
 	}
 	L.Push(valuesTable)
 	L.Push(filesTable)
@@ -239,6 +238,7 @@ func ipAddrFromRemoteAddr(s string) string {
 	return s[:idx]
 }
 
+// TODO move this along with WriteJSON in a httputil mode (+bewit+basic auth)
 func getIpAddress(r *http.Request) string {
 	hdr := r.Header
 	hdrRealIp := hdr.Get("X-Real-Ip")

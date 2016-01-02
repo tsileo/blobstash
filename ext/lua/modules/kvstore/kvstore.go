@@ -74,7 +74,8 @@ func (kvs *KvStoreModule) get(L *lua.LState) int {
 	if err != nil {
 		panic(err)
 	}
-	L.Push(lua.LString(kv.Value))
-	L.Push(lua.LNumber(float64(kv.Version)))
-	return 2
+	L.Push(kvToTable(L, kv))
+	return 1
 }
+
+// TODO(tsileo) getjson/putjson helpers
