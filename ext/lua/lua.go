@@ -2,7 +2,6 @@ package lua
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -15,7 +14,6 @@ import (
 	"github.com/gorilla/mux"
 	luajson "github.com/layeh/gopher-json"
 	"github.com/russross/blackfriday"
-	"github.com/tsileo/blobstash/bewit"
 	"github.com/tsileo/blobstash/client/interface"
 	hexid "github.com/tsileo/blobstash/ext/docstore/id"
 	"github.com/tsileo/blobstash/ext/lua/luautil"
@@ -96,7 +94,7 @@ type LuaExt struct {
 }
 
 func New(logger log.Logger, key []byte, authFunc func(*http.Request) bool, kvStore client.KvStorer, blobStore client.BlobStorer) *LuaExt {
-	bewit.SetKey(key)
+	httputil.SetHawkKey(key)
 	return &LuaExt{
 		hawkKey:        key,
 		logger:         logger,

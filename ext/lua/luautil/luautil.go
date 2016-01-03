@@ -74,10 +74,10 @@ func tomap(table *lua.LTable, visited map[*lua.LTable]bool) map[string]interface
 
 // Convert a Lua table to JSON
 // Adapted from https://github.com/layeh/gopher-json/blob/master/util.go (Public domain)
-func ToJSON(value *lua.LValue) []byte {
+func ToJSON(value lua.LValue) []byte {
 	var data []byte
 	var err error
-	switch converted := (*value).(type) {
+	switch converted := value.(type) {
 	case lua.LBool:
 		data, err = json.Marshal(converted)
 	case lua.LChannel:

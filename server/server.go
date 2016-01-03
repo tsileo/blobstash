@@ -15,13 +15,13 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
 	"github.com/tsileo/blobstash/api"
-	"github.com/tsileo/blobstash/auth"
 	"github.com/tsileo/blobstash/backend"
 	"github.com/tsileo/blobstash/config"
 	"github.com/tsileo/blobstash/config/pathutil"
 	"github.com/tsileo/blobstash/embed"
 	"github.com/tsileo/blobstash/ext/docstore"
 	"github.com/tsileo/blobstash/ext/lua"
+	"github.com/tsileo/blobstash/httputil"
 	"github.com/tsileo/blobstash/logger"
 	"github.com/tsileo/blobstash/meta"
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
@@ -178,7 +178,7 @@ func (s *Server) Run() {
 		Auth: authMiddleware,
 	}
 	// FIXME token as parameter
-	authFunc := auth.BasicAuthFunc("", "token")
+	authFunc := httputil.BasicAuthFunc("", "token")
 	// Start the HTTP API
 	s.SetUp()
 	r := mux.NewRouter()

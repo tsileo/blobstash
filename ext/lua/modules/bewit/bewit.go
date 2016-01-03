@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"time"
 
-	bewitAuth "github.com/tsileo/blobstash/bewit"
+	"github.com/tsileo/blobstash/httputil"
 	"github.com/yuin/gopher-lua"
 	log "gopkg.in/inconshreveable/log15.v2"
 )
@@ -39,7 +39,7 @@ func (bw *BewitModule) Loader(L *lua.LState) int {
 
 // Try to authenticate the request
 func (bw *BewitModule) check(L *lua.LState) int {
-	err := bewitAuth.Check(bw.req)
+	err := httputil.CheckBewit(bw.req)
 	out := ""
 	if err != nil {
 		out = err.Error()
@@ -51,7 +51,7 @@ func (bw *BewitModule) check(L *lua.LState) int {
 // Return a new bewit token for the given URL valid for the given delay
 func (bw *BewitModule) new(L *lua.LState) int {
 	// FIXME(tsileo) configurable delay for the bewit
-	token, err := bewitAuth.New(L.ToString(1), time.Hour*1)
+	token, err := httputil.NewBewit(L.ToString(1), time.Hour*1)
 	if err != nil {
 		L.Push(lua.LString(""))
 		return 1

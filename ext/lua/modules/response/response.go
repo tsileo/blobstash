@@ -70,7 +70,7 @@ func (resp *ResponseModule) Status() int {
 
 // Output JSON (with the right Content-Type), the data must be a table (or use `json` module with write).
 func (resp *ResponseModule) jsonify(L *lua.LState) int {
-	js := luautil.ToJSON(L.ToTable(1))
+	js := luautil.ToJSON(L.CheckAny(1))
 	resp.body.Write(js)
 	resp.headers["Content-Type"] = "application/json"
 	return 0

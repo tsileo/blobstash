@@ -1,11 +1,4 @@
-/*
-
-Package bewit implement Hawk bewit authentication mechanism
-
-See https://github.com/hueniverse/hawk
-
-*/
-package bewit
+package httputil
 
 import (
 	"crypto/sha256"
@@ -15,14 +8,22 @@ import (
 	"github.com/tent/hawk-go"
 )
 
+/*
+
+Implement Hawk bewit authentication mechanism
+
+See https://github.com/hueniverse/hawk
+
+*/
+
 var key = ""
 var appID = "luascripts"
 
-func SetKey(bkey []byte) {
+func SetHawkKey(bkey []byte) {
 	key = string(bkey)
 }
 
-func SetAppID(newAppID string) {
+func SetHawkAppID(newAppID string) {
 	appID = newAppID
 }
 
@@ -43,7 +44,7 @@ func credentialsLookupFunc(cred *hawk.Credentials) error {
 }
 
 // New returns a `bewit` token valid for the given dealy
-func New(url string, delay time.Duration) (string, error) {
+func NewBewit(url string, delay time.Duration) (string, error) {
 	if key == "" {
 		panic("Hawk key not set")
 	}
@@ -59,7 +60,7 @@ func New(url string, delay time.Duration) (string, error) {
 }
 
 // Check will try to authenticate the `bewit` parameter for the given request
-func Check(r *http.Request) error {
+func CheckBewit(r *http.Request) error {
 	hawkAuth, err := hawk.NewAuthFromRequest(r, credentialsLookupFunc, nonceCheckFunc)
 	if err != nil {
 		return err
