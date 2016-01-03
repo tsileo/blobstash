@@ -196,7 +196,6 @@ func (s *Server) Run() {
 	// TODO(tsileo) add robots.txt handler, and a 204 favicon.ico handler
 	// FIXME(tsileo) a way to make an app hook the index
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-
 		index := `<!doctype html>
 <html lang="en">
 <head>

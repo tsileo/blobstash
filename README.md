@@ -102,6 +102,7 @@ See the [Lua API here](docs/lua.md).
 #### Examples
 
  - [BlobsBin](https://github.com/tsileo/blobsbin), a pastebin like service.
+ - [ ] A Markdown-powered blog app
  - [ ] Sharing script
  - [ ] Lua iCal feed script
  - [ ] IoT data store (temp/humid with avg)
@@ -186,9 +187,12 @@ Make a pull request if your project uses BlobStash as data store or if you built
 
 - [ ] A lua module for nacl box?
 - [ ] A Lua module for the document store
+- [ ] Find a way to handle/store? app logs
 - [ ] A better template module for Lua app -> load a full directory as an app
 - [ ] Integrate with Let's Encrypt (via lego) and enable HTTP2 support
 - [ ] Snappy encoding support for the HTTP blobstore API
+- [ ] A slave blobstash mode (e.g. for blog/remote apps)
+- [ ] A Lua LRU module
 - A better documentation
 - A web interface?
 - An S3-like HTTP API to store archive?

@@ -44,7 +44,10 @@ type LuaApp struct {
 	InMem  bool // Don't store the script if true
 	Stats  *LuaAppStats
 	logs   []*loggerModule.LogRecord
+	APIKey string
 }
+
+// FIXME(tsileo) generate an UUID v4 as API key and assign an API key for each app
 
 func (app *LuaApp) String() string {
 	return fmt.Sprintf("[appID=%v, name=%v, hash=%v, public=%v, inMem=%v]",
