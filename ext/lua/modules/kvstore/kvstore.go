@@ -3,6 +3,7 @@ package kvstore
 import (
 	"github.com/tsileo/blobstash/client/interface"
 	"github.com/tsileo/blobstash/client/response"
+	"github.com/tsileo/blobstash/ext/lua/luautil"
 	"github.com/yuin/gopher-lua"
 )
 
@@ -26,6 +27,8 @@ func (kvs *KvStoreModule) Loader(L *lua.LState) int {
 	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
 		"get":      kvs.get,
 		"put":      kvs.put,
+		"getjson":  kvs.getjson,
+		"putjson":  kvs.putjson,
 		"keys":     kvs.keys,
 		"versions": kvs.versions,
 	})
@@ -69,6 +72,15 @@ func (kvs *KvStoreModule) put(L *lua.LState) int {
 	return 1
 }
 
+func (kvs *KvStoreModule) putjson(L *lua.LState) int {
+	kv, err := kvs.kvStore.Put(L.ToString(1), string(luautil.ToJSON(L.CheckAny(2))), L.ToInt(3))
+	if err != nil {
+		panic(err)
+	}
+	L.Push(kvToTable(L, kv))
+	return 1
+}
+
 func (kvs *KvStoreModule) get(L *lua.LState) int {
 	kv, err := kvs.kvStore.Get(L.ToString(1), L.ToInt(2))
 	if err != nil {
@@ -78,4 +90,13 @@ func (kvs *KvStoreModule) get(L *lua.LState) int {
 	return 1
 }
 
-// TODO(tsileo) getjson/putjson helpers
+func (kvs *KvStoreModule) getjson(L *lua.LState) int {
+	kv, err := kvs.kvStore.Get(L.ToString(1), L.ToInt(2))
+	if err != nil {
+		panic(err)
+	}
+	table := kvToTable(L, kv)
+	L.RawSet(table, lua.LString("value"), luautil.FromJSON(L, []byte(kv.Value)))
+	L.Push(table)
+	return 1
+}

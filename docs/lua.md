@@ -133,7 +133,7 @@ headers() -> table
 body() -> string
 
 // Return the HTTP request body parsed as JSON
-json() -> table/string/number...
+json() -> any
 
 // Return the form-encoded data as a Lua table
 formdata() -> table
@@ -222,6 +222,12 @@ get(string, int) -> table
 
 // Set the key to value for the given version, -1 means the current timestamp (from server)
 put(string, string, int) -> table
+
+// Get the key at the given version and unmarshal the value as JSON, -1 means latest version
+getjson(string, int) -> any
+
+// Set the key to value (value will be marshalled with JSON) for the given version, -1 means the current timestamp (from server)
+putjson(string, any, int) -> table
 
 // List the keys between start and end (limit results to n)
 keys(string, string, int) -> table (list)
