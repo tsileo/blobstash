@@ -1,4 +1,4 @@
-package auth
+package httputil
 
 import (
 	"crypto/sha256"
@@ -14,15 +14,15 @@ func BasicAuthFunc(username string, password string) func(*http.Request) bool {
 	return func(req *http.Request) bool {
 		var siteAuth = base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
 		auth := req.Header.Get("Authorization")
-		if !SecureCompare(auth, "Basic "+siteAuth) {
+		if !secureCompare(auth, "Basic "+siteAuth) {
 			return false
 		}
 		return true
 	}
 }
 
-// SecureCompare performs a constant time compare of two strings to limit timing attacks.
-func SecureCompare(given string, actual string) bool {
+// secureCompare performs a constant time compare of two strings to limit timing attacks.
+func secureCompare(given string, actual string) bool {
 	givenSha := sha256.Sum256([]byte(given))
 	actualSha := sha256.Sum256([]byte(actual))
 

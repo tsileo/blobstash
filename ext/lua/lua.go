@@ -19,6 +19,7 @@ import (
 	"github.com/tsileo/blobstash/client/interface"
 	hexid "github.com/tsileo/blobstash/ext/docstore/id"
 	"github.com/tsileo/blobstash/ext/lua/luautil"
+	"github.com/tsileo/blobstash/httputil"
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
 	luamod "github.com/yuin/gopher-lua"
 	log "gopkg.in/inconshreveable/log15.v2"
@@ -30,6 +31,7 @@ import (
 	loggerModule "github.com/tsileo/blobstash/ext/lua/modules/logger"
 	requestModule "github.com/tsileo/blobstash/ext/lua/modules/request"
 	responseModule "github.com/tsileo/blobstash/ext/lua/modules/response"
+	templateModule "github.com/tsileo/blobstash/ext/lua/modules/template"
 )
 
 // TODO(tsileo) Store recent log entries
@@ -184,17 +186,6 @@ func setCustomGlobals(L *luamod.LState) {
 	}))
 }
 
-// FIXME(ts) move this in utils/http
-func WriteJSON(w http.ResponseWriter, data interface{}) {
-	js, err := json.Marshal(data)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(js)
-}
-
 func appToResp(app *LuaApp) *LuaAppResp {
 	return &LuaAppResp{
 		AppID:               app.AppID,
@@ -218,7 +209,7 @@ func (lua *LuaExt) AppStatHandler() func(http.ResponseWriter, *http.Request) {
 		if !ok {
 			panic("no such app")
 		}
-		WriteJSON(w, appToResp(app))
+		httputil.WriteJSON(w, appToResp(app))
 	}
 }
 
@@ -230,7 +221,7 @@ func (lua *LuaExt) AppsHandler() func(http.ResponseWriter, *http.Request) {
 		for _, app := range lua.registeredApps {
 			apps = append(apps, appToResp(app))
 		}
-		WriteJSON(w, map[string]interface{}{
+		httputil.WriteJSON(w, map[string]interface{}{
 			"apps": apps,
 		})
 	}
@@ -361,6 +352,7 @@ func (lua *LuaExt) exec(reqLogger log.Logger, appID, reqId, script string, w htt
 	blobstore := blobstoreModule.New(lua.blobStore)
 	kvstore := kvstoreModule.New(lua.kvStore)
 	bewit := bewitModule.New(reqLogger.New("ctx", "Lua bewit module"), r)
+	template := templateModule.New()
 
 	// Initialize Lua state
 	L := luamod.NewState()
@@ -372,6 +364,7 @@ func (lua *LuaExt) exec(reqLogger log.Logger, appID, reqId, script string, w htt
 	L.PreloadModule("blobstore", blobstore.Loader)
 	L.PreloadModule("kvstore", kvstore.Loader)
 	L.PreloadModule("bewit", bewit.Loader)
+	L.PreloadModule("template", template.Loader)
 	// TODO(tsileo) cookies module
 
 	// 3rd party module

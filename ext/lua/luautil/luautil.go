@@ -7,6 +7,7 @@ package luautil
 
 import (
 	"encoding/json"
+	"errors"
 
 	"github.com/yuin/gopher-lua"
 )
@@ -72,12 +73,35 @@ func tomap(table *lua.LTable, visited map[*lua.LTable]bool) map[string]interface
 }
 
 // Convert a Lua table to JSON
-func ToJSON(table *lua.LTable) []byte {
-	js, err := json.Marshal(TableToMap(table))
+// Adapted from https://github.com/layeh/gopher-json/blob/master/util.go (Public domain)
+func ToJSON(value *lua.LValue) []byte {
+	var data []byte
+	var err error
+	switch converted := (*value).(type) {
+	case lua.LBool:
+		data, err = json.Marshal(converted)
+	case lua.LChannel:
+		err = errors.New("ToJSON: cannot marshal channel")
+	case lua.LNumber:
+		data, err = json.Marshal(converted)
+	case *lua.LFunction:
+		err = errors.New("ToJSON: cannot marshal function")
+	case *lua.LNilType:
+		data, err = json.Marshal(converted)
+	case *lua.LState:
+		err = errors.New("ToJSON: cannot marshal LState")
+	case lua.LString:
+		data, err = json.Marshal(converted)
+	case *lua.LTable:
+		data, err = json.Marshal(TableToMap(converted))
+	case *lua.LUserData:
+		err = errors.New("ToJSON: cannot marshal user data")
+		// TODO: call metatable __tostring?
+	}
 	if err != nil {
 		panic(err)
 	}
-	return js
+	return data
 }
 
 // Convert the JSON to a Lua object ready to be pushed
