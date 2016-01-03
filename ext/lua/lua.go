@@ -43,6 +43,7 @@ type LuaApp struct {
 	Public bool
 	InMem  bool // Don't store the script if true
 	Stats  *LuaAppStats
+	logs   []*loggerModule.LogRecord
 }
 
 func (app *LuaApp) String() string {
@@ -107,7 +108,8 @@ func New(logger log.Logger, key []byte, authFunc func(*http.Request) bool, kvSto
 
 func (lua *LuaExt) RegisterRoute(r *mux.Router, middlewares *serverMiddleware.SharedMiddleware) {
 	r.Handle("/", middlewares.Auth(http.HandlerFunc(lua.AppsHandler())))
-	r.Handle("/stats", middlewares.Auth(http.HandlerFunc(lua.AppStatHandler())))
+	r.Handle("/stats", middlewares.Auth(http.HandlerFunc(lua.AppStatsHandler())))
+	r.Handle("/logs", middlewares.Auth(http.HandlerFunc(lua.AppLogsHandler())))
 	r.Handle("/register", middlewares.Auth(http.HandlerFunc(lua.RegisterHandler())))
 	// TODO(tsileo) "/remove" endpoint
 	// TODO(tsileo) "/logs" endpoint to stream logs
@@ -199,7 +201,21 @@ func appToResp(app *LuaApp) *LuaAppResp {
 
 }
 
-func (lua *LuaExt) AppStatHandler() func(http.ResponseWriter, *http.Request) {
+func (lua *LuaExt) AppLogsHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		lua.appMutex.Lock()
+		defer lua.appMutex.Unlock()
+		app, ok := lua.registeredApps[r.URL.Query().Get("appID")]
+		if !ok {
+			panic("no such app")
+		}
+		httputil.WriteJSON(w, map[string]interface{}{
+			"logs": app.logs,
+		})
+	}
+}
+
+func (lua *LuaExt) AppStatsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		lua.appMutex.Lock()
 		defer lua.appMutex.Unlock()
@@ -281,9 +297,9 @@ func (lua *LuaExt) AppHandler() func(http.ResponseWriter, *http.Request) {
 		// Try to fetch the app
 		appID := vars["appID"]
 		lua.appMutex.Lock()
+		defer lua.appMutex.Unlock()
 		app, ok := lua.registeredApps[appID]
 		if !ok {
-			lua.appMutex.Unlock()
 			panic("no such app")
 		}
 
@@ -299,13 +315,11 @@ func (lua *LuaExt) AppHandler() func(http.ResponseWriter, *http.Request) {
 		// to verify if the script exists, and compare local version
 		if r.Method == "HEAD" {
 			reqLogger.Debug("HEAD request, aborting...")
-			lua.appMutex.Unlock()
 			return
 		}
 
 		// Check the app ACL
 		if !app.Public && !lua.authFunc(r) {
-			lua.appMutex.Unlock()
 			w.Header().Set("WWW-Authenticate", "Basic realm=\""+app.AppID+"\"")
 			http.Error(w, "Not Authorized", http.StatusUnauthorized)
 			return
@@ -314,16 +328,13 @@ func (lua *LuaExt) AppHandler() func(http.ResponseWriter, *http.Request) {
 		// Copy the script so we can release the mutex
 		script := make([]byte, len(app.Script))
 		copy(script[:], app.Script[:])
-		lua.appMutex.Unlock()
 
 		// Execute the script
 		start := time.Now()
-		status := strconv.Itoa(lua.exec(reqLogger, appID, reqID, string(script), w, r))
+		status := strconv.Itoa(lua.exec(reqLogger, app, appID, reqID, string(script), w, r))
 
 		// Increment the internal stats
-		lua.appMutex.Lock()
 		app, ok = lua.registeredApps[appID]
-		defer lua.appMutex.Unlock()
 		if !ok {
 			panic("App seems to have been deleted")
 		}
@@ -338,13 +349,13 @@ func (lua *LuaExt) AppHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-func (lua *LuaExt) exec(reqLogger log.Logger, appID, reqId, script string, w http.ResponseWriter, r *http.Request) int {
+func (lua *LuaExt) exec(reqLogger log.Logger, app *LuaApp, appID, reqId, script string, w http.ResponseWriter, r *http.Request) int {
 	// FIXME(tsileo) a debug mode, with a defer/recover
 	// also parse the Lu error and show the bugging line!
 	start := time.Now()
 	httpClient := &http.Client{}
 	// Initialize internal Lua module written in Go
-	logger := loggerModule.New(reqLogger.New("ctx", "Lua"), start)
+	logger := loggerModule.New(reqLogger.New("ctx", "Lua"), start, reqId)
 	response := responseModule.New()
 	request := requestModule.New(r, reqId, lua.authFunc)
 	blobstore := blobstoreModule.New(lua.blobStore)
@@ -384,6 +395,9 @@ func (lua *LuaExt) exec(reqLogger log.Logger, appID, reqId, script string, w htt
 	// TODO save the logRecords in the AppStats and find a way to serve them over Server-Sent Events
 	// keep them in memory with the ability to dump them in bulk as blob for later query
 	// logRecords := logger.Records()
+	for _, logRecord := range logger.Records() {
+		app.logs = append(app.logs, logRecord)
+	}
 
 	reqLogger.Info("Script executed", "response", response, "duration", time.Since(start))
 	return response.Status()

@@ -19,6 +19,34 @@ import (
 // TODO(tsileo) better error handling
 // TODO(tsileo) a "log" subcommand
 
+type Lvl int
+
+const (
+	LvlCrit = iota // May be used for logging panic?
+	LvlError
+	LvlWarn
+	LvlInfo
+	LvlDebug
+)
+
+// Returns the name of a Lvl
+func (l Lvl) String() string {
+	switch l {
+	case LvlDebug:
+		return "dbug"
+	case LvlInfo:
+		return "info"
+	case LvlWarn:
+		return "warn"
+	case LvlError:
+		return "eror"
+	case LvlCrit:
+		return "crit"
+	default:
+		panic("bad level")
+	}
+}
+
 var Usage = func() {
 	fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "SUBCOMMAND:\n\tapps stats register watch\n")
@@ -43,9 +71,9 @@ func watch(appID, path string, public, inMem bool) {
 		for {
 			select {
 			case event := <-watcher.Events:
-				fmt.Printf("event:%v\n", event)
+				// fmt.Printf("event:%v\n", event)
 				if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Rename == fsnotify.Rename {
-					fmt.Printf("modified file:%v\n", event.Name)
+					// fmt.Printf("modified file:%v\n", event.Name)
 					register(appID, path, public, inMem)
 					log.Println("App updated")
 				}
@@ -105,6 +133,35 @@ func register(appID, path string, public, inMem bool) {
 	switch {
 	case resp.StatusCode == 200:
 		fmt.Printf("App %v registered\n", appID)
+	default:
+		fmt.Printf("failed:%+v", resp)
+		panic("req failed")
+	}
+}
+
+func logs(appID string) {
+	request, err := http.NewRequest("GET", server+"/api/ext/lua/v1/logs?appID="+appID, nil)
+	request.SetBasicAuth("", apiKey)
+	if err != nil {
+		panic(err)
+	}
+	resp, err := client.Do(request)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	switch {
+	case resp.StatusCode == 200:
+		res := map[string]interface{}{}
+		if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+			panic(err)
+		}
+		for _, ilog := range res["logs"].([]interface{}) {
+			log := ilog.(map[string]interface{})
+			fmt.Printf("%v %v %v %v\n", log["time"].(string), Lvl(log["lvl"].(float64)).String(), log["req_id"].(string), log["message"].(string))
+		}
+	case resp.StatusCode == 404:
+		panic("404")
 	default:
 		fmt.Printf("failed:%+v", resp)
 	}
@@ -173,7 +230,7 @@ func main() {
 	flag.Usage = Usage
 	flag.Parse()
 
-	fmt.Printf("DEBUG public=%v&in_mem=%v\n", *publicPtr, *inMemPtr)
+	// fmt.Printf("DEBUG public=%v&in_mem=%v\n", *publicPtr, *inMemPtr)
 
 	if flag.NArg() < 1 {
 		Usage()
@@ -189,6 +246,12 @@ func main() {
 			return
 		}
 		stats(flag.Arg(1))
+	case "logs":
+		if flag.NArg() != 2 {
+			fmt.Println("logs [AppID]")
+			return
+		}
+		logs(flag.Arg(1))
 	case "register":
 		switch flag.NArg() {
 		case 1:

@@ -7,23 +7,54 @@ import (
 	log "gopkg.in/inconshreveable/log15.v2"
 )
 
+type Lvl int
+
+const (
+	LvlCrit = iota // May be used for logging panic?
+	LvlError
+	LvlWarn
+	LvlInfo
+	LvlDebug
+)
+
+// Returns the name of a Lvl
+func (l Lvl) String() string {
+	switch l {
+	case LvlDebug:
+		return "dbug"
+	case LvlInfo:
+		return "info"
+	case LvlWarn:
+		return "warn"
+	case LvlError:
+		return "eror"
+	case LvlCrit:
+		return "crit"
+	default:
+		panic("bad level")
+	}
+}
+
 type LogRecord struct {
-	Time  time.Time
-	Line  string
-	Level string
-	T     time.Duration
+	Time    time.Time     `json:"time"`
+	Message string        `json:"message"`
+	Lvl     Lvl           `json:"lvl"`
+	T       time.Duration `json:"t"`
+	ReqID   string        `json:"req_id"`
 }
 
 type LoggerModule struct {
 	logger  log.Logger
 	start   time.Time
+	reqID   string
 	records []*LogRecord
 }
 
-func New(logger log.Logger, start time.Time) *LoggerModule {
+func New(logger log.Logger, start time.Time, reqID string) *LoggerModule {
 	return &LoggerModule{
 		start:   start,
 		logger:  logger,
+		reqID:   reqID,
 		records: []*LogRecord{},
 	}
 }
@@ -55,6 +86,16 @@ func (logger *LoggerModule) debug(L *lua.LState) int {
 }
 
 func (logger *LoggerModule) info(L *lua.LState) int {
+	message := L.ToString(1)
+	t := time.Since(logger.start)
+	logRecord := &LogRecord{
+		Lvl:     LvlInfo,
+		Time:    time.Now().UTC(),
+		Message: message,
+		T:       t,
+		ReqID:   logger.reqID,
+	}
+	logger.records = append(logger.records, logRecord)
 	logger.logger.Info(L.ToString(1), "t", time.Since(logger.start))
 	return 0
 }
