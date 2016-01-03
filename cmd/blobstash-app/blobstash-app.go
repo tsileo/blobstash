@@ -17,7 +17,6 @@ import (
 
 // FIXME(tsileo) watch seems to be broken
 // TODO(tsileo) better error handling
-// TODO(tsileo) a "log" subcommand
 
 type Lvl int
 
@@ -56,8 +55,9 @@ var Usage = func() {
 var client = &http.Client{}
 
 // FIXME(tsileo) store these in a JSON file
-var server = "http://localhost:8050"
-var apiKey = "token"
+var server = os.Getenv("BLOBSTASH_APP_SERVER")
+var defaultServer = "http://localhost:8050"
+var apiKey = os.Getenv("BLOBSTASH_APP_API_KEY")
 
 func watch(appID, path string, public, inMem bool) {
 	watcher, err := fsnotify.NewWatcher()
@@ -224,6 +224,12 @@ func apps() {
 }
 
 func main() {
+	if server == "" {
+		server = defaultServer
+	}
+	if apiKey == "" {
+		panic("missing API key")
+	}
 	publicPtr := flag.Bool("public", false, "Make the app public (watch/register)")
 	inMemPtr := flag.Bool("in-mem", false, "Don't store the app (register)")
 	// FIXME(tsileo) a config subcommand that generate a JSON file

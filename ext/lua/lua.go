@@ -14,6 +14,7 @@ import (
 	"github.com/gorilla/mux"
 	luajson "github.com/layeh/gopher-json"
 	"github.com/russross/blackfriday"
+	"github.com/satori/go.uuid"
 	"github.com/tsileo/blobstash/client/interface"
 	hexid "github.com/tsileo/blobstash/ext/docstore/id"
 	"github.com/tsileo/blobstash/ext/lua/luautil"
@@ -34,6 +35,7 @@ import (
 
 // TODO(tsileo) Store recent log entries
 // TODO(tsileo) Remove name from app?
+// TODO(tsile) check the authentication per app LuaApp.APIKey
 
 type LuaApp struct {
 	AppID  string
@@ -115,11 +117,15 @@ func (lua *LuaExt) RegisterRoute(r *mux.Router, middlewares *serverMiddleware.Sh
 	r.Handle("/logs", middlewares.Auth(http.HandlerFunc(lua.AppLogsHandler())))
 	r.Handle("/register", middlewares.Auth(http.HandlerFunc(lua.RegisterHandler())))
 	// TODO(tsileo) "/remove" endpoint
-	// TODO(tsileo) "/logs" endpoint to stream logs
+	// TODO(tsileo) "/logstream" endpoint to stream logs (SSE)
 }
+
+// FIXME(tsileo) 404 on no such app error and log panic as crit level in the logger
 
 func (lua *LuaExt) RegisterAppRoute(r *mux.Router, middlewares *serverMiddleware.SharedMiddleware) {
 	r.HandleFunc("/{appID}", lua.AppHandler())
+	// FIXME(tsileo) a way to hook an app to / (root)
+	// XXX(tsileo) handle more complex routes?
 }
 
 func setCustomGlobals(L *luamod.LState) {
@@ -281,6 +287,7 @@ func (lua *LuaExt) RegisterHandler() func(http.ResponseWriter, *http.Request) {
 				Hash:   chash,
 				InMem:  inMem,
 				Stats:  NewAppStats(),
+				APIKey: uuid.NewV4().String(),
 			}
 			lua.appMutex.Lock()
 			lua.registeredApps[appID] = app
@@ -377,7 +384,12 @@ func (lua *LuaExt) exec(reqLogger log.Logger, app *LuaApp, appID, reqId, script 
 	L.PreloadModule("kvstore", kvstore.Loader)
 	L.PreloadModule("bewit", bewit.Loader)
 	L.PreloadModule("template", template.Loader)
+	// TODO(tsileo) docstore module
 	// TODO(tsileo) cookies module
+	// TODO(tsileo) lru module
+	// TODO(tsileo) cache module => to cache response
+	// TODO(tsileo) load module from github directly?
+	// TODO(tsileo) ETag support
 
 	// 3rd party module
 	luajson.Preload(L)

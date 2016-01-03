@@ -5,6 +5,10 @@
 ## Quick start
 
 ```shell
+# Setup config
+$ export BLOBSTASH_APP_SERVER=http://localhost:8050
+$ export BLOBSTASH_APP_API_KEY=xxxx-xxxx-xxxx-xxxx
+
 # List your apps
 $ blobstash-app apps
 

@@ -63,7 +63,7 @@ func (logger *LoggerModule) Records() []*LogRecord {
 	return logger.records
 }
 
-// TODO(tsileo) save log as `LogRecord`s
+// TODO(tsileo) clean up this mess
 
 func (logger *LoggerModule) Loader(L *lua.LState) int {
 	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
