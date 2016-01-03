@@ -28,6 +28,7 @@ import (
 	"github.com/tsileo/blobstash/router"
 	"github.com/tsileo/blobstash/vkv"
 	"github.com/tsileo/blobstash/vkv/hub"
+	"github.com/unrolled/secure"
 	log2 "gopkg.in/inconshreveable/log15.v2"
 )
 
@@ -192,11 +193,34 @@ func (s *Server) Run() {
 	luaExt.RegisterAppRoute(appRoute, middlewares)
 	api.New(r.PathPrefix("/api/v1").Subrouter(), middlewares, s.wg, s.DB, s.KvUpdate, s.Router, s.blobs, s.watchHub)
 
+	// TODO(tsileo) add robots.txt handler, and a 204 favicon.ico handler
+	// FIXME(tsileo) a way to make an app hook the index
+	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+
+		index := `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>BlobsStash</title>
+</head>
+<body><p>
+<p>This is a private <a href="https://github.com/tsileo/blobstash">BlobStash</a> instance.</p>
+</p></body></html>`
+		w.Write([]byte(index))
+	})
+
 	// FIXME allowedorigins from config
 	c := cors.New(cors.Options{
 		AllowedOrigins: []string{"*"},
 	})
-	http.Handle("/", c.Handler(r))
+
+	secureMiddleware := secure.New(secure.Options{
+		FrameDeny:             true,
+		ContentTypeNosniff:    true,
+		BrowserXssFilter:      true,
+		ContentSecurityPolicy: "default-src 'self'",
+	})
+	http.Handle("/", secureMiddleware.Handler(c.Handler(r)))
 	s.Log.Info("server: HTTP API listening on 0.0.0.0:8050")
 	go func() {
 		if err := http.ListenAndServe(":8050", nil); err != nil {

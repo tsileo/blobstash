@@ -186,8 +186,7 @@ Make a pull request if your project uses BlobStash as data store or if you built
 
 - [ ] A lua module for nacl box?
 - [ ] A Lua module for the document store
-- [ ] A better template module for Lua app
-- [ ] A CLI tool to manage Lua app (upload script, show stats, display app)
+- [ ] A better template module for Lua app -> load a full directory as an app
 - [ ] Integrate with Let's Encrypt (via lego) and enable HTTP2 support
 - [ ] Snappy encoding support for the HTTP blobstore API
 - A better documentation
