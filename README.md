@@ -101,9 +101,9 @@ See the [Lua API here](docs/lua.md).
 
 #### Examples
 
+ - [BlobsBin](https://github.com/tsileo/blobsbin), a pastebin like service.
  - [ ] Sharing script
  - [ ] Lua iCal feed script
- - [ ] PasteBin like script with bewit
  - [ ] IoT data store (temp/humid with avg)
  - [ ] Pebble app backend example
 
