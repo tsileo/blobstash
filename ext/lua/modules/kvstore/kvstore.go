@@ -27,10 +27,11 @@ func (kvs *KvStoreModule) Loader(L *lua.LState) int {
 	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
 		"get":      kvs.get,
 		"put":      kvs.put,
-		"getjson":  kvs.getjson,
-		"putjson":  kvs.putjson,
 		"keys":     kvs.keys,
 		"versions": kvs.versions,
+		"getjson":  kvs.getjson,
+		"putjson":  kvs.putjson,
+		"keysjson": kvs.keysjson,
 	})
 	L.Push(mod)
 	return 1
@@ -44,6 +45,21 @@ func (kvs *KvStoreModule) versions(L *lua.LState) int {
 	}
 	for index, kv := range kvResp.Versions {
 		L.RawSetInt(luaTable, index+1, kvToTable(L, kv))
+	}
+	L.Push(luaTable)
+	return 1
+}
+
+func (kvs *KvStoreModule) keysjson(L *lua.LState) int {
+	luaTable := L.NewTable()
+	kvResp, err := kvs.kvStore.Keys(L.ToString(1), L.ToString(2), L.ToInt(3))
+	if err != nil {
+		panic(err)
+	}
+	for index, kv := range kvResp {
+		kvTable := kvToTable(L, kv)
+		L.RawSet(kvTable, lua.LString("value"), luautil.FromJSON(L, []byte(kv.Value)))
+		L.RawSetInt(luaTable, index+1, kvTable)
 	}
 	L.Push(luaTable)
 	return 1

@@ -229,6 +229,9 @@ getjson(string, int) -> any
 // Set the key to value (value will be marshalled with JSON) for the given version, -1 means the current timestamp (from server)
 putjson(string, any, int) -> table
 
+// List the keys between start and end (limit results to n), value is unmarshaled as JSON
+keysjson(string, string, int) -> table (list)
+
 // List the keys between start and end (limit results to n)
 keys(string, string, int) -> table (list)
 
@@ -261,6 +264,34 @@ stat(string) -> bool
 
 // Return the list of key "start" < key < "end" (limit to n hashes)
 enumerate(string, string, int) -> table
+```
+
+### Bewit
+
+```lua
+local resp = require('response')
+local bewit = require('bewit')
+
+local url = 'https://myblobstashintance.com/app/myapp'
+local token = bewit.new(url)
+url = url .. '&bewit=' .. token
+
+-- later in a request
+if bewit.check() ~= "" then
+  -- authenticated
+else
+  resp.error(401, bewit.check())
+end
+```
+
+```c
+// Return an error string if the bewit auth is invalid
+// (empty string if ok)
+check() -> string
+
+
+// Return a bewit token valid for 1 hour for the given url
+new(string) -> string
 ```
 
 ### Logger
