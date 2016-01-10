@@ -138,7 +138,7 @@ func (docstore *DocStoreExt) Search(collection, queryString string) ([]byte, err
 		if err != nil {
 			return nil, err
 		}
-		js = append(js, jsPart...)
+		js = append(js, addID(jsPart, sr.ID)...)
 		if index != len(searchResult.Hits)-1 {
 			js = append(js, []byte(",")...)
 		}
@@ -277,6 +277,12 @@ func (docstore *DocStoreExt) Query(collection string, query map[string]interface
 	return stats, nil
 }
 
+func addID(js []byte, _id string) []byte {
+	js2 := []byte(fmt.Sprintf("{\"_id\":\"%s\",", _id))
+	js2 = append(js2, js[1:len(js)]...)
+	return js2
+}
+
 // query returns a JSON list as []byte for the given query
 // docs are unmarhsalled to JSON only when needed.
 func (docstore *DocStoreExt) query(collection string, query map[string]interface{}, limit int) ([]byte, *executionStats, error) {
@@ -306,13 +312,14 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 			jsPart := []byte{}
 			// TODO(tsileo) send the Ids in the header
 			// doc["_id"] = _id.String()
-			if _, err := docstore.fetchDoc(collection, hashFromKey(collection, kv.Key), &jsPart); err != nil {
+			_id := hashFromKey(collection, kv.Key)
+			if _, err := docstore.fetchDoc(collection, _id, &jsPart); err != nil {
 				panic(err)
 			}
 			stats.TotalDocsExamined++
 			if len(query) == 0 {
 				// No query, so we just add every docs
-				js = append(js, jsPart...)
+				js = append(js, addID(jsPart, _id)...)
 				js = append(js, []byte(",")...)
 				stats.NReturned++
 				if stats.NReturned == limit {
@@ -324,7 +331,7 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 					panic(err)
 				}
 				if matchQuery(qLogger, query, doc) {
-					js = append(js, jsPart...)
+					js = append(js, addID(jsPart, _id)...)
 					js = append(js, []byte(",")...)
 					stats.NReturned++
 					if stats.NReturned == limit {
@@ -338,7 +345,6 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 			break
 		}
 		start = nextKey(lastKey)
-
 	}
 	if stats.NReturned > 0 {
 		js = js[0 : len(js)-1]
@@ -409,7 +415,6 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 			if err != nil {
 				panic(err)
 			}
-			// Returns the doc along with its new ID
 			// if indexHeader != "" {
 			// 	if err := docstore.index.Index(_id.String(), doc); err != nil {
 			// 		panic(err)
@@ -418,7 +423,7 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 			w.Header().Set("BlobStash-DocStore-Doc-Id", _id.String())
 			w.Header().Set("BlobStash-DocStore-Doc-Hash", _id.Hash())
 			w.Header().Set("BlobStash-DocStore-Doc-CreatedAt", strconv.Itoa(_id.Ts()))
-			WriteJSON(w, doc)
+			w.WriteHeader(http.StatusNoContent)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -477,7 +482,7 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 				panic(err)
 			}
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(js)
+			w.Write(addID(js, sid))
 		case "POST":
 			doc := map[string]interface{}{}
 			if _id, err = docstore.fetchDoc(collection, sid, &doc); err != nil {
