@@ -139,7 +139,8 @@ func (docstore *DocStoreExt) SearchHandler() func(http.ResponseWriter, *http.Req
 		}
 		var docs []map[string]interface{}
 		for _, sr := range searchResult.Hits {
-			doc, _, _, err := docstore.fetchDoc(collection, sr.ID)
+			doc := map[string]interface{}{}
+			_, err := docstore.fetchDoc(collection, sr.ID, &doc)
 			if err != nil {
 				panic(err)
 			}
@@ -166,25 +167,36 @@ func NextKey(key string) string {
 	return string(bkey)
 }
 
+func (docstore *DocStoreExt) Collections() ([]string, error) {
+	collections := []string{}
+	lastKey := ""
+	for {
+		ksearch := fmt.Sprintf("docstore:%v", lastKey)
+		res, err := docstore.kvStore.Keys(ksearch, "\xff", 50)
+		// docstore.logger.Debug("loop", "ksearch", ksearch, "len_res", len(res))
+		if err != nil {
+			return nil, err
+		}
+		if len(res) == 0 {
+			break
+		}
+		var col string
+		for _, kv := range res {
+			col = strings.Split(kv.Key, ":")[1]
+			collections = append(collections, col)
+		}
+		lastKey = NextKey(col)
+	}
+	return collections, nil
+}
+
 func (docstore *DocStoreExt) CollectionsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
-			collections := []string{}
-			lastKey := ""
-			for {
-				ksearch := fmt.Sprintf("docstore:%v", lastKey)
-				res, err := docstore.kvStore.Keys(ksearch, "\xff", 1)
-				// docstore.logger.Debug("loop", "ksearch", ksearch, "len_res", len(res))
-				if err != nil {
-					panic(err)
-				}
-				if len(res) == 0 {
-					break
-				}
-				col := strings.Split(res[0].Key, ":")[1]
-				lastKey = NextKey(col)
-				collections = append(collections, col)
+			collections, err := docstore.Collections()
+			if err != nil {
+				panic(err)
 			}
 			WriteJSON(w, map[string]interface{}{
 				"collections": collections,
@@ -201,6 +213,41 @@ func isQueryAll(q string) bool {
 		return true
 	}
 	return false
+}
+
+func (docstore *DocStoreExt) Insert(collection string, idoc interface{}) (*id.ID, error) {
+	switch doc := idoc.(type) {
+	case *map[string]interface{}:
+		// fdoc := *doc
+		docFlag := FlagNoIndex
+		// docFlag = FlagIndexed
+		blob, err := json.Marshal(doc)
+		if err != nil {
+			return nil, err
+		}
+		// Store the payload in a blob
+		hash := fmt.Sprintf("%x", blake2b.Sum256(blob))
+		docstore.blobStore.Put(hash, blob)
+		// Create a pointer in the key-value store
+		now := time.Now().UTC().Unix()
+		_id, err := id.New(int(now))
+		if err != nil {
+			return nil, err
+		}
+		bash := make([]byte, len(hash)+1)
+		bash[0] = docFlag
+		copy(bash[1:], []byte(hash)[:])
+		if _, err := docstore.kvStore.Put(fmt.Sprintf(KeyFmt, collection, _id.String()), string(bash), -1); err != nil {
+			return nil, err
+		}
+		// Returns the doc along with its new ID
+		// if err := docstore.index.Index(_id.String(), doc); err != nil {
+		// return err
+		// }
+		_id.SetHash(hash)
+		return _id, nil
+	}
+	return nil, fmt.Errorf("shouldn't happen")
 }
 
 func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Request) {
@@ -255,7 +302,8 @@ func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Reque
 			}
 			var docs []map[string]interface{}
 			for _, kv := range res {
-				doc, _id, _, err := docstore.fetchDoc(collection, hashFromKey(collection, kv.Key))
+				doc := map[string]interface{}{}
+				_id, err := docstore.fetchDoc(collection, hashFromKey(collection, kv.Key), &doc)
 				doc["_id"] = _id.String()
 				if err != nil {
 					panic(err)
@@ -294,35 +342,25 @@ func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Reque
 			if err := json.Unmarshal(blob, &doc); err != nil {
 				panic(err)
 			}
-			docFlag := FlagNoIndex
-			// Should the doc be full-text indexed?
-			indexHeader := r.Header.Get("BlobStash-DocStore-IndexFullText")
-			if indexHeader != "" {
-				docFlag = FlagIndexed
-			}
-			// Store the payload in a blob
-			hash := fmt.Sprintf("%x", blake2b.Sum256(blob))
-			docstore.blobStore.Put(hash, blob)
-			// Create a pointer in the key-value store
-			now := time.Now().UTC().Unix()
-			_id, err := id.New(int(now))
+			// FIXME(tsileo) re-enable full-text index
+			// docFlag := FlagNoIndex
+			// // Should the doc be full-text indexed?
+			// indexHeader := r.Header.Get("BlobStash-DocStore-IndexFullText")
+			// if indexHeader != "" {
+			// 	docFlag = FlagIndexed
+			// }
+			_id, err := docstore.Insert(collection, &doc)
 			if err != nil {
 				panic(err)
 			}
-			bash := make([]byte, len(hash)+1)
-			bash[0] = docFlag
-			copy(bash[1:], []byte(hash)[:])
-			if _, err := docstore.kvStore.Put(fmt.Sprintf(KeyFmt, collection, _id.String()), string(bash), -1); err != nil {
-				panic(err)
-			}
 			// Returns the doc along with its new ID
-			if indexHeader != "" {
-				if err := docstore.index.Index(_id.String(), doc); err != nil {
-					panic(err)
-				}
-			}
+			// if indexHeader != "" {
+			// 	if err := docstore.index.Index(_id.String(), doc); err != nil {
+			// 		panic(err)
+			// 	}
+			// }
 			w.Header().Set("BlobStash-DocStore-Doc-Id", _id.String())
-			w.Header().Set("BlobStash-DocStore-Doc-Hash", hash)
+			w.Header().Set("BlobStash-DocStore-Doc-Hash", _id.Hash())
 			w.Header().Set("BlobStash-DocStore-Doc-CreatedAt", strconv.Itoa(_id.Ts()))
 			WriteJSON(w, doc)
 		default:
@@ -331,30 +369,36 @@ func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Reque
 	}
 }
 
-func (docstore *DocStoreExt) fetchDoc(collection, sid string) (map[string]interface{}, *id.ID, string, error) {
+func (docstore *DocStoreExt) fetchDoc(collection, sid string, res interface{}) (*id.ID, error) {
 	if collection == "" {
-		return nil, nil, "", errors.New("missing collection query arg")
+		return nil, errors.New("missing collection query arg")
 	}
 	kv, err := docstore.kvStore.Get(fmt.Sprintf(KeyFmt, collection, sid), -1)
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("kvstore get err: %v", err)
+		return nil, fmt.Errorf("kvstore get err: %v", err)
 	}
 	_id, err := id.FromHex(sid)
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("invalid _id: %v", err)
+		return nil, fmt.Errorf("invalid _id: %v", err)
 	}
 	hash := kv.Value[1:len(kv.Value)]
 	// Fetch the blob
 	blob, err := docstore.blobStore.Get(hash)
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("failed to fetch blob %v", hash)
+		return nil, fmt.Errorf("failed to fetch blob %v", hash)
 	}
 	// Build the doc
-	doc := map[string]interface{}{}
-	if err := json.Unmarshal(blob, &doc); err != nil {
-		return nil, nil, "", fmt.Errorf("failed to unmarshal blob: %s", blob)
+	switch idoc := res.(type) {
+	case *map[string]interface{}:
+		if err := json.Unmarshal(blob, idoc); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal blob: %s", blob)
+		}
+	case *[]byte:
+		// Just the copy if JSON if a []byte is provided
+		*idoc = append(*idoc, blob...)
 	}
-	return doc, _id, hash, nil
+	_id.SetHash(hash)
+	return _id, nil
 }
 
 func (docstore *DocStoreExt) DocHandler() func(http.ResponseWriter, *http.Request) {
@@ -368,21 +412,24 @@ func (docstore *DocStoreExt) DocHandler() func(http.ResponseWriter, *http.Reques
 		if sid == "" {
 			panic("missing _id query arg")
 		}
-		doc, _id, hash, err := docstore.fetchDoc(collection, sid)
-		if err != nil {
-			panic(err)
-		}
-		w.Header().Set("BlobStash-DocStore-Doc-Id", sid)
-		w.Header().Set("BlobStash-DocStore-Doc-Hash", hash)
-		w.Header().Set("BlobStash-DocStore-Doc-CreatedAt", strconv.Itoa(_id.Ts()))
+		var _id *id.ID
+		var err error
 		switch r.Method {
 		case "GET":
-			WriteJSON(w, doc)
+			js := []byte{}
+			if _id, err = docstore.fetchDoc(collection, sid, &js); err != nil {
+				panic(err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(js)
 		case "POST":
+			doc := map[string]interface{}{}
+			if _id, err = docstore.fetchDoc(collection, sid, &doc); err != nil {
+				panic(err)
+			}
 			var update map[string]interface{}
 			decoder := json.NewDecoder(r.Body)
-			err := decoder.Decode(&update)
-			if err != nil {
+			if err := decoder.Decode(&update); err != nil {
 				panic(err)
 			}
 			docstore.logger.Debug("Update", "_id", sid, "update_query", update)
@@ -402,5 +449,8 @@ func (docstore *DocStoreExt) DocHandler() func(http.ResponseWriter, *http.Reques
 			}
 			WriteJSON(w, newDoc)
 		}
+		w.Header().Set("BlobStash-DocStore-Doc-Id", sid)
+		w.Header().Set("BlobStash-DocStore-Doc-Hash", _id.Hash())
+		w.Header().Set("BlobStash-DocStore-Doc-CreatedAt", strconv.Itoa(_id.Ts()))
 	}
 }

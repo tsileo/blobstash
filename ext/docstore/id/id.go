@@ -48,6 +48,7 @@ func nextCounter() []byte {
 // Cursor hold a hex/byte representation of a timestamp and a hash
 type ID struct {
 	data []byte
+	hash string // The hash is not part of the ID but it can be attached to the ID
 }
 
 func New(ts int) (*ID, error) {
@@ -59,7 +60,16 @@ func New(ts int) (*ID, error) {
 	}
 	copy(b[4:], randomCompoment[:])
 	copy(b[9:], nextCounter())
-	return &ID{b}, nil
+	return &ID{data: b}, nil
+}
+
+func (id *ID) SetHash(hash string) {
+	id.hash = hash
+}
+
+// Raw returns the raw cursor
+func (id *ID) Hash() string {
+	return id.hash
 }
 
 // Raw returns the raw cursor
@@ -90,7 +100,7 @@ func (id *ID) UnmarshalJSON(data []byte) error {
 	if _, err := hex.Decode(b, data[1:13]); err != nil {
 		return fmt.Errorf("invalid Cursor data: %v", string(data))
 	}
-	*id = ID{b}
+	*id = ID{data: b}
 	return nil
 }
 
@@ -103,5 +113,5 @@ func FromHex(data string) (*ID, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid Cursor data: %v", string(data))
 	}
-	return &ID{b}, err
+	return &ID{data: b}, err
 }
