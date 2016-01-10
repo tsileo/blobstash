@@ -118,43 +118,59 @@ func (docstore *DocStoreExt) Close() error {
 }
 
 func (docstore *DocStoreExt) RegisterRoute(r *mux.Router, middlewares *serverMiddleware.SharedMiddleware) {
-	r.Handle("/", middlewares.Auth(http.HandlerFunc(docstore.CollectionsHandler())))
-	r.Handle("/{collection}", middlewares.Auth(http.HandlerFunc(docstore.DocsHandler())))
-	r.Handle("/{collection}/search", middlewares.Auth(http.HandlerFunc(docstore.SearchHandler())))
-	r.Handle("/{collection}/{_id}", middlewares.Auth(http.HandlerFunc(docstore.DocHandler())))
+	r.Handle("/", middlewares.Auth(http.HandlerFunc(docstore.collectionsHandler())))
+	r.Handle("/{collection}", middlewares.Auth(http.HandlerFunc(docstore.docsHandler())))
+	r.Handle("/{collection}/search", middlewares.Auth(http.HandlerFunc(docstore.searchHandler())))
+	r.Handle("/{collection}/{_id}", middlewares.Auth(http.HandlerFunc(docstore.docHandler())))
 }
 
-func (docstore *DocStoreExt) SearchHandler() func(http.ResponseWriter, *http.Request) {
+func (docstore *DocStoreExt) Search(collection, queryString string) ([]byte, error) {
+	js := []byte{}
+	query := bleve.NewQueryStringQuery(queryString)
+	searchRequest := bleve.NewSearchRequest(query)
+	searchResult, err := docstore.index.Search(searchRequest)
+	if err != nil {
+		return nil, err
+	}
+	for index, sr := range searchResult.Hits {
+		jsPart := []byte{}
+		_, err := docstore.fetchDoc(collection, sr.ID, &jsPart)
+		if err != nil {
+			return nil, err
+		}
+		js = append(js, jsPart...)
+		if index != len(searchResult.Hits)-1 {
+			js = append(js, []byte(",")...)
+		}
+	}
+	if len(searchResult.Hits) > 0 {
+		js = js[0 : len(js)-1]
+	}
+	js = append(js, []byte("]")...)
+	// "_meta": searchResult,
+	// "data":  docs,
+	// TODO(tsileo) returns meta along with argument
+	return js, nil
+}
+
+func (docstore *DocStoreExt) searchHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		collection := vars["collection"]
 		if collection == "" {
 			panic("missing collection query arg")
 		}
-		query := bleve.NewQueryStringQuery(r.URL.Query().Get("q"))
-		searchRequest := bleve.NewSearchRequest(query)
-		searchResult, err := docstore.index.Search(searchRequest)
+		js, err := docstore.Search(collection, r.URL.Query().Get("q"))
 		if err != nil {
 			panic(err)
 		}
-		var docs []map[string]interface{}
-		for _, sr := range searchResult.Hits {
-			doc := map[string]interface{}{}
-			_, err := docstore.fetchDoc(collection, sr.ID, &doc)
-			if err != nil {
-				panic(err)
-			}
-			docs = append(docs, doc)
-		}
-		WriteJSON(w, map[string]interface{}{
-			"_meta": searchResult,
-			"data":  docs,
-		})
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(js)
 	}
 }
 
-// NextKey returns the next key for lexigraphical (key = NextKey(lastkey))
-func NextKey(key string) string {
+// nextKey returns the next key for lexigraphical (key = nextKey(lastkey))
+func nextKey(key string) string {
 	bkey := []byte(key)
 	i := len(bkey)
 	for i > 0 {
@@ -185,12 +201,12 @@ func (docstore *DocStoreExt) Collections() ([]string, error) {
 			col = strings.Split(kv.Key, ":")[1]
 			collections = append(collections, col)
 		}
-		lastKey = NextKey(col)
+		lastKey = nextKey(col)
 	}
 	return collections, nil
 }
 
-func (docstore *DocStoreExt) CollectionsHandler() func(http.ResponseWriter, *http.Request) {
+func (docstore *DocStoreExt) collectionsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
@@ -250,26 +266,101 @@ func (docstore *DocStoreExt) Insert(collection string, idoc interface{}) (*id.ID
 	return nil, fmt.Errorf("shouldn't happen")
 }
 
-func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Request) {
+func (docstore *DocStoreExt) Query(collection string, query map[string]interface{}, limit int, res interface{}) (*executionStats, error) {
+	js, stats, err := docstore.query(collection, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(js, res); err != nil {
+		return nil, err
+	}
+	return stats, nil
+}
+
+// query returns a JSON list as []byte for the given query
+// docs are unmarhsalled to JSON only when needed.
+func (docstore *DocStoreExt) query(collection string, query map[string]interface{}, limit int) ([]byte, *executionStats, error) {
+	js := []byte("[")
+	tstart := time.Now()
+	stats := &executionStats{}
+	start := fmt.Sprintf(KeyFmt, collection, "") // q.Get("start"))
+	// TODO(ts) check the \xff
+	end := fmt.Sprintf(KeyFmt, collection, "\xff") // q.Get("end")+"\xff")
+	// FIXME(ts) we may have to scan all the docs for answering the query
+	// so this call should be in a for loop
+	if query == nil || len(query) == 0 {
+		// Prefetch more docs since there's a lot of chance the query will
+		// match every documents
+		limit = int(float64(limit) * 1.6)
+	}
+	qLogger := docstore.logger.New("query", query, "id", logext.RandId(8))
+	qLogger.Info("new query")
+	for {
+		qLogger.Debug("internal query", "limit", limit, "start", start, "end", end, "nreturned", stats.NReturned)
+		res, err := docstore.kvStore.Keys(start, end, limit) // Prefetch more docs
+		if err != nil {
+			panic(err)
+		}
+		for _, kv := range res {
+			jsPart := []byte{}
+			// TODO(tsileo) send the Ids in the header
+			// doc["_id"] = _id.String()
+			if _, err := docstore.fetchDoc(collection, hashFromKey(collection, kv.Key), &jsPart); err != nil {
+				panic(err)
+			}
+			stats.TotalDocsExamined++
+			if len(query) == 0 {
+				// No query, so we just add every docs
+				js = append(js, jsPart...)
+				js = append(js, []byte(",")...)
+				stats.NReturned++
+				if stats.NReturned == limit {
+					break
+				}
+			} else {
+				doc := map[string]interface{}{}
+				if err := json.Unmarshal(jsPart, &doc); err != nil {
+					panic(err)
+				}
+				if matchQuery(qLogger, query, doc) {
+					js = append(js, jsPart...)
+					js = append(js, []byte(",")...)
+					stats.NReturned++
+					if stats.NReturned == limit {
+						break
+					}
+				}
+			}
+		}
+		if len(res) == 0 || len(res) < limit {
+			break
+		}
+	}
+	if stats.NReturned > 0 {
+		js = js[0 : len(js)-1]
+	}
+	duration := time.Since(tstart)
+	qLogger.Debug("scan done", "duration", duration, "nReturned", stats.NReturned, "scanned", stats.TotalDocsExamined)
+	stats.ExecutionTimeMillis = int(duration.Nanoseconds() / 1e6)
+	js = append(js, []byte("]")...)
+	return js, stats, nil
+}
+
+func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		tstart := time.Now()
 		q := r.URL.Query()
 		vars := mux.Vars(r)
 		collection := vars["collection"]
 		if collection == "" {
 			panic("missing collection query arg")
 		}
-		explainMode := false
-		if r.Header.Get("BlobStash-DocStore-Explain-Mode") != "" || q.Get("explain") != "" {
-			explainMode = true
-		}
+		// explainMode := false
+		// if r.Header.Get("BlobStash-DocStore-Explain-Mode") != "" || q.Get("explain") != "" {
+		// 	explainMode = true
+		// }
 		// FIXME(ts) returns the execution stats and add a debug mode in the CLI
 		switch r.Method {
 		case "GET":
-			stats := &executionStats{}
-			start := fmt.Sprintf(KeyFmt, collection, "") // q.Get("start"))
-			// TODO(ts) check the \xff
-			end := fmt.Sprintf(KeyFmt, collection, "\xff") // q.Get("end")+"\xff")
 			query := map[string]interface{}{}
 			jsQuery := q.Get("query")
 			if jsQuery != "" {
@@ -293,44 +384,13 @@ func (docstore *DocStoreExt) DocsHandler() func(http.ResponseWriter, *http.Reque
 				// match every documents
 				qLimit = int(float64(limit) * 1.6)
 			}
-			qLogger := docstore.logger.New("query", jsQuery, "id", logext.RandId(8))
-			qLogger.Info("new query")
-			qLogger.Debug("first internal query", "limit", qLimit, "start", start, "end", end)
-			res, err := docstore.kvStore.Keys(start, end, qLimit) // Prefetch more docs
+			// FIXME(tsileo) write IDs + stats as headers
+			js, _, err := docstore.query(collection, query, qLimit)
 			if err != nil {
 				panic(err)
 			}
-			var docs []map[string]interface{}
-			for _, kv := range res {
-				doc := map[string]interface{}{}
-				_id, err := docstore.fetchDoc(collection, hashFromKey(collection, kv.Key), &doc)
-				doc["_id"] = _id.String()
-				if err != nil {
-					panic(err)
-				}
-				stats.TotalDocsExamined++
-				if len(query) == 0 {
-					// No query, so we just add every docs
-					docs = append(docs, doc)
-				} else {
-					if matchQuery(qLogger, query, doc) {
-						docs = append(docs, doc)
-						stats.NReturned++
-					}
-				}
-			}
-			duration := time.Since(tstart)
-			qLogger.Debug("scan done", "duration", duration, "nReturned", stats.NReturned, "scanned", stats.TotalDocsExamined)
-			stats.ExecutionTimeMillis = int(duration.Nanoseconds() / 1e6)
-			meta := map[string]interface{}{
-				"limit": limit,
-			}
-			if explainMode {
-				meta["explain"] = stats
-			}
-			WriteJSON(w, map[string]interface{}{"data": docs,
-				"_meta": meta,
-			})
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(js)
 		case "POST":
 			// Read the whole body
 			blob, err := ioutil.ReadAll(r.Body)
@@ -401,7 +461,7 @@ func (docstore *DocStoreExt) fetchDoc(collection, sid string, res interface{}) (
 	return _id, nil
 }
 
-func (docstore *DocStoreExt) DocHandler() func(http.ResponseWriter, *http.Request) {
+func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		collection := vars["collection"]
