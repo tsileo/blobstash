@@ -295,6 +295,7 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 	}
 	qLogger := docstore.logger.New("query", query, "id", logext.RandId(8))
 	qLogger.Info("new query")
+	var lastKey string
 	for {
 		qLogger.Debug("internal query", "limit", limit, "start", start, "end", end, "nreturned", stats.NReturned)
 		res, err := docstore.kvStore.Keys(start, end, limit) // Prefetch more docs
@@ -331,10 +332,13 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 					}
 				}
 			}
+			lastKey = kv.Key
 		}
 		if len(res) == 0 || len(res) < limit {
 			break
 		}
+		start = nextKey(lastKey)
+
 	}
 	if stats.NReturned > 0 {
 		js = js[0 : len(js)-1]
@@ -376,16 +380,8 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 				}
 				limit = ilimit
 			}
-			// FIXME(ts) we may have to scan all the docs for answering the query
-			// so this call should be in a for loop
-			qLimit := limit
-			if !isQueryAll(jsQuery) {
-				// Prefetch more docs since there's a lot of chance the query will
-				// match every documents
-				qLimit = int(float64(limit) * 1.6)
-			}
 			// FIXME(tsileo) write IDs + stats as headers
-			js, _, err := docstore.query(collection, query, qLimit)
+			js, _, err := docstore.query(collection, query, limit)
 			if err != nil {
 				panic(err)
 			}
