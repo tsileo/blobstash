@@ -17,6 +17,11 @@ func WriteJSON(w http.ResponseWriter, data interface{}) {
 	w.Write(js)
 }
 
+// Set the `Cache-control` header to `no-cache` in order to prevent the browser to cache the response
+func SetNoCache(w http.ResponseWriter) {
+	w.Header().Set("Cache-control", "no-cache")
+}
+
 // Request.RemoteAddress contains port, which we want to remove i.e.:
 // "[::1]:58292" => "[::1]"
 func ipAddrFromRemoteAddr(s string) string {

@@ -41,12 +41,14 @@ import (
 	"github.com/blevesearch/bleve"
 	"github.com/dchest/blake2b"
 	"github.com/gorilla/mux"
+	log "gopkg.in/inconshreveable/log15.v2"
+	logext "gopkg.in/inconshreveable/log15.v2/ext"
+
 	"github.com/tsileo/blobstash/client/interface"
 	"github.com/tsileo/blobstash/config/pathutil"
 	"github.com/tsileo/blobstash/ext/docstore/id"
+	"github.com/tsileo/blobstash/httputil"
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
-	log "gopkg.in/inconshreveable/log15.v2"
-	logext "gopkg.in/inconshreveable/log15.v2/ext"
 )
 
 var KeyFmt = "docstore:%s:%s"
@@ -67,18 +69,7 @@ type executionStats struct {
 	ExecutionTimeMillis int `json:"executionTimeMillis"`
 }
 
-// TODO(ts) full text indexing, find a way to get the config index
-
-// FIXME(ts) move this in utils/http
-func WriteJSON(w http.ResponseWriter, data interface{}) {
-	js, err := json.Marshal(data)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(js)
-}
+// TODO(tsileo): full text indexing, find a way to get the config index
 
 func openIndex(path string) (bleve.Index, error) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -101,7 +92,7 @@ func New(logger log.Logger, kvStore client.KvStorer, blobStore client.BlobStorer
 	indexPath := filepath.Join(pathutil.VarDir(), "docstore.bleve")
 	index, err := openIndex(indexPath)
 	if err != nil {
-		// TODO(ts) returns an error instead
+		// TODO(tsileo): returns an error instead
 		panic(err)
 	}
 	logger.Debug("Bleve index init", "index-path", indexPath)
@@ -165,7 +156,10 @@ func (docstore *DocStoreExt) searchHandler() func(http.ResponseWriter, *http.Req
 			panic(err)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(js)
+
+		srw := httputil.NewSnappyResponseWriter(w, r)
+		srw.Write(js)
+		srw.Close()
 	}
 }
 
@@ -214,9 +208,11 @@ func (docstore *DocStoreExt) collectionsHandler() func(http.ResponseWriter, *htt
 			if err != nil {
 				panic(err)
 			}
-			WriteJSON(w, map[string]interface{}{
+			srw := httputil.NewSnappyResponseWriter(w, r)
+			httputil.WriteJSON(srw, map[string]interface{}{
 				"collections": collections,
 			})
+			srw.Close()
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -392,7 +388,9 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 				panic(err)
 			}
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(js)
+			srw := httputil.NewSnappyResponseWriter(w, r)
+			srw.Write(js)
+			srw.Close()
 		case "POST":
 			// Read the whole body
 			blob, err := ioutil.ReadAll(r.Body)
@@ -475,6 +473,8 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 		}
 		var _id *id.ID
 		var err error
+		srw := httputil.NewSnappyResponseWriter(w, r)
+		defer srw.Close()
 		switch r.Method {
 		case "GET":
 			js := []byte{}
@@ -482,7 +482,7 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 				panic(err)
 			}
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(addID(js, sid))
+			srw.Write(addID(js, sid))
 		case "POST":
 			doc := map[string]interface{}{}
 			if _id, err = docstore.fetchDoc(collection, sid, &doc); err != nil {
@@ -508,7 +508,7 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 			if _, err := docstore.kvStore.Put(fmt.Sprintf(KeyFmt, collection, _id.String()), string(bash), -1); err != nil {
 				panic(err)
 			}
-			WriteJSON(w, newDoc)
+			httputil.WriteJSON(srw, newDoc)
 		}
 		w.Header().Set("BlobStash-DocStore-Doc-Id", sid)
 		w.Header().Set("BlobStash-DocStore-Doc-Hash", _id.Hash())
