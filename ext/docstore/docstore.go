@@ -237,6 +237,9 @@ func (docstore *DocStoreExt) Insert(collection string, idoc interface{}) (*id.ID
 		if err != nil {
 			return nil, err
 		}
+
+		// FIXME(tsileo): What to do if there's an empty ID?
+
 		// Store the payload in a blob
 		hash := fmt.Sprintf("%x", blake2b.Sum256(blob))
 		docstore.blobStore.Put(hash, blob)
@@ -382,12 +385,15 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 				}
 				limit = ilimit
 			}
-			// FIXME(tsileo) write IDs + stats as headers
-			js, _, err := docstore.query(collection, query, limit)
+			// FIXME(tsileo): write IDs + stats as headers
+			js, stats, err := docstore.query(collection, query, limit)
 			if err != nil {
 				panic(err)
 			}
 			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("BlobStash-DocStore-Iter-Count", strconv.Itoa(stats.NReturned))
+			// FIXME(tsileo): Add the last ID as cursor
+			w.Header().Set("BlobStash-DocStore-Iter-Cursor", "TBD")
 			srw := httputil.NewSnappyResponseWriter(w, r)
 			srw.Write(js)
 			srw.Close()
