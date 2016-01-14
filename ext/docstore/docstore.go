@@ -64,9 +64,10 @@ const (
 )
 
 type executionStats struct {
-	NReturned           int `json:"nReturned"`
-	TotalDocsExamined   int `json:"totalDocsExamined"`
-	ExecutionTimeMillis int `json:"executionTimeMillis"`
+	NReturned           int    `json:"nReturned"`
+	TotalDocsExamined   int    `json:"totalDocsExamined"`
+	ExecutionTimeMillis int    `json:"executionTimeMillis"`
+	LastID              string `json:"-"`
 }
 
 // TODO(tsileo): full text indexing, find a way to get the config index
@@ -265,8 +266,8 @@ func (docstore *DocStoreExt) Insert(collection string, idoc interface{}) (*id.ID
 	return nil, fmt.Errorf("shouldn't happen")
 }
 
-func (docstore *DocStoreExt) Query(collection string, query map[string]interface{}, limit int, res interface{}) (*executionStats, error) {
-	js, stats, err := docstore.query(collection, query, limit)
+func (docstore *DocStoreExt) Query(collection string, query map[string]interface{}, cursor string, limit int, res interface{}) (*executionStats, error) {
+	js, stats, err := docstore.query(collection, query, cursor, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -284,22 +285,23 @@ func addID(js []byte, _id string) []byte {
 
 // query returns a JSON list as []byte for the given query
 // docs are unmarhsalled to JSON only when needed.
-func (docstore *DocStoreExt) query(collection string, query map[string]interface{}, limit int) ([]byte, *executionStats, error) {
+func (docstore *DocStoreExt) query(collection string, query map[string]interface{}, cursor string, limit int) ([]byte, *executionStats, error) {
 	js := []byte("[")
 	tstart := time.Now()
 	stats := &executionStats{}
-	start := fmt.Sprintf(KeyFmt, collection, "") // q.Get("start"))
-	// TODO(ts) check the \xff
-	end := fmt.Sprintf(KeyFmt, collection, "\xff") // q.Get("end")+"\xff")
-	// FIXME(ts) we may have to scan all the docs for answering the query
-	// so this call should be in a for loop
+	start := fmt.Sprintf(KeyFmt, collection, cursor)
+	end := fmt.Sprintf(KeyFmt, collection, "\xff")
 	if query == nil || len(query) == 0 {
 		// Prefetch more docs since there's a lot of chance the query will
 		// match every documents
-		limit = int(float64(limit) * 1.6)
+		limit = int(float64(limit) * 1.3)
 	}
 	qLogger := docstore.logger.New("query", query, "id", logext.RandId(8))
 	qLogger.Info("new query")
+	var noQuery bool
+	if len(query) == 0 {
+		noQuery = true
+	}
 	var lastKey string
 	for {
 		qLogger.Debug("internal query", "limit", limit, "start", start, "end", end, "nreturned", stats.NReturned)
@@ -309,18 +311,17 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 		}
 		for _, kv := range res {
 			jsPart := []byte{}
-			// TODO(tsileo) send the Ids in the header
-			// doc["_id"] = _id.String()
 			_id := hashFromKey(collection, kv.Key)
 			if _, err := docstore.fetchDoc(collection, _id, &jsPart); err != nil {
 				panic(err)
 			}
 			stats.TotalDocsExamined++
-			if len(query) == 0 {
+			if noQuery {
 				// No query, so we just add every docs
 				js = append(js, addID(jsPart, _id)...)
 				js = append(js, []byte(",")...)
 				stats.NReturned++
+				stats.LastID = _id
 				if stats.NReturned == limit {
 					break
 				}
@@ -333,6 +334,7 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 					js = append(js, addID(jsPart, _id)...)
 					js = append(js, []byte(",")...)
 					stats.NReturned++
+					stats.LastID = _id
 					if stats.NReturned == limit {
 						break
 					}
@@ -367,9 +369,12 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 		// if r.Header.Get("BlobStash-DocStore-Explain-Mode") != "" || q.Get("explain") != "" {
 		// 	explainMode = true
 		// }
-		// FIXME(ts) returns the execution stats and add a debug mode in the CLI
 		switch r.Method {
 		case "GET":
+			// Parse the cursor
+			cursor := q.Get("cursor")
+
+			// Parse the query (JSON-encoded)
 			query := map[string]interface{}{}
 			jsQuery := q.Get("query")
 			if jsQuery != "" {
@@ -377,6 +382,8 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 					panic(err)
 				}
 			}
+
+			// Parse the limit
 			limit := 50
 			if q.Get("limit") != "" {
 				ilimit, err := strconv.Atoi(q.Get("limit"))
@@ -385,15 +392,30 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 				}
 				limit = ilimit
 			}
-			// FIXME(tsileo): write IDs + stats as headers
-			js, stats, err := docstore.query(collection, query, limit)
+			js, stats, err := docstore.query(collection, query, cursor, limit)
 			if err != nil {
 				panic(err)
 			}
+
+			// Set some meta headers to help the client build subsequent query
+			// (iterator/cursor handling)
+			var hasMore bool
+			// Guess if they're are still results on client-side,
+			// by checking if NReturned < limit, we can deduce there's no more results.
+			// The cursor should be the start of the next query
+			if stats.NReturned == limit {
+				hasMore = true
+			}
+			w.Header().Set("BlobStahs-DocStore-Iter-Has-More", strconv.FormatBool(hasMore))
+			w.Header().Set("BlobStash-DocStore-Iter-Cursor", nextKey(stats.LastID))
+
+			// Set headers for the query stats
+			w.Header().Set("BlobStash-DocStore-Query-Returned", strconv.Itoa(stats.NReturned))
+			w.Header().Set("BlobStash-DocStore-Query-Examined", strconv.Itoa(stats.TotalDocsExamined))
+			w.Header().Set("BlobStash-DocStore-Query-Exec-Time", strconv.Itoa(stats.ExecutionTimeMillis))
+
+			// Write the JSON response (encoded if requested)
 			w.Header().Set("Content-Type", "application/json")
-			w.Header().Set("BlobStash-DocStore-Iter-Count", strconv.Itoa(stats.NReturned))
-			// FIXME(tsileo): Add the last ID as cursor
-			w.Header().Set("BlobStash-DocStore-Iter-Cursor", "TBD")
 			srw := httputil.NewSnappyResponseWriter(w, r)
 			srw.Write(js)
 			srw.Close()
