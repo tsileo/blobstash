@@ -65,10 +65,14 @@ func (db *DB) AddNs(hexHash, ns string) error {
 }
 
 // Namespaces returns all blobs for the given namespace
-func (db *DB) Namespace(ns string) ([]string, error) {
+func (db *DB) Namespace(ns, prefix string) ([]string, error) {
 	res := []string{}
-	start := []byte(fmt.Sprintf("%s:", ns))
-	vstart := len(start)
+	prefixBytes, err := hex.DecodeString(prefix)
+	if err != nil {
+		return nil, err
+	}
+	start := []byte(fmt.Sprintf("%s:%s", ns, string(prefixBytes)))
+	vstart := len(ns) + 1
 	enum, _, err := db.db.Seek(start)
 	if err != nil {
 		return nil, err

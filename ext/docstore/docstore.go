@@ -51,6 +51,8 @@ import (
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
 )
 
+// FIXME(tsileo): support namespace!
+
 var KeyFmt = "docstore:%s:%s"
 
 func hashFromKey(col, key string) string {

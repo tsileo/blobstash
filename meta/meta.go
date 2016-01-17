@@ -52,8 +52,9 @@ func (mh *MetaHandler) processKvUpdate(wg sync.WaitGroup, blobs chan<- *router.B
 		go vkvhub.Pub(kv.Key, fmt.Sprintf("%d:%s", kv.Version, kv.Value))
 		blob := CreateMetaBlob(kv)
 		req := &router.Request{
-			MetaBlob: true,
-			Type:     router.Write,
+			MetaBlob:  true,
+			Type:      router.Write,
+			Namespace: kv.Namespace(),
 		}
 		hash := fmt.Sprintf("%x", blake2b.Sum256(blob))
 		if err := kv.SetMetaBlob(hash); err != nil {

@@ -62,14 +62,24 @@ var ErrNotFound = errors.New("vkv: key does not exist")
 
 // KeyValue holds a singke key value pair, along with the version (the creation timestamp)
 type KeyValue struct {
-	Key     string `json:"key,omitempty"`
-	Value   string `json:"value"`
-	Version int    `json:"version"`
-	db      *DB
+	Key       string `json:"key,omitempty"`
+	Value     string `json:"value"`
+	Version   int    `json:"version"`
+	db        *DB    `json:"-"`
+	namespace string `json:"-"`
 }
 
 func (kvi *KeyValue) SetMetaBlob(hash string) error {
 	return kvi.db.setmetablob(kvi.Key, kvi.Version, hash)
+}
+
+func (kvi *KeyValue) SetNamespace(ns string) error {
+	kvi.namespace = ns
+	return nil
+}
+
+func (kvi *KeyValue) Namespace() string {
+	return kvi.namespace
 }
 
 // KeyValueVersions holds the full history for a key value pair

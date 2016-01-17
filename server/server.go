@@ -28,6 +28,7 @@ import (
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
 	"github.com/tsileo/blobstash/nsdb"
 	"github.com/tsileo/blobstash/router"
+	"github.com/tsileo/blobstash/synctable"
 	"github.com/tsileo/blobstash/vkv"
 	"github.com/tsileo/blobstash/vkv/hub"
 	"github.com/unrolled/secure"
@@ -59,6 +60,8 @@ type Server struct {
 	DB          *vkv.DB
 	NsDB        *nsdb.DB
 	metaHandler *meta.MetaHandler
+
+	syncer *synctable.SyncTable
 
 	KvUpdate chan *vkv.KeyValue
 	blobs    chan *router.Blob
@@ -144,7 +147,7 @@ func (s *Server) processBlobs() {
 						NsBlob: true,
 					},
 				}
-				if err := s.NsDB.AddNs(nsHash, blob.Req.Namespace); err != nil {
+				if err := s.NsDB.AddNs(blob.Hash, blob.Req.Namespace); err != nil {
 					panic(err)
 				}
 			}
@@ -221,6 +224,9 @@ func (s *Server) Run() {
 	luaExt.RegisterRoute(r.PathPrefix("/api/ext/lua/v1").Subrouter(), middlewares)
 	luaExt.RegisterAppRoute(appRoute, middlewares)
 	api.New(r.PathPrefix("/api/v1").Subrouter(), middlewares, s.wg, s.DB, s.NsDB, s.KvUpdate, s.Router, s.blobs, s.watchHub)
+
+	s.syncer = synctable.New(s.NsDB, s.Log.New("ext", "synctable"))
+	s.syncer.RegisterRoute(r.PathPrefix("/api/sync/v1").Subrouter(), middlewares)
 
 	// TODO(tsileo) add robots.txt handler, and a 204 favicon.ico handler
 	// FIXME(tsileo) a way to make an app hook the index

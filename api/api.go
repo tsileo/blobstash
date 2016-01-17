@@ -106,7 +106,8 @@ func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blob
 				version = iversion
 			}
 			res, err := db.Put(k, v, version)
-			// FIXME(tsileo): handle namespace
+			// FIXME(tsileo): handle namespace in embeded client too
+			res.SetNamespace(values.Get("ns"))
 			if err != nil {
 				panic(err)
 			}
