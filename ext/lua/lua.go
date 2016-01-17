@@ -33,9 +33,10 @@ import (
 	templateModule "github.com/tsileo/blobstash/ext/lua/modules/template"
 )
 
-// TODO(tsileo) Store recent log entries
-// TODO(tsileo) Remove name from app?
-// TODO(tsile) check the authentication per app LuaApp.APIKey
+// TODO(tsileo): A Lua flag for automatically load/apply Luap app (and ns/meta blobs)
+// TODO(tsileo): Store recent log entries
+// TODO(tsileo): Remove name from app?
+// TODO(tsileo): check the authentication per app LuaApp.APIKey
 
 type LuaApp struct {
 	AppID  string

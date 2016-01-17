@@ -29,6 +29,7 @@ import (
 	"github.com/tsileo/blobstash/vkv"
 	"github.com/tsileo/blobstash/vkv/hub"
 	"github.com/unrolled/secure"
+	_ "golang.org/x/net/http2"
 	log2 "gopkg.in/inconshreveable/log15.v2"
 )
 
@@ -226,6 +227,21 @@ func (s *Server) Run() {
 			panic(err)
 		}
 	}()
+
+	// XXX(tsileo) HTTPS version for later
+	// http.Handle("/", secureMiddleware.Handler(c.Handler(r)))
+	// srv := &http.Server{
+	// 	Addr:    ":443",
+	// 	Handler: http.DefaultServeMux,
+	// }
+	// s.Log.Info("server: HTTP API listening on 0.0.0.0:8050")
+	// go func() {
+	// 	http2.ConfigureServer(srv, &http2.Server{})
+	// 	if err := srv.ListenAndServeTLS(".lego/certificates/trucsdedev.com.crt", ".lego/certificates/trucsdedev.com.key"); err != nil {
+	// 		panic(err)
+	// 	}
+	// }()
+
 	s.TillShutdown()
 }
 

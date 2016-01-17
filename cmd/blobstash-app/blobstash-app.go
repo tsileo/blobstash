@@ -17,6 +17,7 @@ import (
 
 // FIXME(tsileo) watch seems to be broken
 // TODO(tsileo) better error handling
+// TODO(tsileo) display API key
 
 type Lvl int
 
