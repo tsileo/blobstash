@@ -93,6 +93,10 @@ Perfect for building app designed to only store your own data.
 
 See [here for more details](docs/docstore.md).
 
+#### Client
+
+- [docstore-client written in Go](https://github.com/tsileo/docstore-client).
+
 ### Lua App/Scripting
 
 You can create **app**, custom API endpoint running [Lua](http://www.lua.org/) script (like OpenResty).

@@ -1,12 +1,13 @@
 /*
 
-*/
+ */
 
 package nsdb
 
 import (
 	"bytes"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -17,7 +18,7 @@ import (
 type DB struct {
 	db   *kv.DB
 	path string
-	mu   *sync.Mutex
+	sync.Mutex
 }
 
 // New creates a new database.
@@ -33,7 +34,6 @@ func New(path string) (*DB, error) {
 	return &DB{
 		db:   kvdb,
 		path: path,
-		mu:   new(sync.Mutex),
 	}, nil
 }
 
@@ -55,8 +55,8 @@ func encodeKey(hexHash, ns string) []byte {
 		panic(err)
 	}
 	var buf bytes.Buffer
+	buf.WriteString(ns + ":")
 	buf.Write(hash)
-	buf.WriteString(ns)
 	return buf.Bytes()
 }
 
@@ -64,23 +64,16 @@ func (db *DB) AddNs(hexHash, ns string) error {
 	return db.db.Set(encodeKey(hexHash, ns), []byte{})
 }
 
-func (db *DB) RemoveNs(hexHash, ns string) error {
-	return db.db.Delete(encodeKey(hexHash, ns))
-}
-
-// Return a lexicographical range
-func (db *DB) Namespaces(hexHash string) ([]string, error) {
-	hash, err := hex.DecodeString(hexHash)
-	if err != nil {
-		return nil, err
-	}
+// Namespaces returns all blobs for the given namespace
+func (db *DB) Namespace(ns string) ([]string, error) {
 	res := []string{}
-
-	enum, _, err := db.db.Seek(hash)
+	start := []byte(fmt.Sprintf("%s:", ns))
+	vstart := len(start)
+	enum, _, err := db.db.Seek(start)
 	if err != nil {
 		return nil, err
 	}
-	endBytes := []byte(append(hash, '\xff'))
+	endBytes := append(start, '\xff')
 	for {
 		k, _, err := enum.Next()
 		if err == io.EOF {
@@ -89,7 +82,22 @@ func (db *DB) Namespaces(hexHash string) ([]string, error) {
 		if bytes.Compare(k, endBytes) > 0 {
 			return res, nil
 		}
-		res = append(res, string(k[32:]))
+		res = append(res, fmt.Sprintf("%x", k[vstart:]))
 	}
 	return res, nil
+}
+
+func (db *DB) ApplyMeta(hash string) error {
+	return db.db.Set([]byte(fmt.Sprintf("_meta:%s", hash)), []byte("1"))
+}
+
+func (db *DB) BlobApplied(hash string) (bool, error) {
+	res, err := db.db.Get(nil, []byte(fmt.Sprintf("_meta:%s", hash)))
+	if err != nil {
+		return false, err
+	}
+	if res == nil || len(res) == 0 {
+		return false, nil
+	}
+	return true, nil
 }

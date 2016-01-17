@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/carbocation/interpose/middleware"
+	"github.com/dchest/blake2b"
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
 	"github.com/tsileo/blobstash/api"
@@ -25,6 +26,7 @@ import (
 	"github.com/tsileo/blobstash/logger"
 	"github.com/tsileo/blobstash/meta"
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
+	"github.com/tsileo/blobstash/nsdb"
 	"github.com/tsileo/blobstash/router"
 	"github.com/tsileo/blobstash/vkv"
 	"github.com/tsileo/blobstash/vkv/hub"
@@ -55,6 +57,7 @@ type Server struct {
 	Router      *router.Router
 	Backends    map[string]backend.BlobHandler
 	DB          *vkv.DB
+	NsDB        *nsdb.DB
 	metaHandler *meta.MetaHandler
 
 	KvUpdate chan *vkv.KeyValue
@@ -81,10 +84,15 @@ func New(conf map[string]interface{}) *Server {
 	if err != nil {
 		panic(err)
 	}
+	nsdb, err := nsdb.New(filepath.Join(vardir, "ns.db"))
+	if err != nil {
+		panic(err)
+	}
 	server := &Server{
 		Router:   router.New(conf["router"].([]interface{})),
 		Backends: map[string]backend.BlobHandler{},
 		DB:       db,
+		NsDB:     nsdb,
 		KvUpdate: make(chan *vkv.KeyValue),
 		ready:    make(chan struct{}, 1),
 		shutdown: make(chan struct{}, 1),
@@ -99,7 +107,7 @@ func New(conf map[string]interface{}) *Server {
 		server.Backends[b] = config.NewFromConfig(backends[b].(map[string]interface{}))
 		server.Router.Backends[b] = server.Backends[b]
 	}
-	server.metaHandler = meta.New(server.Router, server.DB)
+	server.metaHandler = meta.New(server.Router, server.DB, server.NsDB)
 	return server
 }
 
@@ -118,6 +126,26 @@ func (s *Server) processBlobs() {
 			if !exists {
 				if err := backend.Put(blob.Hash, blob.Blob); err != nil {
 					panic(fmt.Errorf("processBlobs error: %v", err))
+				}
+			}
+			if blob.Req.MetaBlob {
+				if err := s.NsDB.ApplyMeta(blob.Hash); err != nil {
+					panic(err)
+				}
+			}
+			if blob.Req.Namespace != "" {
+				nsBlobBody := meta.CreateNsBlob(blob.Hash, blob.Req.Namespace)
+				nsHash := fmt.Sprintf("%x", blake2b.Sum256(nsBlobBody))
+				s.blobs <- &router.Blob{
+					Blob: nsBlobBody,
+					Hash: nsHash,
+					Req: &router.Request{
+						Type:   router.Write,
+						NsBlob: true,
+					},
+				}
+				if err := s.NsDB.AddNs(nsHash, blob.Req.Namespace); err != nil {
+					panic(err)
 				}
 			}
 		case <-s.stop:
@@ -192,7 +220,7 @@ func (s *Server) Run() {
 	luaExt := lua.New(s.Log.New("ext", "lua"), hawkKey, authFunc, ekvstore, eblobstore)
 	luaExt.RegisterRoute(r.PathPrefix("/api/ext/lua/v1").Subrouter(), middlewares)
 	luaExt.RegisterAppRoute(appRoute, middlewares)
-	api.New(r.PathPrefix("/api/v1").Subrouter(), middlewares, s.wg, s.DB, s.KvUpdate, s.Router, s.blobs, s.watchHub)
+	api.New(r.PathPrefix("/api/v1").Subrouter(), middlewares, s.wg, s.DB, s.NsDB, s.KvUpdate, s.Router, s.blobs, s.watchHub)
 
 	// TODO(tsileo) add robots.txt handler, and a 204 favicon.ico handler
 	// FIXME(tsileo) a way to make an app hook the index
@@ -273,6 +301,7 @@ func (s *Server) Close() {
 	s.wg.Wait()
 	close(s.KvUpdate)
 	s.DB.Close()
+	s.NsDB.Close()
 	for _, b := range s.Backends {
 		b.Close()
 	}

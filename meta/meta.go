@@ -10,6 +10,7 @@ import (
 
 	"github.com/dchest/blake2b"
 	"github.com/tsileo/blobstash/logger"
+	"github.com/tsileo/blobstash/nsdb"
 	"github.com/tsileo/blobstash/router"
 	"github.com/tsileo/blobstash/vkv"
 	"github.com/tsileo/blobstash/vkv/hub"
@@ -26,15 +27,17 @@ var (
 type MetaHandler struct {
 	router *router.Router
 	db     *vkv.DB
+	nsdb   *nsdb.DB
 	stop   chan struct{}
 	log    log2.Logger
 }
 
-func New(r *router.Router, db *vkv.DB) *MetaHandler {
+func New(r *router.Router, db *vkv.DB, ns *nsdb.DB) *MetaHandler {
 	return &MetaHandler{
 		router: r,
 		stop:   make(chan struct{}),
 		db:     db,
+		nsdb:   ns,
 		log:    logger.Log.New("submodule", "meta"),
 	}
 }
@@ -114,6 +117,22 @@ func (mh *MetaHandler) Scan() error {
 				return err
 			}
 			j++
+		}
+		if IsNsBlob(blob) {
+			applied, err := mh.nsdb.BlobApplied(h)
+			if err != nil {
+				return err
+			}
+			if !applied {
+				h, ns := DecodeNsBlob(blob)
+				mh.log.Info(fmt.Sprintf("Applying ns blob %s/%s", h, ns))
+				if err := mh.nsdb.AddNs(h, ns); err != nil {
+					return err
+				}
+				if err := mh.nsdb.ApplyMeta(h); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	if err := <-errc; err != nil {

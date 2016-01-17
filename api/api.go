@@ -5,7 +5,6 @@ package api
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -19,21 +18,13 @@ import (
 	"github.com/dchest/blake2b"
 	"github.com/gorilla/mux"
 	"github.com/janberktold/sse"
+	"github.com/tsileo/blobstash/httputil"
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
+	"github.com/tsileo/blobstash/nsdb"
 	"github.com/tsileo/blobstash/router"
 	"github.com/tsileo/blobstash/vkv"
 	"github.com/tsileo/blobstash/vkv/hub"
 )
-
-func WriteJSON(w http.ResponseWriter, data interface{}) {
-	js, err := json.Marshal(data)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(js)
-}
 
 func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blobrouter *router.Router) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -57,7 +48,7 @@ func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blob
 				}
 				panic(err)
 			}
-			WriteJSON(w, res)
+			httputil.WriteJSON(w, res)
 		case "HEAD":
 			exists, err := db.Check(vars["key"])
 			if err != nil {
@@ -115,11 +106,12 @@ func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blob
 				version = iversion
 			}
 			res, err := db.Put(k, v, version)
+			// FIXME(tsileo): handle namespace
 			if err != nil {
 				panic(err)
 			}
 			kvUpdate <- res
-			WriteJSON(w, res)
+			httputil.WriteJSON(w, res)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -136,7 +128,7 @@ func vkvVersionsHandler(db *vkv.DB) func(http.ResponseWriter, *http.Request) {
 			if err != nil {
 				panic(err)
 			}
-			WriteJSON(w, res)
+			httputil.WriteJSON(w, res)
 			return
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -165,7 +157,7 @@ func vkvKeysHandler(db *vkv.DB) func(http.ResponseWriter, *http.Request) {
 			if err != nil {
 				panic(err)
 			}
-			WriteJSON(w, map[string]interface{}{"keys": res})
+			httputil.WriteJSON(w, map[string]interface{}{"keys": res})
 			return
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -204,8 +196,8 @@ func blobUploadHandler(blobs chan<- *router.Blob) func(http.ResponseWriter, *htt
 					return
 				}
 				req := &router.Request{
-					Type: router.Write,
-					//	Namespace: r.URL.Query().Get("ns"),
+					Type:      router.Write,
+					Namespace: r.URL.Query().Get("ns"),
 				}
 				blobs <- &router.Blob{Hash: hash, Req: req, Blob: blob}
 			}
@@ -255,12 +247,13 @@ func blobHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Requ
 func blobsHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		req := &router.Request{
-			Type: router.Read,
-			//	Namespace: r.URL.Query().Get("ns"),
+			Type:      router.Read,
+			Namespace: r.URL.Query().Get("ns"),
 		}
 		backend := blobrouter.Route(req)
 		switch r.Method {
 		case "GET":
+			// FIXME(tsileo): Re-implement this!
 			//start := r.URL.Query().Get("start")
 			//end := r.URL.Query().Get("end")
 			//slimit := r.URL.Query().Get("limit")
@@ -284,7 +277,7 @@ func blobsHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Req
 			if err := <-errc; err != nil {
 				panic(err)
 			}
-			WriteJSON(w, map[string]interface{}{"blobs": res})
+			httputil.WriteJSON(w, map[string]interface{}{"blobs": res})
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -313,7 +306,7 @@ func vkvWatchKeyHandler(vkvhub *hub.Hub) func(http.ResponseWriter, *http.Request
 		}
 	}
 }
-func New(r *mux.Router, middlewares *serverMiddleware.SharedMiddleware, wg sync.WaitGroup, db *vkv.DB,
+func New(r *mux.Router, middlewares *serverMiddleware.SharedMiddleware, wg sync.WaitGroup, db *vkv.DB, ns *nsdb.DB,
 	kvUpdate chan *vkv.KeyValue, blobrouter *router.Router, blobs chan<- *router.Blob, vkvHub *hub.Hub) {
 
 	r.Handle("/blobstore/upload", middlewares.Auth(http.HandlerFunc(blobUploadHandler(blobs))))

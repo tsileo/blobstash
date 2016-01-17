@@ -23,6 +23,7 @@ type Request struct {
 	// The following fields are used for routing
 	Type      int  // Whether this is a Put/Read/Exists request (for blob routing only)
 	MetaBlob  bool // Whether the blob is a meta blob
+	NsBlob    bool // Wether the blob is a namespace blob
 	Namespace string
 }
 
@@ -33,7 +34,7 @@ type Blob struct {
 }
 
 func (b *Blob) String() string {
-	return fmt.Sprintf("[blob hash=%v, size=%d, meta=%v]", b.Hash, len(b.Blob), b.Req.MetaBlob)
+	return fmt.Sprintf("[blob hash=%v, size=%d, meta=%v, ns=%v]", b.Hash, len(b.Blob), b.Req.MetaBlob, b.Req.NsBlob)
 }
 
 type Rule struct {
@@ -67,6 +68,7 @@ func (req *Request) String() string {
 	return fmt.Sprintf("[request type=%v, meta=%v, ns=%v]",
 		req.Type, req.MetaBlob, req.Namespace)
 }
+
 func (req *Request) Meta() *Request {
 	return &Request{
 		Type:      req.Type,
