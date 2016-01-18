@@ -72,6 +72,8 @@ type Server struct {
 	stop     chan struct{}
 	wg       sync.WaitGroup
 	watchHub *hub.Hub
+
+	port int
 }
 
 func New(conf map[string]interface{}) *Server {
@@ -102,6 +104,7 @@ func New(conf map[string]interface{}) *Server {
 		stop:     make(chan struct{}),
 		blobs:    make(chan *router.Blob),
 		resync:   conf["resync"].(bool),
+		port:     conf["port"].(int),
 		Log:      logger.Log,
 		watchHub: hub.NewHub(),
 	}
@@ -255,9 +258,9 @@ func (s *Server) Run() {
 		ContentSecurityPolicy: "default-src 'self'",
 	})
 	http.Handle("/", secureMiddleware.Handler(c.Handler(r)))
-	s.Log.Info("server: HTTP API listening on 0.0.0.0:8050")
+	s.Log.Info(fmt.Sprintf("server: HTTP API listening on 0.0.0.0:%d", s.port))
 	go func() {
-		if err := http.ListenAndServe(":8050", nil); err != nil {
+		if err := http.ListenAndServe(fmt.Sprintf(":%d", s.port), nil); err != nil {
 			panic(err)
 		}
 	}()

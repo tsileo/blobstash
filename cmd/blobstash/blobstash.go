@@ -29,6 +29,10 @@ func main() {
 		cli.StringFlag{
 			Name: "resync",
 		},
+		cli.IntFlag{
+			Name:  "port",
+			Value: 8050,
+		},
 	}
 	app2.Action = func(c *cli.Context) {
 		var path string
@@ -38,12 +42,12 @@ func main() {
 		} else {
 			path = args[0]
 		}
-		start(path, c.String("loglevel"), c.Bool("resync"))
+		start(path, c.String("loglevel"), c.Bool("resync"), c.Int("port"))
 	}
 	app2.Run(os.Args)
 }
 
-func start(config_path, loglevel string, resync bool) {
+func start(config_path, loglevel string, resync bool, port int) {
 	logger.InitLogger(loglevel)
 	l := logger.Log
 	l.Info(fmt.Sprintf("Starting blobstash version %v; %v (%v/%v)", server.Version, runtime.Version(), runtime.GOOS, runtime.GOARCH))
@@ -64,11 +68,13 @@ func start(config_path, loglevel string, resync bool) {
 	if err != nil {
 		panic(fmt.Errorf("failed to read config file: %v", err))
 	}
+	// FIXME(tsileo): don't override port if it's present in a config file
 	var conf map[string]interface{}
 	if err := json.Unmarshal(dat, &conf); err != nil {
 		panic(fmt.Errorf("failed decode config file (invalid json): %v", err))
 	}
 	conf["resync"] = resync
+	conf["port"] = port
 	s := server.New(conf)
 	s.Run()
 }

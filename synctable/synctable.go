@@ -15,9 +15,11 @@ Blake2B (the same hashing algorithm used by the Blob Store) is used to compute t
 package synctable
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"hash"
+	"io"
 	"net/http"
 	"sync"
 
@@ -27,6 +29,7 @@ import (
 
 	"github.com/dchest/blake2b"
 	"github.com/gorilla/mux"
+	"golang.org/x/net/http2"
 	log2 "gopkg.in/inconshreveable/log15.v2"
 	logext "gopkg.in/inconshreveable/log15.v2/ext"
 )
@@ -199,6 +202,12 @@ func (st *SyncTable) syncHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
+type SyncResp struct {
+	Conflicted []string `json:"conflicted"`
+	Needed     []string `json:"nedeed"`
+	Missing    []string `json:"missing"`
+}
+
 type StateTree struct {
 	root   hash.Hash
 	level1 map[string]hash.Hash
@@ -272,4 +281,102 @@ func (st *StateTree) Count() int {
 	return st.count
 }
 
+type SyncTableClient struct {
+	client    *http.Client
+	url       string
+	apiKey    string
+	namespace string
+}
+
+func NewSyncTableClient(ns, url, apiKey string) *SyncTableClient {
+	transport := http.DefaultTransport
+	if err := http2.ConfigureTransport(transport.(*http.Transport)); err != nil {
+		panic(err)
+	}
+	return &SyncTableClient{
+		client: &http.Client{
+			Transport: transport,
+		},
+		url:       url,
+		apiKey:    apiKey,
+		namespace: ns,
+	}
+}
+
+func (stc *SyncTableClient) path(path string) string {
+	return fmt.Sprintf("%s%s", stc.url, path)
+}
+
+func (stc *SyncTableClient) doReq(method, path string, headers map[string]string, body io.Reader) (*http.Response, error) {
+	request, err := http.NewRequest(method, stc.path(path), body)
+	if err != nil {
+		return nil, err
+	}
+
+	if stc.apiKey != "" {
+		request.SetBasicAuth("", stc.apiKey)
+	}
+
+	// Set our custom user agent
+	request.Header.Set("User-Agent", "BlobStash SyncTableClient")
+
+	// Add custom headers
+	for header, val := range headers {
+		request.Header.Set(header, val)
+	}
+	return stc.client.Do(request)
+}
+
+func (stc *SyncTableClient) Leafs(prefix string) (*LeafState, error) {
+	ls := &LeafState{}
+	resp, err := stc.doReq("GET", fmt.Sprintf("/api/sync/v1/_state/%s/leafs%s", stc.namespace, prefix), nil, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case 200:
+		if err := json.NewDecoder(resp.Body).Decode(ls); err != nil {
+			return nil, err
+		}
+		return ls, nil
+	default:
+		var body bytes.Buffer
+		body.ReadFrom(resp.Body)
+		return nil, fmt.Errorf("failed to insert doc: %v", body.String())
+	}
+}
+
+func (stc *SyncTableClient) Init(state *State) error {
+	js, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	payload := bytes.NewReader(js)
+
+	resp, err := stc.doReq("POST", fmt.Sprintf("/api/sync/v1/%s", stc.namespace), nil, payload)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case 200:
+		sr := &SyncResp{}
+		if err := json.NewDecoder(resp.Body).Decode(sr); err != nil {
+			return err
+		}
+		fmt.Printf("SyncResp: %+v", sr)
+		// FIXME(tsileo): parse the sync result and do the sync
+		return nil
+	default:
+		var body bytes.Buffer
+		body.ReadFrom(resp.Body)
+		return fmt.Errorf("failed to insert doc: %v", body.String())
+	}
+}
+
+//..	r.Handle("/_state/{ns}", middlewares.Auth(http.HandlerFunc(st.stateHandler())))
+//	r.Handle("/_state/{ns}/leafs/{prefix}", middlewares.Auth(http.HandlerFunc(st.stateLeafsHandler())))
+//	r.Handle("/{ns}", middlewares.Auth(http.HandlerFunc(st.syncHandler())))
 // TODO(tsileo): add sync endpoints
