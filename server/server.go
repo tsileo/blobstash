@@ -81,9 +81,9 @@ func New(conf map[string]interface{}) *Server {
 		conf = DefaultConf
 	}
 	vardir := pathutil.VarDir()
-	if dpath, ok := conf["data_path"].(string); ok {
-		vardir = dpath
-	}
+	// if dpath, ok := conf["data_path"].(string); ok {
+	// 	vardir = dpath
+	// }
 	os.MkdirAll(vardir, 0700)
 	db, err := vkv.New(filepath.Join(vardir, "vkv.db"))
 	if err != nil {

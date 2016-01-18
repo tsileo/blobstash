@@ -65,22 +65,51 @@ func (st *SyncTable) RegisterRoute(r *mux.Router, middlewares *serverMiddleware.
 	r.Handle("/_state/{ns}", middlewares.Auth(http.HandlerFunc(st.stateHandler())))
 	r.Handle("/_state/{ns}/leafs/{prefix}", middlewares.Auth(http.HandlerFunc(st.stateLeafsHandler())))
 	r.Handle("/{ns}", middlewares.Auth(http.HandlerFunc(st.syncHandler())))
+	r.Handle("/_trigger/{ns}", middlewares.Auth(http.HandlerFunc(st.triggerHandler())))
+}
+
+func (st *SyncTable) triggerHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		vars := mux.Vars(r)
+		ns := vars["ns"]
+		log := st.log.New("trigger_id", logext.RandId(6), "ns", ns)
+		url := q.Get("url")
+		log.Info("Starting sync...", "url", url)
+		apiKey := q.Get("api_key")
+		client := NewSyncTableClient(ns, url, apiKey)
+		rawState := st.generateTree(ns)
+		state := &State{
+			Namespace: ns,
+			Root:      rawState.Root(),
+			Count:     rawState.Count(),
+			Leafs:     rawState.Level1(),
+		}
+		if err := client.Sync(state); err != nil {
+			panic(err)
+		}
+	}
+}
+
+func (st *SyncTable) generateTree(ns string) *StateTree {
+	state := NewStateTree()
+	hashes, err := st.nsdb.Namespace(ns, "")
+	if err != nil {
+		panic(err)
+	}
+	for _, h := range hashes {
+		// st.log.Debug("_state loop", "ns", ns, "hash", h)
+		state.Add(h)
+	}
+	return state
 }
 
 func (st *SyncTable) stateHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		state := NewStateTree()
 		vars := mux.Vars(r)
 		ns := vars["ns"]
 		st.log.Info("_state called", "ns", ns)
-		hashes, err := st.nsdb.Namespace(ns, "")
-		if err != nil {
-			panic(err)
-		}
-		for _, h := range hashes {
-			// st.log.Debug("_state loop", "ns", ns, "hash", h)
-			state.Add(h)
-		}
+		state := st.generateTree(ns)
 		httputil.WriteJSON(w, map[string]interface{}{
 			"namespace": ns,
 			"root":      state.Root(),
@@ -121,10 +150,10 @@ func (st *SyncTable) stateLeafsHandler() func(http.ResponseWriter, *http.Request
 }
 
 type LeafState struct {
-	Namespace string `json:"namespace"`
-	Prefix    string `json:"prefix"`
-	Count     int    `json:"count"`
-	Hashes    string `json:"hashes"`
+	Namespace string   `json:"namespace"`
+	Prefix    string   `json:"prefix"`
+	Count     int      `json:"count"`
+	Hashes    []string `json:"hashes"`
 }
 
 func (st *SyncTable) syncHandler() func(http.ResponseWriter, *http.Request) {
@@ -137,15 +166,7 @@ func (st *SyncTable) syncHandler() func(http.ResponseWriter, *http.Request) {
 		ns := vars["ns"]
 		log := st.log.New("sync_id", logext.RandId(6), "ns", ns)
 		log.Info("sync triggered")
-		state := NewStateTree()
-		hashes, err := st.nsdb.Namespace(ns, "")
-		if err != nil {
-			panic(err)
-		}
-		for _, h := range hashes {
-			// st.log.Debug("_state loop", "ns", ns, "hash", h)
-			state.Add(h)
-		}
+		state := st.generateTree(ns)
 		local_state := &State{
 			Namespace: ns,
 			Root:      state.Root(),
@@ -277,6 +298,7 @@ func (st *StateTree) Add(h string) {
 	st.root.Write([]byte(h))
 	st.count++
 }
+
 func (st *StateTree) Count() int {
 	return st.count
 }
@@ -287,6 +309,8 @@ type SyncTableClient struct {
 	apiKey    string
 	namespace string
 }
+
+// FIXME(tsileo): Move the SyncTableClient in a separate file
 
 func NewSyncTableClient(ns, url, apiKey string) *SyncTableClient {
 	transport := http.DefaultTransport
@@ -329,7 +353,7 @@ func (stc *SyncTableClient) doReq(method, path string, headers map[string]string
 
 func (stc *SyncTableClient) Leafs(prefix string) (*LeafState, error) {
 	ls := &LeafState{}
-	resp, err := stc.doReq("GET", fmt.Sprintf("/api/sync/v1/_state/%s/leafs%s", stc.namespace, prefix), nil, nil)
+	resp, err := stc.doReq("GET", fmt.Sprintf("/api/sync/v1/_state/%s/leafs/%s", stc.namespace, prefix), nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +372,7 @@ func (stc *SyncTableClient) Leafs(prefix string) (*LeafState, error) {
 	}
 }
 
-func (stc *SyncTableClient) Init(state *State) error {
+func (stc *SyncTableClient) Sync(state *State) error {
 	js, err := json.Marshal(state)
 	if err != nil {
 		return err
@@ -361,13 +385,26 @@ func (stc *SyncTableClient) Init(state *State) error {
 	}
 	defer resp.Body.Close()
 	switch resp.StatusCode {
+	case 204:
+		fmt.Printf("NO SYNC NEEDED")
+		return nil
 	case 200:
 		sr := &SyncResp{}
 		if err := json.NewDecoder(resp.Body).Decode(sr); err != nil {
 			return err
 		}
-		fmt.Printf("SyncResp: %+v", sr)
+		fmt.Printf("SyncResp: %+v\n", sr)
 		// FIXME(tsileo): parse the sync result and do the sync
+		for _, prefix := range sr.Missing {
+			leafs, err := stc.Leafs(prefix)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Leafs: %+v\n", leafs)
+			for _, h := range leafs.Hashes {
+				fmt.Printf("Fetch and insert %v\n", h)
+			}
+		}
 		return nil
 	default:
 		var body bytes.Buffer
