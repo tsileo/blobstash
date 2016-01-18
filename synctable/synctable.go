@@ -22,6 +22,7 @@ import (
 	"io"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/tsileo/blobstash/httputil"
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
@@ -85,9 +86,11 @@ func (st *SyncTable) triggerHandler() func(http.ResponseWriter, *http.Request) {
 			Count:     rawState.Count(),
 			Leafs:     rawState.Level1(),
 		}
-		if err := client.Sync(state); err != nil {
+		stats, err := client.Sync(state)
+		if err != nil {
 			panic(err)
 		}
+		httputil.WriteJSON(w, stats)
 	}
 }
 
@@ -372,44 +375,57 @@ func (stc *SyncTableClient) Leafs(prefix string) (*LeafState, error) {
 	}
 }
 
-func (stc *SyncTableClient) Sync(state *State) error {
+type SyncStats struct {
+	// FIXME(tsileo): also track the size up/dl
+	Downloaded    int    `json:"blobs_downloaded"`
+	Uploaded      int    `json:"blobs_uploaded"`
+	Duration      string `json:"sync_duration"`
+	AlreadySynced bool   `json:"already_in_sync"`
+}
+
+func (stc *SyncTableClient) Sync(state *State) (*SyncStats, error) {
+	start := time.Now()
+	stats := &SyncStats{}
 	js, err := json.Marshal(state)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	payload := bytes.NewReader(js)
 
 	resp, err := stc.doReq("POST", fmt.Sprintf("/api/sync/v1/%s", stc.namespace), nil, payload)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case 204:
-		fmt.Printf("NO SYNC NEEDED")
-		return nil
+		stats.Duration = time.Since(start).String()
+		stats.AlreadySynced = true
+		return stats, nil
 	case 200:
 		sr := &SyncResp{}
 		if err := json.NewDecoder(resp.Body).Decode(sr); err != nil {
-			return err
+			return nil, err
 		}
 		fmt.Printf("SyncResp: %+v\n", sr)
 		// FIXME(tsileo): parse the sync result and do the sync
 		for _, prefix := range sr.Missing {
 			leafs, err := stc.Leafs(prefix)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			fmt.Printf("Leafs: %+v\n", leafs)
 			for _, h := range leafs.Hashes {
 				fmt.Printf("Fetch and insert %v\n", h)
+				stats.Downloaded++
 			}
 		}
-		return nil
+		stats.Duration = time.Since(start).String()
+		return stats, nil
 	default:
 		var body bytes.Buffer
 		body.ReadFrom(resp.Body)
-		return fmt.Errorf("failed to insert doc: %v", body.String())
+		return nil, fmt.Errorf("failed to insert doc: %v", body.String())
 	}
 }
 
