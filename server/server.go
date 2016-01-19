@@ -228,7 +228,7 @@ func (s *Server) Run() {
 	luaExt.RegisterAppRoute(appRoute, middlewares)
 	api.New(r.PathPrefix("/api/v1").Subrouter(), middlewares, s.wg, s.DB, s.NsDB, s.KvUpdate, s.Router, s.blobs, s.watchHub)
 
-	s.syncer = synctable.New(s.blobs, s.NsDB, s.Log.New("ext", "synctable"))
+	s.syncer = synctable.New(s.blobs, eblobstore, s.NsDB, s.Log.New("ext", "synctable"))
 	s.syncer.RegisterRoute(r.PathPrefix("/api/sync/v1").Subrouter(), middlewares)
 
 	// TODO(tsileo) add robots.txt handler, and a 204 favicon.ico handler
