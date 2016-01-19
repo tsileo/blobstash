@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"sync"
 	"time"
@@ -27,6 +28,7 @@ import (
 	"github.com/tsileo/blobstash/httputil"
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
 	"github.com/tsileo/blobstash/nsdb"
+	"github.com/tsileo/blobstash/router"
 
 	"github.com/dchest/blake2b"
 	"github.com/gorilla/mux"
@@ -51,14 +53,17 @@ func NewHash() (h hash.Hash) {
 }
 
 type SyncTable struct {
-	nsdb *nsdb.DB
-	log  log2.Logger
+	blobs chan<- *router.Blob
+	nsdb  *nsdb.DB
+
+	log log2.Logger
 }
 
-func New(ns *nsdb.DB, logger log2.Logger) *SyncTable {
+func New(blobs chan<- *router.Blob, ns *nsdb.DB, logger log2.Logger) *SyncTable {
 	return &SyncTable{
-		nsdb: ns,
-		log:  logger,
+		blobs: blobs,
+		nsdb:  ns,
+		log:   logger,
 	}
 }
 
@@ -78,8 +83,9 @@ func (st *SyncTable) triggerHandler() func(http.ResponseWriter, *http.Request) {
 		url := q.Get("url")
 		log.Info("Starting sync...", "url", url)
 		apiKey := q.Get("api_key")
-		client := NewSyncTableClient(ns, url, apiKey)
+		client := NewSyncTableClient(ns, url, apiKey, st.blobs)
 		rawState := st.generateTree(ns)
+		defer rawState.Close()
 		state := &State{
 			Namespace: ns,
 			Root:      rawState.Root(),
@@ -113,6 +119,7 @@ func (st *SyncTable) stateHandler() func(http.ResponseWriter, *http.Request) {
 		ns := vars["ns"]
 		st.log.Info("_state called", "ns", ns)
 		state := st.generateTree(ns)
+		defer state.Close()
 		httputil.WriteJSON(w, map[string]interface{}{
 			"namespace": ns,
 			"root":      state.Root(),
@@ -170,6 +177,7 @@ func (st *SyncTable) syncHandler() func(http.ResponseWriter, *http.Request) {
 		log := st.log.New("sync_id", logext.RandId(6), "ns", ns)
 		log.Info("sync triggered")
 		state := st.generateTree(ns)
+		defer state.Close()
 		local_state := &State{
 			Namespace: ns,
 			Root:      state.Root(),
@@ -311,19 +319,23 @@ type SyncTableClient struct {
 	url       string
 	apiKey    string
 	namespace string
+	blobs     chan<- *router.Blob
 }
 
 // FIXME(tsileo): Move the SyncTableClient in a separate file
 
-func NewSyncTableClient(ns, url, apiKey string) *SyncTableClient {
+func NewSyncTableClient(ns, url, apiKey string, blobs chan<- *router.Blob) *SyncTableClient {
+	// FIXME(tsileo): since it's defeault transport, it should done in server.go guarded with a sync.Once?
 	transport := http.DefaultTransport
 	if err := http2.ConfigureTransport(transport.(*http.Transport)); err != nil {
-		panic(err)
+		fmt.Printf("HTTP2 ERROR: %+v", err)
+		// panic(err)
 	}
 	return &SyncTableClient{
 		client: &http.Client{
 			Transport: transport,
 		},
+		blobs:     blobs,
 		url:       url,
 		apiKey:    apiKey,
 		namespace: ns,
@@ -377,10 +389,47 @@ func (stc *SyncTableClient) Leafs(prefix string) (*LeafState, error) {
 
 type SyncStats struct {
 	// FIXME(tsileo): also track the size up/dl
-	Downloaded    int    `json:"blobs_downloaded"`
-	Uploaded      int    `json:"blobs_uploaded"`
-	Duration      string `json:"sync_duration"`
-	AlreadySynced bool   `json:"already_in_sync"`
+	Downloaded     int    `json:"blobs_downloaded"`
+	DownloadedSize int    `json:"downloaded_size"`
+	Uploaded       int    `json:"blobs_uploaded"`
+	UploadedSize   int    `json:"uploaded_size"`
+	Duration       string `json:"sync_duration"`
+	AlreadySynced  bool   `json:"already_in_sync"`
+}
+
+// Get fetch the given blob from the remote BlobStash instance.
+func (stc *SyncTableClient) GetBlob(hash string) ([]byte, error) {
+	resp, err := stc.doReq("GET", fmt.Sprintf("/api/v1/blobstore/blob/%s", hash), nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case resp.StatusCode == 200:
+		return body, nil
+	case resp.StatusCode == 404:
+		return nil, fmt.Errorf("Blob %s not found", hash)
+	default:
+		return nil, fmt.Errorf("failed to get blob %v: %v", hash, string(body))
+	}
+}
+
+func (stc *SyncTableClient) saveBlob(hash string, blob []byte) error {
+	req := &router.Request{
+		Type:      router.Write,
+		Namespace: stc.namespace,
+	}
+	// Ensures the blob isn't corrupted
+	chash := fmt.Sprintf("%x", blake2b.Sum256(blob))
+	if hash != chash {
+		return fmt.Errorf("Blob %s is corrupted", hash)
+	}
+	stc.blobs <- &router.Blob{Hash: hash, Req: req, Blob: blob}
+	return nil
 }
 
 func (stc *SyncTableClient) Sync(state *State) (*SyncStats, error) {
@@ -407,16 +456,36 @@ func (stc *SyncTableClient) Sync(state *State) (*SyncStats, error) {
 		if err := json.NewDecoder(resp.Body).Decode(sr); err != nil {
 			return nil, err
 		}
-		fmt.Printf("SyncResp: %+v\n", sr)
-		// FIXME(tsileo): parse the sync result and do the sync
+		// Blindly upload all the "needed" blobs
+		for _, prefix := range sr.Needed {
+			// FIXME(tsileo): fetch the leafs locally,
+			// and upload them
+			fmt.Printf("Pref:%s", prefix)
+		}
+		// Discover which one are missing/need to be uploaded
+		for _, prefix := range sr.Conflicted {
+			// FIXME(tsileo): fetch the leafs both locally and remotely
+			// then download/upload blobs accordingly.
+			fmt.Printf("Pref:%s", prefix)
+		}
+		// Blindly fetch all the missing blobs from the "missing" leafs
 		for _, prefix := range sr.Missing {
 			leafs, err := stc.Leafs(prefix)
 			if err != nil {
 				return nil, err
 			}
-			fmt.Printf("Leafs: %+v\n", leafs)
 			for _, h := range leafs.Hashes {
-				fmt.Printf("Fetch and insert %v\n", h)
+				// Fetch the blob from the remote instance
+				blob, err := stc.GetBlob(h)
+				if err != nil {
+					return nil, err
+				}
+				// And save it in the local blob store
+				if err := stc.saveBlob(h, blob); err != nil {
+					return nil, err
+				}
+				// Update the stats
+				stats.DownloadedSize += len(blob)
 				stats.Downloaded++
 			}
 		}
@@ -429,7 +498,4 @@ func (stc *SyncTableClient) Sync(state *State) (*SyncStats, error) {
 	}
 }
 
-//..	r.Handle("/_state/{ns}", middlewares.Auth(http.HandlerFunc(st.stateHandler())))
-//	r.Handle("/_state/{ns}/leafs/{prefix}", middlewares.Auth(http.HandlerFunc(st.stateLeafsHandler())))
-//	r.Handle("/{ns}", middlewares.Auth(http.HandlerFunc(st.syncHandler())))
-// TODO(tsileo): add sync endpoints
+// TODO(tsileo): import the scheduler from blobsnap to run sync periodically

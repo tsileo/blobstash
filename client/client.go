@@ -17,6 +17,8 @@ import (
 	"github.com/tsileo/blobstash/client/response"
 )
 
+// TODO(tsileo): RESHAPE this! with doReq and simpler API (especially for the blob upload).
+
 // ErrBlobNotFound is returned from a get/stat request
 // if the blob does not exist.
 var ErrBlobNotFound = errors.New("blob not found")
