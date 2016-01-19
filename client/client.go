@@ -180,6 +180,7 @@ type BlobStore struct {
 	blobs      chan *Blob
 	ServerAddr string
 	client     *http.Client
+	apiKey     string
 }
 
 func NewBlobStore(serverAddr string) *BlobStore {
@@ -194,12 +195,18 @@ func NewBlobStore(serverAddr string) *BlobStore {
 		pipeline:   false,
 	}
 }
+func (bs *BlobStore) SetAPIKey(apiKey string) {
+	bs.apiKey = apiKey
+}
 
 // Get fetch the given blob.
 func (bs *BlobStore) Get(hash string) ([]byte, error) {
 	request, err := http.NewRequest("GET", bs.ServerAddr+"/api/v1/blobstore/blob/"+hash, nil)
 	if err != nil {
 		return nil, err
+	}
+	if bs.apiKey != "" {
+		request.SetBasicAuth("", bs.apiKey)
 	}
 	resp, err := bs.client.Do(request)
 	if err != nil {
@@ -228,6 +235,9 @@ func (bs *BlobStore) Enumerate(blobs chan<- string, start, end string, limit int
 	request, err := http.NewRequest("GET", bs.ServerAddr+"/api/v1/blobstore/blobs?start="+start+"&end="+end+"&limit="+strconv.Itoa(limit), nil)
 	if err != nil {
 		return err
+	}
+	if bs.apiKey != "" {
+		request.SetBasicAuth("", bs.apiKey)
 	}
 	resp, err := bs.client.Do(request)
 	if err != nil {
@@ -258,6 +268,9 @@ func (bs *BlobStore) Stat(hash string) (bool, error) {
 	request, err := http.NewRequest("HEAD", bs.ServerAddr+"/api/v1/blobstore/blob/"+hash, nil)
 	if err != nil {
 		return false, err
+	}
+	if bs.apiKey != "" {
+		request.SetBasicAuth("", bs.apiKey)
 	}
 	resp, err := bs.client.Do(request)
 	if err != nil {
@@ -414,9 +427,13 @@ func (bs *BlobStore) put(hash string, blob []byte) error {
 
 func (bs *BlobStore) putmpw(mpw *MultipartWriter) error {
 	mpw.Close()
+	// FIXME(tsileo): support namespace
 	request, err := http.NewRequest("POST", bs.ServerAddr+"/api/v1/blobstore/upload", mpw.Buffer)
 	if err != nil {
 		return err
+	}
+	if bs.apiKey != "" {
+		request.SetBasicAuth("", bs.apiKey)
 	}
 	request.Header.Add("Content-Type", mpw.FormDataContentType())
 	resp, err := bs.client.Do(request)
