@@ -24,6 +24,10 @@ func main() {
 	// TODO(tsileo): host flag
 	// and display an usage func
 	// api key as a venv
+	// and support an optional namespace as arg
+	// Store the latest uploaded blob as feature? log the uploaded? with an optional comment (import vkv)
+	// and write a README
+	// sharing feature (with a blob app to register?)
 	apiKey := os.Getenv("BLOB_API_KEY")
 	if len(os.Args) < 2 {
 		fmt.Println("Missing hash, use \"-\" to upload from stdin")

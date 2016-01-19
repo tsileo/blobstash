@@ -4,42 +4,20 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"mime/multipart"
-	"net"
-	"net/http"
-	"strings"
-	"sync"
 	"time"
 
+	"github.com/tsileo/blobstash/client/clientutil"
 	"github.com/tsileo/blobstash/embed"
 	"github.com/tsileo/blobstash/nsdb"
 	"github.com/tsileo/blobstash/router"
 
 	"github.com/dchest/blake2b"
-	"golang.org/x/net/http2"
 )
 
-var transport http.RoundTripper = &http.Transport{
-	Proxy: http.ProxyFromEnvironment,
-	Dial: (&net.Dialer{
-		Timeout:   30 * time.Second,
-		KeepAlive: 30 * time.Second,
-	}).Dial,
-	TLSHandshakeTimeout: 10 * time.Second,
-}
-var setupHTTP2Once sync.Once
-
-func setupHTTP2() {
-	if err := http2.ConfigureTransport(transport.(*http.Transport)); err != nil {
-		fmt.Printf("HTTP2 ERROR: %+v", err)
-	}
-
-}
-
 type SyncTableClient struct {
-	client    *http.Client
+	client    *clientutil.Client
 	url       string
 	apiKey    string
 	namespace string
@@ -51,13 +29,13 @@ type SyncTableClient struct {
 
 func NewSyncTableClient(state *State, blobstore *embed.BlobStore, nsDB *nsdb.DB, ns, url, apiKey string, blobs chan<- *router.Blob) *SyncTableClient {
 	// Only enable HTTP2 if the remote url uses HTTPS
-	if strings.HasPrefix(url, "https://") {
-		setupHTTP2Once.Do(setupHTTP2)
+	clientOpts := &clientutil.Opts{
+		APIKey:    apiKey,
+		Host:      url,
+		Namespace: ns,
 	}
 	return &SyncTableClient{
-		client: &http.Client{
-			Transport: transport,
-		},
+		client:    clientutil.New(clientOpts),
 		blobs:     blobs,
 		url:       url,
 		nsdb:      nsDB,
@@ -68,33 +46,9 @@ func NewSyncTableClient(state *State, blobstore *embed.BlobStore, nsDB *nsdb.DB,
 	}
 }
 
-func (stc *SyncTableClient) path(path string) string {
-	return fmt.Sprintf("%s%s", stc.url, path)
-}
-
-func (stc *SyncTableClient) doReq(method, path string, headers map[string]string, body io.Reader) (*http.Response, error) {
-	request, err := http.NewRequest(method, stc.path(path), body)
-	if err != nil {
-		return nil, err
-	}
-
-	if stc.apiKey != "" {
-		request.SetBasicAuth("", stc.apiKey)
-	}
-
-	// Set our custom user agent
-	request.Header.Set("User-Agent", "BlobStash SyncTableClient")
-
-	// Add custom headers
-	for header, val := range headers {
-		request.Header.Set(header, val)
-	}
-	return stc.client.Do(request)
-}
-
 func (stc *SyncTableClient) Leafs(prefix string) (*LeafState, error) {
 	ls := &LeafState{}
-	resp, err := stc.doReq("GET", fmt.Sprintf("/api/sync/v1/_state/%s/leafs/%s", stc.namespace, prefix), nil, nil)
+	resp, err := stc.client.DoReq("GET", fmt.Sprintf("/api/sync/v1/_state/%s/leafs/%s", stc.namespace, prefix), nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +87,7 @@ func (stc *SyncTableClient) PutBlob(hash string, blob []byte, ns string) error {
 	part.Write(blob)
 
 	headers := map[string]string{"Content-Type": writer.FormDataContentType()}
-	resp, err := stc.doReq("POST", fmt.Sprintf("/api/v1/blobstore/upload?ns=%s", ns), headers, &buf)
+	resp, err := stc.client.DoReq("POST", fmt.Sprintf("/api/v1/blobstore/upload?ns=%s", ns), headers, &buf)
 	if err != nil {
 		return err
 	}
@@ -152,7 +106,7 @@ func (stc *SyncTableClient) PutBlob(hash string, blob []byte, ns string) error {
 
 // Get fetch the given blob from the remote BlobStash instance.
 func (stc *SyncTableClient) GetBlob(hash string) ([]byte, error) {
-	resp, err := stc.doReq("GET", fmt.Sprintf("/api/v1/blobstore/blob/%s", hash), nil, nil)
+	resp, err := stc.client.DoReq("GET", fmt.Sprintf("/api/v1/blobstore/blob/%s", hash), nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +148,7 @@ func (stc *SyncTableClient) Sync() (*SyncStats, error) {
 	}
 	payload := bytes.NewReader(js)
 
-	resp, err := stc.doReq("POST", fmt.Sprintf("/api/sync/v1/%s", stc.namespace), nil, payload)
+	resp, err := stc.client.DoReq("POST", fmt.Sprintf("/api/sync/v1/%s", stc.namespace), nil, payload)
 	if err != nil {
 		return nil, err
 	}
