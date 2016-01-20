@@ -5,7 +5,17 @@
  - read from STDIN, upload and output hash
  - output raw blob from hash
 
- That's it!
+That's it!
+
+```
+Usage: blob [options] [-|<hash>]
+  -comment string
+        Optional comment (for upload)
+  -ns string
+        Optional namespace (for upload)
+  -save
+        Save the hash in the log (for upload)
+```
 
 ## Basic Usage
 
@@ -22,6 +32,13 @@ c0f1480a26c2fd4deb8e738a52b7530ed111b9bcd17bbb09259ce03f129988c5
 $ blob c0f1480a26c2fd4deb8e738a52b7530ed111b9bcd17bbb09259ce03f129988c5
 ok
 ```
+
+### Config
+
+Environment variable supported:
+
+ - `BLOB_API_KEY`: allows you to set the API key
+ - `BLOB_API_HOST`: allows you to specify BlobStash host (without trailing slash, e.g. `https://myblobstashinstance.com`)
 
 ## Advanced Usage
 
@@ -42,3 +59,9 @@ You can keep tracks of your updated blobs from the CLI (with an optional comment
 ```shell
 $ cat .zshrc | blob -comment "my zshrc file" -save -
 ```
+
+### Roadmap
+
+ - [ ] Actually support namespace
+ - [ ] Actually support saving blob with comment
+
