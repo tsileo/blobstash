@@ -62,6 +62,7 @@ $ cat .zshrc | blob -comment "my zshrc file" -save -
 
 ### Roadmap
 
+ - Sharing feature (with a `register` subcommand for upload the Lua app) via a -share/-public flag
  - [ ] Actually support namespace
  - [ ] Actually support saving blob with comment
 
