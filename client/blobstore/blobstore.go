@@ -21,10 +21,11 @@ type BlobStore struct {
 
 func DefaultOpts() *clientutil.Opts {
 	return &clientutil.Opts{
-		SnappyCompression: true,
 		Host:              defaultServerAddr,
 		UserAgent:         defaultUserAgent,
 		APIKey:            "",
+		EnableHTTP2:       true,
+		SnappyCompression: true,
 	}
 }
 

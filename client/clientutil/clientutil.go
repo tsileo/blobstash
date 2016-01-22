@@ -27,6 +27,7 @@ var setupHTTP2Once sync.Once
 
 func setupHTTP2() {
 	if err := http2.ConfigureTransport(transport.(*http.Transport)); err != nil {
+		// TODO(tsileo): add a enable HTTP 2 flag in opts?
 		fmt.Printf("HTTP2 ERROR: %+v", err)
 	}
 
@@ -39,6 +40,17 @@ type Opts struct {
 	UserAgent         string
 	Namespace         string
 	SnappyCompression bool
+	EnableHTTP2       bool
+}
+
+func (opts *Opts) SetHost(host, apiKey string) *Opts {
+	if host != "" {
+		opts.Host = host
+	}
+	if apiKey != "" {
+		opts.APIKey = apiKey
+	}
+	return opts
 }
 
 type Client struct {
@@ -50,7 +62,7 @@ func New(opts *Opts) *Client {
 	if opts == nil {
 		panic("missing clientutil.Client opts")
 	}
-	if strings.HasPrefix(opts.Host, "https") {
+	if opts.EnableHTTP2 && strings.HasPrefix(opts.Host, "https") {
 		setupHTTP2Once.Do(setupHTTP2)
 	}
 	client := &http.Client{
