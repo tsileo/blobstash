@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -55,14 +54,16 @@ func start(config_path, loglevel string, resync bool, port int) {
 		config_path = filepath.Join(pathutil.ConfigDir(), "server-config.json")
 	}
 	if _, err := os.Stat(config_path); os.IsNotExist(err) {
-		log.Println("No config file found")
+		l.Debug("No config file found")
 		cpath, _ := filepath.Split(config_path)
 		os.MkdirAll(cpath, 0700)
 		js, _ := json.MarshalIndent(&server.DefaultConf, "", "	")
 		if err := ioutil.WriteFile(config_path, js, 0644); err != nil {
 			panic(fmt.Errorf("failed to create config file at %v: %v", config_path, err))
 		}
-		log.Printf("Config file created at %v", config_path)
+		l.Debug(fmt.Sprintf("Config file created at %v", config_path))
+	} else {
+		l.Debug(fmt.Sprintf("Loading config file at %v", config_path))
 	}
 	dat, err := ioutil.ReadFile(config_path)
 	if err != nil {

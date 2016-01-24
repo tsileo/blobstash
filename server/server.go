@@ -2,7 +2,9 @@ package server
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -78,6 +80,7 @@ type Server struct {
 
 func New(conf map[string]interface{}) *Server {
 	if conf == nil {
+		logger.Log.Debug("No config provided, using `DefaultConf`")
 		conf = DefaultConf
 	}
 	vardir := pathutil.VarDir()
@@ -200,21 +203,20 @@ func (s *Server) BlobStore() *embed.BlobStore {
 
 // Run runs the server and block until the server is shutdown
 func (s *Server) Run() {
-	// XXX(tsileo) make the key persisiting between restart?
-	// TODO retrive both key from the KvStore
-	hawkKey := make([]byte, 64)
-	if _, err := rand.Read(hawkKey); err != nil {
+	hawkKey, err := LoadAPIKey("hawk.key")
+	if err != nil {
 		panic(err)
 	}
-	// Set up auth
-	// TODO Try to retrieve the API key from the KvStore or generate a new (UUID v4)
-	// Maybe handle a master key with multiple key? so key can be revoked?
-	authMiddleware := middleware.BasicAuth("", "token")
+	// XXX(tsileo): Maybe handle a master key with multiple key? so key can be revoked?
+	apiKey, err := LoadAPIKey("api.key")
+	if err != nil {
+		panic(err)
+	}
+	authMiddleware := middleware.BasicAuth("", apiKey)
 	middlewares := &serverMiddleware.SharedMiddleware{
 		Auth: authMiddleware,
 	}
-	// FIXME token as parameter
-	authFunc := httputil.BasicAuthFunc("", "token")
+	authFunc := httputil.BasicAuthFunc("", apiKey)
 	// Start the HTTP API
 	s.SetUp()
 	r := mux.NewRouter()
@@ -223,7 +225,7 @@ func (s *Server) Run() {
 	ekvstore := s.KvStore()
 	eblobstore := s.BlobStore()
 	docstore.New(s.Log.New("ext", "docstore"), ekvstore, eblobstore).RegisterRoute(r.PathPrefix("/api/ext/docstore/v1").Subrouter(), middlewares)
-	luaExt := lua.New(s.Log.New("ext", "lua"), hawkKey, authFunc, ekvstore, eblobstore)
+	luaExt := lua.New(s.Log.New("ext", "lua"), []byte(hawkKey), authFunc, ekvstore, eblobstore)
 	luaExt.RegisterRoute(r.PathPrefix("/api/ext/lua/v1").Subrouter(), middlewares)
 	luaExt.RegisterAppRoute(appRoute, middlewares)
 	api.New(r.PathPrefix("/api/v1").Subrouter(), middlewares, s.wg, s.DB, s.NsDB, s.KvUpdate, s.Router, s.blobs, s.watchHub)
@@ -314,4 +316,33 @@ func (s *Server) Close() {
 	for _, b := range s.Backends {
 		b.Close()
 	}
+}
+
+func LoadAPIKey(kfile string) (string, error) {
+	keyPath := filepath.Join(pathutil.ConfigDir(), kfile)
+	if _, err := os.Stat(keyPath); os.IsNotExist(err) {
+		logger.Log.Debug("Generating new API key...")
+		newKey, err := RandomKey()
+		if err != nil {
+			return "", err
+		}
+		if err := ioutil.WriteFile(keyPath, []byte(newKey), 0644); err != nil {
+			return "", err
+		}
+		logger.Log.Debug(fmt.Sprintf("API key saved at %v", keyPath))
+		return newKey, nil
+	}
+	logger.Log.Debug(fmt.Sprintf("Loading API key from %v", keyPath))
+	data, err := ioutil.ReadFile(keyPath)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+func RandomKey() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(b), nil
 }
