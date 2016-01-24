@@ -122,7 +122,6 @@ func (col *Collection) Insert(idoc interface{}, opts *InsertOpts) (*ID, error) {
 	if opts.Indexed {
 		headers["BlobStash-DocStore-IndexFullText"] = "1"
 	}
-	headers["BlobStash-Namespace"] = col.docstore.client.Opts().Namespace
 	resp, err := col.docstore.client.DoReq("POST", fmt.Sprintf("/api/ext/docstore/v1/%s", col.col), headers, payload)
 	if err != nil {
 		return nil, err
@@ -143,10 +142,7 @@ func (col *Collection) UpdateID(id string, update map[string]interface{}) error 
 	if err != nil {
 		return err
 	}
-	headers := map[string]string{
-		"BlobStash-Namespace": col.docstore.client.Opts().Namespace,
-	}
-	resp, err := col.docstore.client.DoReq("POST", fmt.Sprintf("/api/ext/docstore/v1/%s/%s", col.col, id), headers, bytes.NewReader(js))
+	resp, err := col.docstore.client.DoReq("POST", fmt.Sprintf("/api/ext/docstore/v1/%s/%s", col.col, id), nil, bytes.NewReader(js))
 	if err != nil {
 		return err
 	}
