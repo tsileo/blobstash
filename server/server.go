@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"syscall"
 
@@ -269,13 +270,23 @@ Disallow: /`))
 	c := cors.New(cors.Options{
 		AllowedOrigins: []string{"*"},
 	})
-
-	secureMiddleware := secure.New(secure.Options{
+	isDevelopment, _ := strconv.ParseBool(os.Getenv("BLOBSTASH_DEV_MODE"))
+	if isDevelopment {
+		s.Log.Info("Server started in development mode")
+	}
+	secureOptions := secure.Options{
 		FrameDeny:             true,
 		ContentTypeNosniff:    true,
 		BrowserXssFilter:      true,
 		ContentSecurityPolicy: "default-src 'self'",
-	})
+		IsDevelopment:         isDevelopment,
+	}
+	var tlsHostname string
+	if tlsHost, ok := s.conf["tls-hostname"]; ok {
+		tlsHostname = tlsHost.(string)
+		secureOptions.AllowedHosts = []string{tlsHostname}
+	}
+	secureMiddleware := secure.New(secureOptions)
 	http.Handle("/", secureMiddleware.Handler(c.Handler(r)))
 	s.Log.Info(fmt.Sprintf("server: HTTP API listening on 0.0.0.0:%d", s.port))
 	runFunc := func() {
@@ -284,8 +295,8 @@ Disallow: /`))
 		}
 	}
 
-	if tlsHost, ok := s.conf["tls-hostname"]; ok {
-		s.tlsConfig.Hostname = tlsHost.(string)
+	if tlsHostname != "" {
+		s.tlsConfig.Hostname = tlsHostname
 		s.tlsConfig.CertPath = s.conf["tls-crt-path"].(string)
 		s.tlsConfig.KeyPath = s.conf["tls-key-path"].(string)
 		runFunc = func() {
