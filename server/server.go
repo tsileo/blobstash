@@ -34,7 +34,7 @@ import (
 	"github.com/tsileo/blobstash/vkv"
 	"github.com/tsileo/blobstash/vkv/hub"
 	"github.com/unrolled/secure"
-	_ "golang.org/x/net/http2"
+	"golang.org/x/net/http2"
 	log2 "gopkg.in/inconshreveable/log15.v2"
 )
 
@@ -68,6 +68,7 @@ type Server struct {
 	KvUpdate chan *vkv.KeyValue
 	blobs    chan *router.Blob
 
+	conf     map[string]interface{}
 	resync   bool
 	ready    chan struct{}
 	shutdown chan struct{}
@@ -75,10 +76,18 @@ type Server struct {
 	wg       sync.WaitGroup
 	watchHub *hub.Hub
 
-	port int
+	port      int
+	tlsConfig *TLSConfig
+}
+
+type TLSConfig struct {
+	CertPath string
+	KeyPath  string
+	Hostname string
 }
 
 func New(conf map[string]interface{}) *Server {
+	// TODO(tsileo): the conf as a struct instead of map?
 	if conf == nil {
 		logger.Log.Debug("No config provided, using `DefaultConf`")
 		conf = DefaultConf
@@ -97,19 +106,21 @@ func New(conf map[string]interface{}) *Server {
 		panic(err)
 	}
 	server := &Server{
-		Router:   router.New(conf["router"].([]interface{})),
-		Backends: map[string]backend.BlobHandler{},
-		DB:       db,
-		NsDB:     nsdb,
-		KvUpdate: make(chan *vkv.KeyValue),
-		ready:    make(chan struct{}, 1),
-		shutdown: make(chan struct{}, 1),
-		stop:     make(chan struct{}),
-		blobs:    make(chan *router.Blob),
-		resync:   conf["resync"].(bool),
-		port:     conf["port"].(int),
-		Log:      logger.Log,
-		watchHub: hub.NewHub(),
+		Router:    router.New(conf["router"].([]interface{})),
+		Backends:  map[string]backend.BlobHandler{},
+		DB:        db,
+		NsDB:      nsdb,
+		KvUpdate:  make(chan *vkv.KeyValue),
+		ready:     make(chan struct{}, 1),
+		shutdown:  make(chan struct{}, 1),
+		stop:      make(chan struct{}),
+		blobs:     make(chan *router.Blob),
+		resync:    conf["resync"].(bool),
+		port:      conf["port"].(int),
+		Log:       logger.Log,
+		watchHub:  hub.NewHub(),
+		conf:      conf,
+		tlsConfig: &TLSConfig{},
 	}
 	backends := conf["backends"].(map[string]interface{})
 	for _, b := range server.Router.ResolveBackends() {
@@ -233,8 +244,7 @@ func (s *Server) Run() {
 	s.syncer = synctable.New(s.blobs, eblobstore, s.NsDB, s.Log.New("ext", "synctable"))
 	s.syncer.RegisterRoute(r.PathPrefix("/api/sync/v1").Subrouter(), middlewares)
 
-	// TODO(tsileo) add robots.txt handler, and a 204 favicon.ico handler
-	// FIXME(tsileo) a way to make an app hook the index
+	// FIXME(tsileo): a way to make an app hook the index
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		index := `<!doctype html>
 <html lang="en">
@@ -246,6 +256,13 @@ func (s *Server) Run() {
 <p>This is a private <a href="https://github.com/tsileo/blobstash">BlobStash</a> instance.</p>
 </p></body></html>`
 		w.Write([]byte(index))
+	})
+	r.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	r.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`User-agent: *
+Disallow: /`))
 	})
 
 	// FIXME allowedorigins from config
@@ -261,25 +278,31 @@ func (s *Server) Run() {
 	})
 	http.Handle("/", secureMiddleware.Handler(c.Handler(r)))
 	s.Log.Info(fmt.Sprintf("server: HTTP API listening on 0.0.0.0:%d", s.port))
-	go func() {
+	runFunc := func() {
 		if err := http.ListenAndServe(fmt.Sprintf(":%d", s.port), nil); err != nil {
 			panic(err)
 		}
-	}()
+	}
 
-	// XXX(tsileo) HTTPS version for later
-	// http.Handle("/", secureMiddleware.Handler(c.Handler(r)))
-	// srv := &http.Server{
-	// 	Addr:    ":443",
-	// 	Handler: http.DefaultServeMux,
-	// }
-	// s.Log.Info("server: HTTP API listening on 0.0.0.0:8050")
-	// go func() {
-	// 	http2.ConfigureServer(srv, &http2.Server{})
-	// 	if err := srv.ListenAndServeTLS(".lego/certificates/trucsdedev.com.crt", ".lego/certificates/trucsdedev.com.key"); err != nil {
-	// 		panic(err)
-	// 	}
-	// }()
+	if tlsHost, ok := s.conf["tls-hostname"]; ok {
+		s.tlsConfig.Hostname = tlsHost.(string)
+		s.tlsConfig.CertPath = s.conf["tls-crt-path"].(string)
+		s.tlsConfig.KeyPath = s.conf["tls-key-path"].(string)
+		runFunc = func() {
+
+			srv := &http.Server{
+				Addr:    fmt.Sprintf(":%d", s.port),
+				Handler: http.DefaultServeMux,
+			}
+			s.Log.Info(fmt.Sprintf("server: HTTPS API listening on 0.0.0.0:%d", s.port))
+			http2.ConfigureServer(srv, &http2.Server{})
+			if err := srv.ListenAndServeTLS(s.tlsConfig.CertPath, s.tlsConfig.KeyPath); err != nil {
+				panic(err)
+			}
+		}
+	}
+
+	go runFunc()
 
 	s.TillShutdown()
 }
