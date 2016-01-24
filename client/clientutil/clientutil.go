@@ -43,6 +43,11 @@ type Opts struct {
 	EnableHTTP2       bool
 }
 
+func (opts *Opts) SetNamespace(ns string) *Opts {
+	opts.Namespace = ns
+	return opts
+}
+
 func (opts *Opts) SetHost(host, apiKey string) *Opts {
 	if host != "" {
 		opts.Host = host
@@ -72,6 +77,10 @@ func New(opts *Opts) *Client {
 		client: client,
 		opts:   opts,
 	}
+}
+
+func (client *Client) Opts() *Opts {
+	return client.opts
 }
 
 func (client *Client) DoReq(method, path string, headers map[string]string, body io.Reader) (*http.Response, error) {

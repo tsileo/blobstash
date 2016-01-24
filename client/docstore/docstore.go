@@ -2,11 +2,14 @@ package docstore
 
 import (
 	"bytes"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/url"
+	"time"
 	// "reflect"
 	"strconv"
 
@@ -17,6 +20,32 @@ var ErrIDNotFound = errors.New("ID doest not exist")
 
 var defaultServerAddr = "http://localhost:8050"
 var defaultUserAgent = "DocStore Go client v1"
+
+type ID struct {
+	data []byte
+}
+
+// String implements Stringer interface
+func (id *ID) String() string {
+	return hex.EncodeToString(id.data)
+}
+
+// Ts returns the timestamp component
+func (id *ID) Time() time.Time {
+	return time.Unix(int64(binary.BigEndian.Uint32(id.data[0:4])), 0)
+}
+
+// FromHex build an `ID` from an hex encoded string
+func IDFromHex(data string) (*ID, error) {
+	if len(data) != 24 {
+		return nil, fmt.Errorf("invalid Cursor data: %v", string(data))
+	}
+	b, err := hex.DecodeString(data)
+	if err != nil {
+		return nil, fmt.Errorf("invalid Cursor data: %v", string(data))
+	}
+	return &ID{data: b}, err
+}
 
 // Q is a wrapper of `map[string]interface{} for syntactic sugar
 type Q map[string]interface{}
@@ -71,7 +100,7 @@ func (docstore *DocStore) Col(collection string) *Collection {
 	}
 }
 
-func (col *Collection) Insert(idoc interface{}, opts *InsertOpts) error {
+func (col *Collection) Insert(idoc interface{}, opts *InsertOpts) (*ID, error) {
 	if opts == nil {
 		opts = DefaultInsertOpts()
 	}
@@ -85,7 +114,7 @@ func (col *Collection) Insert(idoc interface{}, opts *InsertOpts) error {
 		payload = bytes.NewReader(doc)
 	default:
 		if js, err = json.Marshal(doc); err != nil {
-			return err
+			return nil, err
 		}
 		payload = bytes.NewReader(js)
 	}
@@ -93,19 +122,19 @@ func (col *Collection) Insert(idoc interface{}, opts *InsertOpts) error {
 	if opts.Indexed {
 		headers["BlobStash-DocStore-IndexFullText"] = "1"
 	}
+	headers["BlobStash-Namespace"] = col.docstore.client.Opts().Namespace
 	resp, err := col.docstore.client.DoReq("POST", fmt.Sprintf("/api/ext/docstore/v1/%s", col.col), headers, payload)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case 204:
-		// FIXME(tsileo): Set the _id field for a struct or add a key for the map
-		return nil
+		return IDFromHex(resp.Header.Get("BlobStash-DocStore-Doc-Id"))
 	default:
 		var body bytes.Buffer
 		body.ReadFrom(resp.Body)
-		return fmt.Errorf("failed to insert doc: %v", body.String())
+		return nil, fmt.Errorf("failed to insert doc: %v", body.String())
 	}
 }
 
@@ -114,7 +143,10 @@ func (col *Collection) UpdateID(id string, update map[string]interface{}) error 
 	if err != nil {
 		return err
 	}
-	resp, err := col.docstore.client.DoReq("POST", fmt.Sprintf("/api/ext/docstore/v1/%s/%s", col.col, id), nil, bytes.NewReader(js))
+	headers := map[string]string{
+		"BlobStash-Namespace": col.docstore.client.Opts().Namespace,
+	}
+	resp, err := col.docstore.client.DoReq("POST", fmt.Sprintf("/api/ext/docstore/v1/%s/%s", col.col, id), headers, bytes.NewReader(js))
 	if err != nil {
 		return err
 	}
