@@ -44,8 +44,8 @@ import (
 	log "gopkg.in/inconshreveable/log15.v2"
 	logext "gopkg.in/inconshreveable/log15.v2/ext"
 
-	"github.com/tsileo/blobstash/client/interface"
 	"github.com/tsileo/blobstash/config/pathutil"
+	"github.com/tsileo/blobstash/embed"
 	"github.com/tsileo/blobstash/ext/docstore/id"
 	"github.com/tsileo/blobstash/httputil"
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
@@ -83,15 +83,15 @@ func openIndex(path string) (bleve.Index, error) {
 }
 
 type DocStoreExt struct {
-	kvStore   client.KvStorer
-	blobStore client.BlobStorer
+	kvStore   *embed.KvStore
+	blobStore *embed.BlobStore
 
 	index bleve.Index
 
 	logger log.Logger
 }
 
-func New(logger log.Logger, kvStore client.KvStorer, blobStore client.BlobStorer) *DocStoreExt {
+func New(logger log.Logger, kvStore *embed.KvStore, blobStore *embed.BlobStore) *DocStoreExt {
 	indexPath := filepath.Join(pathutil.VarDir(), "docstore.bleve")
 	index, err := openIndex(indexPath)
 	if err != nil {
@@ -230,7 +230,7 @@ func isQueryAll(q string) bool {
 	return false
 }
 
-func (docstore *DocStoreExt) Insert(collection string, idoc interface{}) (*id.ID, error) {
+func (docstore *DocStoreExt) Insert(collection string, idoc interface{}, ns string) (*id.ID, error) {
 	switch doc := idoc.(type) {
 	case *map[string]interface{}:
 		// fdoc := *doc
@@ -240,12 +240,11 @@ func (docstore *DocStoreExt) Insert(collection string, idoc interface{}) (*id.ID
 		if err != nil {
 			return nil, err
 		}
-
 		// FIXME(tsileo): What to do if there's an empty ID?
 
 		// Store the payload in a blob
 		hash := fmt.Sprintf("%x", blake2b.Sum256(blob))
-		docstore.blobStore.Put(hash, blob)
+		docstore.blobStore.Put(hash, blob, ns)
 		// Create a pointer in the key-value store
 		now := time.Now().UTC().Unix()
 		_id, err := id.New(int(now))
@@ -255,7 +254,7 @@ func (docstore *DocStoreExt) Insert(collection string, idoc interface{}) (*id.ID
 		bash := make([]byte, len(hash)+1)
 		bash[0] = docFlag
 		copy(bash[1:], []byte(hash)[:])
-		if _, err := docstore.kvStore.Put(fmt.Sprintf(KeyFmt, collection, _id.String()), string(bash), -1); err != nil {
+		if _, err := docstore.kvStore.Put(fmt.Sprintf(KeyFmt, collection, _id.String()), string(bash), -1, ns); err != nil {
 			return nil, err
 		}
 		// Returns the doc along with its new ID
@@ -439,7 +438,8 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 			// if indexHeader != "" {
 			// 	docFlag = FlagIndexed
 			// }
-			_id, err := docstore.Insert(collection, &doc)
+			ns := r.Header.Get("BlobStash-Namespace")
+			_id, err := docstore.Insert(collection, &doc, ns)
 			if err != nil {
 				panic(err)
 			}
@@ -514,6 +514,7 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 			w.Header().Set("Content-Type", "application/json")
 			srw.Write(addID(js, sid))
 		case "POST":
+			ns := r.Header.Get("BlobStash-Namespace")
 			doc := map[string]interface{}{}
 			if _id, err = docstore.fetchDoc(collection, sid, &doc); err != nil {
 				panic(err)
@@ -523,19 +524,19 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 			if err := decoder.Decode(&update); err != nil {
 				panic(err)
 			}
-			docstore.logger.Debug("Update", "_id", sid, "update_query", update)
+			docstore.logger.Debug("Update", "_id", sid, "ns", ns, "update_query", update)
 			newDoc, err := updateDoc(doc, update)
 			blob, err := json.Marshal(newDoc)
 			if err != nil {
 				panic(err)
 			}
 			hash := fmt.Sprintf("%x", blake2b.Sum256(blob))
-			docstore.blobStore.Put(hash, blob)
+			docstore.blobStore.Put(hash, blob, ns)
 			bash := make([]byte, len(hash)+1)
 			// FIXME(tsileo) fetch previous flag and set the same
 			bash[0] = FlagIndexed
 			copy(bash[1:], []byte(hash)[:])
-			if _, err := docstore.kvStore.Put(fmt.Sprintf(KeyFmt, collection, _id.String()), string(bash), -1); err != nil {
+			if _, err := docstore.kvStore.Put(fmt.Sprintf(KeyFmt, collection, _id.String()), string(bash), -1, ns); err != nil {
 				panic(err)
 			}
 			httputil.WriteJSON(srw, newDoc)

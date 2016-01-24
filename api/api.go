@@ -59,32 +59,32 @@ func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blob
 			}
 			http.Error(w, http.StatusText(404), 404)
 			return
-		case "DELETE":
-			k := vars["key"]
-			sversion := r.URL.Query().Get("version")
-			if sversion == "" {
-				http.Error(w, "version missing", 500)
-				return
-			}
-			version, err := strconv.Atoi(sversion)
-			if err != nil {
-				http.Error(w, "bad version", 500)
-				return
-			}
-			hash, err := db.MetaBlob(k, version)
-			if err != nil {
-				panic(err)
-			}
-			if err := db.DeleteVersion(k, version); err != nil {
-				panic(err)
-			}
-			req := &router.Request{
-				Type:     router.Read,
-				MetaBlob: true,
-			}
-			if err := blobrouter.Route(req).Delete(hash); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
+		// case "DELETE":
+		// 	k := vars["key"]
+		// 	sversion := r.URL.Query().Get("version")
+		// 	if sversion == "" {
+		// 		http.Error(w, "version missing", 500)
+		// 		return
+		// 	}
+		// 	version, err := strconv.Atoi(sversion)
+		// 	if err != nil {
+		// 		http.Error(w, "bad version", 500)
+		// 		return
+		// 	}
+		// 	hash, err := db.MetaBlob(k, version)
+		// 	if err != nil {
+		// 		panic(err)
+		// 	}
+		// 	if err := db.DeleteVersion(k, version); err != nil {
+		// 		panic(err)
+		// 	}
+		// 	req := &router.Request{
+		// 		Type:     router.Read,
+		// 		MetaBlob: true,
+		// 	}
+		// 	if err := blobrouter.Route(req).Delete(hash); err != nil {
+		// 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		// 	}
 		case "PUT":
 			wg.Add(1)
 			defer wg.Done()
@@ -106,8 +106,7 @@ func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blob
 				version = iversion
 			}
 			res, err := db.Put(k, v, version)
-			// FIXME(tsileo): handle namespace in embeded client too
-			res.SetNamespace(values.Get("ns"))
+			res.SetNamespace(r.Header.Get("BlobStash-Namespace"))
 			if err != nil {
 				panic(err)
 			}
@@ -198,7 +197,7 @@ func blobUploadHandler(blobs chan<- *router.Blob) func(http.ResponseWriter, *htt
 				}
 				req := &router.Request{
 					Type:      router.Write,
-					Namespace: r.URL.Query().Get("ns"),
+					Namespace: r.Header.Get("BlobStash-Namespace"),
 				}
 				blobs <- &router.Blob{Hash: hash, Req: req, Blob: blob}
 			}

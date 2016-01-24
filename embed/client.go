@@ -28,11 +28,12 @@ func NewKvStore(db *vkv.DB, kvUpdate chan *vkv.KeyValue, blobrouter *router.Rout
 	}
 }
 
-func (kvs *KvStore) Put(key, value string, version int) (*response.KeyValue, error) {
+func (kvs *KvStore) Put(key, value string, version int, ns string) (*response.KeyValue, error) {
 	res, err := kvs.db.Put(key, value, version)
 	if err != nil {
 		return nil, err
 	}
+	res.SetNamespace(ns)
 	kvs.kvUpdate <- res
 	return &response.KeyValue{
 		Key:     res.Key,
@@ -158,10 +159,10 @@ func (bs *BlobStore) Stat(hash string) (bool, error) {
 	return backend.Exists(hash)
 }
 
-func (bs *BlobStore) Put(hash string, blob []byte) error {
+func (bs *BlobStore) Put(hash string, blob []byte, ns string) error {
 	req := &router.Request{
-		Type: router.Write,
-		//	Namespace: r.URL.Query().Get("ns"),
+		Type:      router.Write,
+		Namespace: ns,
 	}
 	bs.rblobs <- &router.Blob{Hash: hash, Req: req, Blob: blob}
 	return nil
