@@ -1,8 +1,8 @@
 package kvstore
 
 import (
-	"github.com/tsileo/blobstash/client/interface"
 	"github.com/tsileo/blobstash/client/response"
+	"github.com/tsileo/blobstash/embed"
 	"github.com/tsileo/blobstash/ext/lua/luautil"
 	"github.com/yuin/gopher-lua"
 )
@@ -16,10 +16,10 @@ func kvToTable(L *lua.LState, kv *response.KeyValue) *lua.LTable {
 }
 
 type KvStoreModule struct {
-	kvStore client.KvStorer
+	kvStore *embed.KvStore
 }
 
-func New(kvStore client.KvStorer) *KvStoreModule {
+func New(kvStore *embed.KvStore) *KvStoreModule {
 	return &KvStoreModule{kvStore}
 }
 
@@ -80,7 +80,7 @@ func (kvs *KvStoreModule) keys(L *lua.LState) int {
 }
 
 func (kvs *KvStoreModule) put(L *lua.LState) int {
-	kv, err := kvs.kvStore.Put(L.ToString(1), L.ToString(2), L.ToInt(3))
+	kv, err := kvs.kvStore.Put(L.ToString(1), L.ToString(2), L.ToInt(3), "")
 	if err != nil {
 		panic(err)
 	}
@@ -89,7 +89,7 @@ func (kvs *KvStoreModule) put(L *lua.LState) int {
 }
 
 func (kvs *KvStoreModule) putjson(L *lua.LState) int {
-	kv, err := kvs.kvStore.Put(L.ToString(1), string(luautil.ToJSON(L.CheckAny(2))), L.ToInt(3))
+	kv, err := kvs.kvStore.Put(L.ToString(1), string(luautil.ToJSON(L.CheckAny(2))), L.ToInt(3), "")
 	if err != nil {
 		panic(err)
 	}

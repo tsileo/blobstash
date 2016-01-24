@@ -15,7 +15,7 @@ import (
 	luajson "github.com/layeh/gopher-json"
 	"github.com/russross/blackfriday"
 	"github.com/satori/go.uuid"
-	"github.com/tsileo/blobstash/client/interface"
+	"github.com/tsileo/blobstash/embed"
 	hexid "github.com/tsileo/blobstash/ext/docstore/id"
 	"github.com/tsileo/blobstash/ext/lua/luautil"
 	"github.com/tsileo/blobstash/httputil"
@@ -93,14 +93,14 @@ type LuaExt struct {
 
 	authFunc func(*http.Request) bool
 
-	kvStore   client.KvStorer
-	blobStore client.BlobStorer
+	kvStore   *embed.KvStore
+	blobStore *embed.BlobStore
 
 	appMutex       sync.Mutex
 	registeredApps map[string]*LuaApp
 }
 
-func New(logger log.Logger, key []byte, authFunc func(*http.Request) bool, kvStore client.KvStorer, blobStore client.BlobStorer) *LuaExt {
+func New(logger log.Logger, key []byte, authFunc func(*http.Request) bool, kvStore *embed.KvStore, blobStore *embed.BlobStore) *LuaExt {
 	httputil.SetHawkKey(key)
 	return &LuaExt{
 		hawkKey:        key,

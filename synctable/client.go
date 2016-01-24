@@ -28,11 +28,12 @@ type SyncTableClient struct {
 }
 
 func NewSyncTableClient(state *State, blobstore *embed.BlobStore, nsDB *nsdb.DB, ns, url, apiKey string, blobs chan<- *router.Blob) *SyncTableClient {
-	// Only enable HTTP2 if the remote url uses HTTPS
 	clientOpts := &clientutil.Opts{
-		APIKey:    apiKey,
-		Host:      url,
-		Namespace: ns,
+		APIKey:            apiKey,
+		Host:              url,
+		Namespace:         ns,
+		EnableHTTP2:       true,
+		SnappyCompression: true,
 	}
 	return &SyncTableClient{
 		client:    clientutil.New(clientOpts),

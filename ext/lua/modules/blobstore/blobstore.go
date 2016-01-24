@@ -3,15 +3,15 @@ package blobstore
 import (
 	"time"
 
-	"github.com/tsileo/blobstash/client/interface"
+	"github.com/tsileo/blobstash/embed"
 	"github.com/yuin/gopher-lua"
 )
 
 type BlobStoreModule struct {
-	blobStore client.BlobStorer
+	blobStore *embed.BlobStore
 }
 
-func New(blobStore client.BlobStorer) *BlobStoreModule {
+func New(blobStore *embed.BlobStore) *BlobStoreModule {
 	return &BlobStoreModule{blobStore}
 }
 
@@ -66,7 +66,7 @@ func (bs *BlobStoreModule) get(L *lua.LState) int {
 }
 
 func (bs *BlobStoreModule) put(L *lua.LState) int {
-	if err := bs.blobStore.Put(L.ToString(1), []byte(L.ToString(2))); err != nil {
+	if err := bs.blobStore.Put(L.ToString(1), []byte(L.ToString(2)), ""); err != nil {
 		panic(err)
 	}
 	// Since blob write are async, the sleep ensure a get right after the put retrieve the blob
