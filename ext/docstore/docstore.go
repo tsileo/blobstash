@@ -306,7 +306,7 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 	}
 	var lastKey string
 	for {
-		qLogger.Debug("internal query", "limit", limit, "start", start, "end", end, "nreturned", stats.NReturned)
+		qLogger.Debug("internal query", "limit", limit, "cursor", cursor, "start", start, "end", end, "nreturned", stats.NReturned)
 		res, err := docstore.kvStore.Keys(start, end, limit) // Prefetch more docs
 		if err != nil {
 			panic(err)

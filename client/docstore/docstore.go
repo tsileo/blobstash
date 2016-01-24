@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	// "reflect"
 	"strconv"
 
 	"github.com/tsileo/blobstash/client/clientutil"
@@ -159,9 +160,14 @@ type Iter struct {
 
 	Opts     *IterOpts // Contains the current `IterOpts`
 	LatestID string    // Needed for the subsequent API calls
+	cursor   string
 
 	closed bool
 	err    error
+}
+
+func (iter *Iter) Cursor() string {
+	return iter.cursor
 }
 
 func (iter *Iter) Close() error {
@@ -179,7 +185,7 @@ func (iter *Iter) Next(res interface{}) bool {
 	if iter.closed {
 		return false
 	}
-	resp, err := iter.col.docstore.client.DoReq("GET", fmt.Sprintf("/api/ext/docstore/v1/%s?query=%s", iter.col.col, iter.query), nil, nil)
+	resp, err := iter.col.docstore.client.DoReq("GET", fmt.Sprintf("/api/ext/docstore/v1/%s?cursor=%s&query=%s", iter.col.col, iter.cursor, iter.query), nil, nil)
 	if err != nil {
 		iter.err = err
 		return false
@@ -193,17 +199,11 @@ func (iter *Iter) Next(res interface{}) bool {
 			iter.err = err
 			return false
 		}
-		cnt, err := strconv.Atoi(resp.Header.Get("BlobStash-DocStore-Iter-Count"))
-		if err != nil {
-			iter.err = err
-			return false
+		iter.cursor = resp.Header.Get("BlobStash-DocStore-Iter-Cursor")
+		hasMore, _ := strconv.ParseBool(resp.Header.Get("BlobStash-DocStore-Iter-Has-More"))
+		if !hasMore {
+			iter.closed = true // Next call will return false
 		}
-		if cnt == iter.Opts.Limit {
-			return true
-		}
-		iter.closed = true // Next call will return false
-		// FIXME(tsileo): add the number of results (along with the latest ID / it will act as a cursor)
-		// in a header and return true only if cnt == iter.Opts.Limit
 		return true
 	default:
 		var body bytes.Buffer
