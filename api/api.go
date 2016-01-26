@@ -36,17 +36,19 @@ func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blob
 			if version != "" {
 				iver, err := strconv.Atoi(version)
 				if err != nil {
-					http.Error(w, "version must be a integer", 500)
+					httputil.WriteJSONError(w, http.StatusInternalServerError, "version must be a integer")
+					return
 				}
 				iversion = iver
 			}
 			res, err := db.Get(vars["key"], iversion)
 			if err != nil {
 				if err == vkv.ErrNotFound {
-					http.Error(w, http.StatusText(404), 404)
+					httputil.WriteJSONError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
 					return
 				}
-				panic(err)
+				httputil.Error(w, err)
+				return
 			}
 			srw := httputil.NewSnappyResponseWriter(w, r)
 			httputil.WriteJSON(srw, res)
@@ -54,12 +56,13 @@ func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blob
 		case "HEAD":
 			exists, err := db.Check(vars["key"])
 			if err != nil {
-				panic(err)
+				httputil.Error(w, err)
+				return
 			}
 			if exists {
 				return
 			}
-			http.Error(w, http.StatusText(404), 404)
+			httputil.WriteJSONError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
 			return
 		// case "DELETE":
 		// 	k := vars["key"]
@@ -94,7 +97,8 @@ func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blob
 			hah, err := ioutil.ReadAll(r.Body)
 			values, err := url.ParseQuery(string(hah))
 			if err != nil {
-				panic(err)
+				httputil.Error(w, err)
+				return
 			}
 			v := values.Get("value")
 			sversion := values.Get("version")
@@ -102,7 +106,7 @@ func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blob
 			if sversion != "" {
 				iversion, err := strconv.Atoi(sversion)
 				if err != nil {
-					http.Error(w, "bad version", 500)
+					httputil.WriteJSONError(w, http.StatusInternalServerError, "version must be an integer")
 					return
 				}
 				version = iversion
@@ -133,7 +137,7 @@ func vkvVersionsHandler(db *vkv.DB) func(http.ResponseWriter, *http.Request) {
 			if q.Get("limit") != "" {
 				ilimit, err := strconv.Atoi(q.Get("limit"))
 				if err != nil {
-					http.Error(w, "limit must be an integer", 500)
+					httputil.WriteJSONError(w, http.StatusInternalServerError, "limit must be an integer")
 					return
 				}
 				limit = ilimit
@@ -142,20 +146,23 @@ func vkvVersionsHandler(db *vkv.DB) func(http.ResponseWriter, *http.Request) {
 			if sstart := q.Get("start"); sstart != "" {
 				start, err = strconv.Atoi(sstart)
 				if err != nil {
-					http.Error(w, "start must be an integer", 500)
+					httputil.WriteJSONError(w, http.StatusInternalServerError, "start must be an integer")
+					return
 				}
 			}
 			end := int(time.Now().UTC().UnixNano())
 			if send := q.Get("end"); send != "" {
 				end, err = strconv.Atoi(send)
 				if err != nil {
-					http.Error(w, "start must be an integer", 500)
+					httputil.WriteJSONError(w, http.StatusInternalServerError, "end must be an integer")
+					return
 				}
 			}
 			vars := mux.Vars(r)
 			res, err := db.Versions(vars["key"], start, end, limit)
 			if err != nil {
-				panic(err)
+				httputil.Error(w, err)
+				return
 			}
 			srw := httputil.NewSnappyResponseWriter(w, r)
 			httputil.WriteJSON(srw, res)
@@ -180,13 +187,15 @@ func vkvKeysHandler(db *vkv.DB) func(http.ResponseWriter, *http.Request) {
 			if q.Get("limit") != "" {
 				ilimit, err := strconv.Atoi(q.Get("limit"))
 				if err != nil {
-					http.Error(w, "bad limit", 500)
+					httputil.WriteJSONError(w, http.StatusInternalServerError, "limit must be an integer")
+					return
 				}
 				limit = ilimit
 			}
 			res, err := db.Keys(q.Get("start"), end, limit)
 			if err != nil {
-				panic(err)
+				httputil.Error(w, err)
+				return
 			}
 			srw := httputil.NewSnappyResponseWriter(w, r)
 			httputil.WriteJSON(srw, map[string]interface{}{"keys": res})
@@ -206,7 +215,7 @@ func blobUploadHandler(blobs chan<- *router.Blob) func(http.ResponseWriter, *htt
 			//parse the multipart form in the request
 			mr, err := r.MultipartReader()
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httputil.Error(w, err)
 				return
 			}
 
@@ -216,7 +225,7 @@ func blobUploadHandler(blobs chan<- *router.Blob) func(http.ResponseWriter, *htt
 					break
 				}
 				if err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
+					httputil.Error(w, err)
 					return
 				}
 				hash := part.FormName()
@@ -225,7 +234,7 @@ func blobUploadHandler(blobs chan<- *router.Blob) func(http.ResponseWriter, *htt
 				blob := buf.Bytes()
 				chash := fmt.Sprintf("%x", blake2b.Sum256(blob))
 				if hash != chash {
-					http.Error(w, "blob corrupted, hash does not match", http.StatusInternalServerError)
+					httputil.WriteJSONError(w, http.StatusInternalServerError, "blob corrupted, hash does not match")
 					return
 				}
 				req := &router.Request{
@@ -253,7 +262,8 @@ func blobHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Requ
 		case "GET":
 			blob, err := backend.Get(vars["hash"])
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httputil.Error(w, err)
+				return
 			}
 			srw := httputil.NewSnappyResponseWriter(w, r)
 			srw.Write(blob)
@@ -268,7 +278,7 @@ func blobHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Requ
 				return
 			}
 			// XXX(tsileo): returns a `http.StatusNoContent` ?
-			http.Error(w, http.StatusText(404), 404)
+			httputil.WriteJSONError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
 			return
 		// case "DELETE":
 		// 	if err := backend.Delete(vars["hash"]); err != nil {
@@ -314,7 +324,8 @@ func blobsHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Req
 				res = append(res, blob)
 			}
 			if err := <-errc; err != nil {
-				panic(err)
+				httputil.Error(w, err)
+				return
 			}
 			httputil.WriteJSON(srw, map[string]interface{}{"blobs": res})
 		default:
