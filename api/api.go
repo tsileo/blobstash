@@ -36,7 +36,7 @@ func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blob
 			if version != "" {
 				iver, err := strconv.Atoi(version)
 				if err != nil {
-					panic(err)
+					http.Error(w, "version must be a integer", 500)
 				}
 				iversion = iver
 			}
@@ -48,7 +48,9 @@ func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blob
 				}
 				panic(err)
 			}
-			httputil.WriteJSON(w, res)
+			srw := httputil.NewSnappyResponseWriter(w, r)
+			httputil.WriteJSON(srw, res)
+			srw.Close()
 		case "HEAD":
 			exists, err := db.Check(vars["key"])
 			if err != nil {
@@ -111,7 +113,9 @@ func vkvHandler(wg sync.WaitGroup, db *vkv.DB, kvUpdate chan *vkv.KeyValue, blob
 				panic(err)
 			}
 			kvUpdate <- res
-			httputil.WriteJSON(w, res)
+			srw := httputil.NewSnappyResponseWriter(w, r)
+			httputil.WriteJSON(srw, res)
+			srw.Close()
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -122,13 +126,40 @@ func vkvVersionsHandler(db *vkv.DB) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
-			// TODO handle start/end/limit
+			// XXX(tsileo): cursor instead of start/end?
+			var err error
+			q := r.URL.Query()
+			limit := 0
+			if q.Get("limit") != "" {
+				ilimit, err := strconv.Atoi(q.Get("limit"))
+				if err != nil {
+					http.Error(w, "limit must be an integer", 500)
+					return
+				}
+				limit = ilimit
+			}
+			start := 0
+			if sstart := q.Get("start"); sstart != "" {
+				start, err = strconv.Atoi(sstart)
+				if err != nil {
+					http.Error(w, "start must be an integer", 500)
+				}
+			}
+			end := int(time.Now().UTC().UnixNano())
+			if send := q.Get("end"); send != "" {
+				end, err = strconv.Atoi(send)
+				if err != nil {
+					http.Error(w, "start must be an integer", 500)
+				}
+			}
 			vars := mux.Vars(r)
-			res, err := db.Versions(vars["key"], 0, int(time.Now().UTC().UnixNano()), 0)
+			res, err := db.Versions(vars["key"], start, end, limit)
 			if err != nil {
 				panic(err)
 			}
-			httputil.WriteJSON(w, res)
+			srw := httputil.NewSnappyResponseWriter(w, r)
+			httputil.WriteJSON(srw, res)
+			srw.Close()
 			return
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -157,7 +188,9 @@ func vkvKeysHandler(db *vkv.DB) func(http.ResponseWriter, *http.Request) {
 			if err != nil {
 				panic(err)
 			}
-			httputil.WriteJSON(w, map[string]interface{}{"keys": res})
+			srw := httputil.NewSnappyResponseWriter(w, r)
+			httputil.WriteJSON(srw, map[string]interface{}{"keys": res})
+			srw.Close()
 			return
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -201,6 +234,7 @@ func blobUploadHandler(blobs chan<- *router.Blob) func(http.ResponseWriter, *htt
 				}
 				blobs <- &router.Blob{Hash: hash, Req: req, Blob: blob}
 			}
+			// XXX(tsileo): returns a `http.StatusNoContent` here?
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -211,8 +245,8 @@ func blobHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Requ
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		req := &router.Request{
-			Type: router.Read,
-			//	Namespace: r.URL.Query().Get("ns"),
+			Type:      router.Read,
+			Namespace: r.Header.Get("BlobStash-Namespace"),
 		}
 		backend := blobrouter.Route(req)
 		switch r.Method {
@@ -221,7 +255,9 @@ func blobHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Requ
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
-			w.Write(blob)
+			srw := httputil.NewSnappyResponseWriter(w, r)
+			srw.Write(blob)
+			srw.Close()
 			return
 		case "HEAD":
 			exists, err := backend.Exists(vars["hash"])
@@ -231,13 +267,14 @@ func blobHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Requ
 			if exists {
 				return
 			}
+			// XXX(tsileo): returns a `http.StatusNoContent` ?
 			http.Error(w, http.StatusText(404), 404)
 			return
-		case "DELETE":
-			if err := backend.Delete(vars["hash"]); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
-			return
+		// case "DELETE":
+		// 	if err := backend.Delete(vars["hash"]); err != nil {
+		// 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		// 	}
+		// 	return
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -248,11 +285,13 @@ func blobsHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Req
 	return func(w http.ResponseWriter, r *http.Request) {
 		req := &router.Request{
 			Type:      router.Read,
-			Namespace: r.URL.Query().Get("ns"),
+			Namespace: r.Header.Get("BlobStash-Namespace"),
 		}
 		backend := blobrouter.Route(req)
 		switch r.Method {
 		case "GET":
+			srw := httputil.NewSnappyResponseWriter(w, r)
+			defer srw.Close()
 			// FIXME(tsileo): Re-implement this!
 			//start := r.URL.Query().Get("start")
 			//end := r.URL.Query().Get("end")
@@ -277,7 +316,7 @@ func blobsHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Req
 			if err := <-errc; err != nil {
 				panic(err)
 			}
-			httputil.WriteJSON(w, map[string]interface{}{"blobs": res})
+			httputil.WriteJSON(srw, map[string]interface{}{"blobs": res})
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -315,5 +354,6 @@ func New(r *mux.Router, middlewares *serverMiddleware.SharedMiddleware, wg sync.
 	r.Handle("/vkv/keys", middlewares.Auth(http.HandlerFunc(vkvKeysHandler(db))))
 	r.Handle("/vkv/key/{key}", middlewares.Auth(http.HandlerFunc(vkvHandler(wg, db, kvUpdate, blobrouter))))
 	r.Handle("/vkv/key/{key}/versions", middlewares.Auth(http.HandlerFunc(vkvVersionsHandler(db))))
+	// XXX(tsileo); is the watch SSE endpoint really needed?
 	r.Handle("/vkv/key/{key}/watch", middlewares.Auth(http.HandlerFunc(vkvWatchKeyHandler(vkvHub))))
 }

@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -138,8 +137,10 @@ func (s *Server) processBlobs() {
 	for {
 		select {
 		case blob := <-s.blobs:
-			log.Printf("processBlobs: %+v", blob)
+			l := s.Log.New("blob", blob.Hash)
+			l.Info("process blob", "size", len(blob.Blob), "meta", blob.Req.MetaBlob, "ns", blob.Req.NsBlob)
 			backend := s.Router.Route(blob.Req)
+			// Check if the blob
 			exists, err := backend.Exists(blob.Hash)
 			if err != nil {
 				panic(fmt.Errorf("processBlobs error: %v", err))
@@ -148,12 +149,18 @@ func (s *Server) processBlobs() {
 				if err := backend.Put(blob.Hash, blob.Blob); err != nil {
 					panic(fmt.Errorf("processBlobs error: %v", err))
 				}
+				l.Debug("Blob saved")
+			} else {
+				l.Debug("Blob already exists")
 			}
+			// If the blob is a `MetaBlob` (containing Key-Value data), try to apply it.
 			if blob.Req.MetaBlob {
 				if err := s.NsDB.ApplyMeta(blob.Hash); err != nil {
 					panic(err)
 				}
 			}
+			// If a "namespace" is included in the Blob request,
+			// create a new `NsBlob` to keep track of it.
 			if blob.Req.Namespace != "" {
 				nsBlobBody := meta.CreateNsBlob(blob.Hash, blob.Req.Namespace)
 				nsHash := fmt.Sprintf("%x", blake2b.Sum256(nsBlobBody))
@@ -168,6 +175,7 @@ func (s *Server) processBlobs() {
 				if err := s.NsDB.AddNs(blob.Hash, blob.Req.Namespace); err != nil {
 					panic(err)
 				}
+				l.Debug("pushed new `NsBlob`")
 			}
 		case <-s.stop:
 			return
@@ -198,7 +206,7 @@ func (s *Server) SetUp() {
 		s.ready <- struct{}{}
 	}
 	// Start the worker for handling blob upload
-	for i := 0; i < 25; i++ {
+	for i := 0; i < 5; i++ {
 		go s.processBlobs()
 	}
 }
@@ -295,7 +303,7 @@ Disallow: /`))
 		}
 	}
 
-	if tlsHostname != "" {
+	if !isDevelopment && tlsHostname != "" {
 		s.tlsConfig.Hostname = tlsHostname
 		s.tlsConfig.CertPath = s.conf["tls-crt-path"].(string)
 		s.tlsConfig.KeyPath = s.conf["tls-key-path"].(string)

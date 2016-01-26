@@ -51,8 +51,6 @@ import (
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
 )
 
-// FIXME(tsileo): support namespace!
-
 var KeyFmt = "docstore:%s:%s"
 
 func hashFromKey(col, key string) string {
@@ -242,7 +240,7 @@ func (docstore *DocStoreExt) Insert(collection string, idoc interface{}, ns stri
 		}
 		// FIXME(tsileo): What to do if there's an empty ID?
 
-		// Store the payload in a blob
+		// Store the payload (JSON data) in a blob
 		hash := fmt.Sprintf("%x", blake2b.Sum256(blob))
 		docstore.blobStore.Put(hash, blob, ns)
 		// Create a pointer in the key-value store
@@ -257,6 +255,7 @@ func (docstore *DocStoreExt) Insert(collection string, idoc interface{}, ns stri
 		if _, err := docstore.kvStore.Put(fmt.Sprintf(KeyFmt, collection, _id.String()), string(bash), -1, ns); err != nil {
 			return nil, err
 		}
+		// FIXME(tsileo): re-handle indexing via the header (cf. client)
 		// Returns the doc along with its new ID
 		// if err := docstore.index.Index(_id.String(), doc); err != nil {
 		// return err
@@ -366,10 +365,6 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 		if collection == "" {
 			panic("missing collection query arg")
 		}
-		// explainMode := false
-		// if r.Header.Get("BlobStash-DocStore-Explain-Mode") != "" || q.Get("explain") != "" {
-		// 	explainMode = true
-		// }
 		switch r.Method {
 		case "GET":
 			// Parse the cursor
@@ -533,7 +528,7 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 			hash := fmt.Sprintf("%x", blake2b.Sum256(blob))
 			docstore.blobStore.Put(hash, blob, ns)
 			bash := make([]byte, len(hash)+1)
-			// FIXME(tsileo) fetch previous flag and set the same
+			// FIXME(tsileo): fetch previous flag and set the same
 			bash[0] = FlagIndexed
 			copy(bash[1:], []byte(hash)[:])
 			if _, err := docstore.kvStore.Put(fmt.Sprintf(KeyFmt, collection, _id.String()), string(bash), -1, ns); err != nil {

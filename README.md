@@ -34,6 +34,7 @@ There is an ecosystem of tools build upon BlobStash to get you started:
 - Optional encryption (using [go.crypto/nacl secretbox](http://godoc.org/code.google.com/p/go.crypto/nacl))
 - [BLAKE2b](https://blake2.net) as hashing algorithm for the content-addressed blob store
 - Backend routing, you can define rules to specify where blobs should be stored ("if-meta"...)
+- TLS and HTTP2 support
 - A full featured Go [client](http://godoc.org/github.com/tsileo/blobstash/client) using the HTTP API
 - Can be embedded in your Go program ([embedded client](http://godoc.org/github.com/tsileo/blobstash/embed))
 

@@ -28,7 +28,7 @@ func NewSnappyResponseWriter(rw http.ResponseWriter, r *http.Request) *snappyRes
 	// Set the necessary `Vary` header
 	rw.Header().Set("Vary", "Accept-Encoding")
 	// Disable caching of responses.
-	rw.Header().Set("Cache-control", "no-cache")
+	rw.Header().Set("Cache-Control", "no-cache")
 
 	var writer io.Writer
 
@@ -45,7 +45,7 @@ func NewSnappyResponseWriter(rw http.ResponseWriter, r *http.Request) *snappyRes
 		}
 		writer = s
 	default:
-		// No `Accept-Encoding` header (or unsupported)
+		// No `Accept-Encoding` header (or unsupported encoding)
 		// Default to plain-text
 		writer = rw
 	}

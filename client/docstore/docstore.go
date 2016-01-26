@@ -78,7 +78,6 @@ func DefaultOpts() *clientutil.Opts {
 		SnappyCompression: true,
 		Host:              defaultServerAddr,
 		UserAgent:         defaultUserAgent,
-		APIKey:            "",
 		EnableHTTP2:       true,
 	}
 }

@@ -16,7 +16,7 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/tsileo/blobstash/client"
+	"github.com/tsileo/blobstash/client/blobstore"
 
 	"github.com/dchest/blake2b"
 )
@@ -34,21 +34,19 @@ func main() {
 	flag.StringVar(&ns, "ns", "", "Optional namespace (for upload)")
 	flag.StringVar(&comment, "comment", "", "Optional comment (for upload)")
 	flag.BoolVar(&save, "save", false, "Save the hash in the log (for upload)")
-	// TODO(tsileo): host flag
-	// and display an usage func
-	// api key as a venv
-	// and support an optional namespace as arg
+	// TODO(tsileo):
 	// Store the latest uploaded blob as feature? log the uploaded? with an optional comment (import vkv)
-	// and write a README
 	// sharing feature (with a blob app to register?)
-	apiKey := os.Getenv("BLOB_API_KEY")
 	flag.Usage = usage
 	flag.Parse()
 	if flag.NArg() < 1 {
 		usage()
 	}
-	blobstore := client.NewBlobStore(os.Getenv("BLOB_API_HOST"))
-	blobstore.SetAPIKey(apiKey)
+	opts := blobstore.DefaultOpts()
+	opts.SetHost(os.Getenv("BLOB_API_HOST"), os.Getenv("BLOB_API_KEY"))
+	opts.SetNamespace(ns)
+	opts.SnappyCompression = false
+	blobstore := blobstore.New(opts)
 	if flag.Arg(0) == "-" {
 		stdin, err := ioutil.ReadAll(os.Stdin)
 		if err != nil {

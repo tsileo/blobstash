@@ -59,7 +59,7 @@ func (bs *BlobStore) Get(hash string) ([]byte, error) {
 	}
 }
 
-func (bs *BlobStore) Put(hash string, blob []byte, ns string) error {
+func (bs *BlobStore) Put(hash string, blob []byte) error {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 	part, err := writer.CreateFormFile(hash, hash)
@@ -67,9 +67,9 @@ func (bs *BlobStore) Put(hash string, blob []byte, ns string) error {
 		return err
 	}
 	part.Write(blob)
-
+	writer.Close()
 	headers := map[string]string{"Content-Type": writer.FormDataContentType()}
-	resp, err := bs.client.DoReq("POST", fmt.Sprintf("/api/v1/blobstore/upload?ns=%s", ns), headers, &buf)
+	resp, err := bs.client.DoReq("POST", "/api/v1/blobstore/upload", headers, &buf)
 	if err != nil {
 		return err
 	}

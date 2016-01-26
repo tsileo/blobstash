@@ -12,9 +12,6 @@ import (
 	"golang.org/x/net/http2"
 )
 
-// TODO(tsileo): reimport docstore-client in blobstash/client/docstore and split the other client in
-// separate package using this package.
-
 var transport http.RoundTripper = &http.Transport{
 	Proxy: http.ProxyFromEnvironment,
 	Dial: (&net.Dialer{
@@ -34,13 +31,16 @@ func setupHTTP2() {
 }
 
 type Opts struct {
-	APIKey            string
-	Headers           map[string]string
-	Host              string
-	UserAgent         string
-	Namespace         string
-	SnappyCompression bool
-	EnableHTTP2       bool
+	Host   string // BlobStash host (with proto and without trailing slash) e.g. "https://blobtash.com"
+	APIKey string // BlobStash API key
+
+	Namespace string // BlobStash namespace
+
+	Headers   map[string]string // Headers added to each request
+	UserAgent string            // Custom User-Agent
+
+	SnappyCompression bool // Enable snappy compression for the HTTP requests
+	EnableHTTP2       bool // Enable HTTP2 as the client level
 }
 
 func (opts *Opts) SetNamespace(ns string) *Opts {

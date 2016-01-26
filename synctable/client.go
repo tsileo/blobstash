@@ -33,7 +33,7 @@ func NewSyncTableClient(state *State, blobstore *embed.BlobStore, nsDB *nsdb.DB,
 		Host:              url,
 		Namespace:         ns,
 		EnableHTTP2:       true,
-		SnappyCompression: true,
+		SnappyCompression: false, // FIXME(tsileo): Activate this once snappy response reader is imported
 	}
 	return &SyncTableClient{
 		client:    clientutil.New(clientOpts),
@@ -112,16 +112,18 @@ func (stc *SyncTableClient) GetBlob(hash string) ([]byte, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
 	switch {
 	case resp.StatusCode == 200:
-		return body, nil
+		sr := clientutil.NewSnappyResponseReader(resp)
+		defer sr.Close()
+		return ioutil.ReadAll(sr)
 	case resp.StatusCode == 404:
 		return nil, fmt.Errorf("Blob %s not found", hash)
 	default:
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
 		return nil, fmt.Errorf("failed to get blob %v: %v", hash, string(body))
 	}
 }
