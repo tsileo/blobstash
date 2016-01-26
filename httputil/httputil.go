@@ -17,6 +17,19 @@ func WriteJSON(w http.ResponseWriter, data interface{}) {
 	w.Write(js)
 }
 
+// WriteJSONError is an helper to output a {"error": <msg>} JSON payload with the given status code
+func WriteJSONError(w http.ResponseWriter, status int, msg string) {
+	w.WriteHeader(status)
+	WriteJSON(w, map[string]interface{}{
+		"error": msg,
+	})
+}
+
+// Error is an shortcut for `WriteJSONError(w, http.StatusInternalServerError, err.Error())`
+func Error(w http.ResponseWriter, err error) {
+	WriteJSONError(w, http.StatusInternalServerError, err.Error())
+}
+
 // Set the `Cache-control` header to `no-cache` in order to prevent the browser to cache the response
 func SetNoCache(w http.ResponseWriter) {
 	w.Header().Set("Cache-control", "no-cache")
