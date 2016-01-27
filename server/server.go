@@ -239,6 +239,9 @@ func (s *Server) Run() {
 	authFunc := httputil.BasicAuthFunc("", apiKey)
 	// Start the HTTP API
 	s.SetUp()
+
+	reqLogger := httputil.LoggerMiddleware(s.Log)
+
 	r := mux.NewRouter()
 	// publicRoute := r.PathPrefix("/public").Subrouter()
 	appRoute := r.PathPrefix("/app").Subrouter()
@@ -295,7 +298,7 @@ Disallow: /`))
 		secureOptions.AllowedHosts = []string{tlsHostname}
 	}
 	secureMiddleware := secure.New(secureOptions)
-	http.Handle("/", secureMiddleware.Handler(c.Handler(r)))
+	http.Handle("/", secureMiddleware.Handler(reqLogger(c.Handler(r))))
 	s.Log.Info(fmt.Sprintf("server: HTTP API listening on 0.0.0.0:%d", s.port))
 	runFunc := func() {
 		if err := http.ListenAndServe(fmt.Sprintf(":%d", s.port), nil); err != nil {
