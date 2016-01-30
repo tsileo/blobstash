@@ -190,6 +190,9 @@ Make a pull request if your project uses BlobStash as data store or if you built
 
 ## Roadmap / Ideas
 
+- [ ] Fine grained permission for the document store
+- [ ] A File extension with tree suport (files as first-class citizen)
+- [ ] Display mutation history for the docstore document
 - [ ] A lua module for nacl box?
 - [ ] A Lua module for the document store
 - [ ] Find a way to handle/store? app logs
