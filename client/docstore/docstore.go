@@ -23,6 +23,17 @@ var defaultUserAgent = "DocStore Go client v1"
 
 type ID struct {
 	data []byte
+	hash string
+}
+
+// Hash returns the hash of the JSON blob
+func (id *ID) Hash() string {
+	return id.hash
+}
+
+// ETag returns the ETag of the current document for future conditional requests
+func (id *ID) ETag() string {
+	return id.hash
 }
 
 // String implements Stringer interface
@@ -128,7 +139,12 @@ func (col *Collection) Insert(idoc interface{}, opts *InsertOpts) (*ID, error) {
 	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case 204:
-		return IDFromHex(resp.Header.Get("BlobStash-DocStore-Doc-Id"))
+		_id, err := IDFromHex(resp.Header.Get("BlobStash-DocStore-Doc-Id"))
+		if err != nil {
+			return nil, err
+		}
+		_id.hash = resp.Header.Get("BlobStash-DocStore-Doc-Hash")
+		return _id, nil
 	default:
 		var body bytes.Buffer
 		body.ReadFrom(resp.Body)
