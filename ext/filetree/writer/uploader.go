@@ -2,7 +2,6 @@ package writer
 
 import (
 	"github.com/tsileo/blobstash/client/blobstore"
-	"github.com/tsileo/blobstash/client/interface"
 )
 
 var (

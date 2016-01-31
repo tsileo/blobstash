@@ -76,6 +76,7 @@ func (up *Uploader) writeReader(f io.Reader, meta *meta.Meta) error { // (*Write
 			break
 		}
 	}
+	meta.Size = size
 	return nil
 	// writeResult.Hash = fmt.Sprintf("%x", fullHash.Sum(nil))
 	// if writeResult.BlobsUploaded > 0 {
