@@ -275,9 +275,9 @@ func blobHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Requ
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
 			if exists {
+				w.WriteHeader(http.StatusNoContent)
 				return
 			}
-			// XXX(tsileo): returns a `http.StatusNoContent` ?
 			httputil.WriteJSONError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
 			return
 		// case "DELETE":

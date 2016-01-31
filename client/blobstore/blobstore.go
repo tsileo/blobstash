@@ -59,6 +59,27 @@ func (bs *BlobStore) Get(hash string) ([]byte, error) {
 	}
 }
 
+// Stat check if the blob exists
+func (bs *BlobStore) Stat(hash string) (bool, error) {
+	resp, err := bs.client.DoReq("HEAD", fmt.Sprintf("/api/v1/blobstore/blob/%s", hash), nil, nil)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return false, err
+	}
+	switch {
+	case resp.StatusCode == 204:
+		return true, nil
+	case resp.StatusCode == 404:
+		return false, nil
+	default:
+		return false, fmt.Errorf("failed to get blob %v: %v", hash, string(body))
+	}
+}
+
 func (bs *BlobStore) Put(hash string, blob []byte) error {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
