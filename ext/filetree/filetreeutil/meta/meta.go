@@ -66,7 +66,7 @@ func NewMeta() *Meta {
 	return metaPool.Get().(*Meta)
 }
 
-func NewMetaFromBlobStore(hash string, blob []byte) (*Meta, error) {
+func NewMetaFromBlob(hash string, blob []byte) (*Meta, error) {
 	meta := NewMeta()
 	if err := json.Unmarshal(blob, meta); err != nil {
 		return nil, err
