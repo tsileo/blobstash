@@ -190,6 +190,7 @@ Make a pull request if your project uses BlobStash as data store or if you built
 
 ## Roadmap / Ideas
 
+- [ ] A `blobstash-sync` subcommand
 - [ ] Fine grained permission for the document store
 - [ ] A File extension with tree suport (files as first-class citizen)
 - [ ] Display mutation history for the docstore document
