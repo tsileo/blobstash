@@ -3,6 +3,7 @@ package template
 import (
 	"bytes"
 	"html/template"
+	"strings"
 
 	"github.com/tsileo/blobstash/ext/lua/luautil"
 	"github.com/yuin/gopher-lua"
@@ -36,15 +37,17 @@ type TplCtx struct {
 }
 
 type TemplateModule struct {
-	ctx *TplCtx
+	ctx       *TplCtx
+	Templates map[string]*template.Template
 }
 
 // TODO(tsileo) set purecss a default css
 // See template.JS( before rendering
 
-func New() *TemplateModule {
+func New(templates map[string]*template.Template) *TemplateModule {
 	return &TemplateModule{
-		ctx: &TplCtx{},
+		ctx:       &TplCtx{},
+		Templates: templates,
 	}
 }
 
@@ -77,21 +80,33 @@ func (tpl *TemplateModule) settitle(L *lua.LState) int {
 }
 
 func (tpl *TemplateModule) render(L *lua.LState) int {
+	var err error
+	var ctpl *template.Template
 	tplString := L.ToString(1)
-	ptpl, err := template.New("tpl").Parse(tplString)
-	if err != nil {
-		panic(err)
+	defaultTpl := true
+	if strings.HasSuffix(tplString, ".tpl") {
+		ctpl = tpl.Templates[tplString]
+		defaultTpl = false
+	} else {
+		ctpl, err = template.New("tpl").Parse(tplString)
+		if err != nil {
+			panic(err)
+		}
 	}
 	// TODO(tsileo) add some templatFuncs/template filter
 	out := &bytes.Buffer{}
-	if err := header.Execute(out, tpl.ctx); err != nil {
+	if defaultTpl {
+		if err := header.Execute(out, tpl.ctx); err != nil {
+			panic(err)
+		}
+	}
+	if err := ctpl.Execute(out, tpl.ctx.Ctx); err != nil {
 		panic(err)
 	}
-	if err := ptpl.Execute(out, tpl.ctx.Ctx); err != nil {
-		panic(err)
-	}
-	if err := footer.Execute(out, tpl.ctx); err != nil {
-		panic(err)
+	if defaultTpl {
+		if err := footer.Execute(out, tpl.ctx); err != nil {
+			panic(err)
+		}
 	}
 	L.Push(lua.LString(out.String()))
 	return 1

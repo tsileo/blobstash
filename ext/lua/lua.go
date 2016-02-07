@@ -49,7 +49,8 @@ type LuaApp struct {
 	logs   []*loggerModule.LogRecord
 	APIKey string
 
-	Dir map[string]*LuaAppEntry
+	Dir       map[string]*LuaAppEntry
+	Templates map[string]*template.Template
 }
 
 const (
@@ -69,7 +70,7 @@ func (lae *LuaAppEntry) Serve(lua *LuaExt, reqLogger log.Logger, reqID string, r
 	reqLogger.Debug("Serving LuaAppEntry", "type", string(lae.Type))
 	switch lae.Type {
 	case LuaScript:
-		return lua.exec(reqLogger, lae.app, reqID, string(lae.Data), w, r)
+		return lua.exec(reqLogger, lae, reqID, string(lae.Data), w, r)
 	case StaticFile:
 		w.Header().Set("Content-Type", mime.TypeByExtension(lae.Name))
 		w.Write(lae.Data)
@@ -299,12 +300,13 @@ func (lua *LuaExt) RegisterHandler() func(http.ResponseWriter, *http.Request) {
 				return
 			}
 			app := &LuaApp{
-				Public: public,
-				AppID:  appID,
-				Dir:    map[string]*LuaAppEntry{},
-				InMem:  inMem,
-				Stats:  NewAppStats(),
-				APIKey: uuid.NewV4().String(),
+				Public:    public,
+				AppID:     appID,
+				Dir:       map[string]*LuaAppEntry{},
+				Templates: map[string]*template.Template{},
+				InMem:     inMem,
+				Stats:     NewAppStats(),
+				APIKey:    uuid.NewV4().String(),
 			}
 			for {
 				part, err := mr.NextPart()
@@ -331,6 +333,12 @@ func (lua *LuaExt) RegisterHandler() func(http.ResponseWriter, *http.Request) {
 						Hash: chash,
 						Data: blob,
 					}
+				case strings.HasSuffix(filename, ".tpl"):
+					tpl, err := template.New("tpl").Parse(string(blob))
+					if err != nil {
+						panic("bad template")
+					}
+					app.Templates[filename] = tpl
 				default:
 					appEntry = &LuaAppEntry{
 						app:  app,
@@ -421,9 +429,10 @@ func (lua *LuaExt) AppHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-func (lua *LuaExt) exec(reqLogger log.Logger, app *LuaApp, reqId, script string, w http.ResponseWriter, r *http.Request) int {
+func (lua *LuaExt) exec(reqLogger log.Logger, appEntry *LuaAppEntry, reqId, script string, w http.ResponseWriter, r *http.Request) int {
 	// FIXME(tsileo) a debug mode, with a defer/recover
 	// also parse the Lu error and show the bugging line!
+	app := appEntry.app
 	start := time.Now()
 	httpClient := &http.Client{}
 	// Initialize internal Lua module written in Go
@@ -433,7 +442,7 @@ func (lua *LuaExt) exec(reqLogger log.Logger, app *LuaApp, reqId, script string,
 	blobstore := blobstoreModule.New(lua.blobStore)
 	kvstore := kvstoreModule.New(lua.kvStore)
 	bewit := bewitModule.New(reqLogger.New("ctx", "Lua bewit module"), r)
-	template := templateModule.New()
+	template := templateModule.New(app.Templates)
 
 	// Initialize Lua state
 	L := luamod.NewState()
