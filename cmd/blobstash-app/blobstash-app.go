@@ -6,11 +6,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 
 	"gopkg.in/fsnotify.v1"
 )
@@ -106,19 +108,27 @@ func watch(appID, path string, public, inMem bool) {
 func register(appID, path string, public, inMem bool) {
 	var b bytes.Buffer
 	w := multipart.NewWriter(&b)
-	// Add your image file
-	f, err := os.Open(path)
+	ls, err := ioutil.ReadDir(path)
 	if err != nil {
-		return
+		panic(err)
 	}
-	fw, err := w.CreateFormFile("script", path)
-	if err != nil {
-		return
+	for _, entry := range ls {
+		if !entry.IsDir() {
+			// Add your image file
+			f, err := os.Open(filepath.Join(path, entry.Name()))
+			if err != nil {
+				return
+			}
+			fw, err := w.CreateFormFile("script", path)
+			if err != nil {
+				return
+			}
+			if _, err = io.Copy(fw, f); err != nil {
+				return
+			}
+			f.Close()
+		}
 	}
-	if _, err = io.Copy(fw, f); err != nil {
-		return
-	}
-	f.Close()
 	w.Close()
 	request, err := http.NewRequest("POST", server+fmt.Sprintf("/api/ext/lua/v1/register?appID=%s&public=%v&in_memory=%v", appID, public, inMem), &b)
 	request.Header.Set("Content-Type", w.FormDataContentType())
@@ -262,7 +272,7 @@ func main() {
 	case "register":
 		switch flag.NArg() {
 		case 1:
-			fmt.Println("register [AppID] [/path/to/file.lua]")
+			fmt.Println("register [AppID] [/path/to/app/dir]")
 		case 3:
 			appID := flag.Arg(1)
 			path := flag.Arg(2)
@@ -272,7 +282,7 @@ func main() {
 	case "watch":
 		switch flag.NArg() {
 		case 1:
-			fmt.Println("register [AppID] [/path/to/file.lua]")
+			fmt.Println("register [AppID] [/path/to/app/dir]")
 		case 3:
 			appID := flag.Arg(1)
 			path := flag.Arg(2)

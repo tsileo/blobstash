@@ -2,6 +2,19 @@
 
 **Work in progress**.
 
+Here is a basic app layout:
+
+```
+hello/
+    index.lua
+```
+
+```lua
+local resp = require('response')
+
+resp.write('hello world')
+```
+
 ## Quick start
 
 ```shell
@@ -13,14 +26,14 @@ $ export BLOBSTASH_APP_API_KEY=xxxx-xxxx-xxxx-xxxx
 $ blobstash-app apps
 
 # Register a app as `myappid`
-$ blobstash-app register myappid /path/to/file.lua
+$ blobstash-app register myappid /path/to/app/dir
 
 # Register a "public" app
-$ blobstash-app -public register myappid /path/to/file.lua
+$ blobstash-app -public register myappid /path/to/app/dir
 
 # Register a "public" app, but don't save it, just keep it in memory
 # (will be lost at next restart)
-$ blobstash-app -public in-mem register myappid /path/to/file.lua
+$ blobstash-app -public in-mem register myappid /path/to/app/dir
 
 # Display basic stats for the given appID
 $ blobstash-app stats myappid

@@ -297,18 +297,18 @@ func (lua *LuaExt) RegisterHandler() func(http.ResponseWriter, *http.Request) {
 					httputil.Error(w, err)
 					return
 				}
-				_ = part.FormName() // TODO(tsileo): support filename when uploading a dir
+				filename := part.FormName()
 				var buf bytes.Buffer
 				buf.ReadFrom(part)
 				blob := buf.Bytes()
-				// TODO(tsileo): save the blob if not -in-mem
+				// FIXME(tsileo): save the blob if not -in-mem
 				chash := fmt.Sprintf("%x", blake2b.Sum256(blob))
 				appEntry := &LuaAppEntry{
 					Type: LuaScript,
 					Hash: chash,
 					Data: blob,
 				}
-				app.Dir["index.lua"] = appEntry
+				app.Dir[filename] = appEntry
 			}
 
 			lua.appMutex.Lock()
