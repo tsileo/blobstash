@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"html/template"
+	"io"
 	"net/http"
 	"strconv"
 	"sync"
@@ -40,21 +41,30 @@ import (
 
 type LuaApp struct {
 	AppID  string
-	Name   string
-	Script []byte
-	Hash   string
 	Public bool
 	InMem  bool // Don't store the script if true
 	Stats  *LuaAppStats
 	logs   []*loggerModule.LogRecord
 	APIKey string
+
+	Dir map[string]*LuaAppEntry
+}
+
+const (
+	LuaScript string = "lua_script"
+)
+
+type LuaAppEntry struct {
+	Type string
+	Hash string
+	Data []byte
 }
 
 // FIXME(tsileo) generate an UUID v4 as API key and assign an API key for each app
 
 func (app *LuaApp) String() string {
-	return fmt.Sprintf("[appID=%v, name=%v, hash=%v, public=%v, inMem=%v]",
-		app.AppID, app.Name, app.Hash[:10], app.Public, app.InMem)
+	return fmt.Sprintf("[appID=%v, public=%v, inMem=%v]",
+		app.AppID, app.Public, app.InMem)
 }
 
 type LuaAppStats struct {
@@ -124,9 +134,11 @@ func (lua *LuaExt) RegisterRoute(r *mux.Router, middlewares *serverMiddleware.Sh
 // FIXME(tsileo) 404 on no such app error and log panic as crit level in the logger
 
 func (lua *LuaExt) RegisterAppRoute(r *mux.Router, middlewares *serverMiddleware.SharedMiddleware) {
-	r.HandleFunc("/{appID}", lua.AppHandler())
+	appHandler := lua.AppHandler()
+	r.HandleFunc("/{appID}", appHandler)
+	r.HandleFunc("/{appID}/", appHandler)
+	r.HandleFunc("/{appID}/{path:.+}", appHandler)
 	// FIXME(tsileo) a way to hook an app to / (root)
-	// XXX(tsileo) handle more complex routes?
 }
 
 func setCustomGlobals(L *luamod.LState) {
@@ -199,8 +211,6 @@ func setCustomGlobals(L *luamod.LState) {
 func appToResp(app *LuaApp) *LuaAppResp {
 	return &LuaAppResp{
 		AppID:               app.AppID,
-		Name:                app.Name,
-		Hash:                app.Hash,
 		Public:              app.Public,
 		InMem:               app.InMem,
 		Requests:            app.Stats.Requests,
@@ -270,31 +280,41 @@ func (lua *LuaExt) RegisterHandler() func(http.ResponseWriter, *http.Request) {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			part, err := mr.NextPart()
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			filename := part.FormName()
-			var buf bytes.Buffer
-			buf.ReadFrom(part)
-			blob := buf.Bytes()
-			chash := fmt.Sprintf("%x", blake2b.Sum256(blob))
 			app := &LuaApp{
-				Name:   filename,
 				Public: public,
 				AppID:  appID,
-				Script: blob,
-				Hash:   chash,
+				Dir:    map[string]*LuaAppEntry{},
 				InMem:  inMem,
 				Stats:  NewAppStats(),
 				APIKey: uuid.NewV4().String(),
 			}
+			for {
+				part, err := mr.NextPart()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					httputil.Error(w, err)
+					return
+				}
+				_ = part.FormName() // TODO(tsileo): support filename when uploading a dir
+				var buf bytes.Buffer
+				buf.ReadFrom(part)
+				blob := buf.Bytes()
+				// TODO(tsileo): save the blob if not -in-mem
+				chash := fmt.Sprintf("%x", blake2b.Sum256(blob))
+				appEntry := &LuaAppEntry{
+					Type: LuaScript,
+					Hash: chash,
+					Data: blob,
+				}
+				app.Dir["index.lua"] = appEntry
+			}
+
 			lua.appMutex.Lock()
 			lua.registeredApps[appID] = app
 			lua.appMutex.Unlock()
 			lua.logger.Info("Registered new app", "appID", appID, "app", app.String())
-
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -304,6 +324,11 @@ func (lua *LuaExt) RegisterHandler() func(http.ResponseWriter, *http.Request) {
 func (lua *LuaExt) AppHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
+
+		spath := "index.lua"
+		if gspath, ok := vars["path"]; ok {
+			spath = gspath
+		}
 
 		// Try to fetch the app
 		appID := vars["appID"]
@@ -316,11 +341,11 @@ func (lua *LuaExt) AppHandler() func(http.ResponseWriter, *http.Request) {
 
 		reqID := logext.RandId(8)
 		reqLogger := lua.logger.New("reqID", reqID, "appID", appID)
-		reqLogger.Info("Starting", "app", app.String())
+		reqLogger.Info("Starting", "app", app.String(), "path", "/"+spath)
 
 		w.Header().Add("BlobStash-App-ID", appID)
 		w.Header().Add("BlobStash-App-Req-ID", reqID)
-		w.Header().Add("BlobStash-App-Script-Hash", app.Hash)
+		// w.Header().Add("BlobStash-App-Script-Hash", app.Hash)
 
 		// Out the hash script on HEAD request to allow app manager/owner
 		// to verify if the script exists, and compare local version
@@ -336,27 +361,32 @@ func (lua *LuaExt) AppHandler() func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
-		// Copy the script so we can release the mutex
-		script := make([]byte, len(app.Script))
-		copy(script[:], app.Script[:])
+		appEntry, ok := app.Dir[spath]
+		if !ok {
+			httputil.WriteJSONError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
+			return
+		}
 
 		// Execute the script
 		start := time.Now()
-		status := strconv.Itoa(lua.exec(reqLogger, app, appID, reqID, string(script), w, r))
+		switch appEntry.Type {
+		case LuaScript:
+			status := strconv.Itoa(lua.exec(reqLogger, app, appID, reqID, string(appEntry.Data), w, r))
 
-		// Increment the internal stats
-		app, ok = lua.registeredApps[appID]
-		if !ok {
-			panic("App seems to have been deleted")
+			// Increment the internal stats
+			app, ok = lua.registeredApps[appID]
+			if !ok {
+				panic("App seems to have been deleted")
+			}
+			app.Stats.Requests++
+			if _, ok := app.Stats.Statuses[status]; !ok {
+				app.Stats.Statuses[status] = 1
+			} else {
+				app.Stats.Statuses[status]++
+			}
+			app.Stats.TotalTime += time.Since(start)
+			w.Header().Add("BlobStash-App-Script-Execution-Time", time.Since(start).String())
 		}
-		app.Stats.Requests++
-		if _, ok := app.Stats.Statuses[status]; !ok {
-			app.Stats.Statuses[status] = 1
-		} else {
-			app.Stats.Statuses[status]++
-		}
-		app.Stats.TotalTime += time.Since(start)
-		w.Header().Add("BlobStash-App-Script-Execution-Time", time.Since(start).String())
 	}
 }
 
