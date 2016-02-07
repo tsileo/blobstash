@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"mime"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -51,13 +53,30 @@ type LuaApp struct {
 }
 
 const (
-	LuaScript string = "lua_script"
+	LuaScript  string = "lua_script"
+	StaticFile string = "static_file"
 )
 
 type LuaAppEntry struct {
+	app  *LuaApp
+	Name string
 	Type string
 	Hash string
 	Data []byte
+}
+
+func (lae *LuaAppEntry) Serve(lua *LuaExt, reqLogger log.Logger, reqID string, r *http.Request, w http.ResponseWriter) int {
+	fmt.Printf("lae:%+v", lae)
+	switch lae.Type {
+	case LuaScript:
+		return lua.exec(reqLogger, lae.app, reqID, string(lae.Data), w, r)
+	case StaticFile:
+		w.Header().Set("Content-Type", mime.TypeByExtension(lae.Name))
+		reqLogger.Debug("Serving Static", "data", string(lae.Data))
+		w.Write(lae.Data)
+		return 200
+	}
+	panic("unknow entry type")
 }
 
 // FIXME(tsileo) generate an UUID v4 as API key and assign an API key for each app
@@ -303,10 +322,25 @@ func (lua *LuaExt) RegisterHandler() func(http.ResponseWriter, *http.Request) {
 				blob := buf.Bytes()
 				// FIXME(tsileo): save the blob if not -in-mem
 				chash := fmt.Sprintf("%x", blake2b.Sum256(blob))
-				appEntry := &LuaAppEntry{
-					Type: LuaScript,
-					Hash: chash,
-					Data: blob,
+				var appEntry *LuaAppEntry
+				switch {
+				case strings.HasSuffix(filename, ".lua"):
+					appEntry = &LuaAppEntry{
+						app:  app,
+						Name: filename,
+						Type: LuaScript,
+						Hash: chash,
+						Data: blob,
+					}
+				default:
+					appEntry = &LuaAppEntry{
+						app:  app,
+						Name: filename,
+						Type: StaticFile,
+						Hash: chash,
+						Data: blob,
+					}
+
 				}
 				app.Dir[filename] = appEntry
 			}
@@ -363,34 +397,32 @@ func (lua *LuaExt) AppHandler() func(http.ResponseWriter, *http.Request) {
 
 		appEntry, ok := app.Dir[spath]
 		if !ok {
+			reqLogger.Info("Path not found in app dir", "dir", app.Dir)
 			httputil.WriteJSONError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
 			return
 		}
 
 		// Execute the script
 		start := time.Now()
-		switch appEntry.Type {
-		case LuaScript:
-			status := strconv.Itoa(lua.exec(reqLogger, app, appID, reqID, string(appEntry.Data), w, r))
+		status := strconv.Itoa(appEntry.Serve(lua, reqLogger, reqID, r, w))
 
-			// Increment the internal stats
-			app, ok = lua.registeredApps[appID]
-			if !ok {
-				panic("App seems to have been deleted")
-			}
-			app.Stats.Requests++
-			if _, ok := app.Stats.Statuses[status]; !ok {
-				app.Stats.Statuses[status] = 1
-			} else {
-				app.Stats.Statuses[status]++
-			}
-			app.Stats.TotalTime += time.Since(start)
-			w.Header().Add("BlobStash-App-Script-Execution-Time", time.Since(start).String())
+		// Increment the internal stats
+		app, ok = lua.registeredApps[appID]
+		if !ok {
+			panic("App seems to have been deleted")
 		}
+		app.Stats.Requests++
+		if _, ok := app.Stats.Statuses[status]; !ok {
+			app.Stats.Statuses[status] = 1
+		} else {
+			app.Stats.Statuses[status]++
+		}
+		app.Stats.TotalTime += time.Since(start)
+		w.Header().Add("BlobStash-App-Script-Execution-Time", time.Since(start).String())
 	}
 }
 
-func (lua *LuaExt) exec(reqLogger log.Logger, app *LuaApp, appID, reqId, script string, w http.ResponseWriter, r *http.Request) int {
+func (lua *LuaExt) exec(reqLogger log.Logger, app *LuaApp, reqId, script string, w http.ResponseWriter, r *http.Request) int {
 	// FIXME(tsileo) a debug mode, with a defer/recover
 	// also parse the Lu error and show the bugging line!
 	start := time.Now()
@@ -428,7 +460,7 @@ func (lua *LuaExt) exec(reqLogger log.Logger, app *LuaApp, appID, reqId, script 
 
 	// Set some global variables
 	L.SetGlobal("reqID", luamod.LString(reqId))
-	L.SetGlobal("appID", luamod.LString(appID))
+	L.SetGlobal("appID", luamod.LString(app.AppID))
 
 	// Execute the code
 	if err := L.DoString(script); err != nil {

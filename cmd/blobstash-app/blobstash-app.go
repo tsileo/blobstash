@@ -119,7 +119,7 @@ func register(appID, path string, public, inMem bool) {
 			if err != nil {
 				return
 			}
-			fw, err := w.CreateFormFile("script", path)
+			fw, err := w.CreateFormFile(entry.Name(), entry.Name())
 			if err != nil {
 				return
 			}
