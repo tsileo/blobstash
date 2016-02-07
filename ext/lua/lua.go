@@ -370,6 +370,7 @@ func (lua *LuaExt) AppHandler() func(http.ResponseWriter, *http.Request) {
 		if gspath, ok := vars["path"]; ok {
 			spath = gspath
 		}
+		// FIXME(tsileo): handle index.html as root
 
 		// Try to fetch the app
 		appID := vars["appID"]

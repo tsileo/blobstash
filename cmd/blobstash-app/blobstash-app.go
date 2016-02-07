@@ -119,6 +119,8 @@ func register(appID, path string, public, inMem bool) {
 			if err != nil {
 				return
 			}
+			// FIXME(tsileo): if it's a .tpl file, try to parse it before upload
+			// XXX(tsileo): is it possible to find out Lua error before uploading?
 			fw, err := w.CreateFormFile(entry.Name(), entry.Name())
 			if err != nil {
 				return

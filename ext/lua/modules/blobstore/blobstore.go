@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/tsileo/blobstash/embed"
+	"github.com/tsileo/blobstash/ext/lua/luautil"
 	"github.com/yuin/gopher-lua"
 )
 
@@ -17,9 +18,10 @@ func New(blobStore *embed.BlobStore) *BlobStoreModule {
 
 func (bs *BlobStoreModule) Loader(L *lua.LState) int {
 	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
-		"put":  bs.put,
-		"get":  bs.get,
-		"stat": bs.stat,
+		"put":     bs.put,
+		"get":     bs.get,
+		"getjson": bs.getjson,
+		"stat":    bs.stat,
 		// "enumerate": bs.enumerate,
 	})
 	L.Push(mod)
@@ -62,6 +64,16 @@ func (bs *BlobStoreModule) get(L *lua.LState) int {
 	}
 	// FIXME(tsileo) handle blob not found
 	L.Push(lua.LString(string(blob)))
+	return 1
+}
+
+func (bs *BlobStoreModule) getjson(L *lua.LState) int {
+	blob, err := bs.blobStore.Get(L.ToString(1))
+	if err != nil {
+		panic(err)
+	}
+	// FIXME(tsileo) handle blob not found
+	L.Push(luautil.FromJSON(L, blob))
 	return 1
 }
 
