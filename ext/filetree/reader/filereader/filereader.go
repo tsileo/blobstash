@@ -10,12 +10,15 @@ import (
 	"github.com/dchest/blake2b"
 	"github.com/hashicorp/golang-lru"
 
-	"github.com/tsileo/blobstash/client/blobstore"
 	"github.com/tsileo/blobstash/ext/filetree/filetreeutil/meta"
 )
 
+type BlobStore interface {
+	Get(hash string) ([]byte, error)
+}
+
 // Download a file by its hash to path
-func GetFile(bs *blobstore.BlobStore, hash, path string) error {
+func GetFile(bs BlobStore, hash, path string) error {
 	// readResult := &ReadResult{}
 	buf, err := os.Create(path)
 	defer buf.Close()
@@ -71,7 +74,7 @@ func (iv *IndexValue) Key() uint64 {
 // It fetch blobs on the fly.
 type File struct {
 	name    string
-	bs      *blobstore.BlobStore
+	bs      BlobStore
 	meta    *meta.Meta
 	offset  int
 	size    int
@@ -82,7 +85,7 @@ type File struct {
 }
 
 // NewFakeFile creates a new FakeFile instance.
-func NewFile(bs *blobstore.BlobStore, meta *meta.Meta) (f *File) {
+func NewFile(bs BlobStore, meta *meta.Meta) (f *File) {
 	// Needed for the blob routing
 	cache, err := lru.New(2)
 	if err != nil {

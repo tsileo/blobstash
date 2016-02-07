@@ -14,6 +14,7 @@ import (
 
 	"github.com/cjoudrey/gluahttp"
 	"github.com/dchest/blake2b"
+	"github.com/dustin/go-humanize"
 	"github.com/gorilla/mux"
 	luajson "github.com/layeh/gopher-json"
 	"github.com/russross/blackfriday"
@@ -29,6 +30,7 @@ import (
 
 	bewitModule "github.com/tsileo/blobstash/ext/lua/modules/bewit"
 	blobstoreModule "github.com/tsileo/blobstash/ext/lua/modules/blobstore"
+	filetreeModule "github.com/tsileo/blobstash/ext/lua/modules/filetree"
 	kvstoreModule "github.com/tsileo/blobstash/ext/lua/modules/kvstore"
 	loggerModule "github.com/tsileo/blobstash/ext/lua/modules/logger"
 	requestModule "github.com/tsileo/blobstash/ext/lua/modules/request"
@@ -334,7 +336,25 @@ func (lua *LuaExt) RegisterHandler() func(http.ResponseWriter, *http.Request) {
 						Data: blob,
 					}
 				case strings.HasSuffix(filename, ".tpl"):
-					tpl, err := template.New("tpl").Parse(string(blob))
+					funcMap := template.FuncMap{
+						"bytes": func(n luamod.LNumber) string {
+							res := humanize.Bytes(uint64(n))
+							fmt.Printf("RES:%v", res)
+							return res
+						},
+						"time": func(s luamod.LString) string {
+							t, err := time.Parse(time.RFC3339, string(s))
+							if err != nil {
+								return ""
+							}
+							return humanize.Time(t)
+
+						},
+						"path": func(s string) string {
+							return fmt.Sprintf("/app/%s%s", app.AppID, s)
+						},
+					}
+					tpl, err := template.New("tpl").Funcs(funcMap).Parse(string(blob))
 					if err != nil {
 						panic("bad template")
 					}
@@ -444,6 +464,7 @@ func (lua *LuaExt) exec(reqLogger log.Logger, appEntry *LuaAppEntry, reqId, scri
 	kvstore := kvstoreModule.New(lua.kvStore)
 	bewit := bewitModule.New(reqLogger.New("ctx", "Lua bewit module"), r)
 	template := templateModule.New(app.Templates)
+	filetree := filetreeModule.New(lua.blobStore, r, w)
 
 	// Initialize Lua state
 	L := luamod.NewState()
@@ -456,6 +477,7 @@ func (lua *LuaExt) exec(reqLogger log.Logger, appEntry *LuaAppEntry, reqId, scri
 	L.PreloadModule("kvstore", kvstore.Loader)
 	L.PreloadModule("bewit", bewit.Loader)
 	L.PreloadModule("template", template.Loader)
+	L.PreloadModule("filetree", filetree.Loader)
 	// TODO(tsileo) docstore module
 	// TODO(tsileo) cookies module
 	// TODO(tsileo) lru module
