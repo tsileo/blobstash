@@ -66,13 +66,12 @@ type LuaAppEntry struct {
 }
 
 func (lae *LuaAppEntry) Serve(lua *LuaExt, reqLogger log.Logger, reqID string, r *http.Request, w http.ResponseWriter) int {
-	fmt.Printf("lae:%+v", lae)
+	reqLogger.Debug("Serving LuaAppEntry", "type", string(lae.Type))
 	switch lae.Type {
 	case LuaScript:
 		return lua.exec(reqLogger, lae.app, reqID, string(lae.Data), w, r)
 	case StaticFile:
 		w.Header().Set("Content-Type", mime.TypeByExtension(lae.Name))
-		reqLogger.Debug("Serving Static", "data", string(lae.Data))
 		w.Write(lae.Data)
 		return 200
 	}
