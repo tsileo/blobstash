@@ -16,23 +16,28 @@ import (
 	"github.com/dchest/blake2b"
 	"github.com/dustin/go-humanize"
 	"github.com/gorilla/mux"
+	"github.com/hashicorp/golang-lru"
 	luajson "github.com/layeh/gopher-json"
 	"github.com/russross/blackfriday"
 	"github.com/satori/go.uuid"
-	"github.com/tsileo/blobstash/embed"
-	hexid "github.com/tsileo/blobstash/ext/docstore/id"
-	"github.com/tsileo/blobstash/ext/lua/luautil"
-	"github.com/tsileo/blobstash/httputil"
-	serverMiddleware "github.com/tsileo/blobstash/middleware"
 	luamod "github.com/yuin/gopher-lua"
 	log "gopkg.in/inconshreveable/log15.v2"
 	logext "gopkg.in/inconshreveable/log15.v2/ext"
 
+	"github.com/tsileo/blobstash/embed"
+	"github.com/tsileo/blobstash/ext/docstore"
+	hexid "github.com/tsileo/blobstash/ext/docstore/id"
+	"github.com/tsileo/blobstash/ext/lua/luautil"
+	"github.com/tsileo/blobstash/httputil"
+	serverMiddleware "github.com/tsileo/blobstash/middleware"
+
 	bewitModule "github.com/tsileo/blobstash/ext/lua/modules/bewit"
 	blobstoreModule "github.com/tsileo/blobstash/ext/lua/modules/blobstore"
+	docstoreModule "github.com/tsileo/blobstash/ext/lua/modules/docstore"
 	filetreeModule "github.com/tsileo/blobstash/ext/lua/modules/filetree"
 	kvstoreModule "github.com/tsileo/blobstash/ext/lua/modules/kvstore"
 	loggerModule "github.com/tsileo/blobstash/ext/lua/modules/logger"
+	lruModule "github.com/tsileo/blobstash/ext/lua/modules/lru"
 	requestModule "github.com/tsileo/blobstash/ext/lua/modules/request"
 	responseModule "github.com/tsileo/blobstash/ext/lua/modules/response"
 	templateModule "github.com/tsileo/blobstash/ext/lua/modules/template"
@@ -53,6 +58,8 @@ type LuaApp struct {
 
 	Dir       map[string]*LuaAppEntry
 	Templates map[string]*template.Template
+
+	lru *lru.Cache // LRU cache accessible from the Lua app
 }
 
 const (
@@ -124,6 +131,7 @@ type LuaExt struct {
 
 	authFunc func(*http.Request) bool
 
+	docstore  *docstore.DocStoreExt
 	kvStore   *embed.KvStore
 	blobStore *embed.BlobStore
 
@@ -131,13 +139,14 @@ type LuaExt struct {
 	registeredApps map[string]*LuaApp
 }
 
-func New(logger log.Logger, key []byte, authFunc func(*http.Request) bool, kvStore *embed.KvStore, blobStore *embed.BlobStore) *LuaExt {
+func New(logger log.Logger, key []byte, authFunc func(*http.Request) bool, kvStore *embed.KvStore, blobStore *embed.BlobStore, docstore *docstore.DocStoreExt) *LuaExt {
 	httputil.SetHawkKey(key)
 	return &LuaExt{
 		hawkKey:        key,
 		logger:         logger,
 		kvStore:        kvStore,
 		blobStore:      blobStore,
+		docstore:       docstore,
 		registeredApps: map[string]*LuaApp{},
 		authFunc:       authFunc,
 	}
@@ -301,6 +310,11 @@ func (lua *LuaExt) RegisterHandler() func(http.ResponseWriter, *http.Request) {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
+			appLRU, err := lru.New(128)
+			if err != nil {
+				// TODO(tsileo): use httputil.Error
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
 			app := &LuaApp{
 				Public:    public,
 				AppID:     appID,
@@ -309,6 +323,7 @@ func (lua *LuaExt) RegisterHandler() func(http.ResponseWriter, *http.Request) {
 				InMem:     inMem,
 				Stats:     NewAppStats(),
 				APIKey:    uuid.NewV4().String(),
+				lru:       appLRU,
 			}
 			for {
 				part, err := mr.NextPart()
@@ -339,7 +354,6 @@ func (lua *LuaExt) RegisterHandler() func(http.ResponseWriter, *http.Request) {
 					funcMap := template.FuncMap{
 						"bytes": func(n luamod.LNumber) string {
 							res := humanize.Bytes(uint64(n))
-							fmt.Printf("RES:%v", res)
 							return res
 						},
 						"time": func(s luamod.LString) string {
@@ -465,6 +479,8 @@ func (lua *LuaExt) exec(reqLogger log.Logger, appEntry *LuaAppEntry, reqId, scri
 	bewit := bewitModule.New(reqLogger.New("ctx", "Lua bewit module"), r)
 	template := templateModule.New(app.Templates)
 	filetree := filetreeModule.New(lua.blobStore, r, w)
+	docstore := docstoreModule.New(lua.docstore)
+	lru := lruModule.New(reqLogger.New("ctx", "lru_cache"), app.lru)
 
 	// Initialize Lua state
 	L := luamod.NewState()
@@ -478,6 +494,8 @@ func (lua *LuaExt) exec(reqLogger log.Logger, appEntry *LuaAppEntry, reqId, scri
 	L.PreloadModule("bewit", bewit.Loader)
 	L.PreloadModule("template", template.Loader)
 	L.PreloadModule("filetree", filetree.Loader)
+	L.PreloadModule("docstore", docstore.Loader)
+	L.PreloadModule("lru", lru.Loader)
 	// TODO(tsileo) docstore module
 	// TODO(tsileo) cookies module
 	// TODO(tsileo) lru module
