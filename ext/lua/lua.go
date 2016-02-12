@@ -124,6 +124,7 @@ func NewAppStats() *LuaAppStats {
 }
 
 type LuaExt struct {
+	conf   map[string]interface{}
 	logger log.Logger
 
 	// Key for the Hawk bewit auth
@@ -139,9 +140,11 @@ type LuaExt struct {
 	registeredApps map[string]*LuaApp
 }
 
-func New(logger log.Logger, key []byte, authFunc func(*http.Request) bool, kvStore *embed.KvStore, blobStore *embed.BlobStore, docstore *docstore.DocStoreExt) *LuaExt {
+func New(conf map[string]interface{}, logger log.Logger, key []byte, authFunc func(*http.Request) bool, kvStore *embed.KvStore,
+	blobStore *embed.BlobStore, docstore *docstore.DocStoreExt) *LuaExt {
 	httputil.SetHawkKey(key)
 	return &LuaExt{
+		conf:           conf,
 		hawkKey:        key,
 		logger:         logger,
 		kvStore:        kvStore,
@@ -171,7 +174,7 @@ func (lua *LuaExt) RegisterAppRoute(r *mux.Router, middlewares *serverMiddleware
 	// FIXME(tsileo) a way to hook an app to / (root)
 }
 
-func setCustomGlobals(L *luamod.LState) {
+func setCustomGlobals(L *luamod.LState, lua *LuaExt, app *LuaApp) {
 	// Return the server unix timestamp
 	L.SetGlobal("unix", L.NewFunction(func(L *luamod.LState) int {
 		L.Push(luamod.LNumber(time.Now().Unix()))
@@ -210,6 +213,7 @@ func setCustomGlobals(L *luamod.LState) {
 	}))
 
 	// Render execute a Go HTML template, data must be a table with string keys
+	// FIXME(tsileo): use text/template for this one
 	L.SetGlobal("render", L.NewFunction(func(L *luamod.LState) int {
 		tplString := L.ToString(1)
 		data := luautil.TableToMap(L.ToTable(2))
@@ -229,11 +233,15 @@ func setCustomGlobals(L *luamod.LState) {
 	}))
 
 	// TODO(tsileo) a urljoin?
+	hostname := "http://localhost:8050"
+	if tlsHost, ok := lua.conf["tls-hostname"]; ok {
+		hostname = "https://" + tlsHost.(string)
+	}
 
 	// Return an absoulte URL for the given path
-	L.SetGlobal("url", L.NewFunction(func(L *luamod.LState) int {
+	L.SetGlobal("path", L.NewFunction(func(L *luamod.LState) int {
 		// FIXME(tsileo) take the host from the req?
-		L.Push(luamod.LString("http://localhost:8050" + L.ToString(1)))
+		L.Push(luamod.LString(hostname + "/app/" + app.AppID + L.ToString(1)))
 		return 1
 	}))
 }
@@ -485,7 +493,7 @@ func (lua *LuaExt) exec(reqLogger log.Logger, appEntry *LuaAppEntry, reqId, scri
 	// Initialize Lua state
 	L := luamod.NewState()
 	defer L.Close()
-	setCustomGlobals(L)
+	setCustomGlobals(L, lua, app)
 	L.PreloadModule("request", request.Loader)
 	L.PreloadModule("response", response.Loader)
 	L.PreloadModule("logger", logger.Loader)

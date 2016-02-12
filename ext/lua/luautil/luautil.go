@@ -114,6 +114,10 @@ func FromJSON(L *lua.LState, js []byte) lua.LValue {
 	return fromJSON(L, res)
 }
 
+func InterfaceToLValue(L *lua.LState, value interface{}) lua.LValue {
+	return fromJSON(L, value)
+}
+
 func fromJSON(L *lua.LState, value interface{}) lua.LValue {
 	switch converted := value.(type) {
 	case bool:

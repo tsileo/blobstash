@@ -249,7 +249,7 @@ func (s *Server) Run() {
 	eblobstore := s.BlobStore()
 	docstoreExt := docstore.New(s.Log.New("ext", "docstore"), ekvstore, eblobstore)
 	docstoreExt.RegisterRoute(r.PathPrefix("/api/ext/docstore/v1").Subrouter(), middlewares)
-	luaExt := lua.New(s.Log.New("ext", "lua"), []byte(hawkKey), authFunc, ekvstore, eblobstore, docstoreExt)
+	luaExt := lua.New(s.conf, s.Log.New("ext", "lua"), []byte(hawkKey), authFunc, ekvstore, eblobstore, docstoreExt)
 	luaExt.RegisterRoute(r.PathPrefix("/api/ext/lua/v1").Subrouter(), middlewares)
 	luaExt.RegisterAppRoute(appRoute, middlewares)
 	api.New(r.PathPrefix("/api/v1").Subrouter(), middlewares, s.wg, s.DB, s.NsDB, s.KvUpdate, s.Router, s.blobs, s.watchHub)

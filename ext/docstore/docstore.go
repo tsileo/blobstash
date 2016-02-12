@@ -126,7 +126,7 @@ func (docstore *DocStoreExt) Search(collection, queryString string) ([]byte, err
 	}
 	for index, sr := range searchResult.Hits {
 		jsPart := []byte{}
-		_, err := docstore.fetchDoc(collection, sr.ID, &jsPart)
+		_, err := docstore.Fetch(collection, sr.ID, &jsPart)
 		if err != nil {
 			return nil, err
 		}
@@ -263,7 +263,7 @@ func (docstore *DocStoreExt) Insert(collection string, idoc interface{}, ns stri
 		_id.SetHash(hash)
 		return _id, nil
 	}
-	return nil, fmt.Errorf("shouldn't happen")
+	return nil, fmt.Errorf("doc must be a *map[string]interface{}")
 }
 
 func (docstore *DocStoreExt) Query(collection string, query map[string]interface{}, cursor string, limit int, res interface{}) (*executionStats, error) {
@@ -312,7 +312,7 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 		for _, kv := range res {
 			jsPart := []byte{}
 			_id := hashFromKey(collection, kv.Key)
-			if _, err := docstore.fetchDoc(collection, _id, &jsPart); err != nil {
+			if _, err := docstore.Fetch(collection, _id, &jsPart); err != nil {
 				panic(err)
 			}
 			stats.TotalDocsExamined++
@@ -453,7 +453,7 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 	}
 }
 
-func (docstore *DocStoreExt) fetchDoc(collection, sid string, res interface{}) (*id.ID, error) {
+func (docstore *DocStoreExt) Fetch(collection, sid string, res interface{}) (*id.ID, error) {
 	if collection == "" {
 		return nil, errors.New("missing collection query arg")
 	}
@@ -503,7 +503,7 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 		switch r.Method {
 		case "GET":
 			js := []byte{}
-			if _id, err = docstore.fetchDoc(collection, sid, &js); err != nil {
+			if _id, err = docstore.Fetch(collection, sid, &js); err != nil {
 				panic(err)
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -511,7 +511,7 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 		case "POST":
 			ns := r.Header.Get("BlobStash-Namespace")
 			doc := map[string]interface{}{}
-			if _id, err = docstore.fetchDoc(collection, sid, &doc); err != nil {
+			if _id, err = docstore.Fetch(collection, sid, &doc); err != nil {
 				panic(err)
 			}
 			var update map[string]interface{}

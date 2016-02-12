@@ -6,8 +6,10 @@ Package docstore implements a Lua module to interact with the docstore extension
 package docstore
 
 import (
-	docstoreExt "github.com/tsileo/blobstash/ext/docstore"
 	"github.com/yuin/gopher-lua"
+
+	docstoreExt "github.com/tsileo/blobstash/ext/docstore"
+	"github.com/tsileo/blobstash/ext/lua/luautil"
 )
 
 type DocstoreModule struct {
@@ -31,7 +33,7 @@ func (ds *DocstoreModule) Loader(L *lua.LState) int {
 }
 
 func (ds *DocstoreModule) col(L *lua.LState) int {
-	col := &Col{L.CheckString(1)}
+	col := &Col{ds.docstore, L.CheckString(1)}
 	ud := L.NewUserData()
 	ud.Value = col
 	L.SetMetatable(ud, L.GetTypeMetatable(luaColTypeName))
@@ -40,7 +42,8 @@ func (ds *DocstoreModule) col(L *lua.LState) int {
 }
 
 type Col struct {
-	Name string
+	docstore *docstoreExt.DocStoreExt
+	Name     string
 }
 
 const luaColTypeName = "col"
@@ -49,20 +52,21 @@ func registerColType(L *lua.LState) {
 	mt := L.NewTypeMetatable(luaColTypeName)
 	L.SetGlobal("col", mt)
 	// static attributes
-	L.SetField(mt, "new", L.NewFunction(newCol))
+	// L.SetField(mt, "new", L.NewFunction(newCol))
 	// methods
 	L.SetField(mt, "__index", L.SetFuncs(L.NewTable(), colMethods))
 }
 
 // Constructor
-func newCol(L *lua.LState) int {
-	col := &Col{L.CheckString(1)}
-	ud := L.NewUserData()
-	ud.Value = col
-	L.SetMetatable(ud, L.GetTypeMetatable(luaColTypeName))
-	L.Push(ud)
-	return 1
-}
+// FIXME(tsileo): ensure the `new` field isn't required
+// func newCol(L *lua.LState) int {
+// 	col := &Col{L.CheckString(1)}
+// 	ud := L.NewUserData()
+// 	ud.Value = col
+// 	L.SetMetatable(ud, L.GetTypeMetatable(luaColTypeName))
+// 	L.Push(ud)
+// 	return 1
+// }
 
 // Checks whether the first lua argument is a *LUserData with *Person and returns this *Person.
 func checkCol(L *lua.LState) *Col {
@@ -75,7 +79,10 @@ func checkCol(L *lua.LState) *Col {
 }
 
 var colMethods = map[string]lua.LGFunction{
-	"name": colGetName,
+	"name":   colGetName,
+	"insert": colInsert,
+	"get":    colGet,
+	// "query":  colQuery,
 }
 
 // Getter and setter for the Person#Name
@@ -86,5 +93,28 @@ func colGetName(L *lua.LState) int {
 	// 	return 0
 	// }
 	L.Push(lua.LString(c.Name))
+	return 1
+}
+
+func colInsert(L *lua.LState) int {
+	c := checkCol(L)
+	doc := L.CheckTable(2)
+	table := luautil.TableToMap(doc)
+	_id, err := c.docstore.Insert(c.Name, &table, "")
+	if err != nil {
+		panic(err)
+	}
+	L.Push(lua.LString(_id.String()))
+	return 1
+}
+
+func colGet(L *lua.LState) int {
+	c := checkCol(L)
+	res := map[string]interface{}{}
+	_id := L.CheckString(2)
+	if _, err := c.docstore.Fetch(c.Name, _id, &res); err != nil {
+		panic(err)
+	}
+	L.Push(luautil.InterfaceToLValue(L, res))
 	return 1
 }
