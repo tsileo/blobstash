@@ -294,6 +294,37 @@ check() -> string
 new(string) -> string
 ```
 
+### Docstore
+
+```lua
+local docstore = require('docstore')
+
+local mycol = docstrole.col('mycol')
+
+local docId = mycol:insert{key = 'value'}
+
+local doc = mycol:get(docId)
+
+local key = doc.key -- => 'value'
+```
+
+```c
+col(string) -> userdata
+```
+
+### Filetree
+
+```lua
+local filetree = require('filetree')
+
+filetree.servefile('e31d4c9894cdbdb856521b551d2ee46a3880f8d1007c42ee57587f3a905f6924')
+```
+
+```c
+// Trigger a download for the given meta ref
+serverfile(string)
+```
+
 ### Logger
 
 ```lua
