@@ -14,27 +14,34 @@ import (
 
 // TableToMap convert a `*lua.LTable` to a `map[string]interface{}`
 func TableToMap(table *lua.LTable) map[string]interface{} {
-	return tomap(table, map[*lua.LTable]bool{})
+	res, _ := tomap(table, map[*lua.LTable]bool{})
+	return res
 }
 
-func tomap(table *lua.LTable, visited map[*lua.LTable]bool) map[string]interface{} {
+func tomap(table *lua.LTable, visited map[*lua.LTable]bool) (map[string]interface{}, []interface{}) {
 	res := map[string]interface{}{}
+	var arrres []interface{}
+	nkey := false
 	table.ForEach(func(key lua.LValue, value lua.LValue) {
+		_, numberKey := key.(lua.LNumber)
+		if numberKey {
+			nkey = true
+		}
 		switch converted := value.(type) {
-		case lua.LBool:
-			res[key.String()] = converted
+		case lua.LBool, lua.LNumber, lua.LString:
+			if nkey {
+				arrres = append(arrres, converted)
+			} else {
+				res[key.String()] = converted
+			}
 		case lua.LChannel:
 			panic("no channel")
-		case lua.LNumber:
-			res[key.String()] = converted
 		case *lua.LFunction:
 			panic("no function")
 		case *lua.LNilType:
 			res[key.String()] = converted
 		case *lua.LState:
 			panic("no LState")
-		case lua.LString:
-			res[key.String()] = converted
 		case *lua.LTable:
 			var arr []interface{}
 			obj := map[string]interface{}{}
@@ -50,26 +57,45 @@ func tomap(table *lua.LTable, visited map[*lua.LTable]bool) map[string]interface
 				subtable, istable := v.(*lua.LTable)
 				if numberKey {
 					if istable {
-						arr = append(arr, tomap(subtable, visited))
+						rtable, rarr := tomap(subtable, visited)
+						if rarr != nil {
+							arr = append(arr, rarr)
+						} else {
+							arr = append(arr, rtable)
+						}
+						// arr = append(arr, tomap(subtable, visited))
 					} else {
 						arr = append(arr, v)
 					}
 				} else {
 					if istable {
-						obj[k.(lua.LString).String()] = tomap(subtable, visited)
+						rtable, rarr := tomap(subtable, visited)
+						if rarr != nil {
+							obj[k.(lua.LString).String()] = rarr
+						} else {
+							obj[k.(lua.LString).String()] = rtable
+						}
 					} else {
 						obj[k.(lua.LString).String()] = v
 					}
 				}
 			})
 			if len(arr) > 0 {
-				res[key.String()] = arr
+				if nkey {
+					arrres = append(arrres, arr)
+				} else {
+					res[key.String()] = arr
+				}
 			} else {
-				res[key.String()] = obj
+				if nkey {
+					arrres = append(arrres, obj)
+				} else {
+					res[key.String()] = obj
+				}
 			}
 		}
 	})
-	return res
+	return res, arrres
 }
 
 // Convert a Lua table to JSON

@@ -100,7 +100,7 @@ func colInsert(L *lua.LState) int {
 	c := checkCol(L)
 	doc := L.CheckTable(2)
 	table := luautil.TableToMap(doc)
-	_id, err := c.docstore.Insert(c.Name, &table, "")
+	_id, err := c.docstore.Insert(c.Name, &table, "", false)
 	if err != nil {
 		panic(err)
 	}
