@@ -228,12 +228,14 @@ func isQueryAll(q string) bool {
 	return false
 }
 
-func (docstore *DocStoreExt) Insert(collection string, idoc interface{}, ns string) (*id.ID, error) {
+func (docstore *DocStoreExt) Insert(collection string, idoc interface{}, ns string, index bool) (*id.ID, error) {
 	switch doc := idoc.(type) {
 	case *map[string]interface{}:
 		// fdoc := *doc
 		docFlag := FlagNoIndex
-		// docFlag = FlagIndexed
+		if index {
+			docFlag = FlagIndexed
+		}
 		blob, err := json.Marshal(doc)
 		if err != nil {
 			return nil, err
@@ -255,11 +257,11 @@ func (docstore *DocStoreExt) Insert(collection string, idoc interface{}, ns stri
 		if _, err := docstore.kvStore.Put(fmt.Sprintf(KeyFmt, collection, _id.String()), string(bash), -1, ns); err != nil {
 			return nil, err
 		}
-		// FIXME(tsileo): re-handle indexing via the header (cf. client)
-		// Returns the doc along with its new ID
-		// if err := docstore.index.Index(_id.String(), doc); err != nil {
-		// return err
-		// }
+		if docFlag == FlagIndexed {
+			if err := docstore.index.Index(_id.String(), doc); err != nil {
+				return nil, err
+			}
+		}
 		_id.SetHash(hash)
 		return _id, nil
 	}
@@ -426,23 +428,18 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 			if err := json.Unmarshal(blob, &doc); err != nil {
 				panic(err)
 			}
-			// FIXME(tsileo) re-enable full-text index
-			// docFlag := FlagNoIndex
-			// // Should the doc be full-text indexed?
-			// indexHeader := r.Header.Get("BlobStash-DocStore-IndexFullText")
-			// if indexHeader != "" {
-			// 	docFlag = FlagIndexed
-			// }
+			index := false
+			if indexHeader := r.Header.Get("BlobStash-DocStore-IndexFullText"); indexHeader != "" {
+				if shouldIndex, _ := strconv.ParseBool(indexHeader); shouldIndex {
+					index = true
+				}
+
+			}
 			ns := r.Header.Get("BlobStash-Namespace")
-			_id, err := docstore.Insert(collection, &doc, ns)
+			_id, err := docstore.Insert(collection, &doc, ns, index)
 			if err != nil {
 				panic(err)
 			}
-			// if indexHeader != "" {
-			// 	if err := docstore.index.Index(_id.String(), doc); err != nil {
-			// 		panic(err)
-			// 	}
-			// }
 			w.Header().Set("BlobStash-DocStore-Doc-Id", _id.String())
 			w.Header().Set("BlobStash-DocStore-Doc-Hash", _id.Hash())
 			w.Header().Set("BlobStash-DocStore-Doc-CreatedAt", strconv.Itoa(_id.Ts()))
