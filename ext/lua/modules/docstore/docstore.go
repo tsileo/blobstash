@@ -99,8 +99,25 @@ func colGetName(L *lua.LState) int {
 func colInsert(L *lua.LState) int {
 	c := checkCol(L)
 	doc := L.CheckTable(2)
+	opts := L.ToTable(3)
+	var ns string
+	var index bool
+	if opts != nil {
+		if tns := L.RawGet(opts, lua.LString("namespace")); tns != lua.LNil {
+			if sns, ok := tns.(lua.LString); ok {
+				ns = string(sns)
+			}
+		}
+		if tindex := L.RawGet(opts, lua.LString("index")); tindex != lua.LNil {
+			if bindex, ok := tindex.(lua.LBool); ok {
+				if lua.LVAsBool(bindex) {
+					index = true
+				}
+			}
+		}
+	}
 	table := luautil.TableToMap(doc)
-	_id, err := c.docstore.Insert(c.Name, &table, "", false)
+	_id, err := c.docstore.Insert(c.Name, &table, ns, index)
 	if err != nil {
 		panic(err)
 	}
