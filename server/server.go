@@ -244,6 +244,13 @@ func (s *Server) Run() {
 
 	r := mux.NewRouter()
 	// publicRoute := r.PathPrefix("/public").Subrouter()
+	c := cors.New(cors.Options{
+		AllowedOrigins:   []string{"*"},
+		AllowCredentials: true,
+		Debug:            true,
+		AllowedMethods:   []string{"post", "get", "put", "options", "delete", "patch"},
+		AllowedHeaders:   []string{"Authorization"},
+	})
 	appRoute := r.PathPrefix("/app").Subrouter()
 	ekvstore := s.KvStore()
 	eblobstore := s.BlobStore()
@@ -279,9 +286,6 @@ Disallow: /`))
 	})
 
 	// FIXME allowedorigins from config
-	c := cors.New(cors.Options{
-		AllowedOrigins: []string{"*"},
-	})
 	isDevelopment, _ := strconv.ParseBool(os.Getenv("BLOBSTASH_DEV_MODE"))
 	if isDevelopment {
 		s.Log.Info("Server started in development mode")
