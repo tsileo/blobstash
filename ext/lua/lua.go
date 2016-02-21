@@ -318,6 +318,7 @@ func (lua *LuaExt) RegisterHandler() func(http.ResponseWriter, *http.Request) {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
+			// FIXME(tsileo): LRU size as config
 			appLRU, err := lru.New(128)
 			if err != nil {
 				// TODO(tsileo): use httputil.Error
@@ -346,7 +347,7 @@ func (lua *LuaExt) RegisterHandler() func(http.ResponseWriter, *http.Request) {
 				var buf bytes.Buffer
 				buf.ReadFrom(part)
 				blob := buf.Bytes()
-				// FIXME(tsileo): save the blob if not -in-mem
+				// FIXME(tsileo): save the blob as a filetree meta if not -in-mem
 				chash := fmt.Sprintf("%x", blake2b.Sum256(blob))
 				var appEntry *LuaAppEntry
 				switch {

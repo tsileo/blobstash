@@ -117,7 +117,8 @@ func (docstore *DocStoreExt) RegisterRoute(r *mux.Router, middlewares *serverMid
 }
 
 func (docstore *DocStoreExt) Search(collection, queryString string) ([]byte, error) {
-	js := []byte{}
+	// We build the JSON response using a `[]byte`
+	js := []byte("[")
 	query := bleve.NewQueryStringQuery(queryString)
 	searchRequest := bleve.NewSearchRequest(query)
 	searchResult, err := docstore.index.Search(searchRequest)
@@ -135,7 +136,8 @@ func (docstore *DocStoreExt) Search(collection, queryString string) ([]byte, err
 			js = append(js, []byte(",")...)
 		}
 	}
-	if len(searchResult.Hits) > 0 {
+	// Remove the last comma if there's more than one result
+	if len(searchResult.Hits) > 1 {
 		js = js[0 : len(js)-1]
 	}
 	js = append(js, []byte("]")...)

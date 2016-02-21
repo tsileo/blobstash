@@ -99,6 +99,8 @@ func colGetName(L *lua.LState) int {
 func colInsert(L *lua.LState) int {
 	c := checkCol(L)
 	doc := L.CheckTable(2)
+
+	// Parse the optional `opts` as a table args
 	opts := L.ToTable(3)
 	var ns string
 	var index bool
