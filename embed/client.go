@@ -73,6 +73,22 @@ func (kvs *KvStore) Versions(key string, start, end, limit int) (*response.KeyVa
 	}, nil
 }
 
+func (kvs *KvStore) ReverseKeys(start, end string, limit int) ([]*response.KeyValue, error) {
+	res, err := kvs.db.ReverseKeys(start, end, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := []*response.KeyValue{}
+	for _, kv := range res {
+		out = append(out, &response.KeyValue{
+			Key:     kv.Key,
+			Value:   kv.Value,
+			Version: kv.Version,
+		})
+	}
+	return out, nil
+}
+
 func (kvs *KvStore) Keys(start, end string, limit int) ([]*response.KeyValue, error) {
 	res, err := kvs.db.Keys(start, end, limit)
 	if err != nil {

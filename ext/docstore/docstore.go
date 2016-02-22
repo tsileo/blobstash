@@ -309,12 +309,20 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 	var lastKey string
 	for {
 		qLogger.Debug("internal query", "limit", limit, "cursor", cursor, "start", start, "end", end, "nreturned", stats.NReturned)
-		res, err := docstore.kvStore.Keys(start, end, limit) // Prefetch more docs
+		res, err := docstore.kvStore.ReverseKeys(start, end, limit) // Prefetch more docs
 		if err != nil {
 			panic(err)
 		}
 		for _, kv := range res {
 			jsPart := []byte{}
+			// Since we're iterating the keys in reverse and a seek of the DB
+			// returns the first match greater than or equal,we might end-up with
+			// a key from another collection.
+			// FIXME(tsileo): Add a "\xff" key for each collection
+			// so seek doesn't EOF indefintely.
+			if !strings.HasPrefix(kv.Key, fmt.Sprintf(KeyFmt, collection, "")) {
+				continue
+			}
 			_id := hashFromKey(collection, kv.Key)
 			if _, err := docstore.Fetch(collection, _id, &jsPart); err != nil {
 				panic(err)

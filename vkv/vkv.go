@@ -423,3 +423,31 @@ func (db *DB) Keys(start, end string, limit int) ([]*KeyValue, error) {
 	}
 	return res, nil
 }
+
+// Return a lexicographical range
+func (db *DB) ReverseKeys(start, end string, limit int) ([]*KeyValue, error) {
+	res := []*KeyValue{}
+	enum, hit, err := db.db.Seek(encodeMeta(KvKeyIndex, []byte(end)))
+	if err != nil {
+		return nil, err
+	}
+	endBytes := encodeMeta(KvKeyIndex, []byte(start))
+	i := 0
+	for {
+		k, _, err := enum.Prev()
+		// if i == 0 && bytes.HasPrefix(k, []byte(
+		if err == io.EOF {
+			break
+		}
+		if bytes.Compare(k, endBytes) < 0 || (limit != 0 && i > limit) {
+			return res, nil
+		}
+		kv, err := db.Get(string(k[1:]), -1)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, kv)
+		i++
+	}
+	return res, nil
+}
