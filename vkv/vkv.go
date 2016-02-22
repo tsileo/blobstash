@@ -427,7 +427,7 @@ func (db *DB) Keys(start, end string, limit int) ([]*KeyValue, error) {
 // Return a lexicographical range
 func (db *DB) ReverseKeys(start, end string, limit int) ([]*KeyValue, error) {
 	res := []*KeyValue{}
-	enum, hit, err := db.db.Seek(encodeMeta(KvKeyIndex, []byte(end)))
+	enum, _, err := db.db.Seek(encodeMeta(KvKeyIndex, []byte(end)))
 	if err != nil {
 		return nil, err
 	}

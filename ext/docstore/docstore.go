@@ -116,20 +116,20 @@ func (docstore *DocStoreExt) RegisterRoute(r *mux.Router, middlewares *serverMid
 	r.Handle("/{collection}/{_id}", middlewares.Auth(http.HandlerFunc(docstore.docHandler())))
 }
 
-func (docstore *DocStoreExt) Search(collection, queryString string) ([]byte, error) {
+func (docstore *DocStoreExt) Search(collection, queryString string) ([]byte, *bleve.SearchResult, error) {
 	// We build the JSON response using a `[]byte`
 	js := []byte("[")
 	query := bleve.NewQueryStringQuery(queryString)
 	searchRequest := bleve.NewSearchRequest(query)
 	searchResult, err := docstore.index.Search(searchRequest)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for index, sr := range searchResult.Hits {
 		jsPart := []byte{}
 		_, err := docstore.Fetch(collection, sr.ID, &jsPart)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		js = append(js, addID(jsPart, sr.ID)...)
 		if index != len(searchResult.Hits)-1 {
@@ -141,10 +141,9 @@ func (docstore *DocStoreExt) Search(collection, queryString string) ([]byte, err
 		js = js[0 : len(js)-1]
 	}
 	js = append(js, []byte("]")...)
-	// "_meta": searchResult,
 	// "data":  docs,
 	// TODO(tsileo) returns meta along with argument
-	return js, nil
+	return js, searchResult, nil
 }
 
 func (docstore *DocStoreExt) searchHandler() func(http.ResponseWriter, *http.Request) {
@@ -154,11 +153,13 @@ func (docstore *DocStoreExt) searchHandler() func(http.ResponseWriter, *http.Req
 		if collection == "" {
 			panic("missing collection query arg")
 		}
-		js, err := docstore.Search(collection, r.URL.Query().Get("q"))
+		js, sr, err := docstore.Search(collection, r.URL.Query().Get("q"))
 		if err != nil {
 			panic(err)
 		}
 		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("BlobStash-DocStore-Query-Returned", strconv.Itoa(int(sr.Total)))
+		w.Header().Set("BlobStash-DocStore-Query-Exec-Time", strconv.Itoa(int(sr.Took.Nanoseconds()/1e6)))
 
 		srw := httputil.NewSnappyResponseWriter(w, r)
 		srw.Write(js)
