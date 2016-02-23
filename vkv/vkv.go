@@ -37,6 +37,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -56,6 +57,10 @@ const (
 	KvVersionCnt
 	KvVersionMin
 	KvVersionMax
+	KvPrefixMeta // Not in use yet but reserved for future usage
+	KvPrefixCnt  // Same here
+	KvPrefixStart
+	KvPrefixEnd
 )
 
 var ErrNotFound = errors.New("vkv: key does not exist")
@@ -318,6 +323,36 @@ func (db *DB) Put(key, value string, version int) (*KeyValue, error) {
 	}, nil
 }
 
+func (db *DB) PutPrefix(prefix, key, value string, version int) (*KeyValue, error) {
+	// TODO(tsileo): in meta, check if strings.Contains(s, ":") and PutPrefix instead of Put
+	prefixedKey := fmt.Sprintf("%s:%s", prefix, key)
+	bkey := []byte(prefixedKey)
+	bprefix := []byte(prefix)
+
+	// Track the boundaries for later iteration
+	prefixStart, err := db.db.Get(nil, encodeMeta(KvPrefixStart, bprefix))
+	if err != nil {
+		return nil, err
+	}
+	if (prefixStart == nil || len(prefixStart) == 0) || bytes.Compare(bkey, prefixStart) < 0 {
+		if err := db.db.Set(encodeMeta(KvPrefixStart, bprefix), bkey); err != nil {
+			return nil, err
+		}
+	}
+	prefixEnd, err := db.db.Get(nil, encodeMeta(KvPrefixEnd, bprefix))
+	if err != nil {
+		return nil, err
+	}
+	if (prefixEnd == nil || len(prefixEnd) == 0) || bytes.Compare(bkey, prefixEnd) > 0 {
+		if err := db.db.Set(encodeMeta(KvPrefixEnd, bprefix), bkey); err != nil {
+			return nil, err
+		}
+	}
+
+	// Save the key prefix:key
+	return db.Put(prefixedKey, value, version)
+}
+
 func (db *DB) Check(key string) (bool, error) {
 	bkey := []byte(key)
 	exists, err := db.db.Get(nil, encodeMeta(KvKeyIndex, bkey))
@@ -427,6 +462,49 @@ func (db *DB) Keys(start, end string, limit int) ([]*KeyValue, error) {
 // Return a lexicographical range
 func (db *DB) ReverseKeys(start, end string, limit int) ([]*KeyValue, error) {
 	res := []*KeyValue{}
+	enum, _, err := db.db.Seek(encodeMeta(KvKeyIndex, []byte(end)))
+	if err != nil {
+		return nil, err
+	}
+	endBytes := encodeMeta(KvKeyIndex, []byte(start))
+	i := 0
+	for {
+		k, _, err := enum.Prev()
+		// if i == 0 && bytes.HasPrefix(k, []byte(
+		if err == io.EOF {
+			break
+		}
+		if bytes.Compare(k, endBytes) < 0 || (limit != 0 && i > limit) {
+			return res, nil
+		}
+		kv, err := db.Get(string(k[1:]), -1)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, kv)
+		i++
+	}
+	return res, nil
+}
+
+// Return a lexicographical range
+func (db *DB) ReversePrefixKeys(prefix, start, end string, limit int) ([]*KeyValue, error) {
+	res := []*KeyValue{}
+	if start == "" {
+		prefixStart, err := db.db.Get(nil, encodeMeta(KvPrefixStart, []byte{}))
+		if err != nil {
+			return nil, err
+		}
+		start = string(prefixStart)
+	}
+	// FIXME(tsileo): a better way to tell we want the end? or \xff is good enough?
+	if end == "\xff" {
+		prefixEnd, err := db.db.Get(nil, encodeMeta(KvPrefixEnd, []byte{}))
+		if err != nil {
+			return nil, err
+		}
+		end = string(prefixEnd)
+	}
 	enum, _, err := db.db.Seek(encodeMeta(KvKeyIndex, []byte(end)))
 	if err != nil {
 		return nil, err
