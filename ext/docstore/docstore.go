@@ -314,23 +314,15 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 	var lastKey string
 	for {
 		qLogger.Debug("internal query", "limit", limit, "cursor", cursor, "start", start, "end", end, "nreturned", stats.NReturned)
+		// FIXME(tsileo): use `PrefixKeys` if ?sort=_id (-_id by default).
 		res, err := docstore.kvStore.ReversePrefixKeys(fmt.Sprintf(PrefixKeyFmt, collection), start, end, limit) // Prefetch more docs
 		if err != nil {
 			panic(err)
 		}
 		for _, kv := range res {
 			jsPart := []byte{}
-			// Since we're iterating the keys in reverse and a seek of the DB
-			// returns the first match greater than or equal,we might end-up with
-			// a key from another collection.
-			// FIXME(tsileo): Add a "\xff" key for each collection
-			// so seek doesn't EOF indefintely.
-			// XXX(tsileo): not needed anymore with the new prefix handling
-			// if !strings.HasPrefix(kv.Key, fmt.Sprintf(KeyFmt, collection, "")) {
-			// 	continue
-			// }
 			_id := hashFromKey(collection, kv.Key)
-			qLogger.Debug("fetch doc", "_id", _id, "raw_key", kv.Key, "col", collection)
+			qLogger.Debug("fetch doc", "_id", _id)
 			if _, err := docstore.Fetch(collection, _id, &jsPart); err != nil {
 				panic(err)
 			}
