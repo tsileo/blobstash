@@ -5,8 +5,6 @@ BlobStash
 
 Key value pairs are stored as "meta" blobs, this mean you can build application on top of BlobStash without the need for another database.
 
-Initially created to power [BlobSnap](https://github.com/tsileo/blobsnap) and [Blobs](http://blobs.co).
-
 **Still in early development.**
 
 ## Manifesto
@@ -22,10 +20,11 @@ To store your data and build app, you can use a combination of:
 
 Everything is private by default, but can support public and semi-private sharing (via Lua scripting and Hawk bewit).
 
-There is an ecosystem of tools build upon BlobStash to get you started:
+## Projects built on top of BlobStash
 
- - [BlobSnap](https://github.com/tsileo/blobsnap)
  - [BlobFS](https://github.com/tsileo/blobfs)
+
+Make a pull request if your project uses BlobStash as data store or if you built an open-source Lua app for BlobStash.
 
 ## Features
 
@@ -43,15 +42,9 @@ There is an ecosystem of tools build upon BlobStash to get you started:
 ```console
 $ go get github.com/tsileo/blobstash/cmd/blobstash
 $ $GOPATH/bin/blobstash
-2015/08/13 21:32:27 Starting blobstash version 0.0.0; go1.4 (linux/amd64)
-2015/08/13 21:32:27 BlobsFileBackend: starting, opening index
-2015/08/13 21:32:27 BlobsFileBackend: scanning BlobsFiles...
-2015/08/13 21:32:27 BlobsFileBackend: /data/blobs/blobs-00000 loaded
-2015/08/13 21:32:27 BlobsFileBackend: opening /data/blobs/blobs-00000 for writing
-2015/08/13 21:32:27 BlobsFileBackend: snappyCompression = false
-2015/08/13 21:32:27 BlobsFileBackend: backend id => blobsfile-/data/blobs
-2015/08/13 21:32:27 server: HTTP API listening on 0.0.0.0:8050
-2015/08/13 21:32:38 Scan: done, 10596 blobs scanned in 11.114966366s, 0 blobs applied
+INFO[02-25|00:05:40] Starting blobstash version 0.0.0; go1.6beta1 (darwin/amd64)
+INFO[02-25|00:05:40] opening blobsfile for writing            backend=blobsfile-/Users/thomas/var/blobstash/blobs
+INFO[02-25|00:05:40] server: HTTP API listening on 0.0.0.0:8050
 ```
 
 ## Blob store
@@ -180,28 +173,22 @@ func main() {
 }
 ```
 
-## Projects built on top of BlobStash
-
- - [BlobSnap](https://github.com/tsileo/blobsnap)
- - [BlobFS](https://github.com/tsileo/blobfs)
- - [BlobFS-web](https://github.com/tsileo/blobfs-web)
-
-Make a pull request if your project uses BlobStash as data store or if you built an open-source Lua app for BlobStash.
-
 ## Roadmap / Ideas
 
+- [ ] Bind a Lua app to root (`/`)
 - [ ] A `blobstash-sync` subcommand
 - [ ] Fine grained permission for the document store
 - [ ] A File extension with tree suport (files as first-class citizen)
-- [ ] Display mutation history for the docstore document
+- [ ] Display mutation history for the docstore document (`/{doc _id}/history`)
 - [ ] A lua module for nacl box?
-- [ ] A Lua module for the document store
+- [X] A Lua module for the document store
 - [ ] Find a way to handle/store? app logs
-- [ ] A better template module for Lua app -> load a full directory as an app
+- [X] A better template module for Lua app -> load a full directory as an app
 - [ ] Integrate with Let's Encrypt (via lego) and enable HTTP2 support
 - [ ] Snappy encoding support for the HTTP blobstore API
 - [ ] A slave blobstash mode (e.g. for blog/remote apps)
-- [ ] A Lua LRU module
+- [X] A Lua LRU module
+
 - A better documentation
 - A web interface?
 - An S3-like HTTP API to store archive?

@@ -512,7 +512,7 @@ func (db *DB) ReversePrefixKeys(prefix, start, end string, limit int) ([]*KeyVal
 	endBytes := encodeMeta(KvKeyIndex, []byte(start))
 	i := 0
 	for {
-		k, v, err := enum.Prev()
+		k, _, err := enum.Prev()
 		if err == io.EOF {
 			break
 		}
