@@ -51,7 +51,8 @@ import (
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
 )
 
-var KeyFmt = "docstore:%s:%s"
+var PrefixKeyFmt = "docstore:%s"
+var KeyFmt = PrefixKeyFmt + ":%s"
 
 func hashFromKey(col, key string) string {
 	return strings.Replace(key, fmt.Sprintf("docstore:%s:", col), "", 1)
@@ -141,8 +142,7 @@ func (docstore *DocStoreExt) Search(collection, queryString string) ([]byte, *bl
 		js = js[0 : len(js)-1]
 	}
 	js = append(js, []byte("]")...)
-	// "data":  docs,
-	// TODO(tsileo) returns meta along with argument
+
 	return js, searchResult, nil
 }
 
@@ -257,7 +257,7 @@ func (docstore *DocStoreExt) Insert(collection string, idoc interface{}, ns stri
 		bash := make([]byte, len(hash)+1)
 		bash[0] = docFlag
 		copy(bash[1:], []byte(hash)[:])
-		if _, err := docstore.kvStore.Put(fmt.Sprintf(KeyFmt, collection, _id.String()), string(bash), -1, ns); err != nil {
+		if _, err := docstore.kvStore.PutPrefix(fmt.Sprintf(PrefixKeyFmt, collection), _id.String(), string(bash), -1, ns); err != nil {
 			return nil, err
 		}
 		if docFlag == FlagIndexed {
@@ -266,6 +266,7 @@ func (docstore *DocStoreExt) Insert(collection string, idoc interface{}, ns stri
 			}
 		}
 		_id.SetHash(hash)
+		// FIXME(tsileo): remove counter from ID
 		return _id, nil
 	}
 	return nil, fmt.Errorf("doc must be a *map[string]interface{}")
@@ -294,8 +295,11 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 	js := []byte("[")
 	tstart := time.Now()
 	stats := &executionStats{}
-	start := fmt.Sprintf(KeyFmt, collection, cursor)
-	end := fmt.Sprintf(KeyFmt, collection, "\xff")
+	start := ""
+	if cursor != "" {
+		start = fmt.Sprintf(KeyFmt, collection, cursor)
+	}
+	end := "\xff"
 	if query == nil || len(query) == 0 {
 		// Prefetch more docs since there's a lot of chance the query will
 		// match every documents
@@ -310,7 +314,7 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 	var lastKey string
 	for {
 		qLogger.Debug("internal query", "limit", limit, "cursor", cursor, "start", start, "end", end, "nreturned", stats.NReturned)
-		res, err := docstore.kvStore.ReverseKeys(start, end, limit) // Prefetch more docs
+		res, err := docstore.kvStore.ReversePrefixKeys(fmt.Sprintf(PrefixKeyFmt, collection), start, end, limit) // Prefetch more docs
 		if err != nil {
 			panic(err)
 		}
@@ -321,10 +325,12 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 			// a key from another collection.
 			// FIXME(tsileo): Add a "\xff" key for each collection
 			// so seek doesn't EOF indefintely.
-			if !strings.HasPrefix(kv.Key, fmt.Sprintf(KeyFmt, collection, "")) {
-				continue
-			}
+			// XXX(tsileo): not needed anymore with the new prefix handling
+			// if !strings.HasPrefix(kv.Key, fmt.Sprintf(KeyFmt, collection, "")) {
+			// 	continue
+			// }
 			_id := hashFromKey(collection, kv.Key)
+			qLogger.Debug("fetch doc", "_id", _id, "raw_key", kv.Key, "col", collection)
 			if _, err := docstore.Fetch(collection, _id, &jsPart); err != nil {
 				panic(err)
 			}

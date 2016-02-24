@@ -324,7 +324,7 @@ func (db *DB) Put(key, value string, version int) (*KeyValue, error) {
 }
 
 func (db *DB) PutPrefix(prefix, key, value string, version int) (*KeyValue, error) {
-	// TODO(tsileo): in meta, check if strings.Contains(s, ":") and PutPrefix instead of Put
+	// FIXME(tsileo): in meta, check if strings.Contains(s, ":") and PutPrefix instead of Put
 	prefixedKey := fmt.Sprintf("%s:%s", prefix, key)
 	bkey := []byte(prefixedKey)
 	bprefix := []byte(prefix)
@@ -499,7 +499,7 @@ func (db *DB) ReversePrefixKeys(prefix, start, end string, limit int) ([]*KeyVal
 	}
 	// FIXME(tsileo): a better way to tell we want the end? or \xff is good enough?
 	if end == "\xff" {
-		prefixEnd, err := db.db.Get(nil, encodeMeta(KvPrefixEnd, []byte{}))
+		prefixEnd, err := db.db.Get(nil, encodeMeta(KvPrefixEnd, []byte(prefix)))
 		if err != nil {
 			return nil, err
 		}
@@ -512,8 +512,7 @@ func (db *DB) ReversePrefixKeys(prefix, start, end string, limit int) ([]*KeyVal
 	endBytes := encodeMeta(KvKeyIndex, []byte(start))
 	i := 0
 	for {
-		k, _, err := enum.Prev()
-		// if i == 0 && bytes.HasPrefix(k, []byte(
+		k, v, err := enum.Prev()
 		if err == io.EOF {
 			break
 		}
@@ -522,7 +521,7 @@ func (db *DB) ReversePrefixKeys(prefix, start, end string, limit int) ([]*KeyVal
 		}
 		kv, err := db.Get(string(k[1:]), -1)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to fetch key \"%s\": %v", k[1:], err)
 		}
 		res = append(res, kv)
 		i++

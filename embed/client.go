@@ -42,6 +42,20 @@ func (kvs *KvStore) Put(key, value string, version int, ns string) (*response.Ke
 	}, nil
 }
 
+func (kvs *KvStore) PutPrefix(prefix, key, value string, version int, ns string) (*response.KeyValue, error) {
+	res, err := kvs.db.PutPrefix(prefix, key, value, version)
+	if err != nil {
+		return nil, err
+	}
+	res.SetNamespace(ns)
+	kvs.kvUpdate <- res
+	return &response.KeyValue{
+		Key:     res.Key,
+		Value:   res.Value,
+		Version: res.Version,
+	}, nil
+}
+
 func (kvs *KvStore) Get(key string, version int) (*response.KeyValue, error) {
 	res, err := kvs.db.Get(key, version)
 	if err != nil {
@@ -73,8 +87,8 @@ func (kvs *KvStore) Versions(key string, start, end, limit int) (*response.KeyVa
 	}, nil
 }
 
-func (kvs *KvStore) ReverseKeys(start, end string, limit int) ([]*response.KeyValue, error) {
-	res, err := kvs.db.ReverseKeys(start, end, limit)
+func (kvs *KvStore) ReversePrefixKeys(prefix, start, end string, limit int) ([]*response.KeyValue, error) {
+	res, err := kvs.db.ReversePrefixKeys(prefix, start, end, limit)
 	if err != nil {
 		return nil, err
 	}
