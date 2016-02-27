@@ -416,6 +416,11 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 			w.Header().Set("BlobStahs-DocStore-Iter-Has-More", strconv.FormatBool(hasMore))
 			w.Header().Set("BlobStash-DocStore-Iter-Cursor", nextKey(stats.LastID))
 
+			// TODO(tsileo): find a better name than "Query-Type"
+			// In the future, the value may be INDEX, if so it'll output
+			// the index name.
+			w.Header().Set("BlobStash-DocStore-Query-Type", "LINEAR")
+
 			// Set headers for the query stats
 			w.Header().Set("BlobStash-DocStore-Query-Returned", strconv.Itoa(stats.NReturned))
 			w.Header().Set("BlobStash-DocStore-Query-Examined", strconv.Itoa(stats.TotalDocsExamined))
