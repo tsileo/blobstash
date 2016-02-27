@@ -184,11 +184,10 @@ func main() {
 - [X] A Lua module for the document store
 - [ ] Find a way to handle/store? app logs
 - [X] A better template module for Lua app -> load a full directory as an app
-- [ ] Integrate with Let's Encrypt (via lego) and enable HTTP2 support
-- [ ] Snappy encoding support for the HTTP blobstore API
+- [ ] Integrate with Let's Encrypt (via lego)
+- [X] Snappy encoding support for the HTTP blobstore API
 - [ ] A slave blobstash mode (e.g. for blog/remote apps)
 - [X] A Lua LRU module
-
 - A better documentation
 - A web interface?
 - An S3-like HTTP API to store archive?

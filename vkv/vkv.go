@@ -343,6 +343,8 @@ func (db *DB) PutPrefix(prefix, key, value string, version int) (*KeyValue, erro
 	if err != nil {
 		return nil, err
 	}
+	// XXX(tsileo): more efficient to save only the key (full key = prefix + key)
+	// and rebuilt the keys while iterating a given prefix on the fly.
 	if (prefixEnd == nil || len(prefixEnd) == 0) || bytes.Compare(bkey, prefixEnd) > 0 {
 		if err := db.db.Set(encodeMeta(KvPrefixEnd, bprefix), bkey); err != nil {
 			return nil, err
@@ -491,7 +493,9 @@ func (db *DB) ReverseKeys(start, end string, limit int) ([]*KeyValue, error) {
 func (db *DB) ReversePrefixKeys(prefix, start, end string, limit int) ([]*KeyValue, error) {
 	res := []*KeyValue{}
 	if start == "" {
-		prefixStart, err := db.db.Get(nil, encodeMeta(KvPrefixStart, []byte{}))
+		// XXX(tsileo): Ensure it works
+		prefixStart, err := db.db.Get(nil, encodeMeta(KvPrefixStart, []byte(prefix)))
+		// prefixStart, err := db.db.Get(nil, encodeMeta(KvPrefixStart, []byte{}))
 		if err != nil {
 			return nil, err
 		}
