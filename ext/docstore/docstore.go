@@ -51,6 +51,7 @@ import (
 	"github.com/tsileo/blobstash/ext/docstore/optimizer"
 	"github.com/tsileo/blobstash/httputil"
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
+	"github.com/tsileo/blobstash/vkv"
 )
 
 var (
@@ -591,7 +592,8 @@ func (docstore *DocStoreExt) Fetch(collection, sid string, res interface{}) (*id
 	}
 	kv, err := docstore.kvStore.Get(fmt.Sprintf(KeyFmt, collection, sid), -1)
 	if err != nil {
-		return nil, fmt.Errorf("kvstore get err: %v", err)
+		return nil, err
+		// fmt.Errorf("kvstore get err: %v", err)
 	}
 	_id, err := id.FromHex(sid)
 	if err != nil {
@@ -633,13 +635,19 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 		srw := httputil.NewSnappyResponseWriter(w, r)
 		defer srw.Close()
 		switch r.Method {
-		case "GET":
+		case "GET", "HEAD":
 			js := []byte{}
 			if _id, err = docstore.Fetch(collection, sid, &js); err != nil {
+				if err == vkv.ErrNotFound {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
 				panic(err)
 			}
-			w.Header().Set("Content-Type", "application/json")
-			srw.Write(addID(js, sid))
+			if r.Method == "GET" {
+				w.Header().Set("Content-Type", "application/json")
+				srw.Write(addID(js, sid))
+			}
 		case "POST":
 			ns := r.Header.Get("BlobStash-Namespace")
 			doc := map[string]interface{}{}
