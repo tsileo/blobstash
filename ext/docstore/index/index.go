@@ -31,7 +31,6 @@ import (
 // TODO(tsileo):
 // - Add way to remove an index
 // - Hook the re-indexing/docstoreExt.Insert to rebuild the index
-// - Start to work on a query analyser to decide between Linear search/Hash index search
 // - Store the index in the kvk store: index:{collection}:{index_id} => {Index Entry (json encoded)}
 // - Expose a new API endpoint in docstoreExt for creating/deleting indexes
 
@@ -72,7 +71,7 @@ func New() (*HashIndexes, error) {
 	}, nil
 }
 
-func buildIndexKey(key, value []byte) string {
+func IndexKey(key, value []byte) string {
 	h := fnv.New64a()
 	h.Write(key)
 	h.Write(value)

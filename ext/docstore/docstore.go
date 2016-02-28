@@ -47,13 +47,19 @@ import (
 	"github.com/tsileo/blobstash/config/pathutil"
 	"github.com/tsileo/blobstash/embed"
 	"github.com/tsileo/blobstash/ext/docstore/id"
+	"github.com/tsileo/blobstash/ext/docstore/index"
 	"github.com/tsileo/blobstash/ext/docstore/optimizer"
 	"github.com/tsileo/blobstash/httputil"
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
 )
 
-var PrefixKeyFmt = "docstore:%s"
-var KeyFmt = PrefixKeyFmt + ":%s"
+var (
+	PrefixKeyFmt = "docstore:%s"
+	KeyFmt       = PrefixKeyFmt + ":%s"
+
+	PrefixIndexKeyFmt = "docstore-index:%s"
+	IndexKeyFmt       = PrefixIndexKeyFmt + ":%s"
+)
 
 func hashFromKey(col, key string) string {
 	return strings.Replace(key, fmt.Sprintf("docstore:%s:", col), "", 1)
@@ -116,6 +122,7 @@ func (docstore *DocStoreExt) RegisterRoute(r *mux.Router, middlewares *serverMid
 	r.Handle("/", middlewares.Auth(http.HandlerFunc(docstore.collectionsHandler())))
 	r.Handle("/{collection}", middlewares.Auth(http.HandlerFunc(docstore.docsHandler())))
 	r.Handle("/{collection}/search", middlewares.Auth(http.HandlerFunc(docstore.searchHandler())))
+	r.Handle("/{collection}/_indexes", middlewares.Auth(http.HandlerFunc(docstore.indexesHandler())))
 	r.Handle("/{collection}/{_id}", middlewares.Auth(http.HandlerFunc(docstore.docHandler())))
 }
 
@@ -206,6 +213,38 @@ func (docstore *DocStoreExt) Collections() ([]string, error) {
 	return collections, nil
 }
 
+func (docstore *DocStoreExt) indexesHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		collection := vars["collection"]
+		if collection == "" {
+			panic("missing collection query arg")
+		}
+		switch r.Method {
+		case "GET":
+			// q := r.URL.Query()
+			srw := httputil.NewSnappyResponseWriter(w, r)
+			indexes, err := docstore.Indexes(collection)
+			if err != nil {
+				panic(err)
+			}
+			httputil.WriteJSON(srw, indexes)
+			srw.Close()
+		case "POST":
+			q := map[string]interface{}{}
+			if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
+				panic(err)
+			}
+			if err := docstore.AddIndex(collection, q); err != nil {
+				panic(err)
+			}
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}
+}
+
 func (docstore *DocStoreExt) collectionsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -231,6 +270,49 @@ func isQueryAll(q string) bool {
 		return true
 	}
 	return false
+}
+
+type Index struct {
+	ID    string                 `json:"id"`
+	Query map[string]interface{} `json:"query"`
+}
+
+func (docstore *DocStoreExt) Indexes(collection string) ([]*Index, error) {
+	res, err := docstore.kvStore.ReversePrefixKeys(fmt.Sprintf(PrefixIndexKeyFmt, collection), "", "\xff", 50)
+	indexes := []*Index{}
+	if err != nil {
+		panic(err)
+	}
+	for _, kv := range res {
+		q := map[string]interface{}{}
+		if err := json.Unmarshal([]byte(kv.Value), &q); err != nil {
+			return nil, err
+		}
+		indexes = append(indexes, &Index{
+			ID:    kv.Key,
+			Query: q,
+		})
+	}
+	return indexes, nil
+}
+
+func (docstore *DocStoreExt) AddIndex(collection string, q map[string]interface{}) error {
+	// FIXME(tsileo): handle object with more kvs
+	if len(q) > 1 {
+		return fmt.Errorf("Indexed query must be of lengh 1 for now")
+	}
+	var ks, vs string
+	for k, v := range q {
+		ks = k
+		vs = v.(string)
+	}
+	hashIndex := index.IndexKey([]byte(ks), []byte(vs))
+	js, err := json.Marshal(q)
+	if err != nil {
+		return err
+	}
+	_, err = docstore.kvStore.PutPrefix(fmt.Sprintf(PrefixIndexKeyFmt, collection), hashIndex, string(js), -1, "")
+	return err
 }
 
 func (docstore *DocStoreExt) Insert(collection string, idoc interface{}, ns string, index bool) (*id.ID, error) {

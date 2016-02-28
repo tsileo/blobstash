@@ -24,5 +24,6 @@ func New(logger log.Logger) *Optimizer {
 }
 
 func (o *Optimizer) Select(q map[string]interface{}) string {
+	o.log.Info("selected optimizer", "optimizer", Linear)
 	return Linear
 }
