@@ -47,6 +47,7 @@ import (
 	"github.com/tsileo/blobstash/config/pathutil"
 	"github.com/tsileo/blobstash/embed"
 	"github.com/tsileo/blobstash/ext/docstore/id"
+	"github.com/tsileo/blobstash/ext/docstore/optimizer"
 	"github.com/tsileo/blobstash/httputil"
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
 )
@@ -69,6 +70,7 @@ type executionStats struct {
 	TotalDocsExamined   int    `json:"totalDocsExamined"`
 	ExecutionTimeMillis int    `json:"executionTimeMillis"`
 	LastID              string `json:"-"`
+	Optimizer           string `json:"optimizer"`
 }
 
 // TODO(tsileo): full text indexing, find a way to get the config index
@@ -295,53 +297,43 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 	js := []byte("[")
 	tstart := time.Now()
 	stats := &executionStats{}
+	optz := optimizer.New(docstore.logger.New("module", "query optimizer"))
 	start := ""
 	if cursor != "" {
 		start = fmt.Sprintf(KeyFmt, collection, cursor)
 	}
 	end := "\xff"
-	if query == nil || len(query) == 0 {
-		// Prefetch more docs since there's a lot of chance the query will
+	if query != nil && len(query) > 0 {
+		// Prefetch more docs since there's a lot of chance the query won't
 		// match every documents
 		limit = int(float64(limit) * 1.3)
 	}
-	qLogger := docstore.logger.New("query", query, "id", logext.RandId(8))
-	qLogger.Info("new query")
 	var noQuery bool
-	if len(query) == 0 {
+	if query == nil || len(query) == 0 {
 		noQuery = true
 	}
-	var lastKey string
-	for {
-		qLogger.Debug("internal query", "limit", limit, "cursor", cursor, "start", start, "end", end, "nreturned", stats.NReturned)
-		// FIXME(tsileo): use `PrefixKeys` if ?sort=_id (-_id by default).
-		res, err := docstore.kvStore.ReversePrefixKeys(fmt.Sprintf(PrefixKeyFmt, collection), start, end, limit) // Prefetch more docs
-		if err != nil {
-			panic(err)
-		}
-		for _, kv := range res {
-			jsPart := []byte{}
-			_id := hashFromKey(collection, kv.Key)
-			qLogger.Debug("fetch doc", "_id", _id)
-			if _, err := docstore.Fetch(collection, _id, &jsPart); err != nil {
+	qLogger := docstore.logger.New("query", query, "id", logext.RandId(8))
+	qLogger.Info("new query")
+	if optz.Select(query) == optimizer.Linear {
+		stats.Optimizer = optimizer.Linear
+		var lastKey string
+		for {
+			qLogger.Debug("internal query", "limit", limit, "cursor", cursor, "start", start, "end", end, "nreturned", stats.NReturned)
+			// FIXME(tsileo): use `PrefixKeys` if ?sort=_id (-_id by default).
+			res, err := docstore.kvStore.ReversePrefixKeys(fmt.Sprintf(PrefixKeyFmt, collection), start, end, limit) // Prefetch more docs
+			if err != nil {
 				panic(err)
 			}
-			stats.TotalDocsExamined++
-			if noQuery {
-				// No query, so we just add every docs
-				js = append(js, addID(jsPart, _id)...)
-				js = append(js, []byte(",")...)
-				stats.NReturned++
-				stats.LastID = _id
-				if stats.NReturned == limit {
-					break
-				}
-			} else {
-				doc := map[string]interface{}{}
-				if err := json.Unmarshal(jsPart, &doc); err != nil {
+			for _, kv := range res {
+				jsPart := []byte{}
+				_id := hashFromKey(collection, kv.Key)
+				qLogger.Debug("fetch doc", "_id", _id)
+				if _, err := docstore.Fetch(collection, _id, &jsPart); err != nil {
 					panic(err)
 				}
-				if matchQuery(qLogger, query, doc) {
+				stats.TotalDocsExamined++
+				if noQuery {
+					// No query, so we just add every docs
 					js = append(js, addID(jsPart, _id)...)
 					js = append(js, []byte(",")...)
 					stats.NReturned++
@@ -349,23 +341,38 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 					if stats.NReturned == limit {
 						break
 					}
+				} else {
+					doc := map[string]interface{}{}
+					if err := json.Unmarshal(jsPart, &doc); err != nil {
+						panic(err)
+					}
+					if matchQuery(qLogger, query, doc) {
+						js = append(js, addID(jsPart, _id)...)
+						js = append(js, []byte(",")...)
+						stats.NReturned++
+						stats.LastID = _id
+						if stats.NReturned == limit {
+							break
+						}
+					}
 				}
+				lastKey = kv.Key
 			}
-			lastKey = kv.Key
+			if len(res) == 0 || len(res) < limit {
+				break
+			}
+			start = nextKey(lastKey)
 		}
-		if len(res) == 0 || len(res) < limit {
-			break
+		if stats.NReturned > 0 {
+			js = js[0 : len(js)-1]
 		}
-		start = nextKey(lastKey)
+		duration := time.Since(tstart)
+		qLogger.Debug("scan done", "duration", duration, "nReturned", stats.NReturned, "scanned", stats.TotalDocsExamined)
+		stats.ExecutionTimeMillis = int(duration.Nanoseconds() / 1e6)
+		js = append(js, []byte("]")...)
+		return js, stats, nil
 	}
-	if stats.NReturned > 0 {
-		js = js[0 : len(js)-1]
-	}
-	duration := time.Since(tstart)
-	qLogger.Debug("scan done", "duration", duration, "nReturned", stats.NReturned, "scanned", stats.TotalDocsExamined)
-	stats.ExecutionTimeMillis = int(duration.Nanoseconds() / 1e6)
-	js = append(js, []byte("]")...)
-	return js, stats, nil
+	return nil, nil, fmt.Errorf("")
 }
 
 func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Request) {
@@ -416,10 +423,7 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 			w.Header().Set("BlobStahs-DocStore-Iter-Has-More", strconv.FormatBool(hasMore))
 			w.Header().Set("BlobStash-DocStore-Iter-Cursor", nextKey(stats.LastID))
 
-			// TODO(tsileo): find a better name than "Query-Type"
-			// In the future, the value may be INDEX, if so it'll output
-			// the index name.
-			w.Header().Set("BlobStash-DocStore-Query-Type", "LINEAR")
+			w.Header().Set("BlobStash-DocStore-Query-Optimizer", stats.Optimizer)
 
 			// Set headers for the query stats
 			w.Header().Set("BlobStash-DocStore-Query-Returned", strconv.Itoa(stats.NReturned))
@@ -531,6 +535,7 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 				panic(err)
 			}
 			docstore.logger.Debug("Update", "_id", sid, "ns", ns, "update_query", update)
+			// FIXME(tsileo): nore more $set, move to PATCH and make it acts like $set
 			newDoc, err := updateDoc(doc, update)
 			blob, err := json.Marshal(newDoc)
 			if err != nil {
