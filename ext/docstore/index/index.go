@@ -47,9 +47,14 @@ const (
 )
 
 var (
-	IndexPrefixFmt string = "index:%s:%v"          // index:{collection}:{index hash}
-	IndexFmt       string = IndexPrefixFmt + ":%v" // index:{collection}:{index hash}:{_id} => ""
+	IndexPrefixFmt string = "index:%s:%v:%v"       // index:{collection}:{index id}:{index hash}
+	IndexFmt       string = IndexPrefixFmt + ":%v" // index:{collection}:{index id}:{index hash}:{_id} => ""
 )
+
+type Index struct {
+	ID     string   `json:"id"`
+	Fields []string `json:"fields"`
+}
 
 // HashIndex will act as a basic indexing for basic queries like `{"key": "value"}`
 type HashIndexes struct {
@@ -71,10 +76,10 @@ func New() (*HashIndexes, error) {
 	}, nil
 }
 
-func IndexKey(key, value []byte) string {
+func IndexKey(value interface{}) string {
 	h := fnv.New64a()
-	h.Write(key)
-	h.Write(value)
+	// h.Write(key)
+	h.Write([]byte(fmt.Sprintf("%v", value)))
 
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
@@ -86,10 +91,14 @@ func encodeMeta(keyByte byte, key []byte) []byte {
 	return cardkey
 }
 
-func (hi *HashIndexes) Index(collection, indexHash, _id string) error {
-	prefixedKey := fmt.Sprintf(IndexPrefixFmt, collection, indexHash)
+func (hi *HashIndexes) Close() error {
+	return hi.db.Close()
+}
+
+func (hi *HashIndexes) Index(collection string, index *Index, indexHash, _id string) error {
+	prefixedKey := fmt.Sprintf(IndexPrefixFmt, collection, index.ID, indexHash)
 	bprefix := []byte(prefixedKey)
-	bkey := []byte(fmt.Sprintf(IndexFmt, collection, indexHash, _id))
+	bkey := []byte(fmt.Sprintf(IndexFmt, collection, index.ID, indexHash, _id))
 	bid := []byte(_id)
 
 	// Track the boundaries for later iteration
@@ -116,8 +125,8 @@ func (hi *HashIndexes) Index(collection, indexHash, _id string) error {
 	return hi.db.Set(encodeMeta(IndexRow, bkey), []byte{})
 }
 
-func (hi *HashIndexes) Iter(collection, indexHash, start, end string, limit int) ([]string, error) {
-	prefixedKey := fmt.Sprintf(IndexPrefixFmt, collection, indexHash)
+func (hi *HashIndexes) Iter(collection string, index *Index, indexHash, start, end string, limit int) ([]string, error) {
+	prefixedKey := fmt.Sprintf(IndexPrefixFmt, collection, index.ID, indexHash)
 	bprefix := []byte(prefixedKey)
 
 	res := []string{}
@@ -136,11 +145,11 @@ func (hi *HashIndexes) Iter(collection, indexHash, start, end string, limit int)
 		}
 		end = string(prefixEnd)
 	}
-	enum, _, err := hi.db.Seek(encodeMeta(IndexRow, []byte(fmt.Sprintf(IndexFmt, collection, indexHash, end))))
+	enum, _, err := hi.db.Seek(encodeMeta(IndexRow, []byte(fmt.Sprintf(IndexFmt, collection, index.ID, indexHash, end))))
 	if err != nil {
 		return nil, err
 	}
-	endBytes := encodeMeta(IndexRow, []byte(fmt.Sprintf(IndexFmt, collection, indexHash, start)))
+	endBytes := encodeMeta(IndexRow, []byte(fmt.Sprintf(IndexFmt, collection, index.ID, indexHash, start)))
 	i := 0
 	for {
 		k, _, err := enum.Prev()
@@ -150,7 +159,7 @@ func (hi *HashIndexes) Iter(collection, indexHash, start, end string, limit int)
 		if bytes.Compare(k, endBytes) < 0 || (limit != 0 && i > limit) {
 			return res, nil
 		}
-		_id := strings.Replace(string(k[1:]), fmt.Sprintf(IndexPrefixFmt, collection, indexHash), "", 1)
+		_id := strings.Replace(string(k[1:]), fmt.Sprintf(IndexPrefixFmt+":", collection, index.ID, indexHash), "", 1)
 		res = append(res, _id)
 		i++
 	}

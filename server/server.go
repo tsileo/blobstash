@@ -62,6 +62,7 @@ type Server struct {
 	DB          *vkv.DB
 	NsDB        *nsdb.DB
 	metaHandler *meta.MetaHandler
+	docstore    *docstore.DocStoreExt
 
 	syncer *synctable.SyncTable
 
@@ -247,7 +248,6 @@ func (s *Server) Run() {
 	c := cors.New(cors.Options{
 		AllowedOrigins:   []string{"*"},
 		AllowCredentials: true,
-		Debug:            true,
 		AllowedMethods:   []string{"post", "get", "put", "options", "delete", "patch"},
 		AllowedHeaders:   []string{"Authorization"},
 	})
@@ -255,6 +255,7 @@ func (s *Server) Run() {
 	ekvstore := s.KvStore()
 	eblobstore := s.BlobStore()
 	docstoreExt := docstore.New(s.Log.New("ext", "docstore"), ekvstore, eblobstore)
+	s.docstore = docstoreExt
 	docstoreExt.RegisterRoute(r.PathPrefix("/api/ext/docstore/v1").Subrouter(), middlewares)
 	luaExt := lua.New(s.conf, s.Log.New("ext", "lua"), []byte(hawkKey), authFunc, ekvstore, eblobstore, docstoreExt)
 	luaExt.RegisterRoute(r.PathPrefix("/api/ext/lua/v1").Subrouter(), middlewares)
@@ -363,6 +364,7 @@ func (s *Server) Close() {
 	close(s.KvUpdate)
 	s.DB.Close()
 	s.NsDB.Close()
+	s.docstore.Close()
 	for _, b := range s.Backends {
 		b.Close()
 	}

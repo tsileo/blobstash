@@ -77,6 +77,7 @@ type executionStats struct {
 	ExecutionTimeMillis int    `json:"executionTimeMillis"`
 	LastID              string `json:"-"`
 	Optimizer           string `json:"optimizer"`
+	Index               string `json:"index"`
 }
 
 // TODO(tsileo): full text indexing, find a way to get the config index
@@ -93,13 +94,18 @@ type DocStoreExt struct {
 	kvStore   *embed.KvStore
 	blobStore *embed.BlobStore
 
-	index bleve.Index
+	index    bleve.Index
+	docIndex *index.HashIndexes
 
 	logger log.Logger
 }
 
 func New(logger log.Logger, kvStore *embed.KvStore, blobStore *embed.BlobStore) *DocStoreExt {
 	indexPath := filepath.Join(pathutil.VarDir(), "docstore.bleve")
+	docIndex, err := index.New()
+	if err != nil {
+		panic(err)
+	}
 	index, err := openIndex(indexPath)
 	if err != nil {
 		// TODO(tsileo): returns an error instead
@@ -110,11 +116,15 @@ func New(logger log.Logger, kvStore *embed.KvStore, blobStore *embed.BlobStore) 
 		kvStore:   kvStore,
 		blobStore: blobStore,
 		index:     index,
+		docIndex:  docIndex,
 		logger:    logger,
 	}
 }
 
 func (docstore *DocStoreExt) Close() error {
+	if err := docstore.docIndex.Close(); err != nil {
+		return err
+	}
 	return docstore.index.Close()
 }
 
@@ -272,26 +282,18 @@ func isQueryAll(q string) bool {
 	return false
 }
 
-type Index struct {
-	ID    string                 `json:"id"`
-	Query map[string]interface{} `json:"query"`
-}
-
-func (docstore *DocStoreExt) Indexes(collection string) ([]*Index, error) {
+func (docstore *DocStoreExt) Indexes(collection string) ([]*index.Index, error) {
 	res, err := docstore.kvStore.ReversePrefixKeys(fmt.Sprintf(PrefixIndexKeyFmt, collection), "", "\xff", 50)
-	indexes := []*Index{}
+	indexes := []*index.Index{}
 	if err != nil {
 		panic(err)
 	}
 	for _, kv := range res {
-		q := map[string]interface{}{}
-		if err := json.Unmarshal([]byte(kv.Value), &q); err != nil {
+		index := &index.Index{ID: strings.Replace(kv.Key, fmt.Sprintf(IndexKeyFmt, collection, ""), "", 1)}
+		if err := json.Unmarshal([]byte(kv.Value), index); err != nil {
 			return nil, err
 		}
-		indexes = append(indexes, &Index{
-			ID:    kv.Key,
-			Query: q,
-		})
+		indexes = append(indexes, index)
 	}
 	return indexes, nil
 }
@@ -301,17 +303,16 @@ func (docstore *DocStoreExt) AddIndex(collection string, q map[string]interface{
 	if len(q) > 1 {
 		return fmt.Errorf("Indexed query must be of lengh 1 for now")
 	}
-	var ks, vs string
-	for k, v := range q {
-		ks = k
-		vs = v.(string)
+	fields := []string{}
+	for _, ifield := range q["fields"].([]interface{}) {
+		fields = append(fields, ifield.(string))
 	}
-	hashIndex := index.IndexKey([]byte(ks), []byte(vs))
 	js, err := json.Marshal(q)
 	if err != nil {
 		return err
 	}
-	_, err = docstore.kvStore.PutPrefix(fmt.Sprintf(PrefixIndexKeyFmt, collection), hashIndex, string(js), -1, "")
+	hashKey := fmt.Sprintf("single-field-%s", fields[0])
+	_, err = docstore.kvStore.PutPrefix(fmt.Sprintf(PrefixIndexKeyFmt, collection), hashKey, string(js), -1, "")
 	return err
 }
 
@@ -350,6 +351,19 @@ func (docstore *DocStoreExt) Insert(collection string, idoc interface{}, ns stri
 			}
 		}
 		_id.SetHash(hash)
+
+		indexes, err := docstore.Indexes(collection)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to fetch index")
+		}
+		optz := optimizer.New(docstore.logger.New("module", "query optimizer"), indexes)
+		shouldIndex, idx, idxKey := optz.ShouldIndex(*doc)
+		if shouldIndex {
+			docstore.logger.Debug("indexing document", "idx-key", idxKey, "_id", _id.String())
+			if err := docstore.docIndex.Index(collection, idx, idxKey, _id.String()); err != nil {
+				return _id, nil
+			}
+		}
 		// FIXME(tsileo): remove counter from ID
 		return _id, nil
 	}
@@ -379,7 +393,11 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 	js := []byte("[")
 	tstart := time.Now()
 	stats := &executionStats{}
-	optz := optimizer.New(docstore.logger.New("module", "query optimizer"))
+	indexes, err := docstore.Indexes(collection)
+	if err != nil {
+		return nil, nil, fmt.Errorf("Failed to fetch index")
+	}
+	optz := optimizer.New(docstore.logger.New("module", "query optimizer"), indexes)
 	start := ""
 	if cursor != "" {
 		start = fmt.Sprintf(KeyFmt, collection, cursor)
@@ -396,26 +414,56 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 	}
 	qLogger := docstore.logger.New("query", query, "id", logext.RandId(8))
 	qLogger.Info("new query")
-	if optz.Select(query) == optimizer.Linear {
-		stats.Optimizer = optimizer.Linear
-		var lastKey string
-		for {
-			qLogger.Debug("internal query", "limit", limit, "cursor", cursor, "start", start, "end", end, "nreturned", stats.NReturned)
-			// FIXME(tsileo): use `PrefixKeys` if ?sort=_id (-_id by default).
+	optzType, optzIndex := optz.Select(query)
+	stats.Optimizer = optzType
+	if optzIndex != nil {
+		stats.Index = optzIndex.ID
+	}
+	var lastKey string
+	for {
+		qLogger.Debug("internal query", "limit", limit, "cursor", cursor, "start", start, "end", end, "nreturned", stats.NReturned, "optimizer", optzType)
+		// FIXME(tsileo): use `PrefixKeys` if ?sort=_id (-_id by default).
+		_ids := []string{}
+		switch optzType {
+		case optimizer.Linear:
 			res, err := docstore.kvStore.ReversePrefixKeys(fmt.Sprintf(PrefixKeyFmt, collection), start, end, limit) // Prefetch more docs
 			if err != nil {
 				panic(err)
 			}
 			for _, kv := range res {
-				jsPart := []byte{}
-				_id := hashFromKey(collection, kv.Key)
-				qLogger.Debug("fetch doc", "_id", _id)
-				if _, err := docstore.Fetch(collection, _id, &jsPart); err != nil {
+				_ids = append(_ids, hashFromKey(collection, kv.Key))
+				lastKey = kv.Key
+			}
+		case optimizer.Index:
+			// FIXME(tsileo): make cursor works (start, end handling)
+			optzIndexHash := index.IndexKey(query[optzIndex.Fields[0]])
+			_ids, err = docstore.docIndex.Iter(collection, optzIndex, optzIndexHash, start, end, limit)
+			if err != nil {
+				panic(err)
+			}
+		}
+		for _, _id := range _ids {
+			jsPart := []byte{}
+			qLogger.Debug("fetch doc", "_id", _id)
+			if _, err := docstore.Fetch(collection, _id, &jsPart); err != nil {
+				panic(err)
+			}
+			stats.TotalDocsExamined++
+			if noQuery {
+				// No query, so we just add every docs
+				js = append(js, addID(jsPart, _id)...)
+				js = append(js, []byte(",")...)
+				stats.NReturned++
+				stats.LastID = _id
+				if stats.NReturned == limit {
+					break
+				}
+			} else {
+				doc := map[string]interface{}{}
+				if err := json.Unmarshal(jsPart, &doc); err != nil {
 					panic(err)
 				}
-				stats.TotalDocsExamined++
-				if noQuery {
-					// No query, so we just add every docs
+				if matchQuery(qLogger, query, doc) {
 					js = append(js, addID(jsPart, _id)...)
 					js = append(js, []byte(",")...)
 					stats.NReturned++
@@ -423,38 +471,22 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 					if stats.NReturned == limit {
 						break
 					}
-				} else {
-					doc := map[string]interface{}{}
-					if err := json.Unmarshal(jsPart, &doc); err != nil {
-						panic(err)
-					}
-					if matchQuery(qLogger, query, doc) {
-						js = append(js, addID(jsPart, _id)...)
-						js = append(js, []byte(",")...)
-						stats.NReturned++
-						stats.LastID = _id
-						if stats.NReturned == limit {
-							break
-						}
-					}
 				}
-				lastKey = kv.Key
 			}
-			if len(res) == 0 || len(res) < limit {
-				break
-			}
-			start = nextKey(lastKey)
 		}
-		if stats.NReturned > 0 {
-			js = js[0 : len(js)-1]
+		if len(_ids) == 0 || len(_ids) < limit {
+			break
 		}
-		duration := time.Since(tstart)
-		qLogger.Debug("scan done", "duration", duration, "nReturned", stats.NReturned, "scanned", stats.TotalDocsExamined)
-		stats.ExecutionTimeMillis = int(duration.Nanoseconds() / 1e6)
-		js = append(js, []byte("]")...)
-		return js, stats, nil
+		start = nextKey(lastKey)
 	}
-	return nil, nil, fmt.Errorf("")
+	if stats.NReturned > 0 {
+		js = js[0 : len(js)-1]
+	}
+	duration := time.Since(tstart)
+	qLogger.Debug("scan done", "duration", duration, "nReturned", stats.NReturned, "scanned", stats.TotalDocsExamined)
+	stats.ExecutionTimeMillis = int(duration.Nanoseconds() / 1e6)
+	js = append(js, []byte("]")...)
+	return js, stats, nil
 }
 
 func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Request) {
@@ -506,6 +538,9 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 			w.Header().Set("BlobStash-DocStore-Iter-Cursor", nextKey(stats.LastID))
 
 			w.Header().Set("BlobStash-DocStore-Query-Optimizer", stats.Optimizer)
+			if stats.Optimizer != optimizer.Linear {
+				w.Header().Set("BlobStash-DocStore-Query-Index", stats.Index)
+			}
 
 			// Set headers for the query stats
 			w.Header().Set("BlobStash-DocStore-Query-Returned", strconv.Itoa(stats.NReturned))
