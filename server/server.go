@@ -16,7 +16,7 @@ import (
 	"github.com/carbocation/interpose/middleware"
 	"github.com/dchest/blake2b"
 	"github.com/gorilla/mux"
-	"github.com/rs/cors"
+	_ "github.com/rs/cors"
 	"github.com/tsileo/blobstash/api"
 	"github.com/tsileo/blobstash/backend"
 	"github.com/tsileo/blobstash/config"
@@ -222,6 +222,19 @@ func (s *Server) BlobStore() *embed.BlobStore {
 	return embed.NewBlobStore(s.blobs, s.Router)
 }
 
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// FIXME(tsileo): better Allow-Headers
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(200)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // Run runs the server and block until the server is shutdown
 func (s *Server) Run() {
 	hawkKey, err := LoadAPIKey("hawk.key")
@@ -245,12 +258,12 @@ func (s *Server) Run() {
 
 	r := mux.NewRouter()
 	// publicRoute := r.PathPrefix("/public").Subrouter()
-	c := cors.New(cors.Options{
-		AllowedOrigins:   []string{"*"},
-		AllowCredentials: true,
-		AllowedMethods:   []string{"post", "get", "put", "options", "delete", "patch"},
-		AllowedHeaders:   []string{"Authorization"},
-	})
+	// c := cors.New(cors.Options{
+	// 	AllowedOrigins:   []string{"*"},
+	// 	AllowCredentials: true,
+	// 	AllowedMethods:   []string{"post", "get", "put", "options", "delete", "patch"},
+	// 	AllowedHeaders:   []string{"Authorization"},
+	// })
 	appRoute := r.PathPrefix("/app").Subrouter()
 	ekvstore := s.KvStore()
 	eblobstore := s.BlobStore()
@@ -304,7 +317,7 @@ Disallow: /`))
 		secureOptions.AllowedHosts = []string{tlsHostname}
 	}
 	secureMiddleware := secure.New(secureOptions)
-	http.Handle("/", secureMiddleware.Handler(reqLogger(c.Handler(r))))
+	http.Handle("/", secureMiddleware.Handler(reqLogger(corsMiddleware(r))))
 	s.Log.Info(fmt.Sprintf("server: HTTP API listening on 0.0.0.0:%d", s.port))
 	runFunc := func() {
 		if err := http.ListenAndServe(fmt.Sprintf(":%d", s.port), nil); err != nil {

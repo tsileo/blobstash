@@ -562,6 +562,7 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 			// Ensure it's JSON encoded
 			doc := map[string]interface{}{}
 			if err := json.Unmarshal(blob, &doc); err != nil {
+				// FIXME(tsileo): JSON error with invalid document
 				panic(err)
 			}
 			index := false
