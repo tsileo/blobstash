@@ -225,7 +225,7 @@ func (s *Server) BlobStore() *embed.BlobStore {
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// FIXME(tsileo): better Allow-Headers
-		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, BlobStash-DocStore-IndexFullText")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(200)
