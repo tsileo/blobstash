@@ -33,6 +33,7 @@ Make a pull request if your project uses BlobStash as data store or if you built
 - Optional encryption (using [go.crypto/nacl secretbox](http://godoc.org/code.google.com/p/go.crypto/nacl))
 - [BLAKE2b](https://blake2.net) as hashing algorithm for the content-addressed blob store
 - Backend routing, you can define rules to specify where blobs should be stored ("if-meta"...)
+- Fine-grained permissions
 - TLS and HTTP2 support
 - A full featured Go [client](http://godoc.org/github.com/tsileo/blobstash/client) using the HTTP API
 - Can be embedded in your Go program ([embedded client](http://godoc.org/github.com/tsileo/blobstash/embed))
@@ -191,6 +192,7 @@ func main() {
 - A better documentation
 - A web interface?
 - An S3-like HTTP API to store archive?
+- Support OTP authentication (session cookies) for the docstore API (yubikey)?
 - Fill an issue!
 
 ## Contribution

@@ -29,6 +29,7 @@ import (
 	"github.com/tsileo/blobstash/meta"
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
 	"github.com/tsileo/blobstash/nsdb"
+	"github.com/tsileo/blobstash/permissions"
 	"github.com/tsileo/blobstash/router"
 	"github.com/tsileo/blobstash/synctable"
 	"github.com/tsileo/blobstash/vkv"
@@ -63,6 +64,7 @@ type Server struct {
 	NsDB        *nsdb.DB
 	metaHandler *meta.MetaHandler
 	docstore    *docstore.DocStoreExt
+	perms       *permissions.Permissions
 
 	syncer *synctable.SyncTable
 
@@ -225,7 +227,7 @@ func (s *Server) BlobStore() *embed.BlobStore {
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// FIXME(tsileo): better Allow-Headers
-		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, BlobStash-DocStore-IndexFullText")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, BlobStash-DocStore-IndexFullText, BlobStash-Namespace")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(200)
@@ -246,10 +248,18 @@ func (s *Server) Run() {
 	if err != nil {
 		panic(err)
 	}
-	authMiddleware := middleware.BasicAuth("", apiKey)
+
+	s.perms = permissions.New(s.Log.New("module", "perms"), s.conf)
+	if err := s.perms.Load(); err != nil {
+		panic(err)
+	}
+
+	// authMiddleware := middleware.BasicAuth("", apiKey)
+	authMiddleware := middleware.BasicAuthFunc(s.perms.AuthFunc)
 	middlewares := &serverMiddleware.SharedMiddleware{
 		Auth: authMiddleware,
 	}
+
 	authFunc := httputil.BasicAuthFunc("", apiKey)
 	// Start the HTTP API
 	s.SetUp()
@@ -257,13 +267,8 @@ func (s *Server) Run() {
 	reqLogger := httputil.LoggerMiddleware(s.Log)
 
 	r := mux.NewRouter()
+	s.perms.RegisterRoute(r.PathPrefix("/api/v1/perms").Subrouter(), middlewares)
 	// publicRoute := r.PathPrefix("/public").Subrouter()
-	// c := cors.New(cors.Options{
-	// 	AllowedOrigins:   []string{"*"},
-	// 	AllowCredentials: true,
-	// 	AllowedMethods:   []string{"post", "get", "put", "options", "delete", "patch"},
-	// 	AllowedHeaders:   []string{"Authorization"},
-	// })
 	appRoute := r.PathPrefix("/app").Subrouter()
 	ekvstore := s.KvStore()
 	eblobstore := s.BlobStore()
@@ -276,6 +281,7 @@ func (s *Server) Run() {
 	api.New(r.PathPrefix("/api/v1").Subrouter(), middlewares, s.wg, s.DB, s.NsDB, s.KvUpdate, s.Router, s.blobs, s.watchHub)
 
 	s.syncer = synctable.New(s.blobs, eblobstore, s.NsDB, s.Log.New("ext", "synctable"))
+	// TODO(tsileo): how to do API versioning? via header?
 	s.syncer.RegisterRoute(r.PathPrefix("/api/sync/v1").Subrouter(), middlewares)
 
 	// FIXME(tsileo): a way to make an app hook the index
@@ -317,7 +323,7 @@ Disallow: /`))
 		secureOptions.AllowedHosts = []string{tlsHostname}
 	}
 	secureMiddleware := secure.New(secureOptions)
-	http.Handle("/", secureMiddleware.Handler(reqLogger(corsMiddleware(r))))
+	http.Handle("/", httputil.RecoverHandler(secureMiddleware.Handler(reqLogger(corsMiddleware(r)))))
 	s.Log.Info(fmt.Sprintf("server: HTTP API listening on 0.0.0.0:%d", s.port))
 	runFunc := func() {
 		if err := http.ListenAndServe(fmt.Sprintf(":%d", s.port), nil); err != nil {

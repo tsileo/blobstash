@@ -1,8 +1,12 @@
 package httputil
 
 import (
+	"github.com/tsileo/blobstash/logger"
+	// "github.com/tsileo/blobstash/permissions"
+
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"strings"
 )
 
@@ -64,4 +68,48 @@ func GetIpAddress(r *http.Request) string {
 		return parts[0]
 	}
 	return hdrRealIp
+}
+
+// Wrapping an error in PublicError will make the RecoverHandler display the error message
+// instead of the default status text.
+type PublicError struct {
+	Err error
+}
+
+// Error implements the Error interface
+func (pe *PublicError) Error() string {
+	return pe.Err.Error()
+}
+
+// Status implements the PublicErrorer interface with a 500 status code
+func (pe *PublicError) Status() int {
+	return http.StatusInternalServerError
+}
+
+// PublicErrorer is the interface for "displayable" error by the RecoverHandler
+type PublicErrorer interface {
+	Status() int
+	Error() string
+}
+
+// RecoverHandler catches all the "paniced" errors and display a JSON error
+func RecoverHandler(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			r := recover()
+			if r != nil {
+				logger.Log.Error("request failed", "err", r, "type", reflect.TypeOf(r))
+				switch t := r.(type) {
+				default:
+					if pe, ok := t.(PublicErrorer); ok {
+						WriteJSONError(w, pe.Status(), pe.Error())
+						return
+					}
+				}
+				WriteJSONError(w, http.StatusInternalServerError, http.StatusText(http.StatusInternalServerError))
+				return
+			}
+		}()
+		h.ServeHTTP(w, r)
+	})
 }

@@ -499,7 +499,7 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 			panic("missing collection query arg")
 		}
 		switch r.Method {
-		case "GET":
+		case "GET", "HEAD":
 			// Parse the cursor
 			cursor := q.Get("cursor")
 
@@ -547,6 +547,13 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 			w.Header().Set("BlobStash-DocStore-Query-Returned", strconv.Itoa(stats.NReturned))
 			w.Header().Set("BlobStash-DocStore-Query-Examined", strconv.Itoa(stats.TotalDocsExamined))
 			w.Header().Set("BlobStash-DocStore-Query-Exec-Time", strconv.Itoa(stats.ExecutionTimeMillis))
+
+			w.Header().Set("BlobStash-DocStore-Results-Count", strconv.Itoa(stats.NReturned))
+
+			// This way, HEAD request can acts as a count query
+			if r.Method == "HEAD" {
+				return
+			}
 
 			// Write the JSON response (encoded if requested)
 			w.Header().Set("Content-Type", "application/json")
