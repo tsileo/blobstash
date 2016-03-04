@@ -171,15 +171,27 @@ func (docstore *DocStoreExt) searchHandler() func(http.ResponseWriter, *http.Req
 		vars := mux.Vars(r)
 		collection := vars["collection"]
 		if collection == "" {
-			panic("missing collection query arg")
+			httputil.WriteJSONError(w, http.StatusInternalServerError, "Missing collection in the URL")
+			return
 		}
+		if r.Method != "GET" && r.Method != "HEAD" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
 		js, sr, err := docstore.Search(collection, r.URL.Query().Get("q"))
 		if err != nil {
 			panic(err)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("BlobStash-DocStore-Query-Returned", strconv.Itoa(int(sr.Total)))
-		w.Header().Set("BlobStash-DocStore-Query-Exec-Time", strconv.Itoa(int(sr.Took.Nanoseconds()/1e6)))
+		w.Header().Set("BlobStash-DocStore-Query-Exec-Time", strconv.Itoa(int(sr.Took.Nanoseconds()*1e6)))
+		w.Header().Set("BlobStash-DocStore-Query-Index", "FULL-TEXT")
+		w.Header().Set("BlobStash-DocStore-Results-Count", strconv.Itoa(int(sr.Total)))
+
+		if r.Method == "HEAD" {
+			return
+		}
 
 		srw := httputil.NewSnappyResponseWriter(w, r)
 		srw.Write(js)
@@ -229,7 +241,8 @@ func (docstore *DocStoreExt) indexesHandler() func(http.ResponseWriter, *http.Re
 		vars := mux.Vars(r)
 		collection := vars["collection"]
 		if collection == "" {
-			panic("missing collection query arg")
+			httputil.WriteJSONError(w, http.StatusInternalServerError, "Missing collection in the URL")
+			return
 		}
 		switch r.Method {
 		case "GET":
@@ -365,7 +378,6 @@ func (docstore *DocStoreExt) Insert(collection string, idoc interface{}, ns stri
 				return _id, nil
 			}
 		}
-		// FIXME(tsileo): remove counter from ID
 		return _id, nil
 	}
 	return nil, fmt.Errorf("doc must be a *map[string]interface{}")
@@ -404,30 +416,35 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 		start = fmt.Sprintf(KeyFmt, collection, cursor)
 	}
 	end := "\xff"
+
+	var noQuery bool
+	fetchLimit := limit
 	if query != nil && len(query) > 0 {
 		// Prefetch more docs since there's a lot of chance the query won't
 		// match every documents
-		limit = int(float64(limit) * 1.3)
-	}
-	var noQuery bool
-	if query == nil || len(query) == 0 {
+		fetchLimit = int(float64(limit) * 1.3)
+	} else {
 		noQuery = true
 	}
 	qLogger := docstore.logger.New("query", query, "id", logext.RandId(8))
 	qLogger.Info("new query")
+
+	// Select the optimizer i.e. should we use an index?
 	optzType, optzIndex := optz.Select(query)
 	stats.Optimizer = optzType
 	if optzIndex != nil {
 		stats.Index = optzIndex.ID
 	}
+
 	var lastKey string
+QUERY:
 	for {
 		qLogger.Debug("internal query", "limit", limit, "cursor", cursor, "start", start, "end", end, "nreturned", stats.NReturned, "optimizer", optzType)
 		// FIXME(tsileo): use `PrefixKeys` if ?sort=_id (-_id by default).
 		_ids := []string{}
 		switch optzType {
 		case optimizer.Linear:
-			res, err := docstore.kvStore.ReversePrefixKeys(fmt.Sprintf(PrefixKeyFmt, collection), start, end, limit) // Prefetch more docs
+			res, err := docstore.kvStore.ReversePrefixKeys(fmt.Sprintf(PrefixKeyFmt, collection), start, end, fetchLimit) // Prefetch more docs
 			if err != nil {
 				panic(err)
 			}
@@ -438,7 +455,7 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 		case optimizer.Index:
 			// FIXME(tsileo): make cursor works (start, end handling)
 			optzIndexHash := index.IndexKey(query[optzIndex.Fields[0]])
-			_ids, err = docstore.docIndex.Iter(collection, optzIndex, optzIndexHash, start, end, limit)
+			_ids, err = docstore.docIndex.Iter(collection, optzIndex, optzIndexHash, start, end, fetchLimit)
 			if err != nil {
 				panic(err)
 			}
@@ -457,7 +474,7 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 				stats.NReturned++
 				stats.LastID = _id
 				if stats.NReturned == limit {
-					break
+					break QUERY
 				}
 			} else {
 				doc := map[string]interface{}{}
@@ -470,7 +487,7 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 					stats.NReturned++
 					stats.LastID = _id
 					if stats.NReturned == limit {
-						break
+						break QUERY
 					}
 				}
 			}
@@ -480,11 +497,13 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 		}
 		start = nextKey(lastKey)
 	}
+	// Remove the last comma fron the JSON string
 	if stats.NReturned > 0 {
 		js = js[0 : len(js)-1]
 	}
 	duration := time.Since(tstart)
 	qLogger.Debug("scan done", "duration", duration, "nReturned", stats.NReturned, "scanned", stats.TotalDocsExamined)
+	// XXX(tsileo): display duration in string format?
 	stats.ExecutionTimeMillis = int(duration.Nanoseconds() / 1e6)
 	js = append(js, []byte("]")...)
 	return js, stats, nil
@@ -496,7 +515,8 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 		vars := mux.Vars(r)
 		collection := vars["collection"]
 		if collection == "" {
-			panic("missing collection query arg")
+			httputil.WriteJSONError(w, http.StatusInternalServerError, "Missing collection in the URL")
+			return
 		}
 		switch r.Method {
 		case "GET", "HEAD":
@@ -508,7 +528,8 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 			jsQuery := q.Get("query")
 			if jsQuery != "" {
 				if err := json.Unmarshal([]byte(jsQuery), &query); err != nil {
-					panic(err)
+					httputil.WriteJSONError(w, http.StatusInternalServerError, "Failed to decode JSON query")
+					return
 				}
 			}
 
@@ -624,6 +645,7 @@ func (docstore *DocStoreExt) Fetch(collection, sid string, res interface{}) (*id
 		*idoc = append(*idoc, blob...)
 	}
 	_id.SetHash(hash)
+	_id.SetFlag(byte(kv.Value[0]))
 	return _id, nil
 }
 
@@ -632,11 +654,13 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 		vars := mux.Vars(r)
 		collection := vars["collection"]
 		if collection == "" {
-			panic("missing collection query arg")
+			httputil.WriteJSONError(w, http.StatusInternalServerError, "Missing collection in the URL")
+			return
 		}
 		sid := vars["_id"]
 		if sid == "" {
-			panic("missing _id query arg")
+			httputil.WriteJSONError(w, http.StatusInternalServerError, "Missing _id in the URL")
+			return
 		}
 		var _id *id.ID
 		var err error
@@ -668,7 +692,7 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 				panic(err)
 			}
 			docstore.logger.Debug("Update", "_id", sid, "ns", ns, "update_query", update)
-			// FIXME(tsileo): nore more $set, move to PATCH and make it acts like $set
+			// FIXME(tsileo): nore more $set, move to PATCH and make it acts like $set???
 			newDoc, err := updateDoc(doc, update)
 			blob, err := json.Marshal(newDoc)
 			if err != nil {
@@ -677,8 +701,8 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 			hash := fmt.Sprintf("%x", blake2b.Sum256(blob))
 			docstore.blobStore.Put(hash, blob, ns)
 			bash := make([]byte, len(hash)+1)
-			// FIXME(tsileo): fetch previous flag and set the same
-			bash[0] = FlagIndexed
+			// XXX(tsileo): allow to update the flag?
+			bash[0] = _id.Flag()
 			copy(bash[1:], []byte(hash)[:])
 			if _, err := docstore.kvStore.Put(fmt.Sprintf(KeyFmt, collection, _id.String()), string(bash), -1, ns); err != nil {
 				panic(err)
