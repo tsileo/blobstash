@@ -15,59 +15,38 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"sync"
 )
-
-var mutex = &sync.Mutex{}
-var counter = []byte("")
-
-func init() {
-	counter = make([]byte, 3)
-	if _, err := rand.Read(counter); err != nil {
-		panic(err)
-	}
-}
-
-func nextCounter() []byte {
-	mutex.Lock()
-	i := len(counter)
-	for i > 0 {
-		i--
-		counter[i]++
-		if counter[i] != 0 {
-			break
-		}
-	}
-	mutex.Unlock()
-	out := make([]byte, 3)
-	copy(out[:], counter[:])
-	return out
-
-}
 
 // Cursor hold a hex/byte representation of a timestamp and a hash
 type ID struct {
 	data []byte
 	hash string // The hash is not part of the ID but it can be attached to the ID
+	flag byte   // Same here, not part of the ID but can be attched to it for convenience
 }
 
 func New(ts int) (*ID, error) {
 	b := make([]byte, 12)
 	binary.BigEndian.PutUint32(b[:], uint32(ts))
-	randomCompoment := make([]byte, 5)
+	randomCompoment := make([]byte, 8)
 	if _, err := rand.Read(randomCompoment); err != nil {
 		return nil, err
 	}
 	copy(b[4:], randomCompoment[:])
-	copy(b[9:], nextCounter())
 	return &ID{data: b}, nil
+}
+
+func (id *ID) SetFlag(flag byte) {
+	id.flag = flag
+}
+
+func (id *ID) Flag() byte {
+	return id.flag
 }
 
 func (id *ID) SetHash(hash string) {
 	id.hash = hash
 }
 
-// Raw returns the raw cursor
 func (id *ID) Hash() string {
 	return id.hash
 }
