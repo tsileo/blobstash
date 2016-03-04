@@ -23,10 +23,16 @@ func WriteJSON(w http.ResponseWriter, data interface{}) {
 
 // WriteJSONError is an helper to output a {"error": <msg>} JSON payload with the given status code
 func WriteJSONError(w http.ResponseWriter, status int, msg string) {
-	w.WriteHeader(status)
-	WriteJSON(w, map[string]interface{}{
+	js, err := json.Marshal(map[string]interface{}{
 		"error": msg,
 	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	w.Write(js)
 }
 
 // Error is an shortcut for `WriteJSONError(w, http.StatusInternalServerError, err.Error())`

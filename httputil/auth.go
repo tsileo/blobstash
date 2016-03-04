@@ -7,6 +7,8 @@ import (
 	"net/http"
 )
 
+// FIXME(tsileo): remove this package
+
 // BasicRealm is used when setting the WWW-Authenticate response header.
 var BasicRealm = "Authorization Required"
 
