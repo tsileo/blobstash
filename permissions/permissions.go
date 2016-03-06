@@ -149,7 +149,7 @@ func (p *Permissions) AuthFunc(username string, password string, r *http.Request
 
 func (p *Permissions) RegisterRoute(r *mux.Router, middlewares *serverMiddleware.SharedMiddleware) {
 	r.Handle("/", middlewares.Auth(http.HandlerFunc(p.indexHandler())))
-	r.Handle("/otp", middlewares.Auth(http.HandlerFunc(p.otpHandler())))
+	r.Handle("/otp", http.HandlerFunc(p.otpHandler()))
 }
 
 func (p *Permissions) indexHandler() func(http.ResponseWriter, *http.Request) {

@@ -385,6 +385,7 @@ func (docstore *DocStoreExt) Insert(collection string, idoc interface{}, ns stri
 		shouldIndex, idx, idxKey := optz.ShouldIndex(*doc)
 		if shouldIndex {
 			docstore.logger.Debug("indexing document", "idx-key", idxKey, "_id", _id.String())
+			// FIXME(tsileo): returns a special status code on `index.DuplicateIndexError`
 			if err := docstore.docIndex.Index(collection, idx, idxKey, _id.String()); err != nil {
 				return _id, nil
 			}
