@@ -33,6 +33,7 @@ func New(logger log.Logger, indexes []*index.Index) *Optimizer {
 }
 
 func (o *Optimizer) Select(q map[string]interface{}) (string, *index.Index) {
+	// FIXME(tsileo): returns a slice of *index.Index
 	if q != nil && len(q) == 1 {
 		fields := []string{}
 		for field, _ := range q {
@@ -48,6 +49,7 @@ func (o *Optimizer) Select(q map[string]interface{}) (string, *index.Index) {
 }
 
 func (o *Optimizer) ShouldIndex(doc map[string]interface{}) (bool, *index.Index, string) {
+	// XXX(tsileo): should Select returns a index?
 	fdoc := maputil.FlattenMap(doc, "", ".")
 	for k, _ := range fdoc {
 		if idx, ok := o.indexes[fmt.Sprintf("single-field-%s", k)]; ok {

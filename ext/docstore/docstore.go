@@ -303,9 +303,15 @@ func (docstore *DocStoreExt) Indexes(collection string) ([]*index.Index, error) 
 		panic(err)
 	}
 	for _, kv := range res {
+		// FIXME(tsileo): this check shouldn't be here, it should be handled by ReversePrefixKeys!
+		if !strings.HasPrefix(kv.Key, fmt.Sprintf(IndexKeyFmt, collection, "")) {
+			break
+		}
 		index := &index.Index{ID: strings.Replace(kv.Key, fmt.Sprintf(IndexKeyFmt, collection, ""), "", 1)}
 		if err := json.Unmarshal([]byte(kv.Value), index); err != nil {
-			return nil, err
+			docstore.logger.Error("failed to unmarshal log entry", "err", err, "js", kv.Value)
+			// return nil, err
+			continue
 		}
 		indexes = append(indexes, index)
 	}
@@ -314,18 +320,23 @@ func (docstore *DocStoreExt) Indexes(collection string) ([]*index.Index, error) 
 
 func (docstore *DocStoreExt) AddIndex(collection string, q map[string]interface{}) error {
 	// FIXME(tsileo): handle object with more kvs
-	if len(q) > 1 {
-		return fmt.Errorf("Indexed query must be of lengh 1 for now")
-	}
 	fields := []string{}
 	for _, ifield := range q["fields"].([]interface{}) {
 		fields = append(fields, ifield.(string))
+	}
+	if len(fields) > 1 {
+		return fmt.Errorf("Only single field index are support for now")
 	}
 	js, err := json.Marshal(q)
 	if err != nil {
 		return err
 	}
+	// var unique bool
+	// if iu, ok := q["unique"]; ok {
+	// 	unique = iu.(bool)
+	// }
 	hashKey := fmt.Sprintf("single-field-%s", fields[0])
+	// FIXME(tsileo): ensure we can't create duplicate index
 	_, err = docstore.kvStore.PutPrefix(fmt.Sprintf(PrefixIndexKeyFmt, collection), hashKey, string(js), -1, "")
 	return err
 }

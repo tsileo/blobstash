@@ -15,6 +15,7 @@ package index
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	_ "hash"
 	"hash/fnv"
@@ -33,6 +34,8 @@ import (
 // - Hook the re-indexing/docstoreExt.Insert to rebuild the index
 // - Store the index in the kvk store: index:{collection}:{index_id} => {Index Entry (json encoded)}
 // - Expose a new API endpoint in docstoreExt for creating/deleting indexes
+
+var DuplicateKeyError = errors.New("Duplicate key error")
 
 // Define namespaces for raw key sorted in db.
 const (
@@ -54,6 +57,7 @@ var (
 type Index struct {
 	ID     string   `json:"id"`
 	Fields []string `json:"fields"`
+	Unique bool     `json:"unique,omitempty"`
 }
 
 // HashIndex will act as a basic indexing for basic queries like `{"key": "value"}`
@@ -101,6 +105,26 @@ func (hi *HashIndexes) Index(collection string, index *Index, indexHash, _id str
 	bkey := []byte(fmt.Sprintf(IndexFmt, collection, index.ID, indexHash, _id))
 	bid := []byte(_id)
 
+	// Check for "unique"ness if the index has an unique constraint
+	if index.Unique {
+		// exists, err := hi.db.Get(nil, encodeMeta(IndexRow, bkey))
+		prefix := encodeMeta(IndexRow, []byte(fmt.Sprintf(IndexFmt, collection, index.ID, indexHash, "")))
+		enum, _, err := hi.db.Seek(prefix)
+		if err != nil {
+			return err
+		}
+		k, _, err := enum.Next()
+		switch err {
+		case io.EOF:
+		case nil:
+			if strings.HasPrefix(string(k), string(prefix)) {
+				return DuplicateKeyError
+			}
+		default:
+			return err
+		}
+	}
+
 	// Track the boundaries for later iteration
 	prefixStart, err := hi.db.Get(nil, encodeMeta(IndexPrefixStart, bprefix))
 	if err != nil {
@@ -122,7 +146,7 @@ func (hi *HashIndexes) Index(collection string, index *Index, indexHash, _id str
 	}
 
 	// Set the actual index row
-	return hi.db.Set(encodeMeta(IndexRow, bkey), []byte{})
+	return hi.db.Set(encodeMeta(IndexRow, bkey), []byte{1})
 }
 
 func (hi *HashIndexes) Iter(collection string, index *Index, indexHash, start, end string, limit int) ([]string, error) {
