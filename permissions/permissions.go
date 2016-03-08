@@ -50,12 +50,30 @@ func (k *Key) IsAdmin() bool {
 	return k.isAdmin
 }
 
+// perms returns all the parent permissions from the permissions string
+// e.g. "docstore:collection:todos" => ["docstore", "docstore:collection", "docstore:collection:todos"]
+func perms(p string) []string {
+	permParts := strings.Split(p, ":")
+	perms := []string{}
+	for idx, _ := range permParts {
+		ns := ""
+		for i := 0; i < len(permParts)-idx; i++ {
+			ns += permParts[i]
+			if (len(permParts)-idx)-i > 1 {
+				ns += ":"
+			}
+		}
+		perms = append(perms, ns)
+	}
+	return perms
+}
+
 // CheckPerms check if the key contains at least one the required perms
-func (k *Key) CheckPerms(perms ...string) bool {
+func (k *Key) CheckPerms(perm string) bool {
 	if k.isAdmin {
 		return true
 	}
-	for _, p := range perms {
+	for _, p := range perms(perm) {
 		if _, ok := k.permsIndex[p]; ok {
 			return true
 		}
@@ -258,14 +276,28 @@ func (p *Permissions) otpHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
+func fmtPerm(parts []string) string {
+	out := ""
+	for i, p := range parts {
+		out += p
+		if i < len(parts)-1 {
+			out += ":"
+		}
+	}
+	return out
+}
+
 // CheckPerms panic if the current Key don't have one of the given permissions
+// e.g. `CheckPerms(r, "docstore:col", r.URL.Query().Get("collection"))`
+// will check for `admin`, `docstore`, `docstore:col`, `docstore:col:{collection}` permissions
 func CheckPerms(r *http.Request, perms ...string) {
 	var k *Key
 	if rv := context.Get(r, "key"); rv != nil {
 		k = rv.(*Key)
 	}
-	if !k.CheckPerms(perms...) {
-		panic(&PermError{perms})
+	perm := fmtPerm(perms)
+	if !k.CheckPerms(perm) {
+		panic(&PermError{[]string{perm}})
 	}
 }
 
