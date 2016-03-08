@@ -51,6 +51,7 @@ import (
 	"github.com/tsileo/blobstash/ext/docstore/optimizer"
 	"github.com/tsileo/blobstash/httputil"
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
+	"github.com/tsileo/blobstash/permissions"
 	"github.com/tsileo/blobstash/vkv"
 )
 
@@ -179,6 +180,8 @@ func (docstore *DocStoreExt) searchHandler() func(http.ResponseWriter, *http.Req
 			return
 		}
 
+		permissions.CheckPerms(r, "docstore:collection", collection, "read")
+
 		js, sr, err := docstore.Search(collection, r.URL.Query().Get("q"))
 		if err != nil {
 			panic(err)
@@ -244,6 +247,9 @@ func (docstore *DocStoreExt) indexesHandler() func(http.ResponseWriter, *http.Re
 			httputil.WriteJSONError(w, http.StatusInternalServerError, "Missing collection in the URL")
 			return
 		}
+
+		permissions.CheckPerms(r, "docstore:collection", collection)
+
 		switch r.Method {
 		case "GET":
 			// q := r.URL.Query()
@@ -273,6 +279,7 @@ func (docstore *DocStoreExt) collectionsHandler() func(http.ResponseWriter, *htt
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
+			permissions.CheckPerms(r, "docstore:collection")
 			collections, err := docstore.Collections()
 			if err != nil {
 				panic(err)
@@ -532,6 +539,8 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 		}
 		switch r.Method {
 		case "GET", "HEAD":
+			permissions.CheckPerms(r, "docstore:collection", collection, "read")
+
 			// Parse the cursor
 			cursor := q.Get("cursor")
 
@@ -594,6 +603,7 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 			srw.Write(js)
 			srw.Close()
 		case "POST":
+			permissions.CheckPerms(r, "docstore:collection", collection, "write")
 			// Read the whole body
 			blob, err := ioutil.ReadAll(r.Body)
 			if err != nil {
@@ -680,6 +690,7 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 		defer srw.Close()
 		switch r.Method {
 		case "GET", "HEAD":
+			permissions.CheckPerms(r, "docstore:collection", collection, "read")
 			js := []byte{}
 			if _id, err = docstore.Fetch(collection, sid, &js); err != nil {
 				if err == vkv.ErrNotFound {
@@ -693,6 +704,7 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 				srw.Write(addID(js, sid))
 			}
 		case "POST":
+			permissions.CheckPerms(r, "docstore:collection", collection, "write")
 			ns := r.Header.Get("BlobStash-Namespace")
 			doc := map[string]interface{}{}
 			if _id, err = docstore.Fetch(collection, sid, &doc); err != nil {
