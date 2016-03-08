@@ -61,6 +61,11 @@ var (
 
 	PrefixIndexKeyFmt = "docstore-index:%s"
 	IndexKeyFmt       = PrefixIndexKeyFmt + ":%s"
+
+	PermName           = "docstore"
+	PermCollectionName = "docstore:collection"
+	PermWrite          = "write"
+	PermRead           = "read"
 )
 
 func hashFromKey(col, key string) string {
@@ -180,7 +185,7 @@ func (docstore *DocStoreExt) searchHandler() func(http.ResponseWriter, *http.Req
 			return
 		}
 
-		permissions.CheckPerms(r, "docstore:collection", collection, "read")
+		permissions.CheckPerms(r, PermCollectionName, collection, PermRead)
 
 		js, sr, err := docstore.Search(collection, r.URL.Query().Get("q"))
 		if err != nil {
@@ -248,7 +253,7 @@ func (docstore *DocStoreExt) indexesHandler() func(http.ResponseWriter, *http.Re
 			return
 		}
 
-		permissions.CheckPerms(r, "docstore:collection", collection)
+		permissions.CheckPerms(r, PermCollectionName, collection)
 
 		switch r.Method {
 		case "GET":
@@ -279,7 +284,7 @@ func (docstore *DocStoreExt) collectionsHandler() func(http.ResponseWriter, *htt
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
-			permissions.CheckPerms(r, "docstore:collection")
+			permissions.CheckPerms(r, PermCollectionName)
 			collections, err := docstore.Collections()
 			if err != nil {
 				panic(err)
@@ -539,7 +544,7 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 		}
 		switch r.Method {
 		case "GET", "HEAD":
-			permissions.CheckPerms(r, "docstore:collection", collection, "read")
+			permissions.CheckPerms(r, PermCollectionName, collection, PermRead)
 
 			// Parse the cursor
 			cursor := q.Get("cursor")
@@ -603,7 +608,7 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 			srw.Write(js)
 			srw.Close()
 		case "POST":
-			permissions.CheckPerms(r, "docstore:collection", collection, "write")
+			permissions.CheckPerms(r, PermCollectionName, collection, PermWrite)
 			// Read the whole body
 			blob, err := ioutil.ReadAll(r.Body)
 			if err != nil {
@@ -690,7 +695,7 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 		defer srw.Close()
 		switch r.Method {
 		case "GET", "HEAD":
-			permissions.CheckPerms(r, "docstore:collection", collection, "read")
+			permissions.CheckPerms(r, PermCollectionName, collection, PermRead)
 			js := []byte{}
 			if _id, err = docstore.Fetch(collection, sid, &js); err != nil {
 				if err == vkv.ErrNotFound {
@@ -704,7 +709,7 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 				srw.Write(addID(js, sid))
 			}
 		case "POST":
-			permissions.CheckPerms(r, "docstore:collection", collection, "write")
+			permissions.CheckPerms(r, PermCollectionName, collection, PermWrite)
 			ns := r.Header.Get("BlobStash-Namespace")
 			doc := map[string]interface{}{}
 			if _id, err = docstore.Fetch(collection, sid, &doc); err != nil {
