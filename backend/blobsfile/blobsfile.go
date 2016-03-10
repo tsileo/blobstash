@@ -542,6 +542,11 @@ func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
 	return
 }
 
+// Alias for exists
+func (backend *BlobsFileBackend) Stat(hash string) (bool, error) {
+	return backend.Exists(hash)
+}
+
 func (backend *BlobsFileBackend) Exists(hash string) (bool, error) {
 	blobPos, err := backend.index.GetPos(hash)
 	if err != nil {

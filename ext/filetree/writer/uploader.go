@@ -9,6 +9,8 @@ var (
 	dirUploader = 12 // concurrent directory uploaders
 )
 
+// TODO(tsileo): an interface for the uploader instead of a `*blobstore.BlobStore`
+
 type Uploader struct {
 	bs *blobstore.BlobStore
 

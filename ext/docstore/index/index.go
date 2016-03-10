@@ -159,6 +159,10 @@ func (hi *HashIndexes) Iter(collection string, index *Index, indexHash, start, e
 		if err != nil {
 			return nil, err
 		}
+		// If there's no boundary, there's no index for this key/value pair
+		if prefixStart == nil || len(prefixStart) == 0 {
+			return res, nil
+		}
 		start = string(prefixStart)
 	}
 	// FIXME(tsileo): a better way to tell we want the end? or \xff is good enough?
@@ -166,6 +170,10 @@ func (hi *HashIndexes) Iter(collection string, index *Index, indexHash, start, e
 		prefixEnd, err := hi.db.Get(nil, encodeMeta(IndexPrefixEnd, bprefix))
 		if err != nil {
 			return nil, err
+		}
+		// If there's no boundary, there's no index for this key/value pair
+		if prefixEnd == nil || len(prefixEnd) == 0 {
+			return res, nil
 		}
 		end = string(prefixEnd)
 	}
@@ -183,7 +191,12 @@ func (hi *HashIndexes) Iter(collection string, index *Index, indexHash, start, e
 		if bytes.Compare(k, endBytes) < 0 || (limit != 0 && i > limit) {
 			return res, nil
 		}
-		_id := strings.Replace(string(k[1:]), fmt.Sprintf(IndexPrefixFmt+":", collection, index.ID, indexHash), "", 1)
+		// XXX(tsileo): is the extra check really necessary?
+		if !strings.HasPrefix(string(k[1:]), fmt.Sprintf(IndexFmt, collection, index.ID, indexHash, "")) {
+			break
+		}
+		// fmt.Printf("\n\n%s\n%s\n\n\n", k[1:], fmt.Sprintf(IndexFmt, collection, index.ID, indexHash, ""))
+		_id := strings.Replace(string(k[1:]), fmt.Sprintf(IndexFmt, collection, index.ID, indexHash, ""), "", 1)
 		res = append(res, _id)
 		i++
 	}
