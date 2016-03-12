@@ -1,6 +1,7 @@
 package clientutil
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -11,6 +12,8 @@ import (
 
 	"golang.org/x/net/http2"
 )
+
+var ErrBlobNotFound = errors.New("blob not found")
 
 var transport http.RoundTripper = &http.Transport{
 	Proxy: http.ProxyFromEnvironment,

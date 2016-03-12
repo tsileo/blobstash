@@ -18,6 +18,8 @@ import (
 	"github.com/dchest/blake2b"
 	"github.com/gorilla/mux"
 	"github.com/janberktold/sse"
+
+	"github.com/tsileo/blobstash/client/clientutil"
 	"github.com/tsileo/blobstash/httputil"
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
 	"github.com/tsileo/blobstash/nsdb"
@@ -262,7 +264,11 @@ func blobHandler(blobrouter *router.Router) func(http.ResponseWriter, *http.Requ
 		case "GET":
 			blob, err := backend.Get(vars["hash"])
 			if err != nil {
-				httputil.Error(w, err)
+				if err == clientutil.ErrBlobNotFound {
+					httputil.WriteJSONError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
+				} else {
+					httputil.Error(w, err)
+				}
 				return
 			}
 			srw := httputil.NewSnappyResponseWriter(w, r)

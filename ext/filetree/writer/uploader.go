@@ -1,18 +1,19 @@
 package writer
 
-import (
-	"github.com/tsileo/blobstash/client/blobstore"
-)
-
 var (
 	uploader    = 25 // concurrent upload uploaders
 	dirUploader = 12 // concurrent directory uploaders
 )
 
-// TODO(tsileo): an interface for the uploader instead of a `*blobstore.BlobStore`
+type BlobStorer interface {
+	Get(string) ([]byte, error)
+	// Enumerate(chan<- string, string, string, int) error
+	Stat(string) (bool, error)
+	Put(string, []byte) error
+}
 
 type Uploader struct {
-	bs *blobstore.BlobStore
+	bs BlobStorer
 
 	uploader    chan struct{}
 	dirUploader chan struct{}
@@ -21,7 +22,7 @@ type Uploader struct {
 	Root string
 }
 
-func NewUploader(bs *blobstore.BlobStore) *Uploader {
+func NewUploader(bs BlobStorer) *Uploader {
 	return &Uploader{
 		bs: bs,
 		// kvs:         kvs,

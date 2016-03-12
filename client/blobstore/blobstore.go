@@ -2,15 +2,12 @@ package blobstore
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"mime/multipart"
 
 	"github.com/tsileo/blobstash/client/clientutil"
 )
-
-var ErrBlobNotFound = errors.New("blob not found")
 
 var defaultServerAddr = "http://localhost:8050"
 var defaultUserAgent = "BlobStore Go client v1"
@@ -53,7 +50,7 @@ func (bs *BlobStore) Get(hash string) ([]byte, error) {
 	case resp.StatusCode == 200:
 		return body, nil
 	case resp.StatusCode == 404:
-		return nil, ErrBlobNotFound
+		return nil, clientutil.ErrBlobNotFound
 	default:
 		return nil, fmt.Errorf("failed to get blob %v: %v", hash, string(body))
 	}

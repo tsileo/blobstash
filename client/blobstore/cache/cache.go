@@ -14,6 +14,7 @@ import (
 type Cache struct {
 	backend *blobsfile.BlobsFileBackend
 	bs      *blobstore.BlobStore
+	// TODO(tsileo): embed a kvstore too (but witouth sync/), may be make it optional?
 }
 
 func New(opts *clientutil.Opts, name string) *Cache {
@@ -28,12 +29,34 @@ func (c *Cache) Put(hash string, blob []byte) error {
 }
 
 func (c *Cache) Stat(hash string) (bool, error) {
-	return c.backend.Stat(hash)
+	exists, err := c.backend.Stat(hash)
+	if err != nil {
+		return false, err
+	}
+	if !exists {
+		return c.bs.Stat(hash)
+	}
+	return exists, err
 }
 
 func (c *Cache) Get(hash string) ([]byte, error) {
-	// TODO(tsileo): if blob doesn't exist, try to fetch it from the remote blobstore AND cache it locally
-	return c.backend.Get(hash)
+	blob, err := c.backend.Get(hash)
+	switch err {
+	// If the blob is not found locally, try to fetch it from the remote blobstore
+	case clientutil.ErrBlobNotFound:
+		blob, err = c.bs.Get(hash)
+		if err != nil {
+			return nil, err
+		}
+		// Save the blob locally for future fetch
+		if err := c.backend.Put(hash, blob); err != nil {
+			return nil, err
+		}
+	case nil:
+	default:
+		return nil, err
+	}
+	return blob, nil
 }
 
 func (c *Cache) Sync(syncfunc func()) error {

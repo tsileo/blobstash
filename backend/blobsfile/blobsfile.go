@@ -47,6 +47,7 @@ import (
 	log2 "gopkg.in/inconshreveable/log15.v2"
 
 	bbackend "github.com/tsileo/blobstash/backend"
+	"github.com/tsileo/blobstash/client/clientutil"
 	"github.com/tsileo/blobstash/config/pathutil"
 	"github.com/tsileo/blobstash/logger"
 )
@@ -612,8 +613,13 @@ func (backend *BlobsFileBackend) Get(hash string) ([]byte, error) {
 		return nil, fmt.Errorf("Error fetching GetPos: %v", err)
 	}
 	if blobPos == nil {
-		return nil, fmt.Errorf("Blob %v not found in index", err)
+		if err == nil {
+			return nil, clientutil.ErrBlobNotFound
+		} else {
+			return nil, err
+		}
 	}
+
 	data := make([]byte, blobPos.size+Overhead)
 	n, err := backend.files[blobPos.n].ReadAt(data, int64(blobPos.offset))
 	if err != nil {
