@@ -55,7 +55,7 @@ var (
 )
 
 type Index struct {
-	ID     string   `json:"id"`
+	ID     string   `json:"id,omitempty"`
 	Fields []string `json:"fields"`
 	Unique bool     `json:"unique,omitempty"`
 }

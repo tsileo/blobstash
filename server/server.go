@@ -272,7 +272,11 @@ func (s *Server) Run() {
 	appRoute := r.PathPrefix("/app").Subrouter()
 	ekvstore := s.KvStore()
 	eblobstore := s.BlobStore()
-	docstoreExt := docstore.New(s.Log.New("ext", "docstore"), ekvstore, eblobstore)
+	docstoreExt, err := docstore.New(s.Log.New("ext", "docstore"), ekvstore, eblobstore)
+	if err != nil {
+		// TODO(tsileo): clean shutdown on error
+		panic(err)
+	}
 	s.docstore = docstoreExt
 	docstoreExt.RegisterRoute(r.PathPrefix("/api/ext/docstore/v1").Subrouter(), middlewares)
 	luaExt := lua.New(s.conf, s.Log.New("ext", "lua"), []byte(hawkKey), authFunc, ekvstore, eblobstore, docstoreExt)

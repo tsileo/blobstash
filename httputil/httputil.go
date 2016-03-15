@@ -92,6 +92,10 @@ func (pe *PublicError) Status() int {
 	return http.StatusInternalServerError
 }
 
+func NewPublicError(err error) PublicErrorer {
+	return &PublicError{err}
+}
+
 // PublicErrorer is the interface for "displayable" error by the RecoverHandler
 type PublicErrorer interface {
 	Status() int
