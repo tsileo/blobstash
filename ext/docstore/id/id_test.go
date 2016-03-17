@@ -12,22 +12,16 @@ func check(err error) {
 }
 
 var (
-	testTs   = 1429882340
-	testHash = "c0f1480a26c2fd4deb8e738a52b7530ed111b9bcd17bbb09259ce03f129988c5"
+	testTs = 1429882340
 )
 
 func TestID(t *testing.T) {
 	t.Log("Testing encoding...")
-	id, err := New(testTs, testHash)
+	id, err := New(testTs)
 	check(err)
 	t.Logf("cursor: %+v", id)
 	if id.Ts() != testTs {
 		t.Errorf("unexpected ts, got %v, expected %v", id.Ts(), testTs)
-	}
-	rhash, err := id.Hash()
-	check(err)
-	if rhash != testHash {
-		t.Errorf("unexpected hash, got %v, expected %v", rhash, testHash)
 	}
 
 	t.Logf("Testing JSON (un)marshalling...")
@@ -44,9 +38,7 @@ func TestID(t *testing.T) {
 	t.Logf("Testing decoding from hex...")
 	id3, err := FromHex(id.String())
 	check(err)
-	rhash3, err := id3.Hash()
-	check(err)
-	if id3.String() != id.String() || id3.Ts() != id.Ts() || rhash3 != rhash {
+	if id3.String() != id.String() || id3.Ts() != id.Ts() {
 		t.Errorf("failed to decode from hex string")
 	}
 }

@@ -1,6 +1,6 @@
 /*
 
-package id implements a MongoDB ObjectId like object.
+Package id implements a MongoDB ObjectId like object.
 
 Cursor stored the timestamp and a hash.
 
@@ -24,6 +24,7 @@ type ID struct {
 	flag byte   // Same here, not part of the ID but can be attched to it for convenience
 }
 
+// New initializes an ID for the given timestamp
 func New(ts int) (*ID, error) {
 	b := make([]byte, 12)
 	binary.BigEndian.PutUint32(b[:], uint32(ts))
@@ -35,18 +36,22 @@ func New(ts int) (*ID, error) {
 	return &ID{data: b}, nil
 }
 
+// SetFlag allows to temporarily attach the index flag to the ID
 func (id *ID) SetFlag(flag byte) {
 	id.flag = flag
 }
 
+// Flag returns the attached index flag
 func (id *ID) Flag() byte {
 	return id.flag
 }
 
+// SetHash allow to temporarily attach the document hash to the ID
 func (id *ID) SetHash(hash string) {
 	id.hash = hash
 }
 
+// Hash returns the ataached hash
 func (id *ID) Hash() string {
 	return id.hash
 }
@@ -66,6 +71,8 @@ func (id *ID) Ts() int {
 	return int(binary.BigEndian.Uint32(id.data[0:4]))
 }
 
+// MarshalJSON implements the necessary interface to allow an ID object to be encoded
+// using the standard `encoding/json` package.
 func (id *ID) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf(`"%v"`, hex.EncodeToString(id.data))), nil
 }
@@ -75,8 +82,8 @@ func (id *ID) UnmarshalJSON(data []byte) error {
 	if len(data) != 26 {
 		return fmt.Errorf("invalid Cursor data: %v", string(data))
 	}
-	b := make([]byte, 24)
-	if _, err := hex.Decode(b, data[1:13]); err != nil {
+	b := make([]byte, 12)
+	if _, err := hex.Decode(b, data[1:25]); err != nil {
 		return fmt.Errorf("invalid Cursor data: %v", string(data))
 	}
 	*id = ID{data: b}
