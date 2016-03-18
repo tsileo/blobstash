@@ -23,6 +23,7 @@ import (
 	"github.com/tsileo/blobstash/config/pathutil"
 	"github.com/tsileo/blobstash/embed"
 	"github.com/tsileo/blobstash/ext/docstore"
+	"github.com/tsileo/blobstash/ext/filetree"
 	"github.com/tsileo/blobstash/ext/lua"
 	"github.com/tsileo/blobstash/httputil"
 	"github.com/tsileo/blobstash/logger"
@@ -260,6 +261,7 @@ func (s *Server) Run() {
 		Auth: authMiddleware,
 	}
 
+	// FIXME(tsileo): delete authFunc and find a better way for Lua app to check the credentials
 	authFunc := httputil.BasicAuthFunc("", apiKey)
 	// Start the HTTP API
 	s.SetUp()
@@ -272,6 +274,17 @@ func (s *Server) Run() {
 	appRoute := r.PathPrefix("/app").Subrouter()
 	ekvstore := s.KvStore()
 	eblobstore := s.BlobStore()
+
+	// TODO(tsileo): enable the extensions via the config and disable them all by default
+
+	// Initialize the FileTree extension
+	filetreeExt, err := filetree.New(s.Log.New("ext", "filetree"), ekvstore, eblobstore)
+	if err != nil {
+		panic(err)
+	}
+	filetreeExt.RegisterRoute(r.PathPrefix("/api/ext/filetree/v1").Subrouter(), middlewares)
+
+	// Initialize the DocStore extension
 	docstoreExt, err := docstore.New(s.Log.New("ext", "docstore"), ekvstore, eblobstore)
 	if err != nil {
 		// TODO(tsileo): clean shutdown on error
@@ -279,9 +292,13 @@ func (s *Server) Run() {
 	}
 	s.docstore = docstoreExt
 	docstoreExt.RegisterRoute(r.PathPrefix("/api/ext/docstore/v1").Subrouter(), middlewares)
+
+	// Initialize the Lua extension
 	luaExt := lua.New(s.conf, s.Log.New("ext", "lua"), []byte(hawkKey), authFunc, ekvstore, eblobstore, docstoreExt)
 	luaExt.RegisterRoute(r.PathPrefix("/api/ext/lua/v1").Subrouter(), middlewares)
 	luaExt.RegisterAppRoute(appRoute, middlewares)
+
+	// Register the basic API (blobstore+kvstore)
 	api.New(r.PathPrefix("/api/v1").Subrouter(), middlewares, s.wg, s.DB, s.NsDB, s.KvUpdate, s.Router, s.blobs, s.watchHub)
 
 	s.syncer = synctable.New(s.blobs, eblobstore, s.NsDB, s.Log.New("ext", "synctable"))
