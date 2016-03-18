@@ -9,12 +9,13 @@ import (
 	"time"
 
 	"github.com/dchest/blake2b"
+	log2 "gopkg.in/inconshreveable/log15.v2"
+
 	"github.com/tsileo/blobstash/logger"
 	"github.com/tsileo/blobstash/nsdb"
 	"github.com/tsileo/blobstash/router"
 	"github.com/tsileo/blobstash/vkv"
 	"github.com/tsileo/blobstash/vkv/hub"
-	log2 "gopkg.in/inconshreveable/log15.v2"
 )
 
 var (
@@ -25,25 +26,50 @@ var (
 )
 
 type MetaHandler struct {
-	router *router.Router
-	db     *vkv.DB
-	nsdb   *nsdb.DB
-	stop   chan struct{}
-	log    log2.Logger
+	router    *router.Router
+	db        *vkv.DB
+	nsdb      *nsdb.DB
+	stop      chan struct{}
+	log       log2.Logger
+	metaHooks map[string]func(*vkv.KeyValue) error
+	mu        sync.Mutex
 }
 
 func New(r *router.Router, db *vkv.DB, ns *nsdb.DB) *MetaHandler {
 	return &MetaHandler{
-		router: r,
-		stop:   make(chan struct{}),
-		db:     db,
-		nsdb:   ns,
-		log:    logger.Log.New("submodule", "meta"),
+		router:    r,
+		stop:      make(chan struct{}),
+		db:        db,
+		nsdb:      ns,
+		metaHooks: map[string]func(*vkv.KeyValue) error{},
+		log:       logger.Log.New("submodule", "meta"),
 	}
 }
 func (mh *MetaHandler) Stop() {
 	close(mh.stop)
 }
+
+// AddMetaHook allows extension to define a callback for when a meta blob is applied
+// during a re-indexing
+func (mh *MetaHandler) AddMetaHook(name string, hookFunc func(*vkv.KeyValue) error) {
+	mh.log.Info("Adding new meta hook", "name", name)
+	mh.mu.Lock()
+	mh.metaHooks[name] = hookFunc
+	mh.mu.Unlock()
+}
+
+func (mh *MetaHandler) RemoveMetaHook(name string) {
+	mh.log.Info("Removing new meta hook", "name", name)
+	mh.mu.Lock()
+	if _, ok := mh.metaHooks[name]; ok {
+		delete(mh.metaHooks, name)
+	} else {
+		mh.log.Debug("Meta hook did not exist", "name", name)
+	}
+	mh.mu.Unlock()
+}
+
+// Save a meta blobs when a new VKV entry is created
 func (mh *MetaHandler) processKvUpdate(wg sync.WaitGroup, blobs chan<- *router.Blob, kvUpdate <-chan *vkv.KeyValue, vkvhub *hub.Hub) {
 	wg.Add(1)
 	defer wg.Done()
@@ -70,7 +96,7 @@ func (mh *MetaHandler) processKvUpdate(wg sync.WaitGroup, blobs chan<- *router.B
 }
 
 func (mh *MetaHandler) WatchKvUpdate(wg sync.WaitGroup, blobs chan<- *router.Blob, kvUpdate <-chan *vkv.KeyValue, vkvhub *hub.Hub) error {
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 4; i++ {
 		go mh.processKvUpdate(wg, blobs, kvUpdate, vkvhub)
 	}
 	return nil
@@ -117,6 +143,15 @@ func (mh *MetaHandler) Scan() error {
 			if err := rkv.SetMetaBlob(h); err != nil {
 				return err
 			}
+
+			// Execute the hooks
+			for name, hookFunc := range mh.metaHooks {
+				mh.log.Debug("executing meta hook", "name", name)
+				if err := hookFunc(rkv); err != nil {
+					mh.log.Error("failed to execute meta hook", "name", name, "kv", rkv)
+				}
+			}
+
 			j++
 		}
 		if IsNsBlob(blob) {
