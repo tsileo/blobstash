@@ -21,7 +21,6 @@ import (
 	log2 "gopkg.in/inconshreveable/log15.v2"
 )
 
-// TODO(tsileo): add yubikey support with a POST endpoint to retrive the attached API key (add a yubiIndex)
 // TODO(tsileo): add a way to delete an API key
 // TODO(tsileo): a way to check custom permissions in the Lua module
 

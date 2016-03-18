@@ -49,8 +49,13 @@ import (
 	"github.com/tsileo/blobstash/vkv"
 )
 
+// FIXME(tsileo): create a "meta" hook for handling indexing
+// will need to solve few issues before:
+// - do we need to check if the doc is already indexed?
+
 var (
-	PrefixKeyFmt = "docstore:%s"
+	PrefixKey    = "docstore:"
+	PrefixKeyFmt = PrefixKey + "%s"
 	KeyFmt       = PrefixKeyFmt + ":%s"
 
 	PrefixIndexKeyFmt = "docstore-index:%s"
@@ -353,7 +358,7 @@ func (docstore *DocStoreExt) Indexes(collection string) ([]*index.Index, error) 
 
 func (docstore *DocStoreExt) AddIndex(collection string, idx *index.Index) error {
 	if len(idx.Fields) > 1 {
-		return httputil.NewPublicError(fmt.Errorf("Only single field index are support for now"))
+		return httputil.NewPublicErrorFmt("Only single field index are support for now")
 	}
 
 	var err error
@@ -370,7 +375,7 @@ func (docstore *DocStoreExt) AddIndex(collection string, idx *index.Index) error
 		hashKey := fmt.Sprintf("single-field-%s", idx.Fields[0])
 		_, err = docstore.kvStore.PutPrefix(fmt.Sprintf(PrefixIndexKeyFmt, collection), hashKey, string(js), -1, "")
 	default:
-		err = httputil.NewPublicError(fmt.Errorf("Bad index"))
+		err = httputil.NewPublicErrorFmt("Bad index")
 	}
 	return err
 }
@@ -425,8 +430,7 @@ func (docstore *DocStoreExt) Insert(collection string, idoc interface{}, ns stri
 		hash := fmt.Sprintf("%x", blake2b.Sum256(blob))
 		docstore.blobStore.Put(hash, blob, ns)
 
-		// Create a pointer in the key-value store
-
+		// Build the ID and add some meta data
 		now := time.Now().UTC().Unix()
 		_id, err := id.New(int(now))
 		if err != nil {
@@ -440,6 +444,7 @@ func (docstore *DocStoreExt) Insert(collection string, idoc interface{}, ns stri
 		bash[0] = docFlag
 		copy(bash[1:], []byte(hash)[:])
 
+		// Create a pointer in the key-value store
 		if _, err := docstore.kvStore.PutPrefix(fmt.Sprintf(PrefixKeyFmt, collection), _id.String(), string(bash), -1, ns); err != nil {
 			return nil, err
 		}
@@ -447,7 +452,7 @@ func (docstore *DocStoreExt) Insert(collection string, idoc interface{}, ns stri
 		// Index the doc if needed
 		if err := docstore.IndexDoc(collection, _id, doc); err != nil {
 			docstore.logger.Error("Failed to index document", "_id", _id.String(), "err", err)
-			return _id, httputil.NewPublicError(fmt.Errorf("Failed to index document"))
+			return _id, httputil.NewPublicErrorFmt("Failed to index document")
 		}
 
 		return _id, nil
@@ -680,7 +685,7 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 			doc := map[string]interface{}{}
 			if err := json.Unmarshal(blob, &doc); err != nil {
 				docstore.logger.Error("Failed to parse JSON input", "collection", collection, "err", err)
-				panic(httputil.NewPublicError(fmt.Errorf("Invalid JSON document")))
+				panic(httputil.NewPublicErrorFmt("Invalid JSON document"))
 			}
 			index := false
 			if indexHeader := r.Header.Get("BlobStash-DocStore-IndexFullText"); indexHeader != "" {
@@ -806,7 +811,7 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 			var update map[string]interface{}
 			decoder := json.NewDecoder(r.Body)
 			if err := decoder.Decode(&update); err != nil {
-				panic(httputil.NewPublicError(fmt.Errorf("Invalid JSON input")))
+				panic(httputil.NewPublicErrorFmt("Invalid JSON input"))
 			}
 
 			docstore.logger.Debug("Update", "_id", sid, "ns", ns, "update_query", update)

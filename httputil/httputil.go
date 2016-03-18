@@ -5,6 +5,7 @@ import (
 	// "github.com/tsileo/blobstash/permissions"
 
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"reflect"
 	"strings"
@@ -92,8 +93,9 @@ func (pe *PublicError) Status() int {
 	return http.StatusInternalServerError
 }
 
-func NewPublicError(err error) PublicErrorer {
-	return &PublicError{err}
+// NewPublicError is a shortcut for initializing a `PublicError` with `fmt.Errorf`
+func NewPublicErrorFmt(msg string, args ...interface{}) PublicErrorer {
+	return &PublicError{fmt.Errorf(msg, args...)}
 }
 
 // PublicErrorer is the interface for "displayable" error by the RecoverHandler

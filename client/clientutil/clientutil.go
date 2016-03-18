@@ -33,6 +33,7 @@ func setupHTTP2() {
 
 }
 
+// Opts holds the client configuration
 type Opts struct {
 	Host   string // BlobStash host (with proto and without trailing slash) e.g. "https://blobtash.com"
 	APIKey string // BlobStash API key
@@ -46,11 +47,13 @@ type Opts struct {
 	EnableHTTP2       bool // Enable HTTP2 as the client level
 }
 
+// SetNamespace is a shortcut for setting the namespace at the client level
 func (opts *Opts) SetNamespace(ns string) *Opts {
 	opts.Namespace = ns
 	return opts
 }
 
+// SetHost is a configuration shortcut for setting the API hostname and the API key
 func (opts *Opts) SetHost(host, apiKey string) *Opts {
 	if host != "" {
 		opts.Host = host
@@ -66,6 +69,7 @@ type Client struct {
 	client *http.Client
 }
 
+// New initializes an HTTP client
 func New(opts *Opts) *Client {
 	if opts == nil {
 		panic("missing clientutil.Client opts")
@@ -82,10 +86,12 @@ func New(opts *Opts) *Client {
 	}
 }
 
+// Opts returns the current opts
 func (client *Client) Opts() *Opts {
 	return client.opts
 }
 
+// DoReq "do" the request and returns the `*http.Response`
 func (client *Client) DoReq(method, path string, headers map[string]string, body io.Reader) (*http.Response, error) {
 	request, err := http.NewRequest(method, fmt.Sprintf("%s%s", client.opts.Host, path), body)
 	if err != nil {

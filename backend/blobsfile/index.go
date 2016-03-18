@@ -96,7 +96,7 @@ func decodeBlobPos(data []byte) (blob BlobPos, error error) {
 	return blob, nil
 }
 
-// NewIndex initialize a new index.
+// NewIndex initializes a new index.
 func NewIndex(path string) (*BlobsIndex, error) {
 	db_path := filepath.Join(path, "blobs-index")
 	if err := os.MkdirAll(path, 0700); err != nil {
@@ -118,6 +118,7 @@ func (index *BlobsIndex) DB() *kv.DB {
 	return index.db
 }
 
+// Close all the open file descriptor
 func (index *BlobsIndex) Close() {
 	index.Lock()
 	defer index.Unlock()
