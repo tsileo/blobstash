@@ -76,6 +76,7 @@ func metaToNode(m *meta.Meta) (*Node, error) {
 		meta:    m,
 	}, nil
 }
+
 func (ft *FileTreeExt) fetchDir(n *Node, depth int) error {
 	if depth >= 10 {
 		return nil
@@ -131,30 +132,8 @@ func (ft *FileTreeExt) treeHandler() func(http.ResponseWriter, *http.Request) {
 			panic(err)
 		}
 
-		if n.Type == "dir" {
-			n.Children = []*Node{}
-			if n.meta.Refs != nil {
-				for _, ref := range n.meta.Refs {
-					blob, err := ft.blobStore.Get(ref.(string))
-					if err != nil {
-						panic(err)
-					}
-					m, err := meta.NewMetaFromBlob(hash, blob)
-					if err != nil {
-						panic(err)
-					}
-					defer m.Close()
-
-					cn, err := metaToNode(m)
-					if err != nil {
-						panic(err)
-					}
-					n.Children = append(n.Children, cn)
-					if err := ft.fetchDir(cn, 1); err != nil {
-						panic(err)
-					}
-				}
-			}
+		if err := ft.fetchDir(n, 1); err != nil {
+			panic(err)
 		}
 
 		httputil.WriteJSON(w, map[string]interface{}{
