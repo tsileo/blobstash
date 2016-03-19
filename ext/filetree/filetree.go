@@ -45,6 +45,7 @@ func (ft *FileTreeExt) Close() error {
 // RegisterRoute registers all the HTTP handlers for the extension
 func (ft *FileTreeExt) RegisterRoute(r *mux.Router, middlewares *serverMiddleware.SharedMiddleware) {
 	ft.log.Debug("RegisterRoute")
+	r.Handle("/{ref}", middlewares.Auth(http.HandlerFunc(ft.treeHandler())))
 	// r.Handle("/", middlewares.Auth(http.HandlerFunc(docstore.collectionsHandler())))
 }
 
@@ -57,16 +58,107 @@ type Node struct {
 	// Refs    []interface{}          `json:"refs"`
 	// Version string                 `json:"version"`
 	Extra    map[string]interface{} `json:"extra,omitempty"`
-	Hash     string                 `json:"-"`
-	Children []*Node                `json:"children"`
+	Hash     string                 `json:"ref"`
+	Children []*Node                `json:"children,omitempty"`
+
+	meta *meta.Meta `json:"-"`
+}
+
+func metaToNode(m *meta.Meta) (*Node, error) {
+	return &Node{
+		Name:    m.Name,
+		Type:    m.Type,
+		Size:    m.Size,
+		Mode:    m.Mode,
+		ModTime: m.ModTime,
+		Extra:   m.Extra,
+		Hash:    m.Hash,
+		meta:    m,
+	}, nil
+}
+func (ft *FileTreeExt) fetchDir(n *Node, depth int) error {
+	if depth >= 10 {
+		return nil
+	}
+	if n.Type == "dir" {
+		n.Children = []*Node{}
+		for _, ref := range n.meta.Refs {
+			blob, err := ft.blobStore.Get(ref.(string))
+			if err != nil {
+				return err
+			}
+			m, err := meta.NewMetaFromBlob(n.meta.Hash, blob)
+			if err != nil {
+				return err
+			}
+			cn, err := metaToNode(m)
+			if err != nil {
+				return err
+			}
+			n.Children = append(n.Children, cn)
+			if err := ft.fetchDir(cn, depth+1); err != nil {
+				return err
+			}
+		}
+	}
+	n.meta.Close()
+	return nil
 }
 
 func (ft *FileTreeExt) treeHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// TODO(tsileo): limit the max depth of the tree
-		m := &meta.Meta{}
+		if r.Method != "GET" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		vars := mux.Vars(r)
+
+		hash := vars["ref"]
+		blob, err := ft.blobStore.Get(hash)
+		if err != nil {
+			panic(err)
+		}
+
+		m, err := meta.NewMetaFromBlob(hash, blob)
+		if err != nil {
+			panic(err)
+		}
+		defer m.Close()
+
+		n, err := metaToNode(m)
+		if err != nil {
+			panic(err)
+		}
+
+		if n.Type == "dir" {
+			n.Children = []*Node{}
+			if n.meta.Refs != nil {
+				for _, ref := range n.meta.Refs {
+					blob, err := ft.blobStore.Get(ref.(string))
+					if err != nil {
+						panic(err)
+					}
+					m, err := meta.NewMetaFromBlob(hash, blob)
+					if err != nil {
+						panic(err)
+					}
+					defer m.Close()
+
+					cn, err := metaToNode(m)
+					if err != nil {
+						panic(err)
+					}
+					n.Children = append(n.Children, cn)
+					if err := ft.fetchDir(cn, 1); err != nil {
+						panic(err)
+					}
+				}
+			}
+		}
+
 		httputil.WriteJSON(w, map[string]interface{}{
-			"root": m,
+			"root": n,
 		})
 	}
 }

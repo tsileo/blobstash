@@ -100,4 +100,5 @@ func (m *Meta) IsDir() bool {
 
 func (m *Meta) Close() {
 	m.free()
+	m = nil
 }

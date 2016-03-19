@@ -108,7 +108,9 @@ type PublicErrorer interface {
 func RecoverHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
-			r := recover()
+			// FIXME(tsileo): debug config should raise exception
+			// r := recover()
+			var r interface{}
 			if r != nil {
 				logger.Log.Error("request failed", "err", r, "type", reflect.TypeOf(r))
 				switch t := r.(type) {
