@@ -140,6 +140,27 @@ func (up *Uploader) PutFile(path string) (*meta.Meta, error) { // , *WriteResult
 	return meta, nil
 }
 
+func (up *Uploader) PutMeta(meta *meta.Meta) error {
+	mhash, mjs := meta.Json()
+	mexists, err := up.bs.Stat(mhash)
+	if err != nil {
+		return fmt.Errorf("failed to stat blob %v: %v", mhash, err)
+	}
+	// wr.Size += len(mjs)
+	if !mexists {
+		if err := up.bs.Put(mhash, mjs); err != nil {
+			return fmt.Errorf("failed to put blob %v: %v", mhash, err)
+		}
+		// wr.BlobsCount++
+		// wr.BlobsUploaded++
+		// wr.SizeUploaded += len(mjs)
+	} // else {
+	// wr.SizeSkipped += len(mjs)
+	// }
+	meta.Hash = mhash
+	return nil
+}
+
 func (up *Uploader) RenameMeta(meta *meta.Meta, name string) (*meta.Meta, error) {
 	meta.Name = filepath.Base(name)
 	meta.ModTime = time.Now().Format(time.RFC3339)
