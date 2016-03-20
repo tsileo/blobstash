@@ -11,11 +11,13 @@ import (
 	"github.com/dchest/blake2b"
 )
 
+var version = "1"
+
 var metaPool = sync.Pool{
 	New: func() interface{} {
 		return &Meta{
 			Refs:    []interface{}{},
-			Version: "1",
+			Version: version,
 		}
 	},
 }
@@ -29,6 +31,7 @@ type Meta struct {
 	Refs    []interface{}          `json:"refs"`
 	Version string                 `json:"version"`
 	Extra   map[string]interface{} `json:"extra,omitempty"`
+	XAttrs  map[string]string      `json:"xattrs,omitempty"`
 	Hash    string                 `json:"-"`
 }
 
@@ -43,6 +46,14 @@ func (m *Meta) free() {
 	m.Hash = ""
 	m.Version = "1"
 	metaPool.Put(m)
+}
+
+// AddExtraData insert a new meta data in the Extra field
+func (m *Meta) AddExtraData(key string, val interface{}) {
+	if m.Extra == nil {
+		m.Extra = map[string]interface{}{}
+	}
+	m.Extra[key] = val
 }
 
 // JSON returns the `Meta` JSON encoded as (hash, js)
