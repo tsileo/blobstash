@@ -12,7 +12,7 @@ import (
 	"github.com/tsileo/blobstash/ext/filetree/reader/filereader"
 	"github.com/tsileo/blobstash/httputil"
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
-	_ "github.com/tsileo/blobstash/permissions"
+	"github.com/tsileo/blobstash/permissions"
 	_ "github.com/tsileo/blobstash/vkv"
 )
 
@@ -48,19 +48,19 @@ func (ft *FileTreeExt) Close() error {
 func (ft *FileTreeExt) RegisterRoute(r *mux.Router, middlewares *serverMiddleware.SharedMiddleware) {
 	ft.log.Debug("RegisterRoute")
 	r.Handle("/tree/{ref}", middlewares.Auth(http.HandlerFunc(ft.treeHandler())))
-	r.Handle("/file/{ref}", http.HandlerFunc(ft.fileHandler()))
-	// r.Handle("/file/{ref}", middlewares.Auth(http.HandlerFunc(ft.fileHandler())))
+	// r.Handle("/file/{ref}", http.HandlerFunc(ft.fileHandler()))
+	r.Handle("/file/{ref}", middlewares.Auth(http.HandlerFunc(ft.fileHandler())))
 	// r.Handle("/", middlewares.Auth(http.HandlerFunc(docstore.collectionsHandler())))
 }
 
 type Node struct {
-	Name    string `json:"name"`
-	Type    string `json:"type"`
-	Size    int    `json:"size"`
-	Mode    uint32 `json:"mode"`
-	ModTime string `json:"mtime"`
-	// Refs    []interface{}          `json:"refs"`
 	// Version string                 `json:"version"`
+
+	Name     string                 `json:"name"`
+	Type     string                 `json:"type"`
+	Size     int                    `json:"size"`
+	Mode     uint32                 `json:"mode"`
+	ModTime  string                 `json:"mtime"`
 	Extra    map[string]interface{} `json:"extra,omitempty"`
 	Hash     string                 `json:"ref"`
 	Children []*Node                `json:"children,omitempty"`
@@ -112,6 +112,8 @@ func (ft *FileTreeExt) fetchDir(n *Node, depth int) error {
 
 func (ft *FileTreeExt) fileHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		permissions.CheckPerms(r, PermName)
+
 		if r.Method != "GET" && r.Method != "HEAD" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
@@ -130,11 +132,15 @@ func (ft *FileTreeExt) fileHandler() func(http.ResponseWriter, *http.Request) {
 		}
 		defer m.Close()
 
+		// Initialize a new `File`
 		f := filereader.NewFile(ft.blobStore, m)
-		// ServeContent(w ResponseWriter, req *Request, name string, modtime time.Time, content io.ReadSeeker)
+
+		// Check if the file is requested for download
 		if r.URL.Query().Get("dl") != "" {
 			w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", m.Name))
 		}
+
+		// Serve the file content using the same code as the `http.ServeFile`
 		mtime, _ := m.Mtime()
 		http.ServeContent(w, r, m.Name, mtime, f)
 	}
@@ -142,6 +148,8 @@ func (ft *FileTreeExt) fileHandler() func(http.ResponseWriter, *http.Request) {
 
 func (ft *FileTreeExt) treeHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		permissions.CheckPerms(r, PermName)
+
 		// TODO(tsileo): limit the max depth of the tree
 		if r.Method != "GET" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
