@@ -9,6 +9,7 @@ import (
 	"github.com/gorilla/mux"
 	log "gopkg.in/inconshreveable/log15.v2"
 
+	"github.com/tsileo/blobstash/client/clientutil"
 	"github.com/tsileo/blobstash/embed"
 	"github.com/tsileo/blobstash/ext/filetree/filetreeutil/meta"
 	"github.com/tsileo/blobstash/ext/filetree/reader/filereader"
@@ -20,6 +21,7 @@ import (
 
 // TODO(tsileo): handle the fetching of meta from the FS name and reconstruct the vkkeky, also ensure XAttrs are public and keep a ref
 // to the root in children link
+// TODO(tsileo): bind a folder to the root path, e.g. {hostname}/ => dirHandler
 
 var (
 	indexFile = "index.html"
@@ -71,14 +73,16 @@ func (ft *FileTreeExt) RegisterRoute(root, r *mux.Router, middlewares *serverMid
 type Node struct {
 	// Version string                 `json:"version"`
 
-	Name     string                 `json:"name"`
-	Type     string                 `json:"type"`
-	Size     int                    `json:"size"`
-	Mode     uint32                 `json:"mode"`
-	ModTime  string                 `json:"mtime"`
-	Extra    map[string]interface{} `json:"extra,omitempty"`
-	Hash     string                 `json:"ref"`
-	Children []*Node                `json:"children,omitempty"`
+	Name     string  `json:"name"`
+	Type     string  `json:"type"`
+	Size     int     `json:"size"`
+	Mode     uint32  `json:"mode"`
+	ModTime  string  `json:"mtime"`
+	Hash     string  `json:"ref"`
+	Children []*Node `json:"children,omitempty"`
+
+	Extra  map[string]interface{} `json:"extra,omitempty"`
+	XAttrs map[string]string      `json:"-"`
 
 	meta *meta.Meta `json:"-"`
 }
@@ -102,6 +106,7 @@ func metaToNode(m *meta.Meta) (*Node, error) {
 		Mode:    m.Mode,
 		ModTime: m.ModTime,
 		Extra:   m.Extra,
+		XAttrs:  m.XAttrs,
 		Hash:    m.Hash,
 		meta:    m,
 	}, nil
@@ -146,6 +151,10 @@ func (ft *FileTreeExt) fileHandler() func(http.ResponseWriter, *http.Request) {
 func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash string) {
 	blob, err := ft.blobStore.Get(hash)
 	if err != nil {
+		if err == clientutil.ErrBlobNotFound {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		panic(err)
 	}
 
@@ -154,6 +163,22 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 		panic(err)
 	}
 	defer m.Close()
+
+	// FIXME(tsileo): validate the rootfs node AND if not, the file XAttrs
+	// TODO(tsileo): handle bewit
+	// var public bool
+	// // Check if the node is public
+	// if m.XAttrs != nil {
+	// 	if pub, ok := m.XAttrs["public"]; ok && pub == "1" {
+	// 		public = true
+	// 	}
+	// }
+
+	// 	if !public {
+	// 		w.WriteHeader(http.StatusNotFound)
+	// 		return
+	// 	}
+	// FIXME(tsileo): check if the dir/file is public, if not return 404
 
 	// Initialize a new `File`
 	f := filereader.NewFile(ft.blobStore, m)
@@ -184,6 +209,10 @@ func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 		hash := vars["ref"]
 		n, err := ft.nodeByRef(hash)
 		if err != nil {
+			if err == clientutil.ErrBlobNotFound {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
 			panic(err)
 		}
 		if err := ft.fetchDir(n, 1); err != nil {
@@ -226,8 +255,26 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 		hash := vars["ref"]
 		n, err := ft.nodeByRef(hash)
 		if err != nil {
+			if err == clientutil.ErrBlobNotFound {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
 			panic(err)
 		}
+
+		// var public bool
+		// // Check if the node is public
+		// if n.meta.XAttrs != nil {
+		// 	if pub, ok := n.meta.XAttrs["public"]; ok && pub == "1" {
+		// 		public = true
+		// 	}
+		// }
+
+		// if !public {
+		// 	w.WriteHeader(http.StatusNotFound)
+		// 	return
+		// }
+
 		if err := ft.fetchDir(n, 1); err != nil {
 			panic(err)
 		}

@@ -11,7 +11,6 @@ import (
 
 // ErrBlobNotFound is returned from a get/stat request
 // if the blob does not exist.
-var ErrBlobNotFound = errors.New("blob not found")
 var ErrKeyNotFound = errors.New("key doest not exist")
 
 type KvStore struct {
