@@ -18,6 +18,9 @@ import (
 	_ "github.com/tsileo/blobstash/vkv"
 )
 
+// TODO(tsileo): handle the fetching of meta from the FS name and reconstruct the vkkeky, also ensure XAttrs are public and keep a ref
+// to the root in children link
+
 var (
 	indexFile = "index.html"
 
@@ -49,11 +52,18 @@ func (ft *FileTreeExt) Close() error {
 }
 
 // RegisterRoute registers all the HTTP handlers for the extension
-func (ft *FileTreeExt) RegisterRoute(r *mux.Router, middlewares *serverMiddleware.SharedMiddleware) {
+func (ft *FileTreeExt) RegisterRoute(root, r *mux.Router, middlewares *serverMiddleware.SharedMiddleware) {
+	// FIXME(tsileo): also bind to the root router to allow {hostname}/f/{ref} and {hostname}/d/{ref} to share file/dir
 	ft.log.Debug("RegisterRoute")
+	dirHandler := http.HandlerFunc(ft.dirHandler())
+	fileHandler := http.HandlerFunc(ft.fileHandler())
 	r.Handle("/node/{ref}", middlewares.Auth(http.HandlerFunc(ft.nodeHandler())))
-	r.Handle("/dir/{ref}", http.HandlerFunc(ft.dirHandler()))
-	r.Handle("/file/{ref}", http.HandlerFunc(ft.fileHandler()))
+	r.Handle("/dir/{ref}", dirHandler)
+	r.Handle("/file/{ref}", fileHandler)
+	// Enable shortcut path from the root
+	root.Handle("/d/{ref}", dirHandler)
+	root.Handle("/f/{ref}", fileHandler)
+
 	// r.Handle("/file/{ref}", middlewares.Auth(http.HandlerFunc(ft.fileHandler())))
 	// r.Handle("/", middlewares.Auth(http.HandlerFunc(docstore.collectionsHandler())))
 }

@@ -282,7 +282,8 @@ func (s *Server) Run() {
 	if err != nil {
 		panic(err)
 	}
-	filetreeExt.RegisterRoute(r.PathPrefix("/api/ext/filetree/v1").Subrouter(), middlewares)
+	// TODO(tsileo): also pass the root router `r` to all the extension?
+	filetreeExt.RegisterRoute(r, r.PathPrefix("/api/ext/filetree/v1").Subrouter(), middlewares)
 
 	// Initialize the DocStore extension
 	docstoreExt, err := docstore.New(s.Log.New("ext", "docstore"), ekvstore, eblobstore)
