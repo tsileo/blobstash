@@ -6,6 +6,7 @@ import (
 	"mime"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/dchest/blake2b"
 )
@@ -96,6 +97,10 @@ func (m *Meta) IsDir() bool {
 		return true
 	}
 	return false
+}
+
+func (m *Meta) Mtime() (time.Time, error) {
+	return time.Parse(time.RFC3339, m.ModTime)
 }
 
 func (m *Meta) Close() {
