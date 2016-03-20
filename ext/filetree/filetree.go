@@ -15,13 +15,16 @@ import (
 	"github.com/tsileo/blobstash/ext/filetree/reader/filereader"
 	"github.com/tsileo/blobstash/httputil"
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
-	_ "github.com/tsileo/blobstash/permissions"
-	_ "github.com/tsileo/blobstash/vkv"
+	"github.com/tsileo/blobstash/permissions"
 )
 
 // TODO(tsileo): handle the fetching of meta from the FS name and reconstruct the vkkeky, also ensure XAttrs are public and keep a ref
 // to the root in children link
-// TODO(tsileo): bind a folder to the root path, e.g. {hostname}/ => dirHandler
+// TODO(tsileo): bind a folder to the root path, e.g. {hostname}/ => dirHandler?
+// TODO(tsileo): a multi-part upload endpoint (but without dir capabilities, at least for now)
+
+// XXX(tsileo): IDEAS:
+// - last_sync virtual XAttr?
 
 var (
 	indexFile = "index.html"
@@ -177,6 +180,10 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 	// 	}
 	// FIXME(tsileo): check if the dir/file is public, if not return 404
 
+	if m.IsDir() {
+		panic(httputil.NewPublicErrorFmt("node is not a file (%s)", m.Type))
+	}
+
 	// Initialize a new `File`
 	f := filereader.NewFile(ft.blobStore, m)
 
@@ -192,6 +199,9 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 
 func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Check permissions
+		permissions.CheckPerms(r, PermName)
+
 		// TODO(tsileo): limit the max depth of the tree configurable via query args
 		if r.Method != "GET" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -242,7 +252,7 @@ func (ft *FileTreeExt) nodeByRef(hash string) (*Node, error) {
 
 func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" {
+		if r.Method != "GET" || r.Method != "HEAD" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
@@ -257,7 +267,6 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 			}
 			panic(err)
 		}
-
 		// FIXME(tsileo): Check either Bewit or public
 		// var public bool
 		// // Check if the node is public
@@ -271,6 +280,13 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 		// 	w.WriteHeader(http.StatusNotFound)
 		// 	return
 		// }
+		if n.Type != "dir" {
+			panic(httputil.NewPublicErrorFmt("node is not a dir (%s)", n.Type))
+		}
+
+		if r.Method == "HEAD" {
+			return
+		}
 
 		if err := ft.fetchDir(n, 1); err != nil {
 			panic(err)
