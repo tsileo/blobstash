@@ -13,6 +13,12 @@ import (
 	"github.com/tsileo/blobstash/ext/filetree/filetreeutil/meta"
 )
 
+const (
+	SEEK_SET int = 0 // seek relative to the origin of the file
+	SEEK_CUR int = 1 // seek relative to the current offset
+	SEEK_END int = 2 // seek relative to the end
+)
+
 type BlobStore interface {
 	Get(hash string) ([]byte, error)
 }
@@ -60,7 +66,7 @@ func GetFile(bs BlobStore, hash, path string) error {
 }
 
 type IndexValue struct {
-	Index int
+	Index int64
 	Value string
 	I     int
 }
@@ -76,8 +82,8 @@ type File struct {
 	name    string
 	bs      BlobStore
 	meta    *meta.Meta
-	offset  int
-	size    int
+	offset  int64
+	size    int64
 	llen    int
 	lmrange []*IndexValue
 	trie    *yfast.YFastTrie
@@ -94,7 +100,7 @@ func NewFile(bs BlobStore, meta *meta.Meta) (f *File) {
 	f = &File{
 		bs:      bs,
 		meta:    meta,
-		size:    meta.Size,
+		size:    int64(meta.Size),
 		lmrange: []*IndexValue{},
 		trie:    yfast.New(uint64(0)),
 		lru:     cache,
@@ -102,11 +108,13 @@ func NewFile(bs BlobStore, meta *meta.Meta) (f *File) {
 	if meta.Size > 0 {
 		for idx, m := range meta.Refs {
 			data := m.([]interface{})
-			var index int
+			var index int64
 			switch i := data[0].(type) {
 			case float64:
-				index = int(i)
+				index = int64(i)
 			case int:
+				index = int64(i)
+			case int64:
 				index = i
 			default:
 				panic("unexpected index")
@@ -132,7 +140,7 @@ func (f *File) ReadAt(p []byte, offset int64) (n int, err error) {
 	if f.size == 0 || f.offset >= f.size {
 		return 0, io.EOF
 	}
-	buf, err := f.read(int(offset), len(p))
+	buf, err := f.read(offset, len(p))
 	if err != nil {
 		return
 	}
@@ -142,10 +150,10 @@ func (f *File) ReadAt(p []byte, offset int64) (n int, err error) {
 
 // Low level read function, read a size from an offset
 // Iterate only the needed blobs
-func (f *File) read(offset, cnt int) ([]byte, error) {
+func (f *File) read(offset int64, cnt int) ([]byte, error) {
 	//log.Printf("FakeFile %v read(%v, %v)", f.ref, offset, cnt)
-	if cnt < 0 || cnt > f.size {
-		cnt = f.size
+	if cnt < 0 || int64(cnt) > f.size {
+		cnt = int(f.size)
 	}
 	var buf bytes.Buffer
 	var cbuf []byte
@@ -179,9 +187,9 @@ func (f *File) read(offset, cnt int) ([]byte, error) {
 		foffset := 0
 		if offset != 0 {
 			// Compute the starting offset of the blob
-			blobStart := iv.Index - len(bbuf)
+			blobStart := iv.Index - int64(len(bbuf))
 			// and subtract it to get the correct offset
-			foffset = offset - blobStart
+			foffset = int(offset - int64(blobStart))
 			offset = 0
 		}
 		// If the remaining cnt (cnt - written)
@@ -236,8 +244,8 @@ func (f *File) Read(p []byte) (n int, err error) {
 	}
 	n = 0
 	limit := len(p)
-	if limit > (f.size - f.offset) {
-		limit = f.size - f.offset
+	if limit > int(f.size-f.offset) {
+		limit = int(f.size - f.offset)
 	}
 	b, err := f.read(f.offset, limit)
 	if err == io.EOF {
@@ -247,6 +255,20 @@ func (f *File) Read(p []byte) (n int, err error) {
 		return 0, fmt.Errorf("failed to read %+v at range %v-%v", f, f.offset, limit)
 	}
 	n = copy(p, b)
-	f.offset += n
+	f.offset += int64(n)
 	return
+}
+
+func (f *File) Seek(offset int64, whence int) (int64, error) {
+	switch whence {
+	case SEEK_SET:
+		f.offset = offset
+	case SEEK_CUR:
+		f.offset += offset
+	case SEEK_END:
+		f.offset = f.size - offset
+	default:
+		return 0, fmt.Errorf("invalid whence: %d", whence)
+	}
+	return f.offset, nil
 }
