@@ -55,24 +55,21 @@ func (ft *FileTreeExt) Close() error {
 
 // RegisterRoute registers all the HTTP handlers for the extension
 func (ft *FileTreeExt) RegisterRoute(root, r *mux.Router, middlewares *serverMiddleware.SharedMiddleware) {
-	// FIXME(tsileo): also bind to the root router to allow {hostname}/f/{ref} and {hostname}/d/{ref} to share file/dir
 	ft.log.Debug("RegisterRoute")
+	r.Handle("/node/{ref}", middlewares.Auth(http.HandlerFunc(ft.nodeHandler())))
+
+	// Public/semi-private handler
 	dirHandler := http.HandlerFunc(ft.dirHandler())
 	fileHandler := http.HandlerFunc(ft.fileHandler())
-	r.Handle("/node/{ref}", middlewares.Auth(http.HandlerFunc(ft.nodeHandler())))
+	// Hook the standard endpint
 	r.Handle("/dir/{ref}", dirHandler)
 	r.Handle("/file/{ref}", fileHandler)
 	// Enable shortcut path from the root
 	root.Handle("/d/{ref}", dirHandler)
 	root.Handle("/f/{ref}", fileHandler)
-
-	// r.Handle("/file/{ref}", middlewares.Auth(http.HandlerFunc(ft.fileHandler())))
-	// r.Handle("/", middlewares.Auth(http.HandlerFunc(docstore.collectionsHandler())))
 }
 
 type Node struct {
-	// Version string                 `json:"version"`
-
 	Name     string  `json:"name"`
 	Type     string  `json:"type"`
 	Size     int     `json:"size"`
@@ -82,7 +79,7 @@ type Node struct {
 	Children []*Node `json:"children,omitempty"`
 
 	Extra  map[string]interface{} `json:"extra,omitempty"`
-	XAttrs map[string]string      `json:"-"`
+	XAttrs map[string]string      `json:"xattrs,omitempty"`
 
 	meta *meta.Meta `json:"-"`
 }
@@ -112,6 +109,7 @@ func metaToNode(m *meta.Meta) (*Node, error) {
 	}, nil
 }
 
+// fetchDir recursively fetch dir children
 func (ft *FileTreeExt) fetchDir(n *Node, depth int) error {
 	if depth >= 10 {
 		return nil
@@ -135,8 +133,6 @@ func (ft *FileTreeExt) fetchDir(n *Node, depth int) error {
 
 func (ft *FileTreeExt) fileHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// permissions.CheckPerms(r, PermName)
-
 		if r.Method != "GET" && r.Method != "HEAD" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
@@ -148,6 +144,7 @@ func (ft *FileTreeExt) fileHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
+// serveFile serve the node as a file using `net/http` FS util
 func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash string) {
 	blob, err := ft.blobStore.Get(hash)
 	if err != nil {
@@ -164,8 +161,8 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 	}
 	defer m.Close()
 
-	// FIXME(tsileo): validate the rootfs node AND if not, the file XAttrs
-	// TODO(tsileo): handle bewit
+	// TODO(tsileo): check auth, either Bewit OR meta XAttrs public
+
 	// var public bool
 	// // Check if the node is public
 	// if m.XAttrs != nil {
@@ -195,9 +192,7 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 
 func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// permissions.CheckPerms(r, PermName)
-
-		// TODO(tsileo): limit the max depth of the tree
+		// TODO(tsileo): limit the max depth of the tree configurable via query args
 		if r.Method != "GET" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
@@ -220,11 +215,12 @@ func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 		}
 
 		httputil.WriteJSON(w, map[string]interface{}{
-			"root": n,
+			"node": n,
 		})
 	}
 }
 
+// nodeByRef fetch the blob containing the `meta.Meta` and convert it to a `Node`
 func (ft *FileTreeExt) nodeByRef(hash string) (*Node, error) {
 	blob, err := ft.blobStore.Get(hash)
 	if err != nil {
@@ -262,6 +258,7 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 			panic(err)
 		}
 
+		// FIXME(tsileo): Check either Bewit or public
 		// var public bool
 		// // Check if the node is public
 		// if n.meta.XAttrs != nil {
@@ -292,8 +289,8 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprintf(w, "<!doctype html><title>Filetree - %s</title><pre>\n")
 		for _, cn := range n.Children {
-			var curl url.URL
-			curl = url.URL{Path: fmt.Sprintf("/api/ext/filetree/v1/%s/%s", cn.Type, cn.Hash)}
+			// FIXME(tsileo): Bewit the link if the auth worked
+			curl := url.URL{Path: fmt.Sprintf("/api/ext/filetree/v1/%s/%s", cn.Type, cn.Hash)}
 			fmt.Fprintf(w, "<a href=\"%s\">%s</a>\n", curl.String(), cn.Name)
 		}
 		fmt.Fprintf(w, "</pre>\n")
