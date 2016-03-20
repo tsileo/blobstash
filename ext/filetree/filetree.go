@@ -1,6 +1,7 @@
 package filetree
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/tsileo/blobstash/embed"
 	"github.com/tsileo/blobstash/ext/filetree/filetreeutil/meta"
+	"github.com/tsileo/blobstash/ext/filetree/reader/filereader"
 	"github.com/tsileo/blobstash/httputil"
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
 	_ "github.com/tsileo/blobstash/permissions"
@@ -45,7 +47,9 @@ func (ft *FileTreeExt) Close() error {
 // RegisterRoute registers all the HTTP handlers for the extension
 func (ft *FileTreeExt) RegisterRoute(r *mux.Router, middlewares *serverMiddleware.SharedMiddleware) {
 	ft.log.Debug("RegisterRoute")
-	r.Handle("/{ref}", middlewares.Auth(http.HandlerFunc(ft.treeHandler())))
+	r.Handle("/tree/{ref}", middlewares.Auth(http.HandlerFunc(ft.treeHandler())))
+	r.Handle("/file/{ref}", http.HandlerFunc(ft.fileHandler()))
+	// r.Handle("/file/{ref}", middlewares.Auth(http.HandlerFunc(ft.fileHandler())))
 	// r.Handle("/", middlewares.Auth(http.HandlerFunc(docstore.collectionsHandler())))
 }
 
@@ -88,7 +92,7 @@ func (ft *FileTreeExt) fetchDir(n *Node, depth int) error {
 			if err != nil {
 				return err
 			}
-			m, err := meta.NewMetaFromBlob(n.meta.Hash, blob)
+			m, err := meta.NewMetaFromBlob(ref.(string), blob)
 			if err != nil {
 				return err
 			}
@@ -106,6 +110,36 @@ func (ft *FileTreeExt) fetchDir(n *Node, depth int) error {
 	return nil
 }
 
+func (ft *FileTreeExt) fileHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" && r.Method != "HEAD" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		vars := mux.Vars(r)
+
+		hash := vars["ref"]
+		blob, err := ft.blobStore.Get(hash)
+		if err != nil {
+			panic(err)
+		}
+
+		m, err := meta.NewMetaFromBlob(hash, blob)
+		if err != nil {
+			panic(err)
+		}
+		defer m.Close()
+
+		f := filereader.NewFile(ft.blobStore, m)
+		// ServeContent(w ResponseWriter, req *Request, name string, modtime time.Time, content io.ReadSeeker)
+		if r.URL.Query().Get("dl") != "" {
+			w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", m.Name))
+		}
+		mtime, _ := m.Mtime()
+		http.ServeContent(w, r, m.Name, mtime, f)
+	}
+}
+
 func (ft *FileTreeExt) treeHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// TODO(tsileo): limit the max depth of the tree
@@ -114,6 +148,8 @@ func (ft *FileTreeExt) treeHandler() func(http.ResponseWriter, *http.Request) {
 			return
 		}
 		vars := mux.Vars(r)
+
+		// TODO(tsileo): handle HEAD request and returns a 404 if not exsit, same for /fileHandler
 
 		hash := vars["ref"]
 		blob, err := ft.blobStore.Get(hash)
