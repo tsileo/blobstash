@@ -250,7 +250,7 @@ func (s *Server) Run() {
 		panic(err)
 	}
 
-	s.perms = permissions.New(s.Log.New("module", "perms"), s.conf)
+	s.perms = permissions.New(s.Log.New("module", "perms"), []byte(hawkKey), s.conf)
 	if err := s.perms.Load(); err != nil {
 		panic(err)
 	}

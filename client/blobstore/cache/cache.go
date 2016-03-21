@@ -33,6 +33,11 @@ func New(opts *clientutil.Opts, name string) *Cache {
 	}
 }
 
+func (c *Cache) Close() error {
+	c.backend.Close()
+	return c.kv.Close()
+}
+
 func (c *Cache) Vkv() *vkv.DB {
 	return c.kv
 }

@@ -85,12 +85,14 @@ type Permissions struct {
 	log      log2.Logger
 	yubiAuth *yubigo.YubiAuth
 
+	hawkKey []byte
+
 	Keys          map[string]*Key
 	KeysByName    map[string]*Key
 	KeysByYubikey map[string]*Key
 }
 
-func New(log log2.Logger, conf map[string]interface{}) *Permissions {
+func New(log log2.Logger, hawkKey []byte, conf map[string]interface{}) *Permissions {
 	// Check if the Yubico API config is present
 	var err error
 	var yubiAuth *yubigo.YubiAuth
@@ -111,6 +113,7 @@ func New(log log2.Logger, conf map[string]interface{}) *Permissions {
 	return &Permissions{
 		log:           log,
 		yubiAuth:      yubiAuth,
+		hawkKey:       hawkKey,
 		Keys:          map[string]*Key{},
 		KeysByName:    map[string]*Key{},
 		KeysByYubikey: map[string]*Key{},
@@ -167,6 +170,21 @@ func (p *Permissions) AuthFunc(username string, password string, r *http.Request
 func (p *Permissions) RegisterRoute(r *mux.Router, middlewares *serverMiddleware.SharedMiddleware) {
 	r.Handle("/", middlewares.Auth(http.HandlerFunc(p.indexHandler())))
 	r.Handle("/otp", http.HandlerFunc(p.otpHandler()))
+	r.Handle("/hawk", middlewares.Auth(http.HandlerFunc(p.hawkHandler())))
+}
+
+func (p *Permissions) hawkHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case "GET":
+			CheckPerms(r, "hawk")
+			httputil.WriteJSON(w, map[string]interface{}{
+				"key": string(p.hawkKey),
+			})
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}
 }
 
 func (p *Permissions) indexHandler() func(http.ResponseWriter, *http.Request) {
@@ -295,7 +313,7 @@ func CheckPerms(r *http.Request, perms ...string) {
 		k = rv.(*Key)
 	}
 	perm := fmtPerm(perms)
-	if !k.CheckPerms(perm) {
+	if k == nil || !k.CheckPerms(perm) {
 		panic(&PermError{[]string{perm}})
 	}
 }

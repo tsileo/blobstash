@@ -149,6 +149,12 @@ func (ft *FileTreeExt) fileHandler() func(http.ResponseWriter, *http.Request) {
 
 // serveFile serve the node as a file using `net/http` FS util
 func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash string) {
+	var authorized bool
+
+	if err := httputil.CheckBewit(r); err == nil {
+		authorized = true
+	}
+
 	blob, err := ft.blobStore.Get(hash)
 	if err != nil {
 		if err == clientutil.ErrBlobNotFound {
@@ -166,19 +172,18 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 
 	// TODO(tsileo): check auth, either Bewit OR meta XAttrs public
 
-	// var public bool
-	// // Check if the node is public
-	// if m.XAttrs != nil {
-	// 	if pub, ok := m.XAttrs["public"]; ok && pub == "1" {
-	// 		public = true
-	// 	}
-	// }
+	if !authorized && m.XAttrs != nil {
+		// Check if the node is public
+		if pub, ok := m.XAttrs["public"]; ok && pub == "1" {
+			authorized = true
+		}
+	}
 
-	// 	if !public {
-	// 		w.WriteHeader(http.StatusNotFound)
-	// 		return
-	// 	}
-	// FIXME(tsileo): check if the dir/file is public, if not return 404
+	if !authorized {
+		// XXX returns a 404 to prevent leak of hahses
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
 
 	if m.IsDir() {
 		panic(httputil.NewPublicErrorFmt("node is not a file (%s)", m.Type))
@@ -256,6 +261,12 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+		var authorized bool
+
+		if err := httputil.CheckBewit(r); err == nil {
+			authorized = true
+		}
+
 		vars := mux.Vars(r)
 
 		hash := vars["ref"]
@@ -267,19 +278,20 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 			}
 			panic(err)
 		}
-		// FIXME(tsileo): Check either Bewit or public
-		// var public bool
-		// // Check if the node is public
-		// if n.meta.XAttrs != nil {
-		// 	if pub, ok := n.meta.XAttrs["public"]; ok && pub == "1" {
-		// 		public = true
-		// 	}
-		// }
 
-		// if !public {
-		// 	w.WriteHeader(http.StatusNotFound)
-		// 	return
-		// }
+		if !authorized && n.XAttrs != nil {
+			// Check if the node is public
+			if pub, ok := n.XAttrs["public"]; ok && pub == "1" {
+				authorized = true
+			}
+		}
+
+		if !authorized {
+			// XXX returns a 404 to prevent leak of hahses
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
 		if n.Type != "dir" {
 			panic(httputil.NewPublicErrorFmt("node is not a dir (%s)", n.Type))
 		}
