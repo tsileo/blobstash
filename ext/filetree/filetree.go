@@ -3,8 +3,9 @@ package filetree
 import (
 	"fmt"
 	"net/http"
-	"net/url"
+	_ "net/url"
 	"sort"
+	"time"
 
 	"github.com/gorilla/mux"
 	log "gopkg.in/inconshreveable/log15.v2"
@@ -181,6 +182,7 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 
 	if !authorized {
 		// XXX returns a 404 to prevent leak of hahses
+		ft.log.Info("Unauthorized access")
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
@@ -257,7 +259,7 @@ func (ft *FileTreeExt) nodeByRef(hash string) (*Node, error) {
 
 func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" || r.Method != "HEAD" {
+		if r.Method != "GET" && r.Method != "HEAD" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
@@ -286,8 +288,10 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 			}
 		}
 
+		authorized = true
 		if !authorized {
 			// XXX returns a 404 to prevent leak of hahses
+			ft.log.Info("Unauthorized access")
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -315,11 +319,23 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprintf(w, "<!doctype html><title>Filetree - %s</title><pre>\n")
+		fmt.Fprintf(w, "<!doctype html><title>Filetree - %s</title><pre>\n", n.Name)
 		for _, cn := range n.Children {
-			// FIXME(tsileo): Bewit the link if the auth worked
-			curl := url.URL{Path: fmt.Sprintf("/api/ext/filetree/v1/%s/%s", cn.Type, cn.Hash)}
-			fmt.Fprintf(w, "<a href=\"%s\">%s</a>\n", curl.String(), cn.Name)
+			// fmt.Printf("CURL:%+v/%+v", r.URL, r.Header)
+			// XXX(tsileo): apparently, the host is skipped by the go version,
+			// and we can't
+			// curl := url.URL{
+			// 	Scheme: "http",           // r.URL.Scheme,
+			// 	Host:   "localhost:8050", // r.URL.Host,
+			// 	Path:   fmt.Sprintf("/%s/%s", cn.Type[0:1], cn.Hash),
+			// }
+			// ft.log.Debug("Generating bewit", "u", curl.String())
+			p := fmt.Sprintf("/%s/%s", cn.Type[0:1], cn.Hash)
+			bewit, err := httputil.NewBewit(p, 1*time.Hour)
+			if err != nil {
+				panic(err)
+			}
+			fmt.Fprintf(w, "<a href=\"%s\">%s</a>\n", fmt.Sprintf("%s?bewit=%s", p, bewit), cn.Name)
 		}
 		fmt.Fprintf(w, "</pre>\n")
 	}

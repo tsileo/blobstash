@@ -35,6 +35,10 @@ func New(opts *clientutil.Opts) *BlobStore {
 	}
 }
 
+func (bs *BlobStore) Client() *clientutil.Client {
+	return bs.client
+}
+
 // Get fetch the given blob from the remote BlobStash instance.
 func (bs *BlobStore) Get(hash string) ([]byte, error) {
 	resp, err := bs.client.DoReq("GET", fmt.Sprintf("/api/v1/blobstore/blob/%s", hash), nil, nil)

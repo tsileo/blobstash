@@ -3,6 +3,7 @@ package httputil
 import (
 	"crypto/sha256"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/tent/hawk-go"
@@ -17,7 +18,7 @@ See https://github.com/hueniverse/hawk
 */
 
 var key = ""
-var appID = "luascripts"
+var appID = "blobstash"
 
 func SetHawkKey(bkey []byte) {
 	key = string(bkey)
@@ -31,7 +32,6 @@ func SetHawkAppID(newAppID string) {
 func nonceCheckFunc(nonce string, t time.Time, cred *hawk.Credentials) bool {
 	panic("should never be called")
 	return true
-
 }
 
 func credentialsLookupFunc(cred *hawk.Credentials) error {
@@ -47,6 +47,13 @@ func credentialsLookupFunc(cred *hawk.Credentials) error {
 func NewBewit(url string, delay time.Duration) (string, error) {
 	if key == "" {
 		panic("Hawk key not set")
+	}
+	// TODO(tsileo): submit an issue in the hawk lib, the way it cleans path
+	// break URL without host, so I had to add **8** spaces to get it work. (hawk.goL300).
+	// Also, when checking the bewit server-side, we can't know the host/scheme (proxy, GET /), so
+	// we don't include it when generating the bewit.
+	if strings.HasPrefix(url, "/") {
+		url = "        " + url
 	}
 	auth, err := hawk.NewURLAuth(url, &hawk.Credentials{
 		ID:   appID,

@@ -10,6 +10,7 @@ import (
 	"github.com/tsileo/blobstash/vkv"
 )
 
+// FIXME(tsileo): move this in BlobFS as it's becoming too more tied to it.
 // TODO(tsileo): add Clean/Reset/Remove methods
 
 type Cache struct {
@@ -40,6 +41,10 @@ func (c *Cache) Close() error {
 
 func (c *Cache) Vkv() *vkv.DB {
 	return c.kv
+}
+
+func (c *Cache) Client() *clientutil.Client {
+	return c.bs.Client()
 }
 
 func (c *Cache) PutRemote(hash string, blob []byte) error {
