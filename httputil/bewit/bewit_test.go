@@ -129,6 +129,20 @@ var testTable = []struct {
 		method:         "GET",
 		expected:       ErrBadMac,
 	},
+	{
+		creds: creds1,
+		url:   &url.URL{Path: resource2},
+		exp:   1 * time.Minute,
+		alterURLFunc: func(u *url.URL) {
+			// Change the query arg to trigger an `ErrBadMac` error
+			q := u.Query()
+			q.Add("new", "arg")
+			u.RawQuery = q.Encode()
+		},
+		alterCredsFunc: nil,
+		method:         "GET",
+		expected:       ErrBadMac,
+	},
 }
 
 func TestBewit(t *testing.T) {
