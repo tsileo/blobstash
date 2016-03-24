@@ -24,7 +24,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -39,6 +38,17 @@ const (
 	payloadSeparator = `\`
 )
 
+var (
+	ErrEmptyBewit         = errors.New("Empty bewit")
+	ErrInvalidMethod      = errors.New("Invalid method")
+	ErrInvalidEncoding    = errors.New("Invalid bewit encoding")
+	ErrInvalidPayload     = errors.New("Invalid bewit payload")
+	ErrUnknownCredentials = errors.New("Unknown credentials")
+	ErrInvalidTimestamp   = errors.New("Invalid timestamp")
+	ErrAccessExpired      = errors.New("Access expired")
+	ErrBadMac             = errors.New("Bad mac")
+)
+
 type Creds struct {
 	ID  string
 	Key []byte
@@ -48,6 +58,7 @@ func generateNormalizedString(expiration, method, resource string) []byte {
 	var buf bytes.Buffer
 	buf.WriteString(headerStart)
 	buf.WriteString(headerVersion)
+	buf.WriteString(".")
 	buf.WriteString(authType)
 	buf.WriteString(`\n`)
 	buf.WriteString(expiration)
@@ -67,7 +78,7 @@ func computeMac(creds *Creds, expiration, method, resource string) string {
 	return base64.StdEncoding.EncodeToString([]byte(mac.Sum(nil)))
 }
 
-func Bewit(creds *Creds, url *url.URL, ttl time.Duration) (string, error) {
+func Bewit(creds *Creds, url *url.URL, ttl time.Duration) error {
 	expiration := strconv.FormatInt(time.Now().Add(ttl).Unix(), 10)
 	mac := computeMac(creds, expiration, "GET", url.Path)
 	var bewit bytes.Buffer
@@ -79,8 +90,10 @@ func Bewit(creds *Creds, url *url.URL, ttl time.Duration) (string, error) {
 	bewit.WriteString(payloadSeparator)
 	// No ext support so we leave a trailing antislash
 
-	fmt.Printf("bewit=%s", bewit.String())
-	return base64.URLEncoding.EncodeToString(bewit.Bytes()), nil
+	q := url.Query()
+	q.Add("bewit", base64.URLEncoding.EncodeToString(bewit.Bytes()))
+	url.RawQuery = q.Encode()
+	return nil
 }
 
 func Validate(req *http.Request, creds *Creds) error {
@@ -89,13 +102,15 @@ func Validate(req *http.Request, creds *Creds) error {
 	// Extract the bewit
 	bewit := req.URL.Query().Get("bewit")
 	if bewit == "" {
-		return errors.New("Empty bewit")
+		return ErrEmptyBewit
 	}
-	req.URL.Query().Del("bewit")
+	q := req.URL.Query()
+	q.Del("bewit")
+	req.URL.RawQuery = q.Encode()
 
 	// Check the method
 	if req.Method != "GET" && req.Method != "HEAD" {
-		return errors.New("Invalid method")
+		return ErrInvalidMethod
 	}
 
 	// Build the resource arg
@@ -107,33 +122,37 @@ func Validate(req *http.Request, creds *Creds) error {
 	// Decode the bewit
 	rawBewit, err := base64.URLEncoding.DecodeString(bewit)
 	if err != nil {
-		return errors.New("Invalid bewit encoding")
+		return ErrInvalidEncoding
 	}
 
 	parts := bytes.SplitN(rawBewit, []byte(payloadSeparator), -1)
 	if len(parts) < 3 {
-		return errors.New("Invalid bewit payload")
+		return ErrInvalidPayload
 	}
 
 	id := string(parts[0])
 	if creds.ID != id {
-		return errors.New("Unknown credentials")
+		return ErrUnknownCredentials
 	}
 
 	bewitExp := string(parts[1])
 	ts, err := strconv.ParseInt(bewitExp, 10, 64)
 	if err != nil {
-		return errors.New("Invalid timestamp")
+
+		return ErrInvalidTimestamp
 	}
 	bewitMac := parts[2]
-	if time.Unix(ts, 0).After(now) {
-		return errors.New("Access expired")
+	bewitTs := time.Unix(ts, 0)
+	if now.After(bewitTs) {
+		return ErrAccessExpired
 	}
 
 	mac := []byte(computeMac(creds, bewitExp, method, resource))
 
 	if !hmac.Equal(mac, bewitMac) {
-		return errors.New("Bad mac")
+		return ErrBadMac
 	}
+
+	// Authentication successful
 	return nil
 }
