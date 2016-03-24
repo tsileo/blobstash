@@ -80,7 +80,9 @@ func computeMac(creds *Creds, expiration, method, resource string) string {
 
 func Bewit(creds *Creds, url *url.URL, ttl time.Duration) error {
 	expiration := strconv.FormatInt(time.Now().Add(ttl).Unix(), 10)
-	mac := computeMac(creds, expiration, "GET", url.Path)
+	resource := buildResource(url)
+
+	mac := computeMac(creds, expiration, "GET", resource)
 	var bewit bytes.Buffer
 	bewit.WriteString(creds.ID)
 	bewit.WriteString(payloadSeparator)
@@ -94,6 +96,15 @@ func Bewit(creds *Creds, url *url.URL, ttl time.Duration) error {
 	q.Add("bewit", base64.URLEncoding.EncodeToString(bewit.Bytes()))
 	url.RawQuery = q.Encode()
 	return nil
+}
+
+// Build the resource arg
+func buildResource(url *url.URL) string {
+	resource := url.Path
+	if url.RawQuery != "" {
+		resource += "?" + url.RawQuery
+	}
+	return resource
 }
 
 func Validate(req *http.Request, creds *Creds) error {
@@ -111,12 +122,6 @@ func Validate(req *http.Request, creds *Creds) error {
 	// Check the method
 	if req.Method != "GET" && req.Method != "HEAD" {
 		return ErrInvalidMethod
-	}
-
-	// Build the resource arg
-	resource := req.URL.Path
-	if req.URL.RawQuery != "" {
-		resource += "?" + req.URL.RawQuery
 	}
 
 	// Decode the bewit
@@ -147,6 +152,7 @@ func Validate(req *http.Request, creds *Creds) error {
 		return ErrAccessExpired
 	}
 
+	resource := buildResource(req.URL)
 	mac := []byte(computeMac(creds, bewitExp, method, resource))
 
 	if !hmac.Equal(mac, bewitMac) {

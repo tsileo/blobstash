@@ -40,6 +40,15 @@ var testTable = []struct {
 	},
 	{
 		creds:          creds1,
+		url:            &url.URL{Path: resource1, RawQuery: "k1=v1&k2=v2"},
+		exp:            1 * time.Minute,
+		alterURLFunc:   nil,
+		alterCredsFunc: nil,
+		method:         "GET",
+		expected:       nil,
+	},
+	{
+		creds:          creds1,
 		url:            &url.URL{Path: resource1},
 		exp:            1 * time.Minute,
 		alterURLFunc:   nil,
