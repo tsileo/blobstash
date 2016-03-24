@@ -3,7 +3,7 @@ package filetree
 import (
 	"fmt"
 	"net/http"
-	_ "net/url"
+	"net/url"
 	"sort"
 	"time"
 
@@ -152,7 +152,10 @@ func (ft *FileTreeExt) fileHandler() func(http.ResponseWriter, *http.Request) {
 func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash string) {
 	var authorized bool
 
-	if err := httputil.CheckBewit(r); err == nil {
+	if err := httputil.CheckBewit(r); err != nil {
+		ft.log.Debug("invalid bewit", "err", err)
+	} else {
+		ft.log.Debug("valid bewit")
 		authorized = true
 	}
 
@@ -176,6 +179,7 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 	if !authorized && m.XAttrs != nil {
 		// Check if the node is public
 		if pub, ok := m.XAttrs["public"]; ok && pub == "1" {
+			ft.log.Debug("XAttrs public=1")
 			authorized = true
 		}
 	}
@@ -265,7 +269,10 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 		}
 		var authorized bool
 
-		if err := httputil.CheckBewit(r); err == nil {
+		if err := httputil.CheckBewit(r); err != nil {
+			ft.log.Debug("invalid bewit", "err", err)
+		} else {
+			ft.log.Debug("valid bewit")
 			authorized = true
 		}
 
@@ -284,11 +291,11 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 		if !authorized && n.XAttrs != nil {
 			// Check if the node is public
 			if pub, ok := n.XAttrs["public"]; ok && pub == "1" {
+				ft.log.Debug("XAttrs public=1")
 				authorized = true
 			}
 		}
 
-		authorized = true
 		if !authorized {
 			// XXX returns a 404 to prevent leak of hahses
 			ft.log.Info("Unauthorized access")
@@ -321,21 +328,12 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprintf(w, "<!doctype html><title>Filetree - %s</title><pre>\n", n.Name)
 		for _, cn := range n.Children {
-			// fmt.Printf("CURL:%+v/%+v", r.URL, r.Header)
-			// XXX(tsileo): apparently, the host is skipped by the go version,
-			// and we can't
-			// curl := url.URL{
-			// 	Scheme: "http",           // r.URL.Scheme,
-			// 	Host:   "localhost:8050", // r.URL.Host,
-			// 	Path:   fmt.Sprintf("/%s/%s", cn.Type[0:1], cn.Hash),
-			// }
-			// ft.log.Debug("Generating bewit", "u", curl.String())
-			p := fmt.Sprintf("/%s/%s", cn.Type[0:1], cn.Hash)
-			bewit, err := httputil.NewBewit(p, 1*time.Hour)
-			if err != nil {
+			u := &url.URL{Path: fmt.Sprintf("/%s/%s", cn.Type[0:1], cn.Hash)}
+			// TODO(tsileo); make the TTL configurable as config item
+			if err := httputil.NewBewit(u, 1*time.Hour); err != nil {
 				panic(err)
 			}
-			fmt.Fprintf(w, "<a href=\"%s\">%s</a>\n", fmt.Sprintf("%s?bewit=%s", p, bewit), cn.Name)
+			fmt.Fprintf(w, "<a href=\"%s\">%s</a>\n", u.String(), cn.Name)
 		}
 		fmt.Fprintf(w, "</pre>\n")
 	}
