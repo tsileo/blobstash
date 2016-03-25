@@ -293,8 +293,7 @@ func (docstore *DocStoreExt) indexesHandler() func(http.ResponseWriter, *http.Re
 				panic(err)
 			}
 
-			// Returns a 204 on success
-			w.WriteHeader(http.StatusNoContent)
+			w.WriteHeader(http.StatusCreated)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -706,7 +705,7 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 			w.Header().Set("BlobStash-DocStore-Doc-Id", _id.String())
 			w.Header().Set("BlobStash-DocStore-Doc-Hash", _id.Hash())
 			w.Header().Set("BlobStash-DocStore-Doc-CreatedAt", strconv.Itoa(_id.Ts()))
-			w.WriteHeader(http.StatusNoContent)
+			w.WriteHeader(http.StatusCreated)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
