@@ -19,13 +19,10 @@ import (
 	"github.com/tsileo/blobstash/permissions"
 )
 
-// TODO(tsileo): handle the fetching of meta from the FS name and reconstruct the vkkeky, also ensure XAttrs are public and keep a ref
+// TODO(tsileo): handle the fetching of meta from the FS name and reconstruct the vkv key
 // to the root in children link
 // TODO(tsileo): bind a folder to the root path, e.g. {hostname}/ => dirHandler?
 // TODO(tsileo): a multi-part upload endpoint (but without dir capabilities, at least for now)
-
-// XXX(tsileo): IDEAS:
-// - last_sync virtual XAttr?
 
 var (
 	indexFile = "index.html"
@@ -40,6 +37,8 @@ type FileTreeExt struct {
 	kvStore   *embed.KvStore
 	blobStore *embed.BlobStore
 
+	shareTTL time.Duration
+
 	log log.Logger
 }
 
@@ -48,6 +47,7 @@ func New(logger log.Logger, kvStore *embed.KvStore, blobStore *embed.BlobStore) 
 	return &FileTreeExt{
 		kvStore:   kvStore,
 		blobStore: blobStore,
+		shareTTL:  1 * time.Hour,
 		log:       logger,
 	}, nil
 }
@@ -174,8 +174,6 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 	}
 	defer m.Close()
 
-	// TODO(tsileo): check auth, either Bewit OR meta XAttrs public
-
 	if !authorized && m.XAttrs != nil {
 		// Check if the node is public
 		if pub, ok := m.XAttrs["public"]; ok && pub == "1" {
@@ -185,9 +183,8 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 	}
 
 	if !authorized {
-		// XXX returns a 404 to prevent leak of hahses
-		ft.log.Info("Unauthorized access")
-		w.WriteHeader(http.StatusNotFound)
+		// Rreturns a 404 to prevent leak of hashes
+		notFound(w)
 		return
 	}
 
@@ -203,7 +200,7 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", m.Name))
 	}
 
-	// Serve the file content using the same code as the `http.ServeFile`
+	// Serve the file content using the same code as the `http.ServeFile` (it'll handle HEAD request)
 	mtime, _ := m.Mtime()
 	http.ServeContent(w, r, m.Name, mtime, f)
 }
@@ -214,11 +211,10 @@ func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 		permissions.CheckPerms(r, PermName)
 
 		// TODO(tsileo): limit the max depth of the tree configurable via query args
-		if r.Method != "GET" {
+		if r.Method != "GET" && r.Method != "HEAD" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		// TODO(tsileo): handle HEAD request and returns a 404 if not exsit, same for /fileHandler
 
 		vars := mux.Vars(r)
 
@@ -231,6 +227,11 @@ func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 			}
 			panic(err)
 		}
+
+		if r.Method == "HEAD" {
+			return
+		}
+
 		if err := ft.fetchDir(n, 1); err != nil {
 			panic(err)
 		}
@@ -259,6 +260,13 @@ func (ft *FileTreeExt) nodeByRef(hash string) (*Node, error) {
 	}
 
 	return n, nil
+}
+
+func notFound(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusNotFound)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, "<!doctype html><title>Filetree</title><p>%s</p>\n", http.StatusText(http.StatusNotFound))
+
 }
 
 func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
@@ -297,9 +305,9 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 		}
 
 		if !authorized {
-			// XXX returns a 404 to prevent leak of hahses
+			// Returns a 404 to prevent leak of hashes
 			ft.log.Info("Unauthorized access")
-			w.WriteHeader(http.StatusNotFound)
+			notFound(w)
 			return
 		}
 
@@ -329,8 +337,7 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 		fmt.Fprintf(w, "<!doctype html><title>Filetree - %s</title><pre>\n", n.Name)
 		for _, cn := range n.Children {
 			u := &url.URL{Path: fmt.Sprintf("/%s/%s", cn.Type[0:1], cn.Hash)}
-			// TODO(tsileo); make the TTL configurable as config item
-			if err := httputil.NewBewit(u, 1*time.Hour); err != nil {
+			if err := httputil.NewBewit(u, ft.shareTTL); err != nil {
 				panic(err)
 			}
 			fmt.Fprintf(w, "<a href=\"%s\">%s</a>\n", u.String(), cn.Name)
