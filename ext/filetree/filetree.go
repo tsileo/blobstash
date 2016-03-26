@@ -174,12 +174,9 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 	}
 	defer m.Close()
 
-	if !authorized && m.XAttrs != nil {
-		// Check if the node is public
-		if pub, ok := m.XAttrs["public"]; ok && pub == "1" {
-			ft.log.Debug("XAttrs public=1")
-			authorized = true
-		}
+	if !authorized && m.IsPublic() {
+		ft.log.Debug("XAttrs public=1")
+		authorized = true
 	}
 
 	if !authorized {
@@ -296,12 +293,9 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 			panic(err)
 		}
 
-		if !authorized && n.XAttrs != nil {
-			// Check if the node is public
-			if pub, ok := n.XAttrs["public"]; ok && pub == "1" {
-				ft.log.Debug("XAttrs public=1")
-				authorized = true
-			}
+		if !authorized && n.meta.IsPublic() {
+			ft.log.Debug("XAttrs public=1")
+			authorized = true
 		}
 
 		if !authorized {

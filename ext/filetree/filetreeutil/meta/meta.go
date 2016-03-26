@@ -87,6 +87,16 @@ func NewMetaFromBlob(hash string, blob []byte) (*Meta, error) {
 	return meta, nil
 }
 
+func (m *Meta) IsPublic() (public bool) {
+	if m.XAttrs != nil {
+		// Check if the node is public
+		if pub, ok := m.XAttrs["public"]; ok && pub == "1" {
+			public = true
+		}
+	}
+	return
+}
+
 func (m *Meta) ContentType() string {
 	if m.IsFile() {
 		return mime.TypeByExtension(filepath.Ext(m.Name))
