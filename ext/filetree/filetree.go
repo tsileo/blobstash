@@ -18,7 +18,7 @@ import (
 	"github.com/tsileo/blobstash/ext/filetree/reader/filereader"
 	"github.com/tsileo/blobstash/httputil"
 	serverMiddleware "github.com/tsileo/blobstash/middleware"
-	"github.com/tsileo/blobstash/permissions"
+	_ "github.com/tsileo/blobstash/permissions"
 )
 
 // TODO(tsileo): handle the fetching of meta from the FS name and reconstruct the vkv key
@@ -141,19 +141,50 @@ func (ft *FileTreeExt) fetchDir(n *Node, depth int) error {
 	return nil
 }
 
+func (ft *FileTreeExt) loadFS(name string) (*fsmod.FS, error) {
+	fs := &fsmod.FS{}
+	kv, err := ft.kvStore.Get(fmt.Sprintf(fsmod.FSKeyFmt, name), -1)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal([]byte(kv.Value), fs); err != nil {
+		return nil, err
+	}
+	return fs, nil
+}
+
 func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Check permissions
+		// permissions.CheckPerms(r, PermName)
+
 		// TODO(tsileo): list available FS, and display them
 		switch r.Method {
 		case "GET", "HEAD":
 			if r.Method == "HEAD" {
 				return
 			}
-			httputil.WriteJSON(w, map[string]interface{}{})
+			res, err := ft.kvStore.Keys("filetree:fs:", "filetree:fs:\xff", 0)
+			if err != nil {
+				panic(err)
+			}
+			out := []*fsmod.FS{}
+			for _, kv := range res {
+				fs := &fsmod.FS{}
+				if err := json.Unmarshal([]byte(kv.Value), fs); err != nil {
+					panic(err)
+				}
+				out = append(out, fs)
+			}
+			httputil.WriteJSON(w, out)
 		case "POST":
 			defer r.Body.Close()
 			fs := &fsmod.FS{}
 			if err := json.NewDecoder(r.Body).Decode(fs); err != nil {
+				panic(err)
+			}
+			fs.SetDB(ft.kvStore)
+			if err := fs.Mutate(fs.Ref); err != nil {
 				panic(err)
 			}
 			httputil.WriteJSON(w, fs)
@@ -166,17 +197,34 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 
 func (ft *FileTreeExt) fsByNameHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Display a single FS and handle mutation via POST
+		// Check permissions
+		// permissions.CheckPerms(r, PermName)
+		vars := mux.Vars(r)
+
+		name := vars["name"]
+		fs, err := ft.loadFS(name)
+		if err != nil {
+			panic(err)
+		}
+
+		// TODO(tsileo): Display a single FS and handle mutation via POST
 		switch r.Method {
 		case "GET", "HEAD":
 			if r.Method == "HEAD" {
 				return
 			}
-			vars := mux.Vars(r)
-
-			name := vars["name"]
-			httputil.WriteJSON(w, map[string]interface{}{"name": name})
+			httputil.WriteJSON(w, fs)
 		case "POST":
+			defer r.Body.Close()
+			fsUpdate := &fsmod.FS{}
+			if err := json.NewDecoder(r.Body).Decode(fsUpdate); err != nil {
+				panic(err)
+			}
+			fs.SetDB(ft.kvStore)
+			if err := fs.Mutate(fsUpdate.Ref); err != nil {
+				panic(err)
+			}
+
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
@@ -254,9 +302,10 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Check permissions
-		permissions.CheckPerms(r, PermName)
+		// permissions.CheckPerms(r, PermName)
 
 		// TODO(tsileo): limit the max depth of the tree configurable via query args
+		// FIXME(tsileo): provides the ability to return Bewit signed / or public link
 		if r.Method != "GET" && r.Method != "HEAD" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
