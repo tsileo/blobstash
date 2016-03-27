@@ -177,6 +177,7 @@ func main() {
 ## Roadmap / Ideas
 
 - [ ] Bind a Lua app to root (`/`)
+- [ ] Enable vendoring of deps
 - [ ] A `blobstash-sync` subcommand
 - [ ] Fine grained permission for the document store
 - [ ] A File extension with tree suport (files as first-class citizen)

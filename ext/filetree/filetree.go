@@ -158,7 +158,7 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 		// Check permissions
 		// permissions.CheckPerms(r, PermName)
 
-		// TODO(tsileo): list available FS, and display them
+		// List available FS, and display them
 		switch r.Method {
 		case "GET", "HEAD":
 			if r.Method == "HEAD" {
@@ -207,7 +207,7 @@ func (ft *FileTreeExt) fsByNameHandler() func(http.ResponseWriter, *http.Request
 			panic(err)
 		}
 
-		// TODO(tsileo): Display a single FS and handle mutation via POST
+		// Display a single FS and handle mutation via POST
 		switch r.Method {
 		case "GET", "HEAD":
 			if r.Method == "HEAD" {
@@ -220,6 +220,7 @@ func (ft *FileTreeExt) fsByNameHandler() func(http.ResponseWriter, *http.Request
 			if err := json.NewDecoder(r.Body).Decode(fsUpdate); err != nil {
 				panic(err)
 			}
+			// FIXME(tsileo): handle `Data` field mutation
 			fs.SetDB(ft.kvStore)
 			if err := fs.Mutate(fsUpdate.Ref); err != nil {
 				panic(err)
@@ -321,6 +322,15 @@ func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 				return
 			}
 			panic(err)
+		}
+
+		if r.URL.Query().Get("bewit") != "" {
+			u := &url.URL{Path: fmt.Sprintf("/%s/%s", n.Type[0:1], n.Hash)}
+			if err := httputil.NewBewit(u, ft.shareTTL); err != nil {
+				panic(err)
+			}
+			w.Header().Add("BlobStash-FileTree-SemiPrivate-Link", u.String())
+			w.Header().Add("BlobStash-FileTree-Bewit", u.Query().Get("bewit"))
 		}
 
 		if r.Method == "HEAD" {
