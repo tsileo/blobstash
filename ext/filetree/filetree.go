@@ -439,8 +439,12 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 		fmt.Fprintf(w, "<!doctype html><title>Filetree - %s</title><pre>\n", n.Name)
 		for _, cn := range n.Children {
 			u := &url.URL{Path: fmt.Sprintf("/%s/%s", cn.Type[0:1], cn.Hash)}
-			if err := httputil.NewBewit(u, ft.shareTTL); err != nil {
-				panic(err)
+
+			// Only compute the Bewit if the node is not public
+			if !cn.meta.IsPublic() {
+				if err := httputil.NewBewit(u, ft.shareTTL); err != nil {
+					panic(err)
+				}
 			}
 			fmt.Fprintf(w, "<a href=\"%s\">%s</a>\n", u.String(), cn.Name)
 		}
