@@ -1,3 +1,8 @@
+/*
+
+Package meta implement the node specification for the filetree extension.
+
+*/
 package meta
 
 import (
@@ -30,7 +35,8 @@ type Meta struct {
 	ModTime string                 `json:"mtime"`
 	Refs    []interface{}          `json:"refs"`
 	Version string                 `json:"version"`
-	Extra   map[string]interface{} `json:"extra,omitempty"`
+	Extra   map[string]interface{} `json:"extra,omitempty"` // TODO(tsileo): remove the `Extra` attr from BlobFS and filetree ext
+	Data    map[string]interface{} `json:"data,omitempty"`
 	XAttrs  map[string]string      `json:"xattrs,omitempty"`
 	Hash    string                 `json:"-"`
 }
@@ -39,6 +45,7 @@ func (m *Meta) free() {
 	m.Refs = m.Refs[:0]
 	m.Name = ""
 	m.Extra = nil
+	m.Data = nil
 	m.Type = ""
 	m.Size = 0
 	m.Mode = 0

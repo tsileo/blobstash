@@ -1,6 +1,7 @@
 package filetree
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/tsileo/blobstash/client/clientutil"
 	"github.com/tsileo/blobstash/embed"
+	fsmod "github.com/tsileo/blobstash/ext/filetree/filetreeutil/fs"
 	"github.com/tsileo/blobstash/ext/filetree/filetreeutil/meta"
 	"github.com/tsileo/blobstash/ext/filetree/reader/filereader"
 	"github.com/tsileo/blobstash/httputil"
@@ -65,6 +67,10 @@ func (ft *FileTreeExt) RegisterRoute(root, r *mux.Router, middlewares *serverMid
 	// Public/semi-private handler
 	dirHandler := http.HandlerFunc(ft.dirHandler())
 	fileHandler := http.HandlerFunc(ft.fileHandler())
+
+	r.Handle("/fs", http.HandlerFunc(ft.fsHandler()))
+	r.Handle("/fs/{name}", http.HandlerFunc(ft.fsByNameHandler()))
+
 	// Hook the standard endpint
 	r.Handle("/dir/{ref}", dirHandler)
 	r.Handle("/file/{ref}", fileHandler)
@@ -133,6 +139,49 @@ func (ft *FileTreeExt) fetchDir(n *Node, depth int) error {
 	}
 	n.meta.Close()
 	return nil
+}
+
+func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// TODO(tsileo): list available FS, and display them
+		switch r.Method {
+		case "GET", "HEAD":
+			if r.Method == "HEAD" {
+				return
+			}
+			httputil.WriteJSON(w, map[string]interface{}{})
+		case "POST":
+			defer r.Body.Close()
+			fs := &fsmod.FS{}
+			if err := json.NewDecoder(r.Body).Decode(fs); err != nil {
+				panic(err)
+			}
+			httputil.WriteJSON(w, fs)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+	}
+}
+
+func (ft *FileTreeExt) fsByNameHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Display a single FS and handle mutation via POST
+		switch r.Method {
+		case "GET", "HEAD":
+			if r.Method == "HEAD" {
+				return
+			}
+			vars := mux.Vars(r)
+
+			name := vars["name"]
+			httputil.WriteJSON(w, map[string]interface{}{"name": name})
+		case "POST":
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+	}
 }
 
 func (ft *FileTreeExt) fileHandler() func(http.ResponseWriter, *http.Request) {
