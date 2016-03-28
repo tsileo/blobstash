@@ -324,12 +324,18 @@ func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 			panic(err)
 		}
 
+		// Output some headers about ACLs
+		u := &url.URL{Path: fmt.Sprintf("/%s/%s", n.Type[0:1], n.Hash)}
+		if n.meta.IsPublic() {
+			w.Header().Add("BlobStash-FileTree-Public", "1")
+			w.Header().Add("BlobStash-FileTree-Public-Path", u.String())
+		}
+
 		if r.URL.Query().Get("bewit") != "" {
-			u := &url.URL{Path: fmt.Sprintf("/%s/%s", n.Type[0:1], n.Hash)}
 			if err := httputil.NewBewit(u, ft.shareTTL); err != nil {
 				panic(err)
 			}
-			w.Header().Add("BlobStash-FileTree-SemiPrivate-Link", u.String())
+			w.Header().Add("BlobStash-FileTree-SemiPrivate-Path", u.String())
 			w.Header().Add("BlobStash-FileTree-Bewit", u.Query().Get("bewit"))
 		}
 
