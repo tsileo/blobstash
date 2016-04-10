@@ -135,6 +135,7 @@ func New(conf map[string]interface{}) *Server {
 	return server
 }
 
+// TODO(tsileo): make the process of saving block synchrone
 func (s *Server) processBlobs() {
 	s.wg.Add(1)
 	defer s.wg.Done()
@@ -322,6 +323,7 @@ func (s *Server) Run() {
 	r.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
+	// FIXME(tsileo): provides a way to allow app/filetree indexing??
 	r.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`User-agent: *
 Disallow: /`))
