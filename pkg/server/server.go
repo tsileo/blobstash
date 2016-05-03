@@ -3,53 +3,45 @@ package server
 import (
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/tsileo/blobstash/pkg/blobstore"
+	"github.com/tsileo/blobstash/pkg/kvstore"
 
 	"github.com/gorilla/mux"
+	log "github.com/inconshreveable/log15"
 )
 
-type Apper interface {
-	// Register(*mux.Router)
-	Name() string
-	Hook() interface{}
-	Required() []string
-	AddHook(string, interface{})
+type App interface {
+	Register(*mux.Router)
 }
 
 type Server struct {
-	apps   map[string]Apper
 	router *mux.Router
 }
 
 func New() (*Server, error) {
 	s := &Server{
-		apps:   map[string]Apper{},
 		router: mux.NewRouter(),
 	}
-	// Routes consist of a path and a handler function.
-
+	logger := log.New()
+	logger.SetHandler(log.StreamHandler(os.Stdout, log.TerminalFormat()))
 	// Load the blobstore
-	blobstore, err := blobstore.New()
+	blobstore, err := blobstore.New(logger.New("app", "blobstore"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize blobstore app")
 	}
-	s.addApp(s.router.PathPrefix("/api/blobstore").Subrouter(), blobstore)
+	// FIXME(tsileo): handle middleware in the `Register` interface
+	blobstore.Register(s.router.PathPrefix("/api/blobstore").Subrouter())
+	// Load the kvstore
+	kvstore, err := kvstore.New(logger.New("app", "kvstore"), blobstore)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize kvstore app")
+	}
+	kvstore.Register(s.router.PathPrefix("/api/kvstore").Subrouter())
 	return s, nil
 }
 
 func (s *Server) Serve() error {
-	return http.ListenAndServe(":8000", s.router)
-}
-
-func (s *Server) addApp(r *mux.Router, app Apper) error {
-	s.apps[app.Name()] = app
-	for _, reqName := range app.Required() {
-		if _, ok := s.apps[reqName]; !ok {
-			return fmt.Errorf("missing %s requirement", reqName)
-		}
-		app.AddHook(reqName, s.apps[reqName])
-	}
-	// app.Register(r)
-	return nil
+	return http.ListenAndServe(":8051", s.router)
 }

@@ -1,6 +1,7 @@
 package blobstore
 
 import (
+	log "github.com/inconshreveable/log15"
 	"golang.org/x/net/context"
 
 	_ "github.com/tsileo/blobstash/backend"
@@ -28,9 +29,12 @@ var DefaultConf = map[string]interface{}{
 
 type BlobStore struct {
 	Router *router.Router
+
+	log log.Logger
 }
 
-func New() (*BlobStore, error) {
+func New(logger log.Logger) (*BlobStore, error) {
+	logger.Debug("init")
 	conf := DefaultConf
 	// Intialize the router and load the backends
 	r := router.New(conf["router"].([]interface{}))
@@ -40,6 +44,7 @@ func New() (*BlobStore, error) {
 	}
 	return &BlobStore{
 		Router: r,
+		log:    logger,
 	}, nil
 }
 
