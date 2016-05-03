@@ -13,6 +13,7 @@ import (
 	"github.com/tsileo/blobstash/httputil"
 	"github.com/tsileo/blobstash/pkg/blobstore"
 	"github.com/tsileo/blobstash/pkg/ctxutil"
+	"github.com/tsileo/blobstash/pkg/meta"
 	"github.com/tsileo/blobstash/vkv"
 )
 
@@ -20,12 +21,29 @@ import (
 
 type KvStore struct {
 	blobStore *blobstore.BlobStore
+	meta      *meta.Meta
 	log       log.Logger
 
 	vkv *vkv.DB
 }
 
-func New(logger log.Logger, blobStore *blobstore.BlobStore) (*KvStore, error) {
+type KvMeta struct {
+	kv *vkv.KeyValue
+}
+
+func NewKvMeta(kv *vkv.KeyValue) *KvMeta {
+	return &KvMeta{kv: kv}
+}
+
+func (km *KvMeta) Type() string {
+	return "kv"
+}
+
+func (km *KvMeta) Dump() []byte {
+	return []byte{}
+}
+
+func New(logger log.Logger, blobStore *blobstore.BlobStore, metaHandler *meta.Meta) (*KvStore, error) {
 	logger.Debug("init")
 	// TODO(tsileo): handle config
 	kv, err := vkv.New("/Users/thomas/var/blobstash/vkv")
@@ -34,6 +52,7 @@ func New(logger log.Logger, blobStore *blobstore.BlobStore) (*KvStore, error) {
 	}
 	return &KvStore{
 		blobStore: blobStore,
+		meta:      metaHandler,
 		log:       logger,
 		vkv:       kv,
 	}, nil
@@ -80,6 +99,11 @@ func (kv *KvStore) getHandler() func(http.ResponseWriter, *http.Request) {
 				version = iversion
 			}
 			res, err := kv.vkv.Put(key, v, version)
+			kvmeta := NewKvMeta(res)
+			if err := kv.meta.Save(kvmeta); err != nil {
+				httputil.Error(w, err)
+				return
+			}
 			srw := httputil.NewSnappyResponseWriter(w, r)
 			httputil.WriteJSON(srw, res)
 			srw.Close()

@@ -7,6 +7,7 @@ import (
 
 	"github.com/tsileo/blobstash/pkg/blobstore"
 	"github.com/tsileo/blobstash/pkg/kvstore"
+	"github.com/tsileo/blobstash/pkg/meta"
 
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
@@ -33,8 +34,13 @@ func New() (*Server, error) {
 	}
 	// FIXME(tsileo): handle middleware in the `Register` interface
 	blobstore.Register(s.router.PathPrefix("/api/blobstore").Subrouter())
+	// Load the meta
+	metaHandler, err := meta.New(logger.New("app", "meta"), blobstore)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize blobstore meta")
+	}
 	// Load the kvstore
-	kvstore, err := kvstore.New(logger.New("app", "kvstore"), blobstore)
+	kvstore, err := kvstore.New(logger.New("app", "kvstore"), blobstore, metaHandler)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize kvstore app")
 	}
