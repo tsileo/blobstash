@@ -17,6 +17,8 @@ import (
 	"github.com/tsileo/blobstash/vkv"
 )
 
+const KvType = "kv"
+
 // FIXME(tsileo): take a ctx as first arg for each method
 
 type KvStore struct {
@@ -36,7 +38,7 @@ func NewKvMeta(kv *vkv.KeyValue) *KvMeta {
 }
 
 func (km *KvMeta) Type() string {
-	return "kv"
+	return KvType
 }
 
 func (km *KvMeta) Dump() []byte {
@@ -50,12 +52,19 @@ func New(logger log.Logger, blobStore *blobstore.BlobStore, metaHandler *meta.Me
 	if err != nil {
 		return nil, err
 	}
-	return &KvStore{
+	kvStore := &KvStore{
 		blobStore: blobStore,
 		meta:      metaHandler,
 		log:       logger,
 		vkv:       kv,
-	}, nil
+	}
+	metaHandler.RegisterApplyFunc(KvType, kvStore.ApplyMetaFunc)
+	return kvStore, nil
+}
+
+func (kv *KvStore) ApplyMetaFunc([]byte) error {
+	// TODO(ts): decode the encoded kv entry
+	return nil
 }
 
 func (kv *KvStore) getHandler() func(http.ResponseWriter, *http.Request) {

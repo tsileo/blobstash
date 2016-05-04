@@ -21,19 +21,26 @@ type MetaData interface {
 }
 
 type Meta struct {
-	blobStore *blobstore.BlobStore
-	log       log.Logger
+	blobStore  *blobstore.BlobStore
+	log        log.Logger
+	applyFuncs map[string]func([]byte) error // map[<metadata type>]<load func>
 }
 
 func New(logger log.Logger, blobStore *blobstore.BlobStore) (*Meta, error) {
 	return &Meta{
-		log:       logger,
-		blobStore: blobStore,
+		log:        logger,
+		blobStore:  blobStore,
+		applyFuncs: map[string]func([]byte) error{},
 	}, nil
+}
+
+func (m *Meta) RegisterApplyFunc(t string, f func([]byte) error) {
+	m.applyFuncs[t] = f
 }
 
 func (m *Meta) Save(data MetaData) error {
 	var buf bytes.Buffer
+	// <meta blob header> + <type size> + <type bytes> + <data size> + <data>
 	buf.Write([]byte(MetaBlobHeader))
 	tmp := make([]byte, 4)
 	binary.BigEndian.PutUint32(tmp[:], uint32(len(data.Type())))
