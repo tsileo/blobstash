@@ -5,9 +5,11 @@ import (
 	"golang.org/x/net/context"
 
 	_ "github.com/tsileo/blobstash/backend"
+	"github.com/tsileo/blobstash/backend/blobsfile"
 	"github.com/tsileo/blobstash/config"
 	"github.com/tsileo/blobstash/config/pathutil"
 	"github.com/tsileo/blobstash/pkg/blob"
+	"github.com/tsileo/blobstash/pkg/ctxutil"
 	"github.com/tsileo/blobstash/pkg/router"
 )
 
@@ -49,34 +51,51 @@ func New(logger log.Logger) (*BlobStore, error) {
 }
 
 func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
+	_, fromHttp := ctxutil.Request(ctx)
+	bs.log.Info("OP Put", "from_http", fromHttp, "hash", blob.Hash, "len", len(blob.Data))
 	backend := bs.Router.Route(ctx)
-
 	// Check if the blob already exists
 	exists, err := backend.Exists(blob.Hash)
 	if err != nil {
 		return err
 	}
 	if exists {
+		bs.log.Debug("blob already exists", "hash", blob.Hash)
 		return nil
 	}
-
+	// Recompute the blob to ensure it's not corrupted
+	if err := blob.Check(); err != nil {
+		return err
+	}
 	// Save the blob if needed
-	// XXX(tsileo): ensure the hash get verified somewhere
 	if err := backend.Put(blob.Hash, blob.Data); err != nil {
 		return err
 	}
+	bs.log.Debug("blob saved", "hash", blob.Hash)
 	return nil
 }
 
 func (bs *BlobStore) Get(ctx context.Context, hash string) ([]byte, error) {
+	_, fromHttp := ctxutil.Request(ctx)
+	bs.log.Info("OP Get", "from_http", fromHttp, "hash", hash)
 	return bs.Router.Route(ctx).Get(hash)
 }
 
 func (bs *BlobStore) Stat(ctx context.Context, hash string) (bool, error) {
+	_, fromHttp := ctxutil.Request(ctx)
+	bs.log.Info("OP Stat", "from_http", fromHttp, "hash", hash)
 	return bs.Router.Route(ctx).Exists(hash)
 }
 
-func (bs *BlobStore) Enumerate() error {
+func (bs *BlobStore) Enumerate(ctx context.Context, start, end string, limit int) ([]*blob.SizedBlobRef, error) {
+	_, fromHttp := ctxutil.Request(ctx)
+	bs.log.Info("OP Enumerate", "from_http", fromHttp, "start", start, "end", end, "limit", limit)
+	refs := []*blob.SizedBlobRef{}
+	back := bs.Router.Route(ctx).(*blobsfile.BlobsFileBackend)
+	// TODO(tsileo): implements `Enumerate2`
+	if err := back.Enumerate2(start, end, limit); err != nil {
+		return nil, err
+	}
 	// FIXME(tsileo): handle enumerate
-	return nil
+	return refs, nil
 }

@@ -22,6 +22,13 @@ type Blob struct {
 	Data []byte
 }
 
+func New(data []byte) *Blob {
+	return &Blob{
+		Data: data,
+		Hash: hashutil.Compute(data),
+	}
+}
+
 func (b *Blob) Check() error {
 	chash := hashutil.Compute(b.Data)
 	if b.Hash != chash {

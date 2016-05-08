@@ -1,6 +1,7 @@
 package kvstore
 
 import (
+	"encoding/json"
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
 	"golang.org/x/net/context"
@@ -41,8 +42,8 @@ func (km *KvMeta) Type() string {
 	return KvType
 }
 
-func (km *KvMeta) Dump() []byte {
-	return []byte{}
+func (km *KvMeta) Dump() ([]byte, error) {
+	return json.Marshal(km.kv)
 }
 
 func New(logger log.Logger, blobStore *blobstore.BlobStore, metaHandler *meta.Meta) (*KvStore, error) {
@@ -157,5 +158,5 @@ func (kv *KvStore) getHandler() func(http.ResponseWriter, *http.Request) {
 // }
 
 func (kv *KvStore) Register(r *mux.Router) {
-	r.Handle("/key/{}", http.HandlerFunc(kv.getHandler()))
+	r.Handle("/key/{key}", http.HandlerFunc(kv.getHandler()))
 }

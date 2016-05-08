@@ -703,3 +703,7 @@ func (backend *BlobsFileBackend) Enumerate(blobs chan<- string) error {
 	}
 	return nil
 }
+
+func (backend *BlobsFileBackend) Enumerate2(start, end string, limit int) error {
+	return nil
+}

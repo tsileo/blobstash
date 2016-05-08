@@ -69,6 +69,7 @@ func (req *Request) String() string {
 		req.Type, req.MetaBlob, req.Namespace)
 }
 
+// Meta returns a new `Request` with the `MetaBlob` field set to `true`
 func (req *Request) Meta() *Request {
 	return &Request{
 		Type:      req.Type,
