@@ -8,6 +8,7 @@ import (
 	"github.com/tsileo/blobstash/pkg/blobstore"
 	"github.com/tsileo/blobstash/pkg/kvstore"
 	"github.com/tsileo/blobstash/pkg/meta"
+	_ "github.com/tsileo/blobstash/pkg/middleware"
 
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
@@ -49,5 +50,6 @@ func New() (*Server, error) {
 }
 
 func (s *Server) Serve() error {
+	// return http.ListenAndServe(":8051", middleware.Secure(s.router))
 	return http.ListenAndServe(":8051", s.router)
 }

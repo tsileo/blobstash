@@ -63,9 +63,34 @@ func New(logger log.Logger, blobStore *blobstore.BlobStore, metaHandler *meta.Me
 	return kvStore, nil
 }
 
-func (kv *KvStore) ApplyMetaFunc([]byte) error {
-	// TODO(ts): decode the encoded kv entry
+func (kv *KvStore) ApplyMetaFunc(data []byte) error {
+	rkv := &vkv.KeyValue{}
+	if err := json.Unmarshal(data, rkv); err != nil {
+		return err
+	}
+	kv.log.Debug("Applying meta", "kv", rkv)
+	// TODO(ts): apply the kv
 	return nil
+}
+
+func (kv *KvStore) Get(ctx context.Context, key string, version int) (*vkv.KeyValue, error) {
+	_, fromHttp := ctxutil.Request(ctx)
+	kv.log.Info("OP Get", "from_http", fromHttp, "key", key, "version", version)
+	return kv.vkv.Get(key, -1)
+}
+
+func (kv *KvStore) Put(ctx context.Context, key, value string, version int) (*vkv.KeyValue, error) {
+	_, fromHttp := ctxutil.Request(ctx)
+	kv.log.Info("OP Put", "from_http", fromHttp, "key", key, "value", value, "version", version)
+	res, err := kv.vkv.Put(key, value, version)
+	if err != nil {
+		return nil, err
+	}
+	kvmeta := NewKvMeta(res)
+	if err := kv.meta.Save(kvmeta); err != nil {
+		return nil, err
+	}
+	return res, nil
 }
 
 func (kv *KvStore) getHandler() func(http.ResponseWriter, *http.Request) {
@@ -73,14 +98,14 @@ func (kv *KvStore) getHandler() func(http.ResponseWriter, *http.Request) {
 		key := mux.Vars(r)["key"]
 		switch r.Method {
 		//POST takes the uploaded file(s) and saves it to disk.
-		case "GET, HEAD":
+		case "GET", "HEAD":
 			ctx := ctxutil.WithRequest(context.Background(), r)
 
 			if ns := r.Header.Get("BlobStash-Namespace"); ns != "" {
 				ctx = ctxutil.WithNamespace(ctx, ns)
 			}
 
-			item, err := kv.vkv.Get(key, -1)
+			item, err := kv.Get(ctx, key, -1)
 			if err != nil {
 				panic(err)
 			}
@@ -90,6 +115,12 @@ func (kv *KvStore) getHandler() func(http.ResponseWriter, *http.Request) {
 			srw.Close()
 			return
 		case "POST":
+			ctx := ctxutil.WithRequest(context.Background(), r)
+
+			if ns := r.Header.Get("BlobStash-Namespace"); ns != "" {
+				ctx = ctxutil.WithNamespace(ctx, ns)
+			}
+
 			// Parse the form value
 			hah, err := ioutil.ReadAll(r.Body)
 			values, err := url.ParseQuery(string(hah))
@@ -108,9 +139,8 @@ func (kv *KvStore) getHandler() func(http.ResponseWriter, *http.Request) {
 				}
 				version = iversion
 			}
-			res, err := kv.vkv.Put(key, v, version)
-			kvmeta := NewKvMeta(res)
-			if err := kv.meta.Save(kvmeta); err != nil {
+			res, err := kv.Put(ctx, key, v, version)
+			if err != nil {
 				httputil.Error(w, err)
 				return
 			}
