@@ -13,6 +13,7 @@ import (
 	mblob "github.com/tsileo/blobstash/pkg/blob"
 	"github.com/tsileo/blobstash/pkg/ctxutil"
 	"github.com/tsileo/blobstash/pkg/hashutil"
+	"github.com/tsileo/blobstash/pkg/middleware"
 )
 
 func (bs *BlobStore) uploadHandler() func(http.ResponseWriter, *http.Request) {
@@ -108,7 +109,38 @@ func (bs *BlobStore) blobHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
+func (bs *BlobStore) enumerateHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := ctxutil.WithRequest(context.Background(), r)
+
+		if ns := r.Header.Get("BlobStash-Namespace"); ns != "" {
+			ctx = ctxutil.WithNamespace(ctx, ns)
+		}
+		switch r.Method {
+		case "GET":
+			// end := r.URL.Query().Get("end")
+			// if end == "" {
+			// 	end = "\xff"
+			// }
+			end := "\xff"
+			// TODO(tsileo): parse limit and set default to 0
+			refs, err := bs.Enumerate(ctx, r.URL.Query().Get("start"), end, 0)
+			if err != nil {
+				httputil.Error(w, err)
+				return
+			}
+			srw := httputil.NewSnappyResponseWriter(w, r)
+			httputil.WriteJSON(srw, map[string]interface{}{"refs": refs})
+			srw.Close()
+			return
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}
+}
+
 func (bs *BlobStore) Register(r *mux.Router) {
-	r.Handle("/upload", http.HandlerFunc(bs.uploadHandler()))
-	r.Handle("/blob/{hash}", http.HandlerFunc(bs.blobHandler()))
+	r.Handle("/blobs", middleware.BasicAuth(http.HandlerFunc(bs.enumerateHandler())))
+	r.Handle("/upload", middleware.BasicAuth(http.HandlerFunc(bs.uploadHandler())))
+	r.Handle("/blob/{hash}", middleware.BasicAuth(http.HandlerFunc(bs.blobHandler())))
 }

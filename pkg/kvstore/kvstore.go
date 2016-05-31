@@ -15,6 +15,7 @@ import (
 	"github.com/tsileo/blobstash/pkg/blobstore"
 	"github.com/tsileo/blobstash/pkg/ctxutil"
 	"github.com/tsileo/blobstash/pkg/meta"
+	"github.com/tsileo/blobstash/pkg/middleware"
 	"github.com/tsileo/blobstash/vkv"
 )
 
@@ -59,18 +60,31 @@ func New(logger log.Logger, blobStore *blobstore.BlobStore, metaHandler *meta.Me
 		log:       logger,
 		vkv:       kv,
 	}
-	metaHandler.RegisterApplyFunc(KvType, kvStore.ApplyMetaFunc)
+	metaHandler.RegisterApplyFunc(KvType, kvStore.applyMetaFunc)
 	return kvStore, nil
 }
 
-func (kv *KvStore) ApplyMetaFunc(data []byte) error {
-	rkv := &vkv.KeyValue{}
-	if err := json.Unmarshal(data, rkv); err != nil {
+func (kv *KvStore) applyMetaFunc(hash string, data []byte) error {
+	kv.log.Debug("Apply meta init", "hash", hash)
+	applied, err := kv.vkv.MetaBlobApplied(hash)
+	if err != nil {
 		return err
 	}
-	kv.log.Debug("Applying meta", "kv", rkv)
-	// TODO(ts): apply the kv
+	if !applied {
+		rkv := &vkv.KeyValue{}
+		if err := json.Unmarshal(data, rkv); err != nil {
+			return err
+		}
+		if _, err := kv.Put(context.Background(), rkv.Key, rkv.Value, rkv.Version); err != nil {
+			return err
+		}
+		kv.log.Debug("Applied meta", "kv", rkv)
+	}
 	return nil
+}
+
+func (kv *KvStore) Close() error {
+	return kv.vkv.Close()
 }
 
 func (kv *KvStore) Get(ctx context.Context, key string, version int) (*vkv.KeyValue, error) {
@@ -87,7 +101,14 @@ func (kv *KvStore) Put(ctx context.Context, key, value string, version int) (*vk
 		return nil, err
 	}
 	kvmeta := NewKvMeta(res)
-	if err := kv.meta.Save(kvmeta); err != nil {
+	metaBlob, err := kv.meta.Build(kvmeta)
+	if err != nil {
+		return nil, err
+	}
+	if err := res.SetMetaBlob(metaBlob.Hash); err != nil {
+		return nil, err
+	}
+	if err := kv.blobStore.Put(ctx, metaBlob); err != nil {
 		return nil, err
 	}
 	return res, nil
@@ -188,5 +209,5 @@ func (kv *KvStore) getHandler() func(http.ResponseWriter, *http.Request) {
 // }
 
 func (kv *KvStore) Register(r *mux.Router) {
-	r.Handle("/key/{key}", http.HandlerFunc(kv.getHandler()))
+	r.Handle("/key/{key}", middleware.BasicAuth(http.HandlerFunc(kv.getHandler())))
 }

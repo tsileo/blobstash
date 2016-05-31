@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	_ "github.com/carbocation/interpose/middleware"
+	"github.com/tsileo/blobstash/httputil"
 	"github.com/unrolled/secure"
 )
 
@@ -31,6 +32,15 @@ func Secure(h http.Handler) http.Handler {
 }
 
 func BasicAuth(h http.Handler) http.Handler {
-	return nil
-	// authMiddleware := middleware.BasicAuthFunc(s.perms.AuthFunc)
+	// FIXME(tsileo): clean this, and load passfrom config
+	authFunc := httputil.BasicAuthFunc("", "123")
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if authFunc(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			httputil.WriteJSONError(w, http.StatusUnauthorized, http.StatusText(http.StatusUnauthorized))
+		})
+	}(h)
 }

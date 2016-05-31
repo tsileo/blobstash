@@ -50,6 +50,7 @@ import (
 	"github.com/tsileo/blobstash/client/clientutil"
 	"github.com/tsileo/blobstash/config/pathutil"
 	"github.com/tsileo/blobstash/logger"
+	"github.com/tsileo/blobstash/pkg/blob"
 )
 
 const (
@@ -66,11 +67,11 @@ const (
 )
 
 var (
-	openFdsVar      = expvar.NewMap("blobsfile-open-fds")
-	bytesUploaded   = expvar.NewMap("blobsfile-bytes-uploaded")
-	bytesDownloaded = expvar.NewMap("blobsfile-bytes-downloaded")
-	blobsUploaded   = expvar.NewMap("blobsfile-blobs-uploaded")
-	blobsDownloaded = expvar.NewMap("blobsfile-blobs-downloaded")
+	openFdsVar      = expvar.NewMap("blobsfile2-open-fds")
+	bytesUploaded   = expvar.NewMap("blobsfile2-bytes-uploaded")
+	bytesDownloaded = expvar.NewMap("blobsfile2-bytes-downloaded")
+	blobsUploaded   = expvar.NewMap("blobsfile2-blobs-uploaded")
+	blobsDownloaded = expvar.NewMap("blobsfile2-blobs-downloaded")
 )
 
 // Blob flags
@@ -704,6 +705,54 @@ func (backend *BlobsFileBackend) Enumerate(blobs chan<- string) error {
 	return nil
 }
 
-func (backend *BlobsFileBackend) Enumerate2(start, end string, limit int) error {
+func (backend *BlobsFileBackend) Enumerate2(blobs chan<- *blob.SizedBlobRef, start, end string, limit int) error {
+	defer close(blobs)
+	if backend.writeOnly {
+		return bbackend.ErrWriteOnly
+	}
+	if !backend.loaded {
+		panic("backend BlobsFileBackend not loaded")
+	}
+	backend.Lock()
+	defer backend.Unlock()
+	// TODO(tsileo) send the size along the hashes ?
+	// fmt.Printf("start=%v/%+v\n", start, formatKey(BlobPosKey, []byte(start)))
+	s, err := hex.DecodeString(start)
+	if err != nil {
+		return err
+	}
+	enum, _, err := backend.index.db.Seek(formatKey(BlobPosKey, s))
+	// endBytes := formatKey(BlobPosKey, []byte(end))
+	endBytes := []byte(end)
+	// formatKey(BlobPosKey, []byte(end))
+	if err != nil {
+		return err
+	}
+	i := 0
+	for {
+		k, _, err := enum.Next()
+		if err == io.EOF {
+			break
+		}
+		// FIXME(tsileo): fix this mess
+		hash := hex.EncodeToString(k[1:])
+		// fmt.Printf("%+v/%+v/%+v\n", k, endBytes, bytes.Compare(k, endBytes))
+		// fmt.Printf("%+v/%+v/%+v\n", strings.Compare(hash, string(endBytes[1:])), hash, endBytes[1:])
+		if bytes.Compare(k, endBytes) > 0 || (limit != 0 && i > limit) {
+			return nil
+		}
+		blobPos, err := backend.BlobPos(hash)
+		if err != nil {
+			return nil
+		}
+		// Remove the BlobPosKey prefix byte
+		sbr := &blob.SizedBlobRef{
+			Hash: hex.EncodeToString(k[1:]),
+			Size: blobPos.size, // TODO(tsileo): set the size
+		}
+		// FIXME(tsileo): check end
+		blobs <- sbr
+		i++
+	}
 	return nil
 }

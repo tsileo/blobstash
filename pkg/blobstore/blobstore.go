@@ -5,11 +5,12 @@ import (
 	"golang.org/x/net/context"
 
 	_ "github.com/tsileo/blobstash/backend"
-	"github.com/tsileo/blobstash/backend/blobsfile"
-	"github.com/tsileo/blobstash/config"
+	_ "github.com/tsileo/blobstash/config"
 	"github.com/tsileo/blobstash/config/pathutil"
+	"github.com/tsileo/blobstash/pkg/backend/blobsfile"
 	"github.com/tsileo/blobstash/pkg/blob"
 	"github.com/tsileo/blobstash/pkg/ctxutil"
+	"github.com/tsileo/blobstash/pkg/hub"
 	"github.com/tsileo/blobstash/pkg/router"
 )
 
@@ -31,23 +32,34 @@ var DefaultConf = map[string]interface{}{
 
 type BlobStore struct {
 	Router *router.Router
+	back   *blobsfile.BlobsFileBackend
+	hub    *hub.Hub
 
 	log log.Logger
 }
 
-func New(logger log.Logger) (*BlobStore, error) {
+func New(logger log.Logger, hub *hub.Hub) (*BlobStore, error) {
 	logger.Debug("init")
 	conf := DefaultConf
 	// Intialize the router and load the backends
 	r := router.New(conf["router"].([]interface{}))
 	backendsConf := conf["backends"].(map[string]interface{})
 	for _, b := range r.ResolveBackends() {
-		r.Backends[b] = config.NewFromConfig(backendsConf[b].(map[string]interface{}))
+		r.Backends[b] = blobsfile.NewFromConfig(backendsConf[b].(map[string]interface{}))
 	}
 	return &BlobStore{
 		Router: r,
+		hub:    hub,
 		log:    logger,
 	}, nil
+}
+
+func (bs *BlobStore) Close() error {
+	// TODO(tsileo): improve this
+	for _, back := range bs.Router.Backends {
+		back.Close()
+	}
+	return nil
 }
 
 func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
@@ -71,6 +83,10 @@ func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
 	if err := backend.Put(blob.Hash, blob.Data); err != nil {
 		return err
 	}
+	// TODO(tsileo): make this async with the put blob
+	if err := bs.hub.NewBlobEvent(ctx, blob); err != nil {
+		return err
+	}
 	bs.log.Debug("blob saved", "hash", blob.Hash)
 	return nil
 }
@@ -87,13 +103,23 @@ func (bs *BlobStore) Stat(ctx context.Context, hash string) (bool, error) {
 	return bs.Router.Route(ctx).Exists(hash)
 }
 
+// func (backend *BlobsFileBackend) Enumerate(blobs chan<- *blob.SizedBlobRef, start, stop string, limit int) error {
+
 func (bs *BlobStore) Enumerate(ctx context.Context, start, end string, limit int) ([]*blob.SizedBlobRef, error) {
 	_, fromHttp := ctxutil.Request(ctx)
 	bs.log.Info("OP Enumerate", "from_http", fromHttp, "start", start, "end", end, "limit", limit)
+	out := make(chan *blob.SizedBlobRef)
 	refs := []*blob.SizedBlobRef{}
+	errc := make(chan error, 1)
 	back := bs.Router.Route(ctx).(*blobsfile.BlobsFileBackend)
 	// TODO(tsileo): implements `Enumerate2`
-	if err := back.Enumerate2(start, end, limit); err != nil {
+	go func() {
+		errc <- back.Enumerate2(out, start, end, limit)
+	}()
+	for blob := range out {
+		refs = append(refs, blob)
+	}
+	if err := <-errc; err != nil {
 		return nil, err
 	}
 	// FIXME(tsileo): handle enumerate

@@ -10,6 +10,7 @@ import (
 
 	"github.com/tsileo/blobstash/pkg/blob"
 	"github.com/tsileo/blobstash/pkg/blobstore"
+	"github.com/tsileo/blobstash/pkg/hub"
 )
 
 var (
@@ -27,22 +28,35 @@ type MetaData interface {
 type Meta struct {
 	blobStore  *blobstore.BlobStore
 	log        log.Logger
-	applyFuncs map[string]func([]byte) error // map[<metadata type>]<load func>
+	applyFuncs map[string]func(string, []byte) error // map[<metadata type>]<load func>
+	hub        *hub.Hub
 }
 
-func New(logger log.Logger, blobStore *blobstore.BlobStore) (*Meta, error) {
-	return &Meta{
+func New(logger log.Logger, blobStore *blobstore.BlobStore, hub *hub.Hub) (*Meta, error) {
+	meta := &Meta{
 		log:        logger,
 		blobStore:  blobStore,
-		applyFuncs: map[string]func([]byte) error{},
-	}, nil
+		hub:        hub,
+		applyFuncs: map[string]func(string, []byte) error{},
+	}
+	meta.hub.Subscribe("meta", meta.newBlobCallback)
+	return meta, nil
 }
 
-func (m *Meta) RegisterApplyFunc(t string, f func([]byte) error) {
+func (m *Meta) newBlobCallback(ctx context.Context, blob *blob.Blob) error {
+	metaType, metaData, isMeta := IsMetaBlob(blob.Data)
+	m.log.Debug("newBlobCallback", "is_meta", isMeta, "meta_type", metaType)
+	if isMeta {
+		// TODO(tsileo): ensure the type is registered
+		return m.applyFuncs[metaType](blob.Hash, metaData)
+	}
+	return nil
+}
+
+func (m *Meta) RegisterApplyFunc(t string, f func(string, []byte) error) {
 	m.applyFuncs[t] = f
 }
-
-func (m *Meta) Save(data MetaData) error {
+func (m *Meta) Build(data MetaData) (*blob.Blob, error) {
 	var buf bytes.Buffer
 	// <meta blob header> + <meta blob version> + <type size> + <type bytes> + <data size> + <data>
 	buf.Write([]byte(MetaBlobHeader))
@@ -54,21 +68,34 @@ func (m *Meta) Save(data MetaData) error {
 	buf.WriteString(data.Type())
 	serialized, err := data.Dump()
 	if err != nil {
-		return fmt.Errorf("failed to dump MetaData: %v", err)
+		return nil, fmt.Errorf("failed to dump MetaData: %v", err)
 	}
 	binary.BigEndian.PutUint32(tmp[:], uint32(len(serialized)))
 	buf.Write(tmp)
 	buf.Write(serialized)
 	m.log.Debug("meta blob", "data", buf.String())
-	return m.blobStore.Put(context.Background(), blob.New(buf.Bytes()))
+	metaBlob := blob.New(buf.Bytes())
+	return metaBlob, nil
+}
+
+func (m *Meta) Save(data MetaData) (string, error) {
+	metaBlob, err := m.Build(data)
+	if err != nil {
+		return "", err
+	}
+	return metaBlob.Hash, m.blobStore.Put(context.Background(), metaBlob)
 }
 
 // FIXME(ts): Scan
 
-func IsMetaBlob(blob []byte) bool {
+func IsMetaBlob(blob []byte) (string, []byte, bool) { // returns (string, bool) string => meta type
 	// TODO add a test with a tiny blob
 	if len(blob) < MetaBlobOverhead {
-		return false
+		return "", nil, false
 	}
-	return bytes.Equal(blob[0:MetaBlobOverhead], []byte(MetaBlobHeader))
+	if bytes.Equal(blob[0:MetaBlobOverhead], []byte(MetaBlobHeader)) {
+		typeLen := int(binary.BigEndian.Uint32(blob[MetaBlobOverhead+4 : MetaBlobOverhead+8]))
+		return string(blob[MetaBlobOverhead+8 : MetaBlobOverhead+8+typeLen]), blob[MetaBlobOverhead+12+typeLen : len(blob)], true
+	}
+	return "", nil, false
 }
