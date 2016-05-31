@@ -25,6 +25,7 @@ import (
 	"github.com/tsileo/blobstash/httputil"
 	_ "github.com/tsileo/blobstash/pkg/blob"
 	"github.com/tsileo/blobstash/pkg/blobstore"
+	"github.com/tsileo/blobstash/pkg/config"
 	"github.com/tsileo/blobstash/pkg/middleware"
 	"github.com/tsileo/blobstash/pkg/nsdb"
 
@@ -52,24 +53,26 @@ func NewHash() (h hash.Hash) {
 type SyncTable struct {
 	nsdb      *nsdb.DB
 	blobstore *blobstore.BlobStore
+	conf      *config.Config
 
 	log log2.Logger
 }
 
-func New(logger log2.Logger, blobstore *blobstore.BlobStore, ns *nsdb.DB) *SyncTable {
+func New(logger log2.Logger, conf *config.Config, blobstore *blobstore.BlobStore, ns *nsdb.DB) *SyncTable {
 	logger.Debug("init")
 	return &SyncTable{
 		blobstore: blobstore,
 		nsdb:      ns,
+		conf:      conf,
 		log:       logger,
 	}
 }
 
 func (st *SyncTable) Register(r *mux.Router) {
-	r.Handle("/_state/{ns}", middleware.BasicAuth(http.HandlerFunc(st.stateHandler())))
-	r.Handle("/_state/{ns}/leafs/{prefix}", middleware.BasicAuth(http.HandlerFunc(st.stateLeafsHandler())))
-	r.Handle("/{ns}", middleware.BasicAuth(http.HandlerFunc(st.syncHandler())))
-	r.Handle("/_trigger/{ns}", middleware.BasicAuth(http.HandlerFunc(st.triggerHandler())))
+	r.Handle("/_state/{ns}", middleware.BasicAuth(http.HandlerFunc(st.stateHandler()), st.conf))
+	r.Handle("/_state/{ns}/leafs/{prefix}", middleware.BasicAuth(http.HandlerFunc(st.stateLeafsHandler()), st.conf))
+	r.Handle("/{ns}", middleware.BasicAuth(http.HandlerFunc(st.syncHandler()), st.conf))
+	r.Handle("/_trigger/{ns}", middleware.BasicAuth(http.HandlerFunc(st.triggerHandler()), st.conf))
 }
 
 func (st *SyncTable) triggerHandler() func(http.ResponseWriter, *http.Request) {

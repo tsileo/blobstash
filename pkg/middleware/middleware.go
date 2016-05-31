@@ -7,6 +7,7 @@ import (
 
 	_ "github.com/carbocation/interpose/middleware"
 	"github.com/tsileo/blobstash/httputil"
+	"github.com/tsileo/blobstash/pkg/config"
 	"github.com/unrolled/secure"
 )
 
@@ -31,9 +32,12 @@ func Secure(h http.Handler) http.Handler {
 	return secure.New(secureOptions).Handler(h)
 }
 
-func BasicAuth(h http.Handler) http.Handler {
+func BasicAuth(h http.Handler, conf *config.Config) http.Handler {
 	// FIXME(tsileo): clean this, and load passfrom config
-	authFunc := httputil.BasicAuthFunc("", "123")
+	if conf.APIKey == "" {
+		return h
+	}
+	authFunc := httputil.BasicAuthFunc("", conf.APIKey)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if authFunc(r) {

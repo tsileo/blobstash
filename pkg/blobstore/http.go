@@ -140,7 +140,7 @@ func (bs *BlobStore) enumerateHandler() func(http.ResponseWriter, *http.Request)
 }
 
 func (bs *BlobStore) Register(r *mux.Router) {
-	r.Handle("/blobs", middleware.BasicAuth(http.HandlerFunc(bs.enumerateHandler())))
-	r.Handle("/upload", middleware.BasicAuth(http.HandlerFunc(bs.uploadHandler())))
-	r.Handle("/blob/{hash}", middleware.BasicAuth(http.HandlerFunc(bs.blobHandler())))
+	r.Handle("/blobs", middleware.BasicAuth(http.HandlerFunc(bs.enumerateHandler()), bs.conf))
+	r.Handle("/upload", middleware.BasicAuth(http.HandlerFunc(bs.uploadHandler()), bs.conf))
+	r.Handle("/blob/{hash}", middleware.BasicAuth(http.HandlerFunc(bs.blobHandler()), bs.conf))
 }

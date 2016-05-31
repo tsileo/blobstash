@@ -9,7 +9,6 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/tsileo/blobstash/pkg/blob"
-	"github.com/tsileo/blobstash/pkg/blobstore"
 	"github.com/tsileo/blobstash/pkg/hub"
 )
 
@@ -26,16 +25,14 @@ type MetaData interface {
 }
 
 type Meta struct {
-	blobStore  *blobstore.BlobStore
 	log        log.Logger
 	applyFuncs map[string]func(string, []byte) error // map[<metadata type>]<load func>
 	hub        *hub.Hub
 }
 
-func New(logger log.Logger, blobStore *blobstore.BlobStore, hub *hub.Hub) (*Meta, error) {
+func New(logger log.Logger, hub *hub.Hub) (*Meta, error) {
 	meta := &Meta{
 		log:        logger,
-		blobStore:  blobStore,
 		hub:        hub,
 		applyFuncs: map[string]func(string, []byte) error{},
 	}
@@ -76,14 +73,6 @@ func (m *Meta) Build(data MetaData) (*blob.Blob, error) {
 	m.log.Debug("meta blob", "data", buf.String())
 	metaBlob := blob.New(buf.Bytes())
 	return metaBlob, nil
-}
-
-func (m *Meta) Save(data MetaData) (string, error) {
-	metaBlob, err := m.Build(data)
-	if err != nil {
-		return "", err
-	}
-	return metaBlob.Hash, m.blobStore.Put(context.Background(), metaBlob)
 }
 
 // FIXME(ts): Scan

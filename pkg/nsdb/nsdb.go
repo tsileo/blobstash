@@ -19,6 +19,7 @@ import (
 
 	"github.com/tsileo/blobstash/pkg/blob"
 	"github.com/tsileo/blobstash/pkg/blobstore"
+	"github.com/tsileo/blobstash/pkg/config"
 	"github.com/tsileo/blobstash/pkg/ctxutil"
 	"github.com/tsileo/blobstash/pkg/hub"
 	"github.com/tsileo/blobstash/pkg/meta"
@@ -52,12 +53,13 @@ type DB struct {
 	meta      *meta.Meta
 	hub       *hub.Hub
 	log       log.Logger
+	conf      *config.Config
 	blobStore *blobstore.BlobStore
 	sync.Mutex
 }
 
 // New creates a new database.
-func New(logger log.Logger, path string, blobStore *blobstore.BlobStore, m *meta.Meta, hub *hub.Hub) (*DB, error) {
+func New(logger log.Logger, conf *config.Config, path string, blobStore *blobstore.BlobStore, m *meta.Meta, hub *hub.Hub) (*DB, error) {
 	logger.Debug("init")
 	createOpen := kv.Open
 	if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -74,6 +76,7 @@ func New(logger log.Logger, path string, blobStore *blobstore.BlobStore, m *meta
 		log:       logger,
 		blobStore: blobStore,
 		path:      path,
+		conf:      conf,
 	}
 	m.RegisterApplyFunc(NsType, nsdb.applyMetaFunc)
 	nsdb.hub.Subscribe("nsdb", nsdb.newBlobCallback)

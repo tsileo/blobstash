@@ -5,10 +5,10 @@ import (
 	"golang.org/x/net/context"
 
 	_ "github.com/tsileo/blobstash/backend"
-	_ "github.com/tsileo/blobstash/config"
 	"github.com/tsileo/blobstash/config/pathutil"
 	"github.com/tsileo/blobstash/pkg/backend/blobsfile"
 	"github.com/tsileo/blobstash/pkg/blob"
+	"github.com/tsileo/blobstash/pkg/config"
 	"github.com/tsileo/blobstash/pkg/ctxutil"
 	"github.com/tsileo/blobstash/pkg/hub"
 	"github.com/tsileo/blobstash/pkg/router"
@@ -34,11 +34,12 @@ type BlobStore struct {
 	Router *router.Router
 	back   *blobsfile.BlobsFileBackend
 	hub    *hub.Hub
+	conf   *config.Config
 
 	log log.Logger
 }
 
-func New(logger log.Logger, hub *hub.Hub) (*BlobStore, error) {
+func New(logger log.Logger, conf2 *config.Config, hub *hub.Hub) (*BlobStore, error) {
 	logger.Debug("init")
 	conf := DefaultConf
 	// Intialize the router and load the backends
@@ -50,6 +51,7 @@ func New(logger log.Logger, hub *hub.Hub) (*BlobStore, error) {
 	return &BlobStore{
 		Router: r,
 		hub:    hub,
+		conf:   conf2,
 		log:    logger,
 	}, nil
 }

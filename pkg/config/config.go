@@ -2,12 +2,22 @@ package config
 
 import (
 	"io/ioutil"
+	"os"
 
 	"gopkg.in/yaml.v2"
+
+	"github.com/tsileo/blobstash/pkg/config/pathutil"
+)
+
+var (
+	DefaultListen = ":8051"
 )
 
 type Config struct {
-	Listen string `yaml:"listen"`
+	init    bool
+	Listen  string `yaml:"listen"`
+	APIKey  string `yaml:"api_key"`
+	DataDir string `yaml:"data_dir"`
 }
 
 func New(path string) (*Config, error) {
@@ -20,4 +30,24 @@ func New(path string) (*Config, error) {
 		return nil, err
 	}
 	return conf, nil
+}
+
+func (c *Config) VarDir() string {
+	if c.DataDir != "" {
+		return c.DataDir
+	}
+	return pathutil.VarDir()
+}
+
+func (c *Config) Init() error {
+	if c.init {
+		return nil
+	}
+	if _, err := os.Stat(c.VarDir()); os.IsNotExist(err) {
+		if err := os.MkdirAll(c.VarDir(), 0644); err != nil {
+			return err
+		}
+	}
+	c.init = true
+	return nil
 }

@@ -13,6 +13,7 @@ import (
 	_ "github.com/tsileo/blobstash/backend"
 	"github.com/tsileo/blobstash/httputil"
 	"github.com/tsileo/blobstash/pkg/blobstore"
+	"github.com/tsileo/blobstash/pkg/config"
 	"github.com/tsileo/blobstash/pkg/ctxutil"
 	"github.com/tsileo/blobstash/pkg/meta"
 	"github.com/tsileo/blobstash/pkg/middleware"
@@ -27,6 +28,7 @@ type KvStore struct {
 	blobStore *blobstore.BlobStore
 	meta      *meta.Meta
 	log       log.Logger
+	conf      *config.Config
 
 	vkv *vkv.DB
 }
@@ -47,7 +49,7 @@ func (km *KvMeta) Dump() ([]byte, error) {
 	return json.Marshal(km.kv)
 }
 
-func New(logger log.Logger, blobStore *blobstore.BlobStore, metaHandler *meta.Meta) (*KvStore, error) {
+func New(logger log.Logger, conf *config.Config, blobStore *blobstore.BlobStore, metaHandler *meta.Meta) (*KvStore, error) {
 	logger.Debug("init")
 	// TODO(tsileo): handle config
 	kv, err := vkv.New("/Users/thomas/var/blobstash/vkv")
@@ -58,6 +60,7 @@ func New(logger log.Logger, blobStore *blobstore.BlobStore, metaHandler *meta.Me
 		blobStore: blobStore,
 		meta:      metaHandler,
 		log:       logger,
+		conf:      conf,
 		vkv:       kv,
 	}
 	metaHandler.RegisterApplyFunc(KvType, kvStore.applyMetaFunc)
@@ -209,5 +212,5 @@ func (kv *KvStore) getHandler() func(http.ResponseWriter, *http.Request) {
 // }
 
 func (kv *KvStore) Register(r *mux.Router) {
-	r.Handle("/key/{key}", middleware.BasicAuth(http.HandlerFunc(kv.getHandler())))
+	r.Handle("/key/{key}", middleware.BasicAuth(http.HandlerFunc(kv.getHandler()), kv.conf))
 }
