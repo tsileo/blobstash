@@ -9,6 +9,7 @@ import (
 
 	"github.com/tsileo/blobstash/pkg/blobstore"
 	"github.com/tsileo/blobstash/pkg/config"
+	"github.com/tsileo/blobstash/pkg/httputil"
 	"github.com/tsileo/blobstash/pkg/hub"
 	"github.com/tsileo/blobstash/pkg/kvstore"
 	"github.com/tsileo/blobstash/pkg/meta"
@@ -91,7 +92,8 @@ func (s *Server) Serve() error {
 			listen = s.conf.Listen
 		}
 		s.log.Info(fmt.Sprintf("listening on %v", listen))
-		http.ListenAndServe(listen, middleware.Secure(s.router))
+		reqLogger := httputil.LoggerMiddleware(s.log)
+		http.ListenAndServe(listen, httputil.RecoverHandler(middleware.CorsMiddleware(reqLogger(middleware.Secure(s.router)))))
 	}()
 	s.tillShutdown()
 	return s.closeFunc()
