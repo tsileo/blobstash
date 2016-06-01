@@ -3,9 +3,8 @@ package blobstore
 import (
 	log "github.com/inconshreveable/log15"
 	"golang.org/x/net/context"
+	"path/filepath"
 
-	_ "github.com/tsileo/blobstash/backend"
-	"github.com/tsileo/blobstash/config/pathutil"
 	"github.com/tsileo/blobstash/pkg/backend/blobsfile"
 	"github.com/tsileo/blobstash/pkg/blob"
 	"github.com/tsileo/blobstash/pkg/config"
@@ -15,20 +14,6 @@ import (
 )
 
 // FIXME(tsileo): take a ctx as first arg for each method
-
-// TODO(tsileo): config as struct
-var DefaultConf = map[string]interface{}{
-	"backends": map[string]interface{}{
-		"blobs": map[string]interface{}{
-			"backend-type": "blobsfile",
-			"backend-args": map[string]interface{}{
-				"path": "$VAR/blobs",
-			},
-		},
-	},
-	"router":    []interface{}{[]interface{}{"default", "blobs"}},
-	"data_path": pathutil.VarDir(),
-}
 
 type BlobStore struct {
 	Router *router.Router
@@ -41,12 +26,24 @@ type BlobStore struct {
 
 func New(logger log.Logger, conf2 *config.Config, hub *hub.Hub) (*BlobStore, error) {
 	logger.Debug("init")
-	conf := DefaultConf
+	// TODO(tsileo): config as struct
+	conf := map[string]interface{}{
+		"backends": map[string]interface{}{
+			"blobs": map[string]interface{}{
+				"backend-type": "blobsfile",
+				"backend-args": map[string]interface{}{
+					"path": filepath.Join(conf2.VarDir(), "blobs"),
+				},
+			},
+		},
+		"router":    []interface{}{[]interface{}{"default", "blobs"}},
+		"data_path": conf2.VarDir(),
+	}
 	// Intialize the router and load the backends
 	r := router.New(conf["router"].([]interface{}))
 	backendsConf := conf["backends"].(map[string]interface{})
 	for _, b := range r.ResolveBackends() {
-		r.Backends[b] = blobsfile.NewFromConfig(backendsConf[b].(map[string]interface{}))
+		r.Backends[b] = blobsfile.NewFromConfig(backendsConf[b].(map[string]interface{})["backend-args"].(map[string]interface{}))
 	}
 	return &BlobStore{
 		Router: r,

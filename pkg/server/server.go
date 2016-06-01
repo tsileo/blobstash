@@ -61,7 +61,7 @@ func New(conf *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to initialize kvstore app: %v", err)
 	}
 	kvstore.Register(s.router.PathPrefix("/api/kvstore").Subrouter(), basicAuth)
-	nsDB, err := nsdb.New(logger.New("app", "nsdb"), conf, "/Users/thomas/var/blobstash/nsdb", blobstore, metaHandler, hub)
+	nsDB, err := nsdb.New(logger.New("app", "nsdb"), conf, blobstore, metaHandler, hub)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize nsdb: %v", err)
 	}

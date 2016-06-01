@@ -44,7 +44,8 @@ func (c *Config) Init() error {
 		return nil
 	}
 	if _, err := os.Stat(c.VarDir()); os.IsNotExist(err) {
-		if err := os.MkdirAll(c.VarDir(), 0644); err != nil {
+		// FIXME(tsileo): permissions issue
+		if err := os.MkdirAll(c.VarDir(), 0777); err != nil {
 			return err
 		}
 	}

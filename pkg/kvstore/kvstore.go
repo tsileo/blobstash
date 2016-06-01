@@ -8,9 +8,9 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strconv"
 
-	_ "github.com/tsileo/blobstash/backend"
 	"github.com/tsileo/blobstash/httputil"
 	"github.com/tsileo/blobstash/pkg/blobstore"
 	"github.com/tsileo/blobstash/pkg/config"
@@ -51,7 +51,7 @@ func (km *KvMeta) Dump() ([]byte, error) {
 func New(logger log.Logger, conf *config.Config, blobStore *blobstore.BlobStore, metaHandler *meta.Meta) (*KvStore, error) {
 	logger.Debug("init")
 	// TODO(tsileo): handle config
-	kv, err := vkv.New("/Users/thomas/var/blobstash/vkv")
+	kv, err := vkv.New(filepath.Join(conf.VarDir(), "vkv"))
 	if err != nil {
 		return nil, err
 	}

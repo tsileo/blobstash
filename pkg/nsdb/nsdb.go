@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/cznic/kv"
@@ -59,8 +60,9 @@ type DB struct {
 }
 
 // New creates a new database.
-func New(logger log.Logger, conf *config.Config, path string, blobStore *blobstore.BlobStore, m *meta.Meta, hub *hub.Hub) (*DB, error) {
+func New(logger log.Logger, conf *config.Config, blobStore *blobstore.BlobStore, m *meta.Meta, hub *hub.Hub) (*DB, error) {
 	logger.Debug("init")
+	path := filepath.Join(conf.VarDir(), "nsdb")
 	createOpen := kv.Open
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		createOpen = kv.Create
