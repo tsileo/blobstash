@@ -26,7 +26,6 @@ import (
 	_ "github.com/tsileo/blobstash/pkg/blob"
 	"github.com/tsileo/blobstash/pkg/blobstore"
 	"github.com/tsileo/blobstash/pkg/config"
-	"github.com/tsileo/blobstash/pkg/middleware"
 	"github.com/tsileo/blobstash/pkg/nsdb"
 
 	"github.com/dchest/blake2b"
@@ -68,11 +67,11 @@ func New(logger log2.Logger, conf *config.Config, blobstore *blobstore.BlobStore
 	}
 }
 
-func (st *SyncTable) Register(r *mux.Router) {
-	r.Handle("/_state/{ns}", middleware.BasicAuth(http.HandlerFunc(st.stateHandler()), st.conf))
-	r.Handle("/_state/{ns}/leafs/{prefix}", middleware.BasicAuth(http.HandlerFunc(st.stateLeafsHandler()), st.conf))
-	r.Handle("/{ns}", middleware.BasicAuth(http.HandlerFunc(st.syncHandler()), st.conf))
-	r.Handle("/_trigger/{ns}", middleware.BasicAuth(http.HandlerFunc(st.triggerHandler()), st.conf))
+func (st *SyncTable) Register(r *mux.Router, basicAuth func(http.Handler) http.Handler) {
+	r.Handle("/_state/{ns}", basicAuth(http.HandlerFunc(st.stateHandler())))
+	r.Handle("/_state/{ns}/leafs/{prefix}", basicAuth(http.HandlerFunc(st.stateLeafsHandler())))
+	r.Handle("/{ns}", basicAuth(http.HandlerFunc(st.syncHandler())))
+	r.Handle("/_trigger/{ns}", basicAuth(http.HandlerFunc(st.triggerHandler())))
 }
 
 func (st *SyncTable) triggerHandler() func(http.ResponseWriter, *http.Request) {

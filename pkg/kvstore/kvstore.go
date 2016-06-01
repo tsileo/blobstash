@@ -16,7 +16,6 @@ import (
 	"github.com/tsileo/blobstash/pkg/config"
 	"github.com/tsileo/blobstash/pkg/ctxutil"
 	"github.com/tsileo/blobstash/pkg/meta"
-	"github.com/tsileo/blobstash/pkg/middleware"
 	"github.com/tsileo/blobstash/vkv"
 )
 
@@ -211,6 +210,6 @@ func (kv *KvStore) getHandler() func(http.ResponseWriter, *http.Request) {
 // }
 // }
 
-func (kv *KvStore) Register(r *mux.Router) {
-	r.Handle("/key/{key}", middleware.BasicAuth(http.HandlerFunc(kv.getHandler()), kv.conf))
+func (kv *KvStore) Register(r *mux.Router, basicAuth func(http.Handler) http.Handler) {
+	r.Handle("/key/{key}", basicAuth(http.HandlerFunc(kv.getHandler())))
 }

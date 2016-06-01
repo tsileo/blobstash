@@ -13,7 +13,6 @@ import (
 	mblob "github.com/tsileo/blobstash/pkg/blob"
 	"github.com/tsileo/blobstash/pkg/ctxutil"
 	"github.com/tsileo/blobstash/pkg/hashutil"
-	"github.com/tsileo/blobstash/pkg/middleware"
 )
 
 func (bs *BlobStore) uploadHandler() func(http.ResponseWriter, *http.Request) {
@@ -139,8 +138,8 @@ func (bs *BlobStore) enumerateHandler() func(http.ResponseWriter, *http.Request)
 	}
 }
 
-func (bs *BlobStore) Register(r *mux.Router) {
-	r.Handle("/blobs", middleware.BasicAuth(http.HandlerFunc(bs.enumerateHandler()), bs.conf))
-	r.Handle("/upload", middleware.BasicAuth(http.HandlerFunc(bs.uploadHandler()), bs.conf))
-	r.Handle("/blob/{hash}", middleware.BasicAuth(http.HandlerFunc(bs.blobHandler()), bs.conf))
+func (bs *BlobStore) Register(r *mux.Router, basicAuth func(http.Handler) http.Handler) {
+	r.Handle("/blobs", basicAuth(http.HandlerFunc(bs.enumerateHandler())))
+	r.Handle("/upload", basicAuth(http.HandlerFunc(bs.uploadHandler())))
+	r.Handle("/blob/{hash}", basicAuth(http.HandlerFunc(bs.blobHandler())))
 }

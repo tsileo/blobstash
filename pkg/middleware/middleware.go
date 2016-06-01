@@ -32,10 +32,16 @@ func Secure(h http.Handler) http.Handler {
 	return secure.New(secureOptions).Handler(h)
 }
 
-func BasicAuth(h http.Handler, conf *config.Config) http.Handler {
+func NewBasicAuth(conf *config.Config) func(http.Handler) http.Handler {
 	// FIXME(tsileo): clean this, and load passfrom config
 	if conf.APIKey == "" {
-		return h
+		return func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				next.ServeHTTP(w, r)
+				return
+			})
+		}
+
 	}
 	authFunc := httputil.BasicAuthFunc("", conf.APIKey)
 	return func(next http.Handler) http.Handler {
@@ -46,5 +52,5 @@ func BasicAuth(h http.Handler, conf *config.Config) http.Handler {
 			}
 			httputil.WriteJSONError(w, http.StatusUnauthorized, http.StatusText(http.StatusUnauthorized))
 		})
-	}(h)
+	}
 }

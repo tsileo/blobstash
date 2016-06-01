@@ -51,3 +51,12 @@ func (c *Config) Init() error {
 	c.init = true
 	return nil
 }
+
+// Sync url config parsing
+//u, err := url.Parse("http://:123@127.0.0.1:8053")
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//	u.User = nil
+//	//apiKey, _ := u.User.Password()
+//	fmt.Printf("%+v", u)

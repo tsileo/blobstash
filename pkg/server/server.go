@@ -21,7 +21,7 @@ import (
 )
 
 type App interface {
-	Register(*mux.Router)
+	Register(*mux.Router, func(http.Handler) http.Handler)
 }
 
 type Server struct {
@@ -40,6 +40,7 @@ func New(conf *config.Config) (*Server, error) {
 		conf:   conf,
 		log:    logger,
 	}
+	basicAuth := middleware.NewBasicAuth(conf)
 	hub := hub.New(logger.New("app", "hub"))
 	// Load the blobstore
 	blobstore, err := blobstore.New(logger.New("app", "blobstore"), conf, hub)
@@ -47,7 +48,7 @@ func New(conf *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to initialize blobstore app: %v", err)
 	}
 	// FIXME(tsileo): handle middleware in the `Register` interface
-	blobstore.Register(s.router.PathPrefix("/api/blobstore").Subrouter())
+	blobstore.Register(s.router.PathPrefix("/api/blobstore").Subrouter(), basicAuth)
 	// Load the meta
 	metaHandler, err := meta.New(logger.New("app", "meta"), hub)
 	if err != nil {
@@ -58,14 +59,14 @@ func New(conf *config.Config) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize kvstore app: %v", err)
 	}
-	kvstore.Register(s.router.PathPrefix("/api/kvstore").Subrouter())
+	kvstore.Register(s.router.PathPrefix("/api/kvstore").Subrouter(), basicAuth)
 	nsDB, err := nsdb.New(logger.New("app", "nsdb"), conf, "/Users/thomas/var/blobstash/nsdb", blobstore, metaHandler, hub)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize nsdb: %v", err)
 	}
 	// Load the synctable
 	synctable := synctable.New(logger.New(), conf, blobstore, nsDB)
-	synctable.Register(s.router.PathPrefix("/api/sync").Subrouter())
+	synctable.Register(s.router.PathPrefix("/api/sync").Subrouter(), basicAuth)
 
 	// Setup the closeFunc
 	s.closeFunc = func() error {
