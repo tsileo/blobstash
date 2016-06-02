@@ -166,6 +166,8 @@ type LeafState struct {
 	Hashes    []string `json:"hashes"`
 }
 
+// FIXME(tsileo): config only works in one way
+
 func (st *SyncTable) syncHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {

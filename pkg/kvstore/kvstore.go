@@ -130,6 +130,11 @@ func (kv *KvStore) getHandler() func(http.ResponseWriter, *http.Request) {
 
 			item, err := kv.Get(ctx, key, -1)
 			if err != nil {
+				if err == vkv.ErrNotFound {
+					w.WriteHeader(http.StatusNotFound)
+					w.Write([]byte(http.StatusText(http.StatusNotFound)))
+					return
+				}
 				panic(err)
 			}
 			// TODO(tsileo): handle HEAD
@@ -137,7 +142,7 @@ func (kv *KvStore) getHandler() func(http.ResponseWriter, *http.Request) {
 			httputil.WriteJSON(srw, item)
 			srw.Close()
 			return
-		case "POST":
+		case "POST", "PUT":
 			ctx := ctxutil.WithRequest(context.Background(), r)
 
 			if ns := r.Header.Get("BlobStash-Namespace"); ns != "" {
