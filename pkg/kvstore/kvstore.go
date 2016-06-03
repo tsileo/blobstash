@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/tsileo/blobstash/httputil"
 	"github.com/tsileo/blobstash/pkg/blobstore"
@@ -95,6 +96,15 @@ func (kv *KvStore) Get(ctx context.Context, key string, version int) (*vkv.KeyVa
 	return kv.vkv.Get(key, -1)
 }
 
+func (kv *KvStore) Versions(ctx context.Context, key string, start, end, limit int) (*vkv.KeyValueVersions, error) {
+	_, fromHttp := ctxutil.Request(ctx)
+	kv.log.Info("OP Versions", "from_http", fromHttp, "key", key, "start", start, "end", end)
+	if end == -1 {
+		end = int(time.Now().UTC().UnixNano())
+	}
+	return kv.vkv.Versions(key, start, end, 0)
+}
+
 func (kv *KvStore) Put(ctx context.Context, key, value string, version int) (*vkv.KeyValue, error) {
 	_, fromHttp := ctxutil.Request(ctx)
 	kv.log.Info("OP Put", "from_http", fromHttp, "key", key, "value", value, "version", version)
@@ -114,6 +124,37 @@ func (kv *KvStore) Put(ctx context.Context, key, value string, version int) (*vk
 		return nil, err
 	}
 	return res, nil
+}
+
+func (kv *KvStore) versionsHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		key := mux.Vars(r)["key"]
+		switch r.Method {
+		//POST takes the uploaded file(s) and saves it to disk.
+		case "GET", "HEAD":
+			ctx := ctxutil.WithRequest(context.Background(), r)
+
+			if ns := r.Header.Get("BlobStash-Namespace"); ns != "" {
+				ctx = ctxutil.WithNamespace(ctx, ns)
+			}
+			resp, err := kv.Versions(ctx, key, 0, -1, 0)
+			if err != nil {
+				if err == vkv.ErrNotFound {
+					w.WriteHeader(http.StatusNotFound)
+					w.Write([]byte(http.StatusText(http.StatusNotFound)))
+					return
+				}
+				panic(err)
+			}
+			// TODO(tsileo): handle HEAD
+			srw := httputil.NewSnappyResponseWriter(w, r)
+			httputil.WriteJSON(srw, resp)
+			srw.Close()
+			return
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}
 }
 
 func (kv *KvStore) getHandler() func(http.ResponseWriter, *http.Request) {
@@ -217,4 +258,5 @@ func (kv *KvStore) getHandler() func(http.ResponseWriter, *http.Request) {
 
 func (kv *KvStore) Register(r *mux.Router, basicAuth func(http.Handler) http.Handler) {
 	r.Handle("/key/{key}", basicAuth(http.HandlerFunc(kv.getHandler())))
+	r.Handle("/key/{key}/_versions", basicAuth(http.HandlerFunc(kv.versionsHandler())))
 }
