@@ -398,6 +398,56 @@ func (db *DB) Get(key string, version int) (*KeyValue, error) {
 
 // Return a lexicographical range
 func (db *DB) Versions(key string, start, end, limit int) (*KeyValueVersions, error) {
+	// FIXME(tsileo): returns versions in desc by default
+	res := &KeyValueVersions{
+		Key:      key,
+		Versions: []*KeyValue{},
+	}
+	bkey := []byte(key)
+	exists, err := db.db.Get(nil, encodeMeta(KvKeyIndex, bkey))
+	if err != nil {
+		return nil, err
+	}
+	if len(exists) == 0 {
+		return nil, ErrNotFound
+	}
+	max, err := db.getUint64(encodeMeta(KvVersionMax, bkey))
+	if err != nil {
+		return nil, err
+	}
+	version := int(max)
+	min, err := db.getUint64(encodeMeta(KvVersionMin, bkey))
+	if err != nil {
+		return nil, err
+	}
+	end = int(min)
+	enum, _, err := db.db.Seek(encodeKey(bkey, version))
+	if err != nil {
+		return nil, err
+	}
+	endBytes := encodeKey(bkey, end)
+	i := 0
+	for {
+		k, v, err := enum.Prev()
+		if err == io.EOF {
+			break
+		}
+		if bytes.Compare(k, endBytes) < 0 || (limit != 0 && i > limit) {
+			return res, nil
+		}
+		_, index := decodeKey(k)
+		res.Versions = append(res.Versions, &KeyValue{
+			Value:   string(v),
+			Version: index,
+		})
+		i++
+	}
+	return res, nil
+}
+
+// Return a lexicographical range
+func (db *DB) VersionsOld(key string, start, end, limit int) (*KeyValueVersions, error) {
+	// FIXME(tsileo): returns versions in desc by default
 	res := &KeyValueVersions{
 		Key:      key,
 		Versions: []*KeyValue{},
