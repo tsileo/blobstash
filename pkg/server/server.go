@@ -9,6 +9,7 @@ import (
 
 	"github.com/tsileo/blobstash/pkg/blobstore"
 	"github.com/tsileo/blobstash/pkg/config"
+	"github.com/tsileo/blobstash/pkg/filetree"
 	"github.com/tsileo/blobstash/pkg/httputil"
 	"github.com/tsileo/blobstash/pkg/hub"
 	"github.com/tsileo/blobstash/pkg/kvstore"
@@ -66,8 +67,14 @@ func New(conf *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to initialize nsdb: %v", err)
 	}
 	// Load the synctable
-	synctable := synctable.New(logger.New(), conf, blobstore, nsDB)
+	synctable := synctable.New(logger.New("app", "sync"), conf, blobstore, nsDB)
 	synctable.Register(s.router.PathPrefix("/api/sync").Subrouter(), basicAuth)
+
+	filetree, err := filetree.New(logger.New("app", "filetree"), conf, kvstore, blobstore)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize filetree app: %v", err)
+	}
+	filetree.Register(s.router.PathPrefix("/api/filetree").Subrouter(), s.router, basicAuth)
 
 	// Setup the closeFunc
 	s.closeFunc = func() error {
@@ -78,6 +85,9 @@ func New(conf *config.Config) (*Server, error) {
 			return err
 		}
 		if err := nsDB.Close(); err != nil {
+			return err
+		}
+		if err := filetree.Close(); err != nil {
 			return err
 		}
 		return nil

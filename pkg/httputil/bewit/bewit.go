@@ -49,7 +49,7 @@ var (
 	ErrBadMac             = errors.New("Bad mac")
 )
 
-type Creds struct {
+type Cred struct {
 	ID  string
 	Key []byte
 }
@@ -70,7 +70,7 @@ func generateNormalizedString(expiration, method, resource string) []byte {
 	return buf.Bytes()
 }
 
-func computeMac(creds *Creds, expiration, method, resource string) string {
+func computeMac(creds *Cred, expiration, method, resource string) string {
 	normalized := generateNormalizedString(expiration, method, resource)
 
 	mac := hmac.New(sha256.New, creds.Key)
@@ -78,7 +78,7 @@ func computeMac(creds *Creds, expiration, method, resource string) string {
 	return base64.StdEncoding.EncodeToString([]byte(mac.Sum(nil)))
 }
 
-func Bewit(creds *Creds, url *url.URL, ttl time.Duration) error {
+func Bewit(creds *Cred, url *url.URL, ttl time.Duration) error {
 	expiration := strconv.FormatInt(time.Now().Add(ttl).Unix(), 10)
 	resource := buildResource(url)
 
@@ -107,7 +107,7 @@ func buildResource(url *url.URL) string {
 	return resource
 }
 
-func Validate(req *http.Request, creds *Creds) error {
+func Validate(req *http.Request, creds *Cred) error {
 	now := time.Now()
 
 	// Extract the bewit

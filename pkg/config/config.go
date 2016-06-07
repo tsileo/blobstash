@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 
@@ -14,10 +15,11 @@ var (
 )
 
 type Config struct {
-	init    bool
-	Listen  string `yaml:"listen"`
-	APIKey  string `yaml:"api_key"`
-	DataDir string `yaml:"data_dir"`
+	init       bool
+	Listen     string `yaml:"listen"`
+	APIKey     string `yaml:"api_key"`
+	SharingKey string `yaml:"sharing_key"`
+	DataDir    string `yaml:"data_dir"`
 }
 
 func New(path string) (*Config, error) {
@@ -48,6 +50,9 @@ func (c *Config) Init() error {
 		if err := os.MkdirAll(c.VarDir(), 0777); err != nil {
 			return err
 		}
+	}
+	if c.SharingKey == "" {
+		return fmt.Errorf("missing `sharing_key` config item")
 	}
 	c.init = true
 	return nil
