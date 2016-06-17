@@ -276,6 +276,9 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 		ft.log.Debug("valid bewit")
 		authorized = true
 	}
+	// FIXME(tsileo): remove this
+	// FIXME(tsileo): check if the Authorization is present
+	authorized = true
 
 	blob, err := ft.blobStore.Get(context.TODO(), hash)
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"net/http"
+	"strings"
 )
 
 // FIXME(tsileo): remove this package
@@ -14,12 +15,22 @@ var BasicRealm = "Authorization Required"
 
 func BasicAuthFunc(username string, password string) func(*http.Request) bool {
 	return func(req *http.Request) bool {
-		var siteAuth = base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
 		auth := req.Header.Get("Authorization")
-		if !secureCompare(auth, "Basic "+siteAuth) {
-			return false
+		switch {
+		case strings.HasPrefix(auth, "Basic "):
+			siteAuth := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+			if !secureCompare(auth, "Basic "+siteAuth) {
+				return false
+			}
+			return true
+		case strings.HasPrefix(auth, "key "):
+			if !secureCompare(auth, "key "+password) {
+				return false
+			}
+			return true
+
 		}
-		return true
+		return false
 	}
 }
 

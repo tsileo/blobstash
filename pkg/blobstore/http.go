@@ -18,6 +18,8 @@ import (
 func (bs *BlobStore) uploadHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
+		case "GET":
+			// FIXME(tsileo): download the content from r.URL.Query().Get("url") and upload it, returns its ref
 		//POST takes the uploaded file(s) and saves it to disk.
 		case "POST":
 			ctx := ctxutil.WithRequest(context.Background(), r)

@@ -76,8 +76,8 @@ func hashFromKey(col, key string) string {
 }
 
 const (
-	FlagNoIndex byte = iota // Won't be indexed by Bleve
-	FlagFullTextIndexed
+	FlagNoIndex         byte = iota // Won't be indexed by Bleve
+	FlagFullTextIndexed             // TODO(tsileo): the full text index shouldn't be managed via a Flag, but like regular indexes (HTTP API)
 	FlagDeleted
 )
 
@@ -151,6 +151,35 @@ func (docstore *DocStoreExt) Register(r *mux.Router, basicAuth func(http.Handler
 	// r.Handle("/{collection}/search", middlewares.Auth(http.HandlerFunc(docstore.searchHandler())))
 	// r.Handle("/{collection}/_indexes", middlewares.Auth(http.HandlerFunc(docstore.indexesHandler())))
 	r.Handle("/{collection}/{_id}", basicAuth(http.HandlerFunc(docstore.docHandler())))
+}
+
+// Expand a doc keys (fetch the blob as JSON, or a filesystem reference)
+func (docstore *DocStoreExt) expandKeys(doc map[string]interface{}) error {
+	for k, v := range doc {
+		switch {
+		case strings.HasPrefix(k, "@ref/json"):
+			// XXX(tsileo): here and at other place, add a util func in hashutil to detect invalid string length at least
+			if _, ok := v.(string); !ok {
+				return fmt.Errorf("\"@ref/<type>\" exapandable attributes must be a string")
+			}
+			blob, err := docstore.blobStore.Get(context.TODO(), v.(string))
+			if err != nil {
+				return fmt.Errorf("failed to expend JSON ref: \"@ref/json => %v\": %v", v, err)
+			}
+			expanded := map[string]interface{}{}
+			if err := json.Unmarshal(blob, &expanded); err != nil {
+				return fmt.Errorf("failed to unmarshal expanded blob  \"@ref/json => %v\": %v", v, err)
+			}
+			// FIXME(tsileo): how to define expandable keys?
+			// quick fix: only uses @ref for now?
+			// {"key": "@ref/blob/json/<hash>"}
+			// {"key": "@ref/json:<hash>"}
+			// {"key": "ref://blob:json@<hash>"}
+			// {"file": "@blobstash:<hash>"}
+			// {"key": ""}
+		}
+	}
+	return nil
 }
 
 // Search performs a full-text search on the given `collection`, expects a Bleve query string.
@@ -487,6 +516,7 @@ func (docstore *DocStoreExt) Query(collection string, query map[string]interface
 }
 
 func addID(js []byte, _id string) []byte {
+	// TODO(tsileo): add _updated/_created
 	js2 := []byte(fmt.Sprintf("{\"_id\":\"%s\",", _id))
 	js2 = append(js2, js[1:len(js)]...)
 	return js2
@@ -567,8 +597,12 @@ QUERY:
 			jsPart := []byte{}
 			qLogger.Debug("fetch doc", "_id", _id)
 			if _, err := docstore.Fetch(collection, _id, &jsPart); err != nil {
+				if err == vkv.ErrNotFound {
+					break
+				}
 				panic(err)
 			}
+			// FIXME(tsileo): unmarshal all the doc for expanding keys
 			stats.TotalDocsExamined++
 			if noQuery {
 				// No query, so we just add every docs
@@ -701,6 +735,7 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 				docstore.logger.Error("Failed to parse JSON input", "collection", collection, "err", err)
 				panic(httputil.NewPublicErrorFmt("Invalid JSON document"))
 			}
+			// XXX(tsileo): Ensures there's no field starting with "_", e.g. `_id`/`_created`/`_updated`
 			index := false
 			if indexHeader := r.Header.Get("BlobStash-DocStore-IndexFullText"); indexHeader != "" {
 				if shouldIndex, _ := strconv.ParseBool(indexHeader); shouldIndex {
@@ -721,6 +756,10 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 			w.Header().Set("BlobStash-DocStore-Doc-Hash", _id.Hash())
 			w.Header().Set("BlobStash-DocStore-Doc-CreatedAt", strconv.Itoa(_id.Ts()))
 			w.WriteHeader(http.StatusCreated)
+			srw := httputil.NewSnappyResponseWriter(w, r)
+			httputil.WriteJSON(srw, map[string]interface{}{"_id": _id.String()})
+			srw.Close()
+
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -746,6 +785,7 @@ func (docstore *DocStoreExt) Fetch(collection, sid string, res interface{}) (*id
 	}
 
 	// Extract the hash (first byte is the Flag)
+	// XXX(tsileo): add/handle a `Deleted` flag
 	hash := kv.Value[1:len(kv.Value)]
 
 	// Fetch the blob
@@ -858,6 +898,8 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 			}
 
 			httputil.WriteJSON(srw, newDoc)
+		case "DELETE":
+			// FIXME(tsileo): empty the key, and hanlde it in the get/query
 		}
 
 		w.Header().Set("BlobStash-DocStore-Doc-Id", sid)
