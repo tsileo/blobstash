@@ -9,6 +9,7 @@ import (
 
 	"github.com/tsileo/blobstash/pkg/blobstore"
 	"github.com/tsileo/blobstash/pkg/config"
+	"github.com/tsileo/blobstash/pkg/docstore"
 	"github.com/tsileo/blobstash/pkg/filetree"
 	"github.com/tsileo/blobstash/pkg/httputil"
 	"github.com/tsileo/blobstash/pkg/hub"
@@ -76,6 +77,12 @@ func New(conf *config.Config) (*Server, error) {
 	}
 	filetree.Register(s.router.PathPrefix("/api/filetree").Subrouter(), s.router, basicAuth)
 
+	docstore, err := docstore.New(logger.New("app", "docstore"), conf, kvstore, blobstore)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize docstore app: %v", err)
+	}
+	docstore.Register(s.router.PathPrefix("/api/docstore").Subrouter(), basicAuth)
+
 	// Setup the closeFunc
 	s.closeFunc = func() error {
 		if err := blobstore.Close(); err != nil {
@@ -88,6 +95,9 @@ func New(conf *config.Config) (*Server, error) {
 			return err
 		}
 		if err := filetree.Close(); err != nil {
+			return err
+		}
+		if err := docstore.Close(); err != nil {
 			return err
 		}
 		return nil

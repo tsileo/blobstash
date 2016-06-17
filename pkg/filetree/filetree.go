@@ -352,7 +352,7 @@ func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 		}
 		w.Header().Add("BlobStash-FileTree-Public", pubHeader)
 
-		if r.URL.Query().Get("bewit") != "" {
+		if r.URL.Query().Get("bewit") == "1" {
 			if err := bewit.Bewit(ft.sharingCred, u, ft.shareTTL); err != nil {
 				panic(err)
 			}

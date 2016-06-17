@@ -96,6 +96,12 @@ func (kv *KvStore) Get(ctx context.Context, key string, version int) (*vkv.KeyVa
 	return kv.vkv.Get(key, -1)
 }
 
+func (kv *KvStore) Keys(ctx context.Context, start, end string, limit int) ([]*vkv.KeyValue, error) {
+	_, fromHttp := ctxutil.Request(ctx)
+	kv.log.Info("OP Keys", "from_http", fromHttp)
+	return kv.vkv.Keys(start, end, limit)
+}
+
 func (kv *KvStore) Versions(ctx context.Context, key string, start, end, limit int) (*vkv.KeyValueVersions, error) {
 	_, fromHttp := ctxutil.Request(ctx)
 	kv.log.Info("OP Versions", "from_http", fromHttp, "key", key, "start", start, "end", end)
@@ -103,6 +109,14 @@ func (kv *KvStore) Versions(ctx context.Context, key string, start, end, limit i
 		end = int(time.Now().UTC().UnixNano())
 	}
 	return kv.vkv.Versions(key, start, end, 0)
+}
+
+func (kv *KvStore) ReversePrefixKeys(prefix, start, end string, limit int) ([]*vkv.KeyValue, error) {
+	return kv.vkv.ReversePrefixKeys(prefix, start, end, limit)
+}
+
+func (kv *KvStore) PutPrefix(ctx context.Context, prefix, key, value string, version int) (*vkv.KeyValue, error) {
+	return kv.vkv.PutPrefix(prefix, key, value, version)
 }
 
 func (kv *KvStore) Put(ctx context.Context, key, value string, version int) (*vkv.KeyValue, error) {
