@@ -43,7 +43,7 @@ func New(conf *config.Config) (*Server, error) {
 		conf:   conf,
 		log:    logger,
 	}
-	basicAuth := middleware.NewBasicAuth(conf)
+	authFunc, basicAuth := middleware.NewBasicAuth(conf)
 	hub := hub.New(logger.New("app", "hub"))
 	// Load the blobstore
 	blobstore, err := blobstore.New(logger.New("app", "blobstore"), conf, hub)
@@ -71,7 +71,7 @@ func New(conf *config.Config) (*Server, error) {
 	synctable := synctable.New(logger.New("app", "sync"), conf, blobstore, nsDB)
 	synctable.Register(s.router.PathPrefix("/api/sync").Subrouter(), basicAuth)
 
-	filetree, err := filetree.New(logger.New("app", "filetree"), conf, kvstore, blobstore)
+	filetree, err := filetree.New(logger.New("app", "filetree"), conf, authFunc, kvstore, blobstore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize filetree app: %v", err)
 	}

@@ -43,14 +43,14 @@ type FileTreeExt struct {
 	blobStore   *blobstore.BlobStore
 	conf        *config.Config
 	sharingCred *bewit.Cred
-
-	shareTTL time.Duration
+	authFunc    func(*http.Request) bool
+	shareTTL    time.Duration
 
 	log log.Logger
 }
 
 // New initializes the `DocStoreExt`
-func New(logger log.Logger, conf *config.Config, kvStore *kvstore.KvStore, blobStore *blobstore.BlobStore) (*FileTreeExt, error) {
+func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bool, kvStore *kvstore.KvStore, blobStore *blobstore.BlobStore) (*FileTreeExt, error) {
 	logger.Debug("init")
 	return &FileTreeExt{
 		conf:      conf,
@@ -60,6 +60,7 @@ func New(logger log.Logger, conf *config.Config, kvStore *kvstore.KvStore, blobS
 			Key: []byte(conf.SharingKey),
 			ID:  "filetree",
 		},
+		authFunc: authFunc,
 		shareTTL: 1 * time.Hour,
 		log:      logger,
 	}, nil
@@ -276,9 +277,6 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 		ft.log.Debug("valid bewit")
 		authorized = true
 	}
-	// FIXME(tsileo): remove this
-	// FIXME(tsileo): check if the Authorization is present
-	authorized = true
 
 	blob, err := ft.blobStore.Get(context.TODO(), hash)
 	if err != nil {
@@ -301,9 +299,13 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 	}
 
 	if !authorized {
-		// Rreturns a 404 to prevent leak of hashes
-		notFound(w)
-		return
+		// Try if an API key is provided
+		ft.log.Info("before authFunc")
+		if !ft.authFunc(r) {
+			// Rreturns a 404 to prevent leak of hashes
+			notFound(w)
+			return
+		}
 	}
 
 	if m.IsDir() {
