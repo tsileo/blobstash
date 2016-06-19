@@ -19,9 +19,10 @@ import (
 
 // Cursor hold a hex/byte representation of a timestamp and a hash
 type ID struct {
-	data []byte
-	hash string // The hash is not part of the ID but it can be attached to the ID
-	flag byte   // Same here, not part of the ID but can be attched to it for convenience
+	data    []byte
+	hash    string // The hash is not part of the ID but it can be attached to the ID
+	flag    byte   // Same here, not part of the ID but can be attched to it for convenience
+	version int    // not part of the ID too
 }
 
 // New initializes an ID for the given timestamp
@@ -44,6 +45,14 @@ func (id *ID) SetFlag(flag byte) {
 // Flag returns the attached index flag
 func (id *ID) Flag() byte {
 	return id.flag
+}
+
+func (id *ID) SetVersion(v int) {
+	id.version = v
+}
+
+func (id *ID) Version() int {
+	return id.version
 }
 
 // SetHash allow to temporarily attach the document hash to the ID
