@@ -81,6 +81,10 @@ const (
 	FlagDeleted
 )
 
+const (
+	ExpandJson = "#blobstash/json:"
+)
+
 type executionStats struct {
 	NReturned           int    `json:"nReturned"`
 	TotalDocsExamined   int    `json:"totalDocsExamined"`
@@ -154,29 +158,32 @@ func (docstore *DocStoreExt) Register(r *mux.Router, basicAuth func(http.Handler
 }
 
 // Expand a doc keys (fetch the blob as JSON, or a filesystem reference)
+// e.g: {"ref": "@blobstash/json:<hash>"}
+//      => {"ref": {"blob": "json decoded"}}
 func (docstore *DocStoreExt) expandKeys(doc map[string]interface{}) error {
+	docstore.logger.Info("expandKeys")
 	for k, v := range doc {
-		switch {
-		case strings.HasPrefix(k, "@ref/json"):
-			// XXX(tsileo): here and at other place, add a util func in hashutil to detect invalid string length at least
-			if _, ok := v.(string); !ok {
-				return fmt.Errorf("\"@ref/<type>\" exapandable attributes must be a string")
+		switch vv := v.(type) {
+		case map[string]interface{}:
+			if err := docstore.expandKeys(vv); err != nil {
+				return err
 			}
-			blob, err := docstore.blobStore.Get(context.TODO(), v.(string))
-			if err != nil {
-				return fmt.Errorf("failed to expend JSON ref: \"@ref/json => %v\": %v", v, err)
+			continue
+		case string:
+			switch {
+			case strings.HasPrefix(vv, ExpandJson):
+				// XXX(tsileo): here and at other place, add a util func in hashutil to detect invalid string length at least
+				blob, err := docstore.blobStore.Get(context.TODO(), vv[len(ExpandJson):])
+				if err != nil {
+					return fmt.Errorf("failed to expend JSON ref: \"%v => %v\": %v", ExpandJson, v, err)
+				}
+				expanded := map[string]interface{}{}
+				if err := json.Unmarshal(blob, &expanded); err != nil {
+					return fmt.Errorf("failed to unmarshal expanded blob  \"%v => %v\": %v", ExpandJson, v, err)
+				}
+				docstore.logger.Info("expandKeys key expanded", "key", k, "val", expanded)
+				doc[k] = expanded
 			}
-			expanded := map[string]interface{}{}
-			if err := json.Unmarshal(blob, &expanded); err != nil {
-				return fmt.Errorf("failed to unmarshal expanded blob  \"@ref/json => %v\": %v", v, err)
-			}
-			// FIXME(tsileo): how to define expandable keys?
-			// quick fix: only uses @ref for now?
-			// {"key": "@ref/blob/json/<hash>"}
-			// {"key": "@ref/json:<hash>"}
-			// {"key": "ref://blob:json@<hash>"}
-			// {"file": "@blobstash:<hash>"}
-			// {"key": ""}
 		}
 	}
 	return nil
@@ -524,7 +531,7 @@ func addID(js []byte, _id string) []byte {
 
 // query returns a JSON list as []byte for the given query
 // docs are unmarhsalled to JSON only when needed.
-func (docstore *DocStoreExt) query(collection string, query map[string]interface{}, cursor string, limit int) ([]byte, *executionStats, error) {
+func (docstore *DocStoreExt) query2(collection string, query map[string]interface{}, cursor string, limit int) ([]byte, *executionStats, error) {
 	js := []byte("[")
 	tstart := time.Now()
 	stats := &executionStats{}
@@ -639,6 +646,138 @@ QUERY:
 		js = js[0 : len(js)-1]
 	}
 	js = append(js, []byte("]")...)
+
+	duration := time.Since(tstart)
+	qLogger.Debug("scan done", "duration", duration, "nReturned", stats.NReturned, "scanned", stats.TotalDocsExamined)
+	// XXX(tsileo): display duration in string format or nanosecond precision??
+	stats.ExecutionTimeMillis = int(duration.Nanoseconds() / 1e6)
+	return js, stats, nil
+}
+
+// query returns a JSON list as []byte for the given query
+// docs are unmarhsalled to JSON only when needed.
+func (docstore *DocStoreExt) query(collection string, query map[string]interface{}, cursor string, limit int) ([]byte, *executionStats, error) {
+	// js := []byte("[")
+	tstart := time.Now()
+	stats := &executionStats{}
+
+	// Check if the query can be optimized thanks to an already present index
+	// indexes, err := docstore.Indexes(collection)
+	// if err != nil {
+	// 	return nil, nil, fmt.Errorf("Failed to fetch index")
+	// }
+	// optz := optimizer.New(docstore.logger.New("module", "query optimizer"), indexes)
+
+	// Handle the cursor
+	start := ""
+	if cursor != "" {
+		start = fmt.Sprintf(KeyFmt, collection, cursor)
+	}
+	end := "\xff"
+
+	// Tweak the query limit
+	var noQuery bool
+	fetchLimit := limit
+	if query != nil && len(query) > 0 {
+		// Prefetch more docs since there's a lot of chance the query won't
+		// match every documents
+		fetchLimit = int(float64(limit) * 1.3)
+	} else {
+		noQuery = true
+	}
+
+	qLogger := docstore.logger.New("query", query, "id", logext.RandId(8))
+	qLogger.Info("new query")
+	docs := []map[string]interface{}{}
+
+	// Select the optimizer i.e. should we use an index?
+	// optzType, optzIndex := optz.Select(query)
+	// stats.Optimizer = optzType
+	// if optzIndex != nil {
+	// stats.Index = optzIndex.ID
+	// }
+
+	var lastKey string
+QUERY:
+	for {
+		// Loop until we have the number of requested documents, or if we scanned everything
+		qLogger.Debug("internal query", "limit", limit, "cursor", cursor, "start", start, "end", end, "nreturned", stats.NReturned)
+		// FIXME(tsileo): use `PrefixKeys` if ?sort=_id (-_id by default).
+		_ids := []string{}
+		// switch optzType {
+		// case optimizer.Linear:
+		// Performs a unoptimized linear scan
+		res, err := docstore.kvStore.ReversePrefixKeys(fmt.Sprintf(PrefixKeyFmt, collection), start, end, fetchLimit)
+		if err != nil {
+			panic(err)
+		}
+		for _, kv := range res {
+			_ids = append(_ids, hashFromKey(collection, kv.Key))
+			lastKey = kv.Key
+		}
+		// case optimizer.Index:
+		// 	// Use the index to answer the query
+		// 	// FIXME(tsileo): make cursor works (start, end handling)
+		// 	optzIndexHash := index.IndexKey(query[optzIndex.Fields[0]])
+		// 	_ids, err = docstore.docIndex.Iter(collection, optzIndex, optzIndexHash, start, end, fetchLimit)
+		// 	if err != nil {
+		// 		panic(err)
+		// 	}
+		// }
+
+		for _, _id := range _ids {
+			// Check if the doc match the query
+			// jsPart := []byte{}
+			doc := map[string]interface{}{}
+			qLogger.Debug("fetch doc", "_id", _id)
+			if _, err := docstore.Fetch(collection, _id, &doc); err != nil {
+				if err == vkv.ErrNotFound {
+					break
+				}
+				panic(err)
+			}
+			// FIXME(tsileo): unmarshal all the doc for expanding keys
+			stats.TotalDocsExamined++
+			if noQuery {
+				// No query, so we just add every docs
+				// js = append(js, addID(jsPart, _id)...)
+				// js = append(js, []byte(",")...)
+				docs = append(docs, doc)
+				stats.NReturned++
+				stats.LastID = _id
+				if stats.NReturned == limit {
+					break QUERY
+				}
+			} else {
+				// doc := map[string]interface{}{}
+				// if err := json.Unmarshal(jsPart, &doc); err != nil {
+				// panic(err)
+				// }
+				if matchQuery(qLogger, query, doc) {
+					// js = append(js, addID(jsPart, _id)...)
+					// js = append(js, []byte(",")...)
+					docs = append(docs, doc)
+					stats.NReturned++
+					stats.LastID = _id
+					if stats.NReturned == limit {
+						break QUERY
+					}
+				}
+			}
+		}
+		if len(_ids) == 0 || len(_ids) < limit {
+			break
+		}
+		start = nextKey(lastKey)
+	}
+	// Remove the last comma fron the JSON string
+	// if stats.NReturned > 0 {
+	// js = js[0 : len(js)-1]
+	// }
+	js, err := json.Marshal(docs)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	duration := time.Since(tstart)
 	qLogger.Debug("scan done", "duration", duration, "nReturned", stats.NReturned, "scanned", stats.TotalDocsExamined)
@@ -799,6 +938,9 @@ func (docstore *DocStoreExt) Fetch(collection, sid string, res interface{}) (*id
 	case *map[string]interface{}:
 		if err := json.Unmarshal(blob, idoc); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal blob: %s", blob)
+		}
+		if err := docstore.expandKeys(*idoc); err != nil {
+			return nil, err
 		}
 	case *[]byte:
 		// Just the copy if JSON if a []byte is provided
