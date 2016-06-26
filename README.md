@@ -3,6 +3,7 @@ BlobStash
 
 [![Build Status](https://travis-ci.org/tsileo/blobstash.png?branch=master)](https://travis-ci.org/tsileo/blobstash)
 &nbsp; &nbsp;[![Go Report Card](https://goreportcard.com/badge/github.com/tsileo/blobstash)](https://goreportcard.com/report/github.com/tsileo/blobstash)
+&nbsp; &nbsp;[![gorelease](https://dn-gorelease.qbox.me/gorelease-download-blue.svg)](https://gobuild.io/tsileo/blobstash/master)
 
 **BlobStash** is both a content-addressed blob store and a key value store accessible via an HTTP API.
 
