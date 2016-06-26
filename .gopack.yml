@@ -1,0 +1,16 @@
+author: Thomas Sileo
+description: BlobStash
+os: darwin linux
+includes:
+  - README.md
+  - LICENSE
+  - conf
+  - templates
+  - public
+  - static
+  - views
+excludes:
+  - \.git
+script:
+  - go get -v github.com/tsileo/blobstash/...
+  - go build cmd/blobstash/blobstash.go

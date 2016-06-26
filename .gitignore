@@ -1,3 +1,5 @@
+*.zip
+output/
 .lego*
 certs/
 *.swp
