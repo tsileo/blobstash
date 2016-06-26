@@ -16,9 +16,10 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/tsileo/blobstash/client/blobstore"
+	"github.com/tsileo/blobstash/pkg/client/blobstore"
 
 	"github.com/dchest/blake2b"
+	"golang.org/x/net/context"
 )
 
 func usage() {
@@ -59,7 +60,7 @@ func main() {
 		fmt.Printf("%s", hash)
 		os.Exit(0)
 	}
-	blob, err := blobstore.Get(flag.Arg(0))
+	blob, err := blobstore.Get(context.TODO(), flag.Arg(0))
 	if err != nil {
 		panic(err)
 	}

@@ -9,7 +9,7 @@ import (
 
 	"github.com/codegangsta/cli"
 	"github.com/dustin/go-humanize"
-	"github.com/tsileo/blobstash/backend/blobsfile"
+	"github.com/tsileo/blobstash/pkg/backend/blobsfile"
 )
 
 var version = "dev"
