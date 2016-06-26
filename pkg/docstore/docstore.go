@@ -57,6 +57,8 @@ import (
 // will need to solve few issues before:
 // - do we need to check if the doc is already indexed?
 
+// TODO(tsileo): add a <hexID>/_versions handler
+
 var (
 	PrefixKey    = "docstore:"
 	PrefixKeyFmt = PrefixKey + "%s"
@@ -779,7 +781,10 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 			w.Header().Set("BlobStash-DocStore-Doc-CreatedAt", strconv.Itoa(_id.Ts()))
 			w.WriteHeader(http.StatusCreated)
 			srw := httputil.NewSnappyResponseWriter(w, r)
-			httputil.WriteJSON(srw, map[string]interface{}{"_id": _id.String()})
+			httputil.WriteJSON(srw, map[string]interface{}{
+				"_id":      _id.String(),
+				"_created": _id.Ts(),
+			})
 			srw.Close()
 
 		default:
@@ -900,6 +905,18 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 			// Actually update the doc
 			newDoc, err := updateDoc(doc, update)
 
+			if _, ok := newDoc["_id"]; ok {
+				delete(newDoc, "_id")
+			}
+
+			if _, ok := newDoc["_created"]; ok {
+				delete(newDoc, "_created")
+			}
+
+			if _, ok := newDoc["_updated"]; ok {
+				delete(newDoc, "_updated")
+			}
+
 			// Marshal it to JSON to save it back as a blob
 			data, err := json.Marshal(newDoc)
 			if err != nil {
@@ -919,10 +936,13 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 			bash[0] = _id.Flag()
 			copy(bash[1:], []byte(hash)[:])
 
-			if _, err := docstore.kvStore.Put(ctx, fmt.Sprintf(KeyFmt, collection, _id.String()), string(bash), -1); err != nil {
+			kv, err := docstore.kvStore.Put(ctx, fmt.Sprintf(KeyFmt, collection, _id.String()), string(bash), -1)
+			if err != nil {
 				panic(err)
 			}
-
+			newDoc["_id"] = _id.String()
+			newDoc["_created"] = _id.Ts()
+			newDoc["_updated"] = kv.Version / 1e9
 			httputil.WriteJSON(srw, newDoc)
 		case "DELETE":
 			// FIXME(tsileo): empty the key, and hanlde it in the get/query

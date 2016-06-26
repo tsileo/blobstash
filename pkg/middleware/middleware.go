@@ -5,9 +5,10 @@ import (
 	"os"
 	"strconv"
 
-	_ "github.com/carbocation/interpose/middleware"
-	"github.com/tsileo/blobstash/httputil"
 	"github.com/tsileo/blobstash/pkg/config"
+	"github.com/tsileo/blobstash/pkg/httputil"
+
+	_ "github.com/carbocation/interpose/middleware"
 	"github.com/unrolled/secure"
 )
 
@@ -44,10 +45,10 @@ func CorsMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
-func NewBasicAuth(conf *config.Config) func(http.Handler) http.Handler {
+func NewBasicAuth(conf *config.Config) (func(*http.Request) bool, func(http.Handler) http.Handler) {
 	// FIXME(tsileo): clean this, and load passfrom config
 	if conf.APIKey == "" {
-		return func(next http.Handler) http.Handler {
+		return nil, func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				next.ServeHTTP(w, r)
 				return
@@ -56,7 +57,7 @@ func NewBasicAuth(conf *config.Config) func(http.Handler) http.Handler {
 
 	}
 	authFunc := httputil.BasicAuthFunc("", conf.APIKey)
-	return func(next http.Handler) http.Handler {
+	return authFunc, func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if authFunc(r) {
 				next.ServeHTTP(w, r)
