@@ -6,6 +6,8 @@ import (
 	"io/ioutil"
 	"mime/multipart"
 
+	"golang.org/x/net/context"
+
 	"github.com/tsileo/blobstash/pkg/client/clientutil"
 )
 
@@ -40,7 +42,7 @@ func (bs *BlobStore) Client() *clientutil.Client {
 }
 
 // Get fetch the given blob from the remote BlobStash instance.
-func (bs *BlobStore) Get(hash string) ([]byte, error) {
+func (bs *BlobStore) Get(_ context.Context, hash string) ([]byte, error) {
 	resp, err := bs.client.DoReq("GET", fmt.Sprintf("/api/blobstore/blob/%s", hash), nil, nil)
 	if err != nil {
 		return nil, err

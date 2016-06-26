@@ -6,10 +6,11 @@ import (
 	"path/filepath"
 
 	_ "github.com/dchest/blake2b"
+	"golang.org/x/net/context"
 
-	"github.com/tsileo/blobstash/client/blobstore"
-	"github.com/tsileo/blobstash/ext/filetree/filetreeutil/meta"
-	"github.com/tsileo/blobstash/ext/filetree/reader/filereader"
+	"github.com/tsileo/blobstash/pkg/client/blobstore"
+	"github.com/tsileo/blobstash/pkg/filetree/filetreeutil/meta"
+	"github.com/tsileo/blobstash/pkg/filetree/reader/filereader"
 )
 
 // GetDir restore the directory to path
@@ -20,7 +21,7 @@ func GetDir(bs *blobstore.BlobStore, hash, path string) error { // (rr *ReadResu
 		return err
 	}
 
-	js, err := bs.Get(hash)
+	js, err := bs.Get(context.TODO(), hash)
 	if err != nil {
 		return err
 	}
@@ -32,7 +33,7 @@ func GetDir(bs *blobstore.BlobStore, hash, path string) error { // (rr *ReadResu
 	// var crr *ReadResult
 	if cmeta.Size > 0 {
 		for _, hash := range cmeta.Refs {
-			blob, err := bs.Get(hash.(string))
+			blob, err := bs.Get(context.TODO(), hash.(string))
 			submeta, err := meta.NewMetaFromBlob(hash.(string), blob)
 			if err != nil {
 				return fmt.Errorf("failed to fetch meta: %v", err)

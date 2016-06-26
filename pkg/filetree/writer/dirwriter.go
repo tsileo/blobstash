@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tsileo/blobstash/ext/filetree/filetreeutil/meta"
+	"github.com/tsileo/blobstash/pkg/filetree/filetreeutil/meta"
 )
 
 // node represents either a file or directory in the directory tree

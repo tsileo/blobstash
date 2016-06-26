@@ -90,7 +90,7 @@ func TestDB(t *testing.T) {
 	if len(versions.Versions) != 2 {
 		t.Errorf("key test_key_1 should have 2 versions, got %d", len(versions.Versions))
 	}
-	if versions.Versions[1].Value != res2.Value {
+	if versions.Versions[0].Value != res2.Value {
 		t.Errorf("bad KeyValue result got %+v, expected %+v", versions.Versions[0].Value, res2.Value)
 	}
 	keys, err = db.Keys("", "\xff", 0)

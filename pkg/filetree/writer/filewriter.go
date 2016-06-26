@@ -10,8 +10,8 @@ import (
 
 	"github.com/dchest/blake2b"
 
-	"github.com/tsileo/blobstash/ext/filetree/filetreeutil/chunker"
-	"github.com/tsileo/blobstash/ext/filetree/filetreeutil/meta"
+	"github.com/tsileo/blobstash/pkg/filetree/filetreeutil/chunker"
+	"github.com/tsileo/blobstash/pkg/filetree/filetreeutil/meta"
 )
 
 var (

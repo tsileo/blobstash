@@ -14,7 +14,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tsileo/blobstash/client/response"
+	"github.com/tsileo/blobstash/pkg/client/response"
 )
 
 // TODO(tsileo): RESHAPE this! with doReq and simpler API (especially for the blob upload).

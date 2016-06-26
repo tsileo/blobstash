@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/tsileo/blobstash/backend"
+	"github.com/tsileo/blobstash/pkg/backend"
 )
 
 func check(e error) {

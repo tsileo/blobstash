@@ -15,46 +15,46 @@ func check(err error) {
 }
 
 var (
-	creds1    = &Creds{ID: "id1", Key: []byte("key1")}
+	creds1    = &Cred{ID: "id1", Key: []byte("key1")}
 	resource1 = "/resource1"
 	resource2 = "/resource2"
 )
 
 var testTable = []struct {
-	creds          *Creds
-	url            *url.URL
-	exp            time.Duration
-	alterURLFunc   func(*url.URL) // Alter the URL after the bewit generation
-	alterCredsFunc func(*Creds)
-	method         string
-	expected       error // Expected `Validate` result
+	creds         *Cred
+	url           *url.URL
+	exp           time.Duration
+	alterURLFunc  func(*url.URL) // Alter the URL after the bewit generation
+	alterCredFunc func(*Cred)
+	method        string
+	expected      error // Expected `Validate` result
 }{
 	{
-		creds:          creds1,
-		url:            &url.URL{Path: resource1},
-		exp:            1 * time.Minute,
-		alterURLFunc:   nil,
-		alterCredsFunc: nil,
-		method:         "GET",
-		expected:       nil,
+		creds:         creds1,
+		url:           &url.URL{Path: resource1},
+		exp:           1 * time.Minute,
+		alterURLFunc:  nil,
+		alterCredFunc: nil,
+		method:        "GET",
+		expected:      nil,
 	},
 	{
-		creds:          creds1,
-		url:            &url.URL{Path: resource1, RawQuery: "k1=v1&k2=v2"},
-		exp:            1 * time.Minute,
-		alterURLFunc:   nil,
-		alterCredsFunc: nil,
-		method:         "GET",
-		expected:       nil,
+		creds:         creds1,
+		url:           &url.URL{Path: resource1, RawQuery: "k1=v1&k2=v2"},
+		exp:           1 * time.Minute,
+		alterURLFunc:  nil,
+		alterCredFunc: nil,
+		method:        "GET",
+		expected:      nil,
 	},
 	{
-		creds:          creds1,
-		url:            &url.URL{Path: resource1},
-		exp:            1 * time.Minute,
-		alterURLFunc:   nil,
-		alterCredsFunc: nil,
-		method:         "HEAD",
-		expected:       nil,
+		creds:         creds1,
+		url:           &url.URL{Path: resource1},
+		exp:           1 * time.Minute,
+		alterURLFunc:  nil,
+		alterCredFunc: nil,
+		method:        "HEAD",
+		expected:      nil,
 	},
 	{
 		creds: creds1,
@@ -66,18 +66,18 @@ var testTable = []struct {
 			q.Del("bewit")
 			u.RawQuery = q.Encode()
 		},
-		alterCredsFunc: nil,
-		method:         "GET",
-		expected:       ErrEmptyBewit,
+		alterCredFunc: nil,
+		method:        "GET",
+		expected:      ErrEmptyBewit,
 	},
 	{
-		creds:          creds1,
-		url:            &url.URL{Path: resource1},
-		exp:            1 * time.Minute,
-		alterURLFunc:   nil,
-		alterCredsFunc: nil,
-		method:         "POST",
-		expected:       ErrInvalidMethod,
+		creds:         creds1,
+		url:           &url.URL{Path: resource1},
+		exp:           1 * time.Minute,
+		alterURLFunc:  nil,
+		alterCredFunc: nil,
+		method:        "POST",
+		expected:      ErrInvalidMethod,
 	},
 	{
 		creds: creds1,
@@ -88,9 +88,9 @@ var testTable = []struct {
 			q.Set("bewit", "izznvalidencoding")
 			u.RawQuery = q.Encode()
 		},
-		alterCredsFunc: nil,
-		method:         "GET",
-		expected:       ErrInvalidEncoding,
+		alterCredFunc: nil,
+		method:        "GET",
+		expected:      ErrInvalidEncoding,
 	},
 	{
 		creds: creds1,
@@ -101,16 +101,16 @@ var testTable = []struct {
 			q.Set("bewit", "invalidencoding=")
 			u.RawQuery = q.Encode()
 		},
-		alterCredsFunc: nil,
-		method:         "GET",
-		expected:       ErrInvalidPayload,
+		alterCredFunc: nil,
+		method:        "GET",
+		expected:      ErrInvalidPayload,
 	},
 	{
 		creds:        creds1,
 		url:          &url.URL{Path: resource1},
 		exp:          1 * time.Minute,
 		alterURLFunc: nil,
-		alterCredsFunc: func(c *Creds) {
+		alterCredFunc: func(c *Cred) {
 			c.ID = "t"
 		},
 		method:   "GET",
@@ -118,13 +118,13 @@ var testTable = []struct {
 	},
 	// TODO(tsileo): test invalid timestamp
 	{
-		creds:          creds1,
-		url:            &url.URL{Path: resource1},
-		exp:            -5 * time.Minute,
-		alterURLFunc:   nil,
-		alterCredsFunc: nil,
-		method:         "GET",
-		expected:       ErrAccessExpired,
+		creds:         creds1,
+		url:           &url.URL{Path: resource1},
+		exp:           -5 * time.Minute,
+		alterURLFunc:  nil,
+		alterCredFunc: nil,
+		method:        "GET",
+		expected:      ErrAccessExpired,
 	},
 	{
 		creds: creds1,
@@ -134,9 +134,9 @@ var testTable = []struct {
 			// Change the path to trigger an `ErrBadMac` error
 			u.Path = resource2
 		},
-		alterCredsFunc: nil,
-		method:         "GET",
-		expected:       ErrBadMac,
+		alterCredFunc: nil,
+		method:        "GET",
+		expected:      ErrBadMac,
 	},
 	{
 		creds: creds1,
@@ -148,9 +148,9 @@ var testTable = []struct {
 			q.Add("new", "arg")
 			u.RawQuery = q.Encode()
 		},
-		alterCredsFunc: nil,
-		method:         "GET",
-		expected:       ErrBadMac,
+		alterCredFunc: nil,
+		method:        "GET",
+		expected:      ErrBadMac,
 	},
 }
 
@@ -161,8 +161,8 @@ func TestBewit(t *testing.T) {
 		if tdata.alterURLFunc != nil {
 			tdata.alterURLFunc(tdata.url)
 		}
-		if tdata.alterCredsFunc != nil {
-			tdata.alterCredsFunc(tdata.creds)
+		if tdata.alterCredFunc != nil {
+			tdata.alterCredFunc(tdata.creds)
 		}
 
 		req := &http.Request{

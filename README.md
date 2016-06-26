@@ -1,6 +1,8 @@
 BlobStash
 =========
 
+[![Build Status](https://travis-ci.org/tsileo/blobstash.png?branch=master)](https://travis-ci.org/tsileo/blobstash)
+
 **BlobStash** is both a content-addressed blob store and a key value store accessible via an HTTP API.
 
 Key value pairs are stored as "meta" blobs, this mean you can build application on top of BlobStash without the need for another database.

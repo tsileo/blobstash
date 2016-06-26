@@ -1,6 +1,6 @@
 package client
 
-import "github.com/tsileo/blobstash/client/response"
+import "github.com/tsileo/blobstash/pkg/client/response"
 
 type KvStorer interface {
 	Put(string, string, int) (*response.KeyValue, error)
