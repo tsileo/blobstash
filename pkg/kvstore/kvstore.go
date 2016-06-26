@@ -17,7 +17,7 @@ import (
 	"github.com/tsileo/blobstash/pkg/ctxutil"
 	"github.com/tsileo/blobstash/pkg/httputil"
 	"github.com/tsileo/blobstash/pkg/meta"
-	"github.com/tsileo/blobstash/vkv"
+	"github.com/tsileo/blobstash/pkg/vkv"
 )
 
 const KvType = "kv"

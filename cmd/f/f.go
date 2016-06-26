@@ -14,7 +14,7 @@ import (
 	_ "syscall"
 
 	"github.com/kuba--/xattr"
-	_ "github.com/tsileo/blobstash/client/blobstore"
+	"github.com/tsileo/blobstash/client/blobstore"
 )
 
 // TODO(tsileo): zsh autocomplete support
@@ -26,11 +26,26 @@ func usage() {
 }
 
 func getRef(path string) (string, bool) {
-	ref, _ := xattr.Getxattr(path, "blobfs.ref")
+	ref, _ := xattr.Getxattr(path, "ref")
 	if len(ref) > 0 {
 		return string(ref), true
 	}
 	return "", false
+}
+
+func getLink(blobstore *blobstore.BlobStore, host, ref string) (string, error) {
+	resp, err := blobstore.Client().DoReq("HEAD", fmt.Sprintf("/api/ext/filetree/v1/node/%s?bewit=1", ref), nil, nil)
+	if err != nil {
+		panic(err)
+	}
+	// fmt.Printf("resp:%+v", resp)
+	if resp.StatusCode != 200 {
+		panic("failed to fetch Hawk key")
+	}
+	if resp.Header.Get("Blobstash-Filetree-Public") == "1" {
+		return fmt.Sprintf("%s%s\n", host, resp.Header.Get("Blobstash-Filetree-Public-Path")), nil
+	}
+	return fmt.Sprintf("%s%s\n", host, resp.Header.Get("Blobstash-Filetree-Semiprivate-Path")), nil
 }
 
 func main() {
@@ -48,14 +63,30 @@ func main() {
 	if flag.NArg() < 1 {
 		usage()
 	}
+
+	opts := blobstore.DefaultOpts()
+	host := "http://localhost:8050"
+	if h := os.Getenv("BLOBSTASH_API_HOST"); h != "" {
+		host = h
+	}
+	opts.SetHost(host, os.Getenv("BLOBSTASH_API_KEY"))
+	blobstore := blobstore.New(opts)
+
 	// TODO(tsileo): an "extra" sub command
 	path := flag.Arg(0)
 	ref, _ := getRef(path)
-	fmt.Printf("%s", ref)
+	fmt.Printf("%s\n", ref)
 	if ref == "" {
 		fmt.Printf("Not inside a BlobFS\n")
 		os.Exit(1)
 	}
+
+	link, err := getLink(blobstore, host, ref)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("%s\n", link)
+
 	// switch flag.Arg(0) {
 	// case "extra":
 	// 	if flag.NArg() == 1 {

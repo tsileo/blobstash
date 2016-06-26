@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/tsileo/blobstash/httputil/bewit"
+	"github.com/tsileo/blobstash/pkg/httputil/bewit"
 )
 
 /*
@@ -16,7 +16,7 @@ See https://github.com/hueniverse/hawk
 
 */
 
-var creds = &bewit.Creds{}
+var creds = &bewit.Cred{}
 
 func SetHawkKey(bkey []byte) {
 	creds.Key = bkey

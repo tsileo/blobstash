@@ -24,7 +24,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/tsileo/blobstash/config/pathutil"
+	"github.com/tsileo/blobstash/pkg/config/pathutil"
 
 	"github.com/cznic/kv"
 )

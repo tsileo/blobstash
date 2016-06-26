@@ -39,8 +39,6 @@ import (
 	log "github.com/inconshreveable/log15"
 	logext "github.com/inconshreveable/log15/ext"
 
-	_ "github.com/tsileo/blobstash/config/pathutil"
-	_ "github.com/tsileo/blobstash/permissions"
 	"github.com/tsileo/blobstash/pkg/blob"
 	"github.com/tsileo/blobstash/pkg/blobstore"
 	"github.com/tsileo/blobstash/pkg/config"
@@ -50,7 +48,7 @@ import (
 	_ "github.com/tsileo/blobstash/pkg/docstore/optimizer"
 	"github.com/tsileo/blobstash/pkg/httputil"
 	"github.com/tsileo/blobstash/pkg/kvstore"
-	"github.com/tsileo/blobstash/vkv"
+	"github.com/tsileo/blobstash/pkg/vkv"
 )
 
 // FIXME(tsileo): create a "meta" hook for handling indexing

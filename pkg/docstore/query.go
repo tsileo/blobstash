@@ -4,7 +4,7 @@ import (
 	"errors"
 	"reflect"
 
-	"github.com/tsileo/blobstash/ext/docstore/maputil"
+	"github.com/tsileo/blobstash/pkg/docstore/maputil"
 
 	log "github.com/inconshreveable/log15"
 )

@@ -1,7 +1,7 @@
 package httputil
 
 import (
-	"github.com/tsileo/blobstash/logger"
+	"github.com/tsileo/blobstash/pkg/logger"
 	// "github.com/tsileo/blobstash/permissions"
 
 	"encoding/json"

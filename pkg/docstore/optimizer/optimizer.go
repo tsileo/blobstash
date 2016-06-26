@@ -3,8 +3,8 @@ package optimizer
 import (
 	"fmt"
 
-	"github.com/tsileo/blobstash/ext/docstore/index"
-	"github.com/tsileo/blobstash/ext/docstore/maputil"
+	"github.com/tsileo/blobstash/pkg/docstore/index"
+	"github.com/tsileo/blobstash/pkg/docstore/maputil"
 
 	log "gopkg.in/inconshreveable/log15.v2"
 	logext "gopkg.in/inconshreveable/log15.v2/ext"

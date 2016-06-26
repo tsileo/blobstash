@@ -12,10 +12,8 @@ import (
 	log "github.com/inconshreveable/log15"
 	"golang.org/x/net/context"
 
-	"github.com/tsileo/blobstash/client/clientutil"
-	_ "github.com/tsileo/blobstash/ext/filetree/filetreeutil/fs"
-	_ "github.com/tsileo/blobstash/permissions"
 	"github.com/tsileo/blobstash/pkg/blobstore"
+	"github.com/tsileo/blobstash/pkg/client/clientutil"
 	"github.com/tsileo/blobstash/pkg/config"
 	"github.com/tsileo/blobstash/pkg/filetree/filetreeutil/meta"
 	"github.com/tsileo/blobstash/pkg/filetree/reader/filereader"

@@ -46,11 +46,10 @@ import (
 	"github.com/golang/snappy"
 	log2 "gopkg.in/inconshreveable/log15.v2"
 
-	bbackend "github.com/tsileo/blobstash/backend"
-	"github.com/tsileo/blobstash/client/clientutil"
-	"github.com/tsileo/blobstash/config/pathutil"
-	"github.com/tsileo/blobstash/logger"
 	"github.com/tsileo/blobstash/pkg/blob"
+	"github.com/tsileo/blobstash/pkg/client/clientutil"
+	"github.com/tsileo/blobstash/pkg/config/pathutil"
+	"github.com/tsileo/blobstash/pkg/logger"
 )
 
 const (
@@ -682,7 +681,7 @@ func (backend *BlobsFileBackend) Delete(hash string) error {
 func (backend *BlobsFileBackend) Enumerate(blobs chan<- string) error {
 	defer close(blobs)
 	if backend.writeOnly {
-		return bbackend.ErrWriteOnly
+		return fmt.Errorf("write only") // bbackend.ErrWriteOnly
 	}
 	if !backend.loaded {
 		panic("backend BlobsFileBackend not loaded")
@@ -708,7 +707,7 @@ func (backend *BlobsFileBackend) Enumerate(blobs chan<- string) error {
 func (backend *BlobsFileBackend) Enumerate2(blobs chan<- *blob.SizedBlobRef, start, end string, limit int) error {
 	defer close(blobs)
 	if backend.writeOnly {
-		return bbackend.ErrWriteOnly
+		return fmt.Errorf("write only") // bbackend.ErrWriteOnly
 	}
 	if !backend.loaded {
 		panic("backend BlobsFileBackend not loaded")

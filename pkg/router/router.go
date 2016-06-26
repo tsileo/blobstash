@@ -13,7 +13,7 @@ import (
 	"github.com/tsileo/blobstash/pkg/ctxutil"
 	"golang.org/x/net/context"
 
-	"github.com/tsileo/blobstash/backend"
+	"github.com/tsileo/blobstash/pkg/backend"
 )
 
 type Rule struct {

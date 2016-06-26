@@ -22,10 +22,10 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/tsileo/blobstash/httputil"
 	_ "github.com/tsileo/blobstash/pkg/blob"
 	"github.com/tsileo/blobstash/pkg/blobstore"
 	"github.com/tsileo/blobstash/pkg/config"
+	"github.com/tsileo/blobstash/pkg/httputil"
 	"github.com/tsileo/blobstash/pkg/nsdb"
 
 	"github.com/dchest/blake2b"
