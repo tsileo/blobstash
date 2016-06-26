@@ -49,7 +49,7 @@ INFO[06-26|12:41:07] listening on :8050
 You can deal directly with blobs when needed using the HTTP API, full docs [here](docs/blobstore.md).
 
 ```console
-$ curl -F "c0f1480a26c2fd4deb8e738a52b7530ed111b9bcd17bbb09259ce03f129988c5=ok" http://0.0.0.0:8050/api/v1/blobstore/upload
+$ curl -F "c0f1480a26c2fd4deb8e738a52b7530ed111b9bcd17bbb09259ce03f129988c5=ok" http://0.0.0.0:8050/api/blobstore/upload
 ```
 
 ## Key value store
@@ -59,12 +59,12 @@ Updates on keys are store in blobs, and automatically handled by BlobStash.
 Perfect to keep a mutable pointer.
 
 ```console
-$ curl -XPUT http://127.0.0.1:8050/api/v1/vkv/key/k1 -d value=v1
+$ curl -XPUT http://127.0.0.1:8050/api/vkv/key/k1 -d value=v1
 {"key":"k1","value":"v1","version":1421705651367957723}
 ```
 
 ```console
-$ curl http://127.0.0.1:8050/api/v1/vkv/key/k1
+$ curl http://127.0.0.1:8050/api/vkv/key/k1
 {"key":"k1","value":"v1","version":1421705651367957723}
 ```
 
