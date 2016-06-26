@@ -14,7 +14,9 @@ import (
 	_ "syscall"
 
 	"github.com/kuba--/xattr"
-	"github.com/tsileo/blobstash/client/blobstore"
+	_ "golang.org/x/net/context"
+
+	"github.com/tsileo/blobstash/pkg/client/blobstore"
 )
 
 // TODO(tsileo): zsh autocomplete support
