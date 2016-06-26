@@ -1,10 +1,14 @@
 package server
 
 import (
+	"crypto/tls"
 	"fmt"
+	_ "io"
+	_ "log"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/tsileo/blobstash/pkg/blobstore"
@@ -19,6 +23,7 @@ import (
 	"github.com/tsileo/blobstash/pkg/nsdb"
 	"github.com/tsileo/blobstash/pkg/synctable"
 
+	"github.com/dkumor/acmewrapper"
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
 )
@@ -113,7 +118,44 @@ func (s *Server) Serve() error {
 		}
 		s.log.Info(fmt.Sprintf("listening on %v", listen))
 		reqLogger := httputil.LoggerMiddleware(s.log)
-		http.ListenAndServe(listen, httputil.RecoverHandler(middleware.CorsMiddleware(reqLogger(middleware.Secure(s.router)))))
+		h := httputil.RecoverHandler(middleware.CorsMiddleware(reqLogger(middleware.Secure(s.router))))
+
+		if s.conf.AutoTLS {
+			w, err := acmewrapper.New(acmewrapper.Config{
+				Domains: s.conf.Domains,
+				Address: listen,
+
+				TLSCertFile: filepath.Join(s.conf.ConfigDir(), config.LetsEncryptDir, "cert.pem"),
+				TLSKeyFile:  filepath.Join(s.conf.ConfigDir(), config.LetsEncryptDir, "key.pem"),
+
+				RegistrationFile: filepath.Join(s.conf.ConfigDir(), config.LetsEncryptDir, "user.reg"),
+				PrivateKeyFile:   filepath.Join(s.conf.ConfigDir(), config.LetsEncryptDir, "user.pem"),
+
+				TOSCallback: acmewrapper.TOSAgree,
+			})
+
+			if err != nil {
+				panic(err)
+			}
+
+			tlsconfig := w.TLSConfig()
+
+			listener, err := tls.Listen("tcp", listen, tlsconfig)
+			if err != nil {
+				panic(err)
+			}
+
+			// To enable http2, we need http.Server to have reference to tlsconfig
+			// https://github.com/golang/go/issues/14374
+			server := &http.Server{
+				Addr:      listen,
+				Handler:   h,
+				TLSConfig: tlsconfig,
+			}
+			server.Serve(listener)
+		} else {
+			http.ListenAndServe(listen, h)
+		}
 	}()
 	s.tillShutdown()
 	return s.closeFunc()
