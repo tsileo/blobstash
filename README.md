@@ -25,7 +25,7 @@ Everything is private by default, but can support public and semi-private sharin
 
 - All data you put in it is deduplicated (thanks to content-addressing).
 - [BLAKE2b](https://blake2.net) as hashing algorithm for the content-addressed blob store
-- TLS and HTTP2 support
+- TLS and HTTP2 support (thanks to Let's Encrypt)
 
 ## Getting started
 
