@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	"code.google.com/p/go.crypto/scrypt"
+	"golang.org/x/crypto/scrypt"
 )
 
 func check(err error) {
