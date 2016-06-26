@@ -12,5 +12,5 @@ includes:
 excludes:
   - \.git
 script:
-  - go get -v github.com/tsileo/blobstash/...
-  - go build cmd/blobstash/blobstash.go
+  - go get -v
+  - go build
