@@ -2,6 +2,7 @@ language: go
 
 go:
   - 1.6
-
+install: true
 script:
-  -  go test $(go list ./... | grep pkg)
+  - go get -v github.com/tsileo/blobstash/...
+  - go test $(go list ./... | grep pkg)
