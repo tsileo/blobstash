@@ -26,6 +26,7 @@ import (
 	"github.com/dkumor/acmewrapper"
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
+	"github.com/xenolf/lego/acme"
 )
 
 type App interface {
@@ -130,8 +131,8 @@ func (s *Server) Serve() error {
 
 				RegistrationFile: filepath.Join(s.conf.ConfigDir(), config.LetsEncryptDir, "user.reg"),
 				PrivateKeyFile:   filepath.Join(s.conf.ConfigDir(), config.LetsEncryptDir, "user.pem"),
-
-				TOSCallback: acmewrapper.TOSAgree,
+				PrivateKeyType:   acme.EC384, // Use `elliptic.P384()` for the private key
+				TOSCallback:      acmewrapper.TOSAgree,
 			})
 
 			if err != nil {
