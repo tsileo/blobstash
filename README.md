@@ -3,7 +3,7 @@ BlobStash
 
 [![Travis](https://img.shields.io/travis/tsileo/blobstash.svg?maxAge=2592000)](https://travis-ci.org/tsileo/blobstash)
 &nbsp; &nbsp;[![Go Report Card](https://goreportcard.com/badge/github.com/tsileo/blobstash)](https://goreportcard.com/report/github.com/tsileo/blobstash)
-[![License](http://img.shields.io/badge/license-MIT-red.svg?style=flat)](https://raw.githubusercontent.com/tsileo/blobstash/master/LICENSE)
+&nbsp; &nbsp;[![License](http://img.shields.io/badge/license-MIT-red.svg?style=flat)](https://raw.githubusercontent.com/tsileo/blobstash/master/LICENSE)
 
 **BlobStash** is both a content-addressed blob store and a key value store accessible via an HTTP API.
 
