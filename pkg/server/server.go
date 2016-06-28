@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/tsileo/blobstash/pkg/apps"
 	"github.com/tsileo/blobstash/pkg/blobstore"
 	"github.com/tsileo/blobstash/pkg/config"
 	"github.com/tsileo/blobstash/pkg/docstore"
@@ -83,6 +84,13 @@ func New(conf *config.Config) (*Server, error) {
 	}
 	filetree.Register(s.router.PathPrefix("/api/filetree").Subrouter(), s.router, basicAuth)
 
+	// filetree, err := filetree.New(logger.New("app", "filetree"), conf, authFunc, kvstore, blobstore)
+	apps, err := apps.New(logger.New("app", "apps"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize filetree app: %v", err)
+	}
+	apps.Register(s.router.PathPrefix("/api/apps").Subrouter(), s.router, basicAuth)
+
 	docstore, err := docstore.New(logger.New("app", "docstore"), conf, kvstore, blobstore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize docstore app: %v", err)
@@ -104,6 +112,9 @@ func New(conf *config.Config) (*Server, error) {
 			return err
 		}
 		if err := docstore.Close(); err != nil {
+			return err
+		}
+		if err := apps.Close(); err != nil {
 			return err
 		}
 		return nil

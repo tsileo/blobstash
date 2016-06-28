@@ -1,23 +1,15 @@
 package filetree
 
 import (
-	"bytes"
 	_ "encoding/json"
 	"fmt"
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
-	"github.com/nfnt/resize"
 	"golang.org/x/net/context"
-	"image"
-	"image/gif"
-	"image/jpeg"
-	"image/png"
 	"io"
 	"net/http"
 	"net/url"
 	"sort"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/tsileo/blobstash/pkg/blobstore"
@@ -27,6 +19,7 @@ import (
 	"github.com/tsileo/blobstash/pkg/filetree/reader/filereader"
 	"github.com/tsileo/blobstash/pkg/httputil"
 	"github.com/tsileo/blobstash/pkg/httputil/bewit"
+	"github.com/tsileo/blobstash/pkg/httputil/resize"
 	"github.com/tsileo/blobstash/pkg/kvstore"
 )
 
@@ -322,46 +315,12 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 	var f io.ReadSeeker
 	f = filereader.NewFile(ft.blobStore, m)
 
-	// Check if the file is requested for download
-	if r.URL.Query().Get("dl") != "" {
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", m.Name))
-	}
+	// Check if the file is requested for download (?dl=1)
+	httputil.SetAttachment(m.Name, r, w)
 
 	// Support for resizing image on the fly
-	swi := r.URL.Query().Get("w")
-	lname := strings.ToLower(m.Name)
-	if (strings.HasSuffix(lname, ".jpg") || strings.HasSuffix(lname, ".png") || strings.HasSuffix(lname, ".gif")) && swi != "" {
-		wi, err := strconv.Atoi(swi)
-		if err != nil {
-			panic(err)
-		}
-		img, format, err := image.Decode(f)
-		if err != nil {
-			panic(err)
-		}
-
-		// resize to width `wi` using Lanczos resampling
-		// and preserve aspect ratio
-		m := resize.Resize(uint(wi), 0, img, resize.Lanczos3)
-		b := &bytes.Buffer{}
-
-		switch format {
-		case "jpeg":
-			if err := jpeg.Encode(b, m, nil); err != nil {
-				panic(err)
-			}
-		case "gif":
-			if err := gif.Encode(b, m, nil); err != nil {
-				panic(err)
-			}
-
-		case "png":
-			if err := png.Encode(b, m); err != nil {
-				panic(err)
-			}
-
-		}
-		f = bytes.NewReader(b.Bytes())
+	if err := resize.Resize(m.Name, f, r); err != nil {
+		panic(err)
 	}
 
 	// Serve the file content using the same code as the `http.ServeFile` (it'll handle HEAD request)
