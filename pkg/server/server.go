@@ -84,8 +84,7 @@ func New(conf *config.Config) (*Server, error) {
 	}
 	filetree.Register(s.router.PathPrefix("/api/filetree").Subrouter(), s.router, basicAuth)
 
-	// filetree, err := filetree.New(logger.New("app", "filetree"), conf, authFunc, kvstore, blobstore)
-	apps, err := apps.New(logger.New("app", "apps"))
+	apps, err := apps.New(logger.New("app", "apps"), conf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize filetree app: %v", err)
 	}

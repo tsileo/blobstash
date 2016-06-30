@@ -16,6 +16,17 @@ var (
 	LetsEncryptDir = "letsencrypt"
 )
 
+// AppConfig holds an app configuration items
+type AppConfig struct {
+	Name       string `yaml:"name"`
+	Path       string `yaml:"path"`
+	Entrypoint string `yaml:"entrypoint"`
+	Domain     string `yaml:"domain"`
+	Auth       string `yaml:"auth"`
+
+	Config map[string]interface{} `yaml:"config"`
+}
+
 // Config holds the configuration items
 type Config struct {
 	init   bool
@@ -27,6 +38,8 @@ type Config struct {
 	APIKey     string `yaml:"api_key"`
 	SharingKey string `yaml:"sharing_key"`
 	DataDir    string `yaml:"data_dir"`
+
+	Apps []*AppConfig `yaml:"apps"`
 }
 
 // New initialize a config object by loading the YAML path at the given path
