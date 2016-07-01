@@ -139,17 +139,18 @@ func (app *App) serve(ctx context.Context, p string, w http.ResponseWriter, req 
 		}
 	}
 
-	f, err := os.Open(filepath.Join(app.path, "app.lua"))
-	defer f.Close()
-	if err != nil {
-		panic(err)
-	}
-	script, err := ioutil.ReadAll(f)
-	if err != nil {
-		panic(err)
-	}
-	app.doLua(string(script), req, w)
-	return
+	// FIXME(tsileo): enable this if config.AppMode == true
+	// f, err := os.Open(filepath.Join(app.path, "app.lua"))
+	// defer f.Close()
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// script, err := ioutil.ReadAll(f)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// app.doLua(string(script), req, w)
+	// return
 
 	// Inspect the file
 	app.log.Info("serve", "path", p)
