@@ -1,6 +1,7 @@
 package filetree
 
 import (
+	"encoding/json"
 	_ "encoding/json"
 	"fmt"
 	"github.com/gorilla/mux"
@@ -9,9 +10,12 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	_ "path/filepath"
 	"sort"
+	"strings"
 	"time"
 
+	"github.com/tsileo/blobstash/pkg/blob"
 	"github.com/tsileo/blobstash/pkg/blobstore"
 	"github.com/tsileo/blobstash/pkg/client/clientutil"
 	"github.com/tsileo/blobstash/pkg/config"
@@ -21,6 +25,7 @@ import (
 	"github.com/tsileo/blobstash/pkg/httputil/bewit"
 	"github.com/tsileo/blobstash/pkg/httputil/resize"
 	"github.com/tsileo/blobstash/pkg/kvstore"
+	"github.com/tsileo/blobstash/pkg/vkv"
 )
 
 // TODO(tsileo): handle the fetching of meta from the FS name and reconstruct the vkv key
@@ -31,6 +36,7 @@ import (
 var (
 	indexFile = "index.html"
 
+	FSKeyFmt = "_:filetree:fs:%s"
 	// PermName     = "filetree"
 	// PermTreeName = "filetree:root:"
 	// PermWrite    = "write"
@@ -46,6 +52,13 @@ type FileTreeExt struct {
 	shareTTL    time.Duration
 
 	log log.Logger
+}
+
+type FS struct {
+	Name string `json:"-"`
+	Ref  string `json:"ref"`
+
+	ft *FileTreeExt `json:"-"`
 }
 
 // New initializes the `DocStoreExt`
@@ -102,7 +115,48 @@ type Node struct {
 	Extra  map[string]interface{} `json:"extra,omitempty"`
 	XAttrs map[string]string      `json:"xattrs,omitempty"`
 
-	meta *meta.Meta `json:"-"`
+	meta   *meta.Meta `json:"-"`
+	parent *Node      `json:"-"`
+	fs     *FS        `json:"-"`
+}
+
+func (ft *FileTreeExt) Update(n *Node, m *meta.Meta) error {
+	newRefs := []interface{}{m.Hash}
+	newChildren := []*Node{&Node{Hash: m.Hash}}
+	for _, c := range n.parent.Children {
+		if c.Hash != n.Hash {
+			newRefs = append(newRefs, c.Hash)
+			newChildren = append(newChildren, c)
+		}
+	}
+	parentMeta := n.parent.meta
+	parentMeta.Refs = newRefs
+	n.parent.Children = newChildren
+	// TODO(tsileo): also update modtime
+	newRef, data := parentMeta.Json()
+	if err := ft.blobStore.Put(context.TODO(), &blob.Blob{Hash: newRef, Data: data}); err != nil {
+		return err
+	}
+	n.parent.Hash = newRef
+	parentMeta.Hash = newRef
+	if n.parent == nil {
+		n.fs.Ref = m.Hash
+		js, err := json.Marshal(n.fs)
+		if err != nil {
+			return err
+		}
+		if ft.kvStore.Put(context.TODO(), fmt.Sprintf(FSKeyFmt, n.fs.Name), string(js), -1); err != nil {
+			return err
+		}
+		// FIXME(tsileo): update the root vkv in this case
+		return nil
+	} else {
+		if err := ft.Update(n.parent, n.parent.meta); err != nil {
+			return err
+		}
+	}
+	n.meta = m
+	return nil
 }
 
 func (n *Node) Close() error {
@@ -131,8 +185,8 @@ func metaToNode(m *meta.Meta) (*Node, error) {
 }
 
 // fetchDir recursively fetch dir children
-func (ft *FileTreeExt) fetchDir(n *Node, depth int) error {
-	if depth >= 10 {
+func (ft *FileTreeExt) fetchDir(n *Node, depth, maxDepth int) error {
+	if depth > maxDepth {
 		return nil
 	}
 	if n.Type == "dir" {
@@ -143,7 +197,7 @@ func (ft *FileTreeExt) fetchDir(n *Node, depth int) error {
 				return err
 			}
 			n.Children = append(n.Children, cn)
-			if err := ft.fetchDir(cn, depth+1); err != nil {
+			if err := ft.fetchDir(cn, depth+1, maxDepth); err != nil {
 				return err
 			}
 		}
@@ -152,17 +206,97 @@ func (ft *FileTreeExt) fetchDir(n *Node, depth int) error {
 	return nil
 }
 
-// func (ft *FileTreeExt) loadFS(name string) (*fsmod.FS, error) {
-// 	fs := &fsmod.FS{}
-// 	kv, err := ft.kvStore.Get(context.TODO(), fmt.Sprintf(fsmod.FSKeyFmt, name), -1)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	if err := json.Unmarshal([]byte(kv.Value), fs); err != nil {
-// 		return nil, err
-// 	}
-// 	return fs, nil
-// }
+func (ft *FileTreeExt) FS(name string) (*FS, error) {
+	fs := &FS{}
+	kv, err := ft.kvStore.Get(context.TODO(), fmt.Sprintf(FSKeyFmt, name), -1)
+	if err != nil && err != vkv.ErrNotFound {
+		return nil, err
+	}
+	switch err {
+	case nil:
+		if err := json.Unmarshal([]byte(kv.Value), fs); err != nil {
+			return nil, err
+		}
+	case vkv.ErrNotFound:
+	default:
+		return nil, err
+	}
+	fs.Name = name
+	fs.ft = ft
+	return fs, nil
+}
+
+func (fs *FS) Root() (*Node, error) {
+	node, err := fs.ft.nodeByRef(fs.Ref)
+	switch err {
+	case clientutil.ErrBlobNotFound:
+		meta := meta.NewMeta()
+		meta.Type = "dir"
+		meta.Name = "_root"
+		node, err = metaToNode(meta)
+		if err != nil {
+			return nil, err
+		}
+	case nil:
+	default:
+		return nil, err
+	}
+	node.fs = fs
+	return node, nil
+}
+
+func (fs *FS) Path(path string, create bool) (*Node, error) {
+	root, err := fs.Root()
+	if err != nil {
+		return nil, err
+	}
+	root.fs = fs
+	fs.ft.fetchDir(root, 1, 1)
+	if err != nil {
+		return nil, err
+	}
+	if path == "/" {
+		return root, nil
+	}
+	node := root
+	split := strings.Split(path, "/")
+	// pathCount = len(split)
+	for _, p := range split {
+		for _, child := range node.Children {
+			if child.Name == p {
+				parent := node
+				node, err = fs.ft.nodeByRef(child.Hash)
+				if err != nil {
+					return nil, err
+				}
+				if err := fs.ft.fetchDir(node, 1, 1); err != nil {
+					return nil, err
+				}
+				node.parent = parent
+				node.fs = fs
+				if err != nil {
+					return nil, err
+				}
+				break
+			}
+		}
+		if !create {
+			return nil, fmt.Errorf("err not found")
+		}
+		// Create a new dir since it doesn't exist
+		meta := meta.NewMeta()
+		meta.Name = p
+		//  we don't set the meta type, it will be set on Update if it doesn't exist
+		parent := node
+		node, err = metaToNode(meta)
+		if err != nil {
+			return nil, err
+		}
+		node.parent = parent
+		node.fs = fs
+	}
+	return node, nil
+}
 
 // func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 // 	return func(w http.ResponseWriter, r *http.Request) {
@@ -372,7 +506,7 @@ func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
-		if err := ft.fetchDir(n, 1); err != nil {
+		if err := ft.fetchDir(n, 1, 1); err != nil {
 			panic(err)
 		}
 
@@ -456,7 +590,7 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
-		if err := ft.fetchDir(n, 1); err != nil {
+		if err := ft.fetchDir(n, 1, 1); err != nil {
 			panic(err)
 		}
 
