@@ -150,6 +150,7 @@ func (s *Server) Serve() error {
 			}
 
 			tlsconfig := w.TLSConfig()
+			tlsconfig.MinVersion = tls.VersionSSL30
 
 			listener, err := tls.Listen("tcp", listen, tlsconfig)
 			if err != nil {

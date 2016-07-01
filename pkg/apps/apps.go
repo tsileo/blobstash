@@ -1,11 +1,13 @@
 package apps
 
 import (
+	"crypto/md5"
 	"fmt"
 	_ "io"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -16,7 +18,7 @@ import (
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
 	"github.com/yuin/gopher-lua"
-	_ "golang.org/x/net/context"
+	"golang.org/x/net/context"
 
 	luamod "github.com/tsileo/blobstash/pkg/apps/lua"
 	"github.com/tsileo/blobstash/pkg/apps/luautil"
@@ -25,12 +27,14 @@ import (
 	"github.com/tsileo/blobstash/pkg/httputil"
 )
 
+// Apps holds the Apps manager data
 type Apps struct {
 	apps   map[string]*App
 	config *config.Config
 	log    log.Logger
 }
 
+// Close cleanly shutdown thes AppsManager
 func (apps *Apps) Close() error {
 	return nil
 }
@@ -40,7 +44,6 @@ func (app *App) visit(path string, f os.FileInfo, err error) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Visited: %s\n", p)
 	app.index[p] = f
 	return nil
 }
@@ -65,17 +68,13 @@ func (app *App) watch() {
 		for {
 			select {
 			case <-watcher.Events:
-				// log.Println("event:", event)
 				// if event.Op&fsnotify.Write == fsnotify.Write {
 				// log.Println("modified file:", event.Name)
 				if err := app.reload(); err != nil {
 					panic(err)
-					// log.Println("failed to reload:", err)
 				}
-				// }
 			case err := <-watcher.Errors:
 				panic(err)
-				// log.Println("error:", err)
 			}
 		}
 	}()
@@ -88,8 +87,10 @@ func (app *App) watch() {
 	<-done
 }
 
+// App handle an app meta data
 type App struct {
 	path, name string
+	entrypoint string
 	domain     string
 	config     map[string]interface{}
 
@@ -100,13 +101,14 @@ type App struct {
 
 func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 	app := &App{
-		path:   appConf.Path,
-		name:   appConf.Name,
-		domain: appConf.Domain,
-		config: appConf.Config,
-		index:  map[string]os.FileInfo{},
-		log:    apps.log.New("app", appConf.Name),
-		mu:     sync.Mutex{},
+		path:       appConf.Path,
+		name:       appConf.Name,
+		domain:     appConf.Domain,
+		entrypoint: appConf.Entrypoint,
+		config:     appConf.Config,
+		index:      map[string]os.FileInfo{},
+		log:        apps.log.New("app", appConf.Name),
+		mu:         sync.Mutex{},
 	}
 	// TODO(tsileo): check that `path` exists, create it if it doesn't exist?
 	app.log.Debug("new app")
@@ -114,19 +116,53 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 }
 
 // Serve the request for the given path
-func (app *App) serve(path string, w http.ResponseWriter, req *http.Request) {
-	// if fi, ok := app0.index[p[1:]]; ok {
-	// 	f, err := os.Open(filepath.Join(app0.path, p))
-	if fi, ok := app.index[path]; ok {
+func (app *App) serve(ctx context.Context, p string, w http.ResponseWriter, req *http.Request) {
+	// Clean the path and check there's no double dot
+	p = path.Clean(p)
+	if containsDotDot(p) {
+		w.WriteHeader(500)
+		w.Write([]byte("Invalid URL path"))
+	}
+
+	// Determine the default entry point if the path is the root
+	if p == "/" {
+		if app.entrypoint != "" {
+			if !strings.HasPrefix(app.entrypoint, "/") {
+				w.WriteHeader(500)
+				w.Write([]byte("Invalid app entrypoint, must start with a /"))
+				return
+			}
+			p = app.entrypoint
+		} else {
+			// XXX(tsileo): find a way to do directory listing?
+			p = "/index.html"
+		}
+	}
+
+	f, err := os.Open(filepath.Join(app.path, "app.lua"))
+	defer f.Close()
+	if err != nil {
+		panic(err)
+	}
+	script, err := ioutil.ReadAll(f)
+	if err != nil {
+		panic(err)
+	}
+	app.doLua(string(script), req, w)
+	return
+
+	// Inspect the file
+	app.log.Info("serve", "path", p)
+	if fi, ok := app.index[p[1:]]; ok {
 		// Open the file
-		f, err := os.Open(filepath.Join(app.path, path))
+		f, err := os.Open(filepath.Join(app.path, p))
 		defer f.Close()
 		if err != nil {
 			panic(err)
 		}
 
 		// The node is a Lua script, execute it
-		if strings.HasSuffix(path, ".lua") {
+		if strings.HasSuffix(p, ".lua") {
 			// TODO(tsileo): handle caching
 			script, err := ioutil.ReadAll(f)
 			if err != nil {
@@ -146,7 +182,7 @@ func (app *App) serve(path string, w http.ResponseWriter, req *http.Request) {
 			fmt.Fprintf(w, "<!doctype html><title>BlobStash - %s</title><pre>\n", fi.Name())
 
 			// TODO(tsileo) better root check
-			if path != "index.html" {
+			if p != "index.html" {
 				p := filepath.Dir(fi.Name())
 				fmt.Fprintf(w, "<a href=\"%s\">%s</a>\n", p, "..")
 			}
@@ -165,9 +201,7 @@ func (app *App) serve(path string, w http.ResponseWriter, req *http.Request) {
 		http.ServeContent(w, req, fi.Name(), fi.ModTime(), f)
 		return
 	}
-	// TODO(tsileo): returns a 404
-	// fmt.Printf("p=%v\n", p)
-	// io.WriteString(w, "hello, "+subdomain)
+	handle404(w)
 }
 
 // Execute the Lua script contained in the script
@@ -186,7 +220,10 @@ func (app *App) doLua(script string, r *http.Request, w http.ResponseWriter) err
 		app.log.Info(L.ToString(1))
 		return 0
 	}))
-
+	L.SetGlobal("md5", L.NewFunction(func(L *lua.LState) int {
+		L.Push(lua.LString(fmt.Sprintf("%x", md5.Sum([]byte(L.ToString(1))))))
+		return 1
+	}))
 	// Make the config map defined in the config available from the script
 	L.SetGlobal("config", luautil.InterfaceToLValue(L, app.config))
 
@@ -219,12 +256,11 @@ func (app *App) doLua(script string, r *http.Request, w http.ResponseWriter) err
 		panic(err)
 	}
 	response.WriteTo(w)
-	app.log.Info("script executed", "time", time.Since(start))
+	app.log.Info("script executed", "time", time.Since(start), "script", script)
 	return nil
 }
 
-// var app0 *App
-
+// New initializes the Apps manager
 func New(logger log.Logger, conf *config.Config) (*Apps, error) {
 	// var err error
 	apps := &Apps{
@@ -239,11 +275,15 @@ func New(logger log.Logger, conf *config.Config) (*Apps, error) {
 		}
 		fmt.Printf("app %+v\n", app)
 		apps.apps[app.name] = app
-		// FIXME(tsileo): register the root.Host(config.domain... here, or do it in the register call
+		// Watch the app directory for re-scanning it when necessary
 		go app.watch()
-		// app0 = app
 	}
 	return apps, nil
+}
+
+func handle404(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusNotFound)
+	w.Write([]byte(http.StatusText(http.StatusNotFound)))
 }
 
 func (apps *Apps) appHandler(w http.ResponseWriter, req *http.Request) {
@@ -253,41 +293,43 @@ func (apps *Apps) appHandler(w http.ResponseWriter, req *http.Request) {
 	// => select the app and call its handler?
 	app, ok := apps.apps[appName]
 	if !ok {
-		// FIXME(tsileo): 404 here
+		apps.log.Warn("unknown app called", "app", appName)
+		handle404(w)
 		return
 	}
-	// Check that the requested file/path exists
-	// p := req.URL.Path
 	p := vars["path"]
-	fmt.Printf("URL PATH=%+v\nAPP=%+v", p, app)
-	if p == "/" {
-		// TODO(tsileo): find a way to do directory listing?
-		p = "/index.html"
-	}
-	app.serve(p, w, req)
+	app.serve(context.TODO(), "/"+p, w, req)
 }
 
-// func (apps *Apps) subdomainHandler(w http.ResponseWriter, req *http.Request) {
-// 	// FIXME(tsileo): add the subdomain in the context, and use it in the request handler
-// 	// First, find which app we're trying to call
+func (apps *Apps) subdomainHandler(app *App) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		app.serve(context.TODO(), r.URL.Path, w, r)
+	}
+}
 
-// 	// => select the app and call its handler?
-
-// 	// Check that the requested file/path exists
-// 	vars := mux.Vars(req)
-// 	fmt.Printf("%+v", vars)
-// 	subdomain := vars["subdomain"]
-// 	p := req.URL.Path
-// 	if p == "/" {
-// 		// TODO(tsileo): find a way to do directory listing?
-// 		p = "/index.html"
-// 	}
-// }
-
+// Register Apps endpoint
 func (apps *Apps) Register(r *mux.Router, root *mux.Router, basicAuth func(http.Handler) http.Handler) {
-	// root.Host("{subdomain}.a4.io").Path("/").HandlerFunc(HelloServer)
 	r.Handle("/{name}/", http.HandlerFunc(apps.appHandler))
 	r.Handle("/{name}/{path:.+}", http.HandlerFunc(apps.appHandler))
-	// XXX(tsileo): with custom domain handling, we don't need the routing?? just run app.serve??
-	// root.Host("{subdomain}.a4.io").HandlerFunc(apps.handler)
+	for _, app := range apps.apps {
+		if app.domain != "" {
+			apps.log.Info("Registering app", "subdomain", app.domain)
+			root.Host(app.domain).HandlerFunc(apps.subdomainHandler(app))
+		}
+	}
 }
+
+// borrowed from net/http
+func containsDotDot(v string) bool {
+	if !strings.Contains(v, "..") {
+		return false
+	}
+	for _, ent := range strings.FieldsFunc(v, isSlashRune) {
+		if ent == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+func isSlashRune(r rune) bool { return r == '/' || r == '\\' }
