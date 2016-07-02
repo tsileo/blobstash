@@ -21,6 +21,7 @@ import (
 	"github.com/tsileo/blobstash/pkg/config"
 	"github.com/tsileo/blobstash/pkg/filetree/filetreeutil/meta"
 	"github.com/tsileo/blobstash/pkg/filetree/reader/filereader"
+	"github.com/tsileo/blobstash/pkg/filetree/writer"
 	"github.com/tsileo/blobstash/pkg/httputil"
 	"github.com/tsileo/blobstash/pkg/httputil/bewit"
 	"github.com/tsileo/blobstash/pkg/httputil/resize"
@@ -52,6 +53,22 @@ type FileTreeExt struct {
 	shareTTL    time.Duration
 
 	log log.Logger
+}
+
+type BlobStore struct {
+	blobStore *blobstore.BlobStore
+}
+
+func (bs *BlobStore) Get(hash string) ([]byte, error) {
+	return bs.blobStore.Get(context.TODO(), hash)
+}
+
+func (bs *BlobStore) Stat(hash string) (bool, error) {
+	return bs.blobStore.Stat(context.TODO(), hash)
+}
+
+func (bs *BlobStore) Put(hash string, data []byte) error {
+	return bs.blobStore.Put(context.TODO(), &blob.Blob{Hash: hash, Data: data})
 }
 
 type FS struct {
@@ -91,8 +108,12 @@ func (ft *FileTreeExt) Register(r *mux.Router, root *mux.Router, basicAuth func(
 	dirHandler := http.HandlerFunc(ft.dirHandler())
 	fileHandler := http.HandlerFunc(ft.fileHandler())
 
+	r.Handle("/fs/{name}", http.HandlerFunc(ft.fsHandler()))
+	r.Handle("/fs/{name}/{path:.+}", http.HandlerFunc(ft.fsHandler()))
 	// r.Handle("/fs", http.HandlerFunc(ft.fsHandler()))
 	// r.Handle("/fs/{name}", http.HandlerFunc(ft.fsByNameHandler()))
+
+	r.Handle("/upload", http.HandlerFunc(ft.uploadHandler()))
 
 	// Hook the standard endpint
 	r.Handle("/dir/{ref}", dirHandler)
@@ -296,6 +317,65 @@ func (fs *FS) Path(path string, create bool) (*Node, error) {
 		node.fs = fs
 	}
 	return node, nil
+}
+
+func (ft *FileTreeExt) uploadHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		r.ParseMultipartForm(32 << 20)
+		file, handler, err := r.FormFile("file")
+		if err != nil {
+			panic(err)
+		}
+		defer file.Close()
+		uploader := writer.NewUploader(&BlobStore{ft.blobStore})
+		meta, err := uploader.PutReader(handler.Filename, file)
+		if err != nil {
+			panic(err)
+		}
+		node, err := metaToNode(meta)
+		if err != nil {
+			panic(err)
+		}
+		httputil.WriteJSON(w, node)
+	}
+}
+
+func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		fsName := vars["name"]
+		path := "/" + vars["path"]
+
+		fs, err := ft.FS(fsName)
+		if err != nil {
+			panic(err)
+		}
+		switch r.Method {
+		case "GET":
+			node, err := fs.Path(path, false)
+			if err != nil {
+				panic(err)
+			}
+			httputil.WriteJSON(w, node)
+			// TODO(tsileo): handle 404
+		case "POST":
+			// node, err := fs.Path(path, false)
+			// if err != nil {
+			// 	panic(err)
+			// }
+			// if err := ft.Update(node, meta); err != nil {
+			// 	panic(err)
+			// }
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+	}
 }
 
 // func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
