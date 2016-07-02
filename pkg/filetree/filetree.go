@@ -10,7 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	_ "path/filepath"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -141,43 +141,60 @@ type Node struct {
 	fs     *FS        `json:"-"`
 }
 
-func (ft *FileTreeExt) Update(n *Node, m *meta.Meta) error {
-	newRefs := []interface{}{m.Hash}
-	newChildren := []*Node{&Node{Hash: m.Hash}}
-	for _, c := range n.parent.Children {
+func (ft *FileTreeExt) Update(n *Node, m *meta.Meta) (*Node, error) {
+	newNode, err := metaToNode(m)
+	if err != nil {
+		return nil, err
+	}
+	newNode.fs = n.fs
+	newNode.parent = n.parent
+	fmt.Printf("\n\n\n###Update: n=%+v\nn.meta=%+v\nn.parent=%+v\nm=%+v\nnewNode=%+v\n\n\n###", n, n.meta, n.parent, m, newNode)
+	if n.parent != nil {
+		fmt.Printf("n.parent.meta=%+v\n", n.parent.meta)
+
+	}
+	if n.parent == nil {
+		n.fs.Ref = newNode.Hash
+		js, err := json.Marshal(n.fs)
+		if err != nil {
+			return nil, err
+		}
+		if ft.kvStore.Put(context.TODO(), fmt.Sprintf(FSKeyFmt, n.fs.Name), string(js), -1); err != nil {
+			return nil, err
+		}
+		return newNode, nil
+	}
+
+	newRefs := []interface{}{newNode.Hash}
+	newChildren := []*Node{newNode}
+
+	for _, c := range newNode.parent.Children {
 		if c.Hash != n.Hash {
 			newRefs = append(newRefs, c.Hash)
 			newChildren = append(newChildren, c)
 		}
 	}
-	parentMeta := n.parent.meta
-	parentMeta.Refs = newRefs
-	n.parent.Children = newChildren
+
+	newNode.parent.meta.Refs = newRefs
+	newNode.parent.Children = newChildren
+
+	// parentMeta := n.parent.meta
+	// parentMeta.Refs = newRefs
+	// n.parent.Children = newChildren
 	// TODO(tsileo): also update modtime
-	newRef, data := parentMeta.Json()
+	fmt.Printf("saving parent meta: %+v\n", newNode.parent.meta)
+	newRef, data := newNode.parent.meta.Json()
+	newNode.parent.Hash = newRef
+	newNode.parent.meta.Hash = newRef
 	if err := ft.blobStore.Put(context.TODO(), &blob.Blob{Hash: newRef, Data: data}); err != nil {
-		return err
+		return nil, err
 	}
-	n.parent.Hash = newRef
-	parentMeta.Hash = newRef
-	if n.parent == nil {
-		n.fs.Ref = m.Hash
-		js, err := json.Marshal(n.fs)
-		if err != nil {
-			return err
-		}
-		if ft.kvStore.Put(context.TODO(), fmt.Sprintf(FSKeyFmt, n.fs.Name), string(js), -1); err != nil {
-			return err
-		}
-		// FIXME(tsileo): update the root vkv in this case
-		return nil
-	} else {
-		if err := ft.Update(n.parent, n.parent.meta); err != nil {
-			return err
-		}
+	// n.parent.Hash = newRef
+	// parentMeta.Hash = newRef
+	if _, err := ft.Update(newNode.parent, newNode.parent.meta); err != nil {
+		return nil, err
 	}
-	n.meta = m
-	return nil
+	return newNode, nil
 }
 
 func (n *Node) Close() error {
@@ -223,7 +240,7 @@ func (ft *FileTreeExt) fetchDir(n *Node, depth, maxDepth int) error {
 			}
 		}
 	}
-	n.meta.Close()
+	// n.meta.Close()
 	return nil
 }
 
@@ -267,25 +284,28 @@ func (fs *FS) Root() (*Node, error) {
 }
 
 func (fs *FS) Path(path string, create bool) (*Node, error) {
-	root, err := fs.Root()
+	node, err := fs.Root()
 	if err != nil {
 		return nil, err
 	}
-	root.fs = fs
-	fs.ft.fetchDir(root, 1, 1)
-	if err != nil {
+	var prev *Node
+	node.fs = fs
+	node.parent = nil
+	if err := fs.ft.fetchDir(node, 1, 1); err != nil {
 		return nil, err
 	}
 	if path == "/" {
-		return root, nil
+		return node, nil
 	}
-	node := root
-	split := strings.Split(path, "/")
-	// pathCount = len(split)
-	for _, p := range split {
+	split := strings.Split(path[1:], "/")
+	// fmt.Printf("split res=%+v\n", split)
+	pathCount := len(split)
+	for i, p := range split {
+		prev = node
+		found := false
+		// fmt.Printf("split:%+v\n", p)
 		for _, child := range node.Children {
 			if child.Name == p {
-				parent := node
 				node, err = fs.ft.nodeByRef(child.Hash)
 				if err != nil {
 					return nil, err
@@ -293,28 +313,34 @@ func (fs *FS) Path(path string, create bool) (*Node, error) {
 				if err := fs.ft.fetchDir(node, 1, 1); err != nil {
 					return nil, err
 				}
-				node.parent = parent
+				node.parent = prev
 				node.fs = fs
-				if err != nil {
-					return nil, err
-				}
+				// fmt.Printf("split:%+v fetched:%+v\n", p, node)
+				found = true
 				break
 			}
 		}
-		if !create {
+		// fmt.Printf("split:%+v, node=%+v\n", p, node)
+		if !found && !create {
 			return nil, fmt.Errorf("err not found")
 		}
-		// Create a new dir since it doesn't exist
-		meta := meta.NewMeta()
-		meta.Name = p
-		//  we don't set the meta type, it will be set on Update if it doesn't exist
-		parent := node
-		node, err = metaToNode(meta)
-		if err != nil {
-			return nil, err
+		if !found {
+			// Create a new dir since it doesn't exist
+			meta := meta.NewMeta()
+			meta.Name = p
+			meta.Type = "dir"
+			if i == pathCount-1 {
+				meta.Type = "file"
+			}
+			//  we don't set the meta type, it will be set on Update if it doesn't exist
+			node, err = metaToNode(meta)
+			if err != nil {
+				return nil, err
+			}
+			node.parent = prev
+			node.fs = fs
+			// fmt.Printf("split:%+v created:%+v\n", p, node)
 		}
-		node.parent = parent
-		node.fs = fs
 	}
 	return node, nil
 }
@@ -325,6 +351,7 @@ func (ft *FileTreeExt) uploadHandler() func(http.ResponseWriter, *http.Request) 
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+		// TODO(tsileo): make the max memory a constant
 		r.ParseMultipartForm(32 << 20)
 		file, handler, err := r.FormFile("file")
 		if err != nil {
@@ -363,13 +390,31 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 			httputil.WriteJSON(w, node)
 			// TODO(tsileo): handle 404
 		case "POST":
-			// node, err := fs.Path(path, false)
-			// if err != nil {
-			// 	panic(err)
-			// }
-			// if err := ft.Update(node, meta); err != nil {
-			// 	panic(err)
-			// }
+			node, err := fs.Path(path, true)
+			if err != nil {
+				panic(err)
+			}
+			// fmt.Printf("Current node:%v %+v %+v\n", path, node, node.meta)
+			// fmt.Printf("Current node parent:%+v %+v\n", node.parent, node.parent.meta)
+			// TODO(tsileo): make the max memory a constant
+			r.ParseMultipartForm(32 << 20)
+			file, _, err := r.FormFile("file")
+			if err != nil {
+				panic(err)
+			}
+			defer file.Close()
+			uploader := writer.NewUploader(&BlobStore{ft.blobStore})
+
+			meta, err := uploader.PutReader(filepath.Base(path), file)
+			if err != nil {
+				panic(err)
+			}
+			// fmt.Printf("uploaded meta=%+v\nold node=%+v", meta, node)
+			newNode, err := ft.Update(node, meta)
+			if err != nil {
+				panic(err)
+			}
+			httputil.WriteJSON(w, newNode)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
