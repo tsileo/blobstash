@@ -3,6 +3,7 @@ package filetree
 import (
 	"encoding/json"
 	_ "encoding/json"
+	"encoding/xml"
 	"fmt"
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
@@ -370,6 +371,85 @@ func (ft *FileTreeExt) uploadHandler() func(http.ResponseWriter, *http.Request) 
 		httputil.WriteJSON(w, node)
 	}
 }
+
+// func (ft *FileTreeExt) s3Handler() func(http.ResponseWriter, *http.Request) {
+// 	return func(w http.ResponseWriter, r *http.Request) {
+// 		vars := mux.Vars(r)
+// 		fsName := vars["name"]
+// 		path := "/" + vars["path"]
+
+// 		fs, err := ft.FS(fsName)
+// 		if err != nil {
+// 			panic(err)
+// 		}
+// 		switch r.Method {
+// 		case "GET":
+// 			node, err := fs.Path(path, false)
+// 			if err != nil {
+// 				panic(err)
+// 			}
+// 			if path == "/" {
+// 				res := []*ListBucketResultItem{}
+// 				prefixes := []*ListBucketResultDir{}
+// 				for _, child := range node.Children {
+// 					if child.meta.IsFile() {
+// 						t, err := child.meta.Mtime()
+// 						if err != nil {
+// 							panic(err)
+// 						}
+// 						res = append(res, &ListBucketResultItem{
+// 							Key:          child.Name,
+// 							StorageClass: S3FakeStorageClass,
+// 							Size:         child.Size,
+// 							LastModified: t.Format(S3Date),
+// 							ETag:         "", // FIXME(tsileo): compute the ETag
+// 						})
+// 					} else {
+// 						prefixes = append(prefixes, &ListBucketResultDir{(filepath.Join(path, child.Name)[1:]) + "/"})
+// 					}
+// 				}
+// 				response, err := buildListBucketResult(fsName, res, prefixes)
+// 				if err != nil {
+// 					panic(err)
+// 				}
+// 				w.Write([]byte(response))
+// 				return
+// 			}
+// 			// httputil.WriteJSON(w, node)
+// 			// TODO(tsileo): handle 404
+// 		case "POST":
+// 			node, err := fs.Path(path, true)
+// 			if err != nil {
+// 				panic(err)
+// 			}
+// 			// fmt.Printf("Current node:%v %+v %+v\n", path, node, node.meta)
+// 			// fmt.Printf("Current node parent:%+v %+v\n", node.parent, node.parent.meta)
+// 			// TODO(tsileo): make the max memory a constant
+// 			r.ParseMultipartForm(32 << 20)
+// 			file, _, err := r.FormFile("file")
+// 			if err != nil {
+// 				panic(err)
+// 			}
+// 			defer file.Close()
+// 			uploader := writer.NewUploader(&BlobStore{ft.blobStore})
+
+// 			meta, err := uploader.PutReader(filepath.Base(path), file)
+// 			if err != nil {
+// 				panic(err)
+// 			}
+// 			// fmt.Printf("uploaded meta=%+v\nold node=%+v", meta, node)
+// 			newNode, err := ft.Update(node, meta)
+// 			if err != nil {
+// 				panic(err)
+// 			}
+// 			httputil.WriteJSON(w, newNode)
+// 		default:
+// 			w.WriteHeader(http.StatusMethodNotAllowed)
+// 			return
+// 		}
+
+// 	}
+// }
 
 func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
