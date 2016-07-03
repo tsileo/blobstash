@@ -46,7 +46,7 @@ func New(conf *config.Config) (*Server, error) {
 	logger := log.New()
 	logger.SetHandler(log.StreamHandler(os.Stdout, log.TerminalFormat()))
 	s := &Server{
-		router: mux.NewRouter(),
+		router: mux.NewRouter().StrictSlash(true),
 		conf:   conf,
 		log:    logger,
 	}
