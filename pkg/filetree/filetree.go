@@ -3,7 +3,7 @@ package filetree
 import (
 	"encoding/json"
 	_ "encoding/json"
-	"encoding/xml"
+	_ "encoding/xml"
 	"fmt"
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
