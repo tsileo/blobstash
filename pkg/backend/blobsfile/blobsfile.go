@@ -80,6 +80,7 @@ const (
 	Encrypted
 )
 
+// Config holds the backend config
 type Config struct {
 	Dir              string `structs:"path,omitempty"`
 	Compression      int64  `structs:"compression,omitempty"`
@@ -87,10 +88,12 @@ type Config struct {
 	MaxBlobsFileSize int64  `structs:"blobsfile-max-size,omitempty"`
 }
 
+// Backend returns the backend type
 func (c *Config) Backend() string {
 	return "blobsfile"
 }
 
+// Config implements the interface for config
 func (c *Config) Config() map[string]interface{} {
 	return map[string]interface{}{
 		"backend-type": c.Backend(),
@@ -98,10 +101,12 @@ func (c *Config) Config() map[string]interface{} {
 	}
 }
 
+// Map implements the interface for config
 func (c *Config) Map() map[string]interface{} {
 	return structs.Map(c)
 }
 
+// Holds all the backend data
 type BlobsFileBackend struct {
 	log log2.Logger
 	// Directory which holds the blobsfile
@@ -130,6 +135,7 @@ type BlobsFileBackend struct {
 	sync.Mutex
 }
 
+// New intializes a new BlobsFileBackend
 func New(dir string, maxBlobsFileSize int64, compression bool) *BlobsFileBackend {
 	dir = strings.Replace(dir, "$VAR", pathutil.VarDir(), -1)
 	os.MkdirAll(dir, 0700)
@@ -209,17 +215,21 @@ func (backend *BlobsFileBackend) Close() {
 	backend.index.Close()
 }
 
+// TODO(tsileo): remove this fron the Backend interface
 func (backend *BlobsFileBackend) Done() error {
 	return nil
 }
 
+// Remove the index
 func (backend *BlobsFileBackend) Remove() {
 	backend.index.Remove()
 }
 
+// GetN returns the total numbers of BlobsFile
 func (backend *BlobsFileBackend) GetN() (int, error) {
 	return backend.index.GetN()
 }
+
 func (backend *BlobsFileBackend) saveN() error {
 	return backend.index.SetN(backend.n)
 }
@@ -233,6 +243,7 @@ func (backend *BlobsFileBackend) restoreN() error {
 	return nil
 }
 
+// Implements the Stringer interface
 func (backend *BlobsFileBackend) String() string {
 	return fmt.Sprintf("blobsfile-%v", backend.Directory)
 }
@@ -442,6 +453,7 @@ func (backend *BlobsFileBackend) filename(n int) string {
 	return filepath.Join(backend.Directory, fmt.Sprintf("blobs-%05d", n))
 }
 
+// Put save a new blob
 func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
 	if !backend.loaded {
 		panic("backend BlobsFileBackend not loaded")
@@ -500,6 +512,7 @@ func (backend *BlobsFileBackend) Stat(hash string) (bool, error) {
 	return backend.Exists(hash)
 }
 
+// Exists check if a blob is present
 func (backend *BlobsFileBackend) Exists(hash string) (bool, error) {
 	blobPos, err := backend.index.GetPos(hash)
 	if err != nil {
@@ -549,18 +562,24 @@ func (backend *BlobsFileBackend) encodeBlob(blob []byte) (size int, data []byte)
 	return
 }
 
+// BlobPos return the index entry for the given hash
 func (backend *BlobsFileBackend) BlobPos(hash string) (*BlobPos, error) {
 	return backend.index.GetPos(hash)
 }
 
+// Get returns the blob fur the given hash
 func (backend *BlobsFileBackend) Get(hash string) ([]byte, error) {
 	if !backend.loaded {
 		panic("backend BlobsFileBackend not loaded")
 	}
+
+	// Fetch the index entry
 	blobPos, err := backend.index.GetPos(hash)
 	if err != nil {
 		return nil, fmt.Errorf("Error fetching GetPos: %v", err)
 	}
+
+	// No index entry found, returns an error
 	if blobPos == nil {
 		if err == nil {
 			return nil, clientutil.ErrBlobNotFound
@@ -569,27 +588,37 @@ func (backend *BlobsFileBackend) Get(hash string) ([]byte, error) {
 		}
 	}
 
+	// Read the encoded blob from the BlobsFile
 	data := make([]byte, blobPos.size+Overhead)
 	n, err := backend.files[blobPos.n].ReadAt(data, int64(blobPos.offset))
 	if err != nil {
 		return nil, fmt.Errorf("Error reading blob: %v / blobsfile: %+v", err, backend.files[blobPos.n])
 	}
+
+	// Ensure the data lenght is expcted
 	if n != blobPos.size+Overhead {
 		return nil, fmt.Errorf("Error reading blob %v, read %v, expected %v+%v", hash, n, blobPos.size, Overhead)
 	}
+
+	// Decode the blob
 	blobSize, blob := backend.decodeBlob(data)
 	if blobSize != blobPos.size {
 		return nil, fmt.Errorf("Bad blob %v encoded size, got %v, expected %v", hash, n, blobSize)
 	}
+
+	// Update the expvars
 	bytesDownloaded.Add(backend.Directory, int64(blobSize))
 	blobsUploaded.Add(backend.Directory, 1)
+
 	return blob, nil
 }
 
+// Delete a blob (by setting the `Deleted` flag)
 func (backend *BlobsFileBackend) Delete(hash string) error {
 	if !backend.loaded {
 		panic("backend BlobsFileBackend not loaded")
 	}
+
 	blobPos, err := backend.index.GetPos(hash)
 	if err != nil {
 		return fmt.Errorf("Error fetching GetPos: %v", err)
@@ -623,6 +652,7 @@ func (backend *BlobsFileBackend) Delete(hash string) error {
 	return nil
 }
 
+// Enumerate output all the blobs hashes in the given chan
 func (backend *BlobsFileBackend) Enumerate(blobs chan<- string) error {
 	defer close(blobs)
 	if !backend.loaded {
@@ -646,6 +676,7 @@ func (backend *BlobsFileBackend) Enumerate(blobs chan<- string) error {
 	return nil
 }
 
+// Enumerate output all the blobs into the given chan (ordered lexicographically)
 func (backend *BlobsFileBackend) Enumerate2(blobs chan<- *blob.SizedBlobRef, start, end string, limit int) error {
 	defer close(blobs)
 	if !backend.loaded {
