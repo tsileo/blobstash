@@ -360,29 +360,7 @@ func (backend *BlobsFileBackend) load() error {
 	return nil
 }
 
-// When the backend is in write-only mode, this function is called instead of load().
-func (backend *BlobsFileBackend) loadWriteOnly() error {
-	log.Println("BlobsFileBackend: write-only mode enabled")
-	if err := backend.restoreN(); err != nil {
-		return err
-	}
-	if _, err := os.Stat(backend.filename(backend.n)); os.IsNotExist(err) {
-		backend.n++
-	}
-	if err := backend.wopen(backend.n); err != nil {
-		return err
-	}
-	if err := backend.ropen(backend.n); err != nil {
-		return err
-	}
-	if err := backend.saveN(); err != nil {
-		return err
-	}
-	backend.loaded = true
-	return nil
-}
-
-// Open a file for write
+// Open a file for writing, will close the previously open file if any.
 func (backend *BlobsFileBackend) wopen(n int) error {
 	backend.log.Info("opening blobsfile for writing", "name", backend.filename(n))
 	// Close the already opened file if any
@@ -468,37 +446,52 @@ func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
 	if !backend.loaded {
 		panic("backend BlobsFileBackend not loaded")
 	}
+	// Acquire the lock
 	backend.Lock()
 	defer backend.Unlock()
-	blobSize, blobEncoded := backend.encodeBlob(data)
-	blobPos := &BlobPos{n: backend.n, offset: int(backend.size), size: blobSize}
-	if err := backend.index.SetPos(hash, blobPos); err != nil {
-		return err
-	}
-	n, err := backend.current.Write(blobEncoded)
-	backend.size += int64(len(blobEncoded))
-	if err != nil || n != len(blobEncoded) {
-		return fmt.Errorf("Error writing blob (%v,%v)", err, n)
-	}
-	if err = backend.current.Sync(); err != nil {
-		panic(err)
-	}
-	bytesUploaded.Add(backend.Directory, int64(len(blobEncoded)))
-	blobsUploaded.Add(backend.Directory, 1)
 
-	if backend.size > backend.maxBlobsFileSize {
+	// Encode the blob
+	blobSize, blobEncoded := backend.encodeBlob(data)
+
+	// Ensure the blosfile size won't exceed the maxBlobsFileSize
+	if backend.size+int64(blobSize) > backend.maxBlobsFileSize {
+		// Archive this blobsfile, start by creating a new one
 		backend.n++
 		backend.log.Debug("creating a new BlobsFile")
 		if err := backend.wopen(backend.n); err != nil {
 			panic(err)
 		}
+		// Re-open it (since we may need to read blobs from it)
 		if err := backend.ropen(backend.n); err != nil {
 			panic(err)
 		}
+		// Update the nimber of blobsfile in the index
 		if err := backend.saveN(); err != nil {
 			panic(err)
 		}
 	}
+
+	// Save the blob in the index
+	blobPos := &BlobPos{n: backend.n, offset: int(backend.size), size: blobSize}
+	if err := backend.index.SetPos(hash, blobPos); err != nil {
+		return err
+	}
+
+	// Actually save the blob
+	n, err := backend.current.Write(blobEncoded)
+	backend.size += int64(len(blobEncoded))
+	if err != nil || n != len(blobEncoded) {
+		return fmt.Errorf("Error writing blob (%v,%v)", err, n)
+	}
+
+	// Flush the backend
+	if err = backend.current.Sync(); err != nil {
+		panic(err)
+	}
+
+	// Update the expvars
+	bytesUploaded.Add(backend.Directory, int64(len(blobEncoded)))
+	blobsUploaded.Add(backend.Directory, 1)
 	return
 }
 
