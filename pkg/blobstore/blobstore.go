@@ -4,6 +4,7 @@ import (
 	log "github.com/inconshreveable/log15"
 	"golang.org/x/net/context"
 	"path/filepath"
+	"sync"
 
 	"github.com/tsileo/blobstash/pkg/backend/blobsfile"
 	"github.com/tsileo/blobstash/pkg/blob"
@@ -21,10 +22,11 @@ type BlobStore struct {
 	hub    *hub.Hub
 	conf   *config.Config
 
+	wg  sync.WaitGroup
 	log log.Logger
 }
 
-func New(logger log.Logger, conf2 *config.Config, hub *hub.Hub) (*BlobStore, error) {
+func New(logger log.Logger, conf2 *config.Config, hub *hub.Hub, wg sync.WaitGroup) (*BlobStore, error) {
 	logger.Debug("init")
 	// TODO(tsileo): config as struct
 	conf := map[string]interface{}{
@@ -43,12 +45,13 @@ func New(logger log.Logger, conf2 *config.Config, hub *hub.Hub) (*BlobStore, err
 	r := router.New(conf["router"].([]interface{}))
 	backendsConf := conf["backends"].(map[string]interface{})
 	for _, b := range r.ResolveBackends() {
-		r.Backends[b] = blobsfile.NewFromConfig(backendsConf[b].(map[string]interface{})["backend-args"].(map[string]interface{}))
+		r.Backends[b] = blobsfile.NewFromConfig(backendsConf[b].(map[string]interface{})["backend-args"].(map[string]interface{}), wg)
 	}
 	return &BlobStore{
 		Router: r,
 		hub:    hub,
 		conf:   conf2,
+		wg:     wg,
 		log:    logger,
 	}, nil
 }

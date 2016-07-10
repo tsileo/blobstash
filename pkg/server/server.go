@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 
 	"github.com/tsileo/blobstash/pkg/apps"
@@ -39,21 +40,27 @@ type Server struct {
 	conf      *config.Config
 	log       log.Logger
 	closeFunc func() error
+
+	shutdown chan struct{}
+	wg       sync.WaitGroup
 }
 
 func New(conf *config.Config) (*Server, error) {
 	conf.Init()
 	logger := log.New()
 	logger.SetHandler(log.StreamHandler(os.Stdout, log.TerminalFormat()))
+	var wg sync.WaitGroup
 	s := &Server{
-		router: mux.NewRouter().StrictSlash(true),
-		conf:   conf,
-		log:    logger,
+		router:   mux.NewRouter().StrictSlash(true),
+		conf:     conf,
+		log:      logger,
+		wg:       wg,
+		shutdown: make(chan struct{}),
 	}
 	authFunc, basicAuth := middleware.NewBasicAuth(conf)
 	hub := hub.New(logger.New("app", "hub"))
 	// Load the blobstore
-	blobstore, err := blobstore.New(logger.New("app", "blobstore"), conf, hub)
+	blobstore, err := blobstore.New(logger.New("app", "blobstore"), conf, hub, wg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize blobstore app: %v", err)
 	}
@@ -98,6 +105,10 @@ func New(conf *config.Config) (*Server, error) {
 
 	// Setup the closeFunc
 	s.closeFunc = func() error {
+		logger.Debug("waiting for the waitgroup...")
+		wg.Wait()
+		logger.Debug("waitgroup done")
+
 		if err := blobstore.Close(); err != nil {
 			return err
 		}
@@ -119,6 +130,10 @@ func New(conf *config.Config) (*Server, error) {
 		return nil
 	}
 	return s, nil
+}
+
+func (s *Server) Shutdown() {
+	s.shutdown <- struct{}{}
 }
 
 func (s *Server) Serve() error {
@@ -186,6 +201,9 @@ func (s *Server) tillShutdown() {
 		select {
 		case sig := <-cs:
 			s.log.Debug("captured signal", "signal", sig)
+			s.log.Info("shutting down...")
+			return
+		case <-s.shutdown:
 			s.log.Info("shutting down...")
 			return
 		}

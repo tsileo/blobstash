@@ -5,11 +5,9 @@ import (
 	_ "github.com/tsileo/blobstash/pkg/logger"
 )
 
-type CorruptedBlob struct {
-	Hash   string
-	Offset int64
-	Size   int64
-}
+const (
+	parityChunkSize = 32 * 1024 * 1024
+)
 
 type Chunk struct {
 	Data         []byte
@@ -18,7 +16,28 @@ type Chunk struct {
 	Corrupted    bool
 }
 
-func InvalidChunks(blobs []*CorruptedBlob, chunks []*Chunk) error {
+type chunkWriter struct {
+	chunk  []byte
+	chunks [][]byte
+}
+
+func newChunkWriter() *chunkWriter {
+	return &chunkWriter{chunks: [][]byte{}}
+}
+
+func (cw chunkWriter) Write(data []byte) {
+
+}
+
+func (cw chunkWriter) Append(chunk []byte) {
+	cw.chunks = append(cw.chunks, chunk)
+}
+
+func (cw chunkWriter) Chunks() [][]byte {
+	return cw.chunks
+}
+
+func InvalidChunks(blobs []*BlobPos, chunks []*Chunk) error {
 	// TODO(tsileo): nilify the chunks invalidated by the corrupted blobs
 	// take in account the fact that a blob can invalidate two chunks
 	return nil

@@ -46,9 +46,11 @@ import (
 	"github.com/golang/snappy"
 	log2 "gopkg.in/inconshreveable/log15.v2"
 
+	"github.com/tsileo/blobstash/pkg/backend"
 	"github.com/tsileo/blobstash/pkg/blob"
 	"github.com/tsileo/blobstash/pkg/client/clientutil"
 	"github.com/tsileo/blobstash/pkg/config/pathutil"
+	"github.com/tsileo/blobstash/pkg/hashutil"
 	"github.com/tsileo/blobstash/pkg/logger"
 )
 
@@ -72,6 +74,18 @@ var (
 	blobsUploaded   = expvar.NewMap("blobsfile-blobs-uploaded")
 	blobsDownloaded = expvar.NewMap("blobsfile-blobs-downloaded")
 )
+
+type CorruptedError struct {
+	blobs []*BlobPos
+}
+
+func (ce *CorruptedError) Blobs() []*BlobPos {
+	return ce.blobs
+}
+
+func (ce *CorruptedError) Error() string {
+	return fmt.Sprintf("%d blobs are corrupt", len(ce.blobs))
+}
 
 // Blob flags
 const (
@@ -132,11 +146,20 @@ type BlobsFileBackend struct {
 	// All blobs files opened for read
 	files map[int]*os.File
 
+	wg sync.WaitGroup
 	sync.Mutex
+
+	parityBlobs backend.BlobHandler
+	parityState *parityState
+}
+
+type parityState struct {
+	nextThresold    int64
+	lastChunkOffest int64
 }
 
 // New intializes a new BlobsFileBackend
-func New(dir string, maxBlobsFileSize int64, compression bool) *BlobsFileBackend {
+func New(dir string, maxBlobsFileSize int64, compression bool, wg sync.WaitGroup) *BlobsFileBackend {
 	dir = strings.Replace(dir, "$VAR", pathutil.VarDir(), -1)
 	os.MkdirAll(dir, 0700)
 	var reindex bool
@@ -156,6 +179,7 @@ func New(dir string, maxBlobsFileSize int64, compression bool) *BlobsFileBackend
 		index:             index,
 		files:             make(map[int]*os.File),
 		maxBlobsFileSize:  maxBlobsFileSize,
+		wg:                wg,
 		reindexMode:       reindex,
 	}
 	backend.log = logger.Log.New("backend", backend.String())
@@ -166,11 +190,20 @@ func New(dir string, maxBlobsFileSize int64, compression bool) *BlobsFileBackend
 	if backend.snappyCompression {
 		backend.log.Debug("snappy compression enabled")
 	}
+
+	if !strings.Contains(dir, "blobs-parity") {
+		// XXX(tsileo): find a better dir
+		parityBackend := New(filepath.Join(pathutil.VarDir(), "blobs-parity"), 0, false, wg)
+		backend.parityBlobs = parityBackend
+		backend.parityState = &parityState{
+			nextThresold: parityChunkSize,
+		}
+	}
 	return backend
 }
 
 // NewFromConfig initialize a BlobsFileBackend from a JSON object.
-func NewFromConfig(conf map[string]interface{}) *BlobsFileBackend {
+func NewFromConfig(conf map[string]interface{}, wg sync.WaitGroup) *BlobsFileBackend {
 	path := "./backend_blobsfile"
 	if _, pathOk := conf["path"]; pathOk {
 		path = conf["path"].(string)
@@ -183,7 +216,7 @@ func NewFromConfig(conf map[string]interface{}) *BlobsFileBackend {
 	if _, cOk := conf["compression"]; cOk {
 		compression = conf["compression"].(bool)
 	}
-	return New(path, int64(maxsize), compression)
+	return New(path, int64(maxsize), compression, wg)
 }
 
 // Len compute the number of blobs stored
@@ -212,6 +245,9 @@ func (backend *BlobsFileBackend) CloseOpenFiles() {
 
 func (backend *BlobsFileBackend) Close() {
 	backend.log.Debug("closing index...")
+	if backend.parityBlobs != nil {
+		backend.parityBlobs.Close()
+	}
 	backend.index.Close()
 }
 
@@ -248,13 +284,9 @@ func (backend *BlobsFileBackend) String() string {
 	return fmt.Sprintf("blobsfile-%v", backend.Directory)
 }
 
-// reindex scans all BlobsFile and reconstruct the index from scratch.
-func (backend *BlobsFileBackend) reindex() error {
-	backend.log.Info("re-indexing BlobsFiles...")
-	if backend.Len() != 0 {
-		panic("can't re-index, an non-empty backend already exists")
-	}
+func (backend *BlobsFileBackend) scan(iterFunc func(*BlobPos, byte, string, []byte) error) error {
 	n := 0
+	corrupted := []*BlobPos{}
 	for {
 		err := backend.ropen(n)
 		if os.IsNotExist(err) {
@@ -304,17 +336,57 @@ func (backend *BlobsFileBackend) reindex() error {
 				blob = rawBlob
 			}
 			hash := fmt.Sprintf("%x", blake2b.Sum256(blob))
-			if fmt.Sprintf("%x", blobHash) != hash {
-				return fmt.Errorf("hash doesn't match %v/%v", fmt.Sprintf("%x", blobHash), hash)
+			if fmt.Sprintf("%x", blobHash) == hash {
+				if err := iterFunc(blobPos, flags[0], hash, blob); err != nil {
+					return err
+				}
+				blobsIndexed++
+				// FIXME(tsileo): continue an try to repair it?
+			} else {
+				// better out an error and provides a CLI for repairing
+				backend.log.Error(fmt.Sprintf("hash doesn't match %v/%v", fmt.Sprintf("%x", blobHash), hash))
+				corrupted = append(corrupted, blobPos)
 			}
-			if err := backend.index.SetPos(hash, blobPos); err != nil {
-				return err
-			}
-			blobsIndexed++
 		}
-		log.Printf("BlobsFileBackend: %v re-indexed (%v blobs)", backend.filename(n), blobsIndexed)
+		log.Printf("BlobsFileBackend: %v iter (%v blobs)", backend.filename(n), blobsIndexed)
 		n++
 	}
+	if len(corrupted) > 0 {
+		return &CorruptedError{corrupted}
+	}
+	if n == 0 {
+		backend.log.Debug("no BlobsFiles found for re-indexing")
+		return nil
+	}
+	return nil
+}
+
+// reindex scans all BlobsFile and reconstruct the index from scratch.
+func (backend *BlobsFileBackend) reindex() error {
+	backend.wg.Add(1)
+	defer backend.wg.Done()
+	backend.log.Info("re-indexing BlobsFiles...")
+	if backend.Len() != 0 {
+		panic("can't re-index, an non-empty backend already exists")
+	}
+	n := 0
+	blobsIndexed := 0
+
+	iterFunc := func(blobPos *BlobPos, _ byte, hash string, _ []byte) error {
+		if err := backend.index.SetPos(hash, blobPos); err != nil {
+			return err
+		}
+		n = blobPos.n
+		blobsIndexed++
+		return nil
+	}
+
+	if err := backend.scan(iterFunc); err != nil {
+		return err
+	}
+
+	// FIXME(tsileo): check for CorruptedError and initialize a repair
+
 	if n == 0 {
 		backend.log.Debug("no BlobsFiles found for re-indexing")
 		return nil
@@ -327,6 +399,8 @@ func (backend *BlobsFileBackend) reindex() error {
 
 // Open all the blobs-XXXXX (read-only) and open the last for write
 func (backend *BlobsFileBackend) load() error {
+	backend.wg.Add(1)
+	defer backend.wg.Done()
 	backend.log.Debug("BlobsFileBackend: scanning BlobsFiles...")
 	n := 0
 	for {
@@ -499,6 +573,40 @@ func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
 	// Flush the backend
 	if err = backend.current.Sync(); err != nil {
 		panic(err)
+	}
+
+	// Check if we need to compute parity blocks
+	// FIXME(tsileo): extract this, and run it before creating a new blobsfile (with paddin if it's the last)
+	// XXX(tsileo): also, when ran at the end, it should also read all the parity blobs in the right order, and
+	// save it at the end of the current blobsfile
+	var lastRun bool
+	if backend.size >= backend.parityState.nextThresold {
+		// FIXME(tsileo): handdle the thresold
+
+		if _, err := backend.current.Seek(((backend.parityState.nextThresold/parityChunkSize)-1)*parityChunkSize, os.SEEK_SET); err != nil {
+			panic(err)
+		}
+		data := make([]byte, parityChunkSize)
+		if _, err := backend.current.Read(data); err != nil {
+			panic(err)
+		}
+		parityBlobs := [][]byte{}
+		// FIXME(tsileo): compute the parity blobs and handling of chunk in the init
+		for _, blob := range parityBlobs {
+			hash := hashutil.Compute(blob)
+			if err := backend.parityBlobs.Put(hash, blob); err != nil {
+				panic(err)
+			}
+		}
+		backend.parityState.nextThresold = backend.parityState.nextThresold * 2
+		if _, err := backend.current.Seek(backend.size, os.SEEK_SET); err != nil {
+			panic(err)
+		}
+		if lastRun {
+			// TODO(tsileo): iter parityBlobs and save the blobs in the backend,
+			// and close it
+			// and reset the parityBlobs
+		}
 	}
 
 	// Update the expvars
