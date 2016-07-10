@@ -66,11 +66,11 @@ const (
 )
 
 var (
-	openFdsVar      = expvar.NewMap("blobsfile2-open-fds")
-	bytesUploaded   = expvar.NewMap("blobsfile2-bytes-uploaded")
-	bytesDownloaded = expvar.NewMap("blobsfile2-bytes-downloaded")
-	blobsUploaded   = expvar.NewMap("blobsfile2-blobs-uploaded")
-	blobsDownloaded = expvar.NewMap("blobsfile2-blobs-downloaded")
+	openFdsVar      = expvar.NewMap("blobsfile-open-fds")
+	bytesUploaded   = expvar.NewMap("blobsfile-bytes-uploaded")
+	bytesDownloaded = expvar.NewMap("blobsfile-bytes-downloaded")
+	blobsUploaded   = expvar.NewMap("blobsfile-blobs-uploaded")
+	blobsDownloaded = expvar.NewMap("blobsfile-blobs-downloaded")
 )
 
 // Blob flags
@@ -114,10 +114,6 @@ type BlobsFileBackend struct {
 	loaded      bool
 	reindexMode bool
 
-	// WriteOnly mode (if the precedent blobs are not available yet)
-	writeOnly     bool
-	blobsUploaded int
-
 	// Compression is disabled by default
 	snappyCompression bool
 
@@ -134,7 +130,7 @@ type BlobsFileBackend struct {
 	sync.Mutex
 }
 
-func New(dir string, maxBlobsFileSize int64, compression, writeOnly bool) *BlobsFileBackend {
+func New(dir string, maxBlobsFileSize int64, compression bool) *BlobsFileBackend {
 	dir = strings.Replace(dir, "$VAR", pathutil.VarDir(), -1)
 	os.MkdirAll(dir, 0700)
 	var reindex bool
@@ -153,17 +149,12 @@ func New(dir string, maxBlobsFileSize int64, compression, writeOnly bool) *Blobs
 		snappyCompression: compression,
 		index:             index,
 		files:             make(map[int]*os.File),
-		writeOnly:         writeOnly,
 		maxBlobsFileSize:  maxBlobsFileSize,
 		reindexMode:       reindex,
 	}
 	backend.log = logger.Log.New("backend", backend.String())
 	backend.log.Debug("Started")
-	loader := backend.load
-	if backend.writeOnly {
-		loader = backend.loadWriteOnly
-	}
-	if err := loader(); err != nil {
+	if err := backend.load(); err != nil {
 		panic(fmt.Errorf("Error loading %T: %v", backend, err))
 	}
 	if backend.snappyCompression {
@@ -186,11 +177,7 @@ func NewFromConfig(conf map[string]interface{}) *BlobsFileBackend {
 	if _, cOk := conf["compression"]; cOk {
 		compression = conf["compression"].(bool)
 	}
-	writeonly := false
-	if _, wOk := conf["write-only"]; wOk {
-		writeonly = conf["write-only"].(bool)
-	}
-	return New(path, int64(maxsize), compression, writeonly)
+	return New(path, int64(maxsize), compression)
 }
 
 // Len compute the number of blobs stored
@@ -223,27 +210,6 @@ func (backend *BlobsFileBackend) Close() {
 }
 
 func (backend *BlobsFileBackend) Done() error {
-	if backend.writeOnly {
-		log.Println("BlobsFileBackend: Done()")
-		if backend.blobsUploaded == 0 {
-			log.Println("BlobsFileBackend: no new blobs have been uploaded")
-			return nil
-		}
-		// Switch file and delete older file
-		for i, f := range backend.files {
-			fpath := f.Name()
-			log.Printf("BlobsFileBackend: removing blobsfile %v", fpath)
-			f.Close()
-			delete(backend.files, i)
-			os.Remove(fpath)
-		}
-		backend.blobsUploaded = 0
-		if err := backend.loadWriteOnly(); err != nil {
-			return err
-		}
-		return nil
-	}
-	backend.blobsUploaded = 0
 	return nil
 }
 
@@ -268,18 +234,12 @@ func (backend *BlobsFileBackend) restoreN() error {
 }
 
 func (backend *BlobsFileBackend) String() string {
-	if backend.writeOnly {
-		return fmt.Sprintf("blobsfile-write-only-%v", backend.Directory)
-	}
 	return fmt.Sprintf("blobsfile-%v", backend.Directory)
 }
 
 // reindex scans all BlobsFile and reconstruct the index from scratch.
 func (backend *BlobsFileBackend) reindex() error {
 	backend.log.Info("re-indexing BlobsFiles...")
-	if backend.writeOnly {
-		panic("can't re-index in write-only mode")
-	}
 	if backend.Len() != 0 {
 		panic("can't re-index, an non-empty backend already exists")
 	}
@@ -470,7 +430,7 @@ func (backend *BlobsFileBackend) ropen(n int) error {
 		log.Printf("BlobsFileBackend: blobsfile %v already open", backend.filename(n))
 		return nil
 	}
-	if !backend.writeOnly && n > len(backend.files) {
+	if n > len(backend.files) {
 		return fmt.Errorf("Trying to open file %v whereas only %v files currently open", n, len(backend.files))
 	}
 
@@ -525,7 +485,6 @@ func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
 	}
 	bytesUploaded.Add(backend.Directory, int64(len(blobEncoded)))
 	blobsUploaded.Add(backend.Directory, 1)
-	backend.blobsUploaded++
 
 	if backend.size > backend.maxBlobsFileSize {
 		backend.n++
@@ -605,9 +564,6 @@ func (backend *BlobsFileBackend) Get(hash string) ([]byte, error) {
 	if !backend.loaded {
 		panic("backend BlobsFileBackend not loaded")
 	}
-	if backend.writeOnly {
-		panic("backend is in write-only mode")
-	}
 	blobPos, err := backend.index.GetPos(hash)
 	if err != nil {
 		return nil, fmt.Errorf("Error fetching GetPos: %v", err)
@@ -640,10 +596,6 @@ func (backend *BlobsFileBackend) Get(hash string) ([]byte, error) {
 func (backend *BlobsFileBackend) Delete(hash string) error {
 	if !backend.loaded {
 		panic("backend BlobsFileBackend not loaded")
-	}
-	if backend.writeOnly {
-		return nil
-		//panic("backend is in write-only mode")
 	}
 	blobPos, err := backend.index.GetPos(hash)
 	if err != nil {
@@ -680,9 +632,6 @@ func (backend *BlobsFileBackend) Delete(hash string) error {
 
 func (backend *BlobsFileBackend) Enumerate(blobs chan<- string) error {
 	defer close(blobs)
-	if backend.writeOnly {
-		return fmt.Errorf("write only") // bbackend.ErrWriteOnly
-	}
 	if !backend.loaded {
 		panic("backend BlobsFileBackend not loaded")
 	}
@@ -706,9 +655,6 @@ func (backend *BlobsFileBackend) Enumerate(blobs chan<- string) error {
 
 func (backend *BlobsFileBackend) Enumerate2(blobs chan<- *blob.SizedBlobRef, start, end string, limit int) error {
 	defer close(blobs)
-	if backend.writeOnly {
-		return fmt.Errorf("write only") // bbackend.ErrWriteOnly
-	}
 	if !backend.loaded {
 		panic("backend BlobsFileBackend not loaded")
 	}
