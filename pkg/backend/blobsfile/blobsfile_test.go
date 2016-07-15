@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"os"
+	"sync"
 	"testing"
 
 	_ "github.com/tsileo/blobstash/pkg/backend"
@@ -88,7 +89,7 @@ func check(e error) {
 //}
 
 func TestBlobsFileBlobEncoding(t *testing.T) {
-	b := New("./tmp_blobsfile_test", 0, false, false)
+	b := New("./tmp_blobsfile_test", 0, false, sync.WaitGroup{})
 	//check(err)
 	defer b.Close()
 	defer os.RemoveAll("./tmp_blobsfile_test")

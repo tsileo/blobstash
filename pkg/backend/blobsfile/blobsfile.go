@@ -92,6 +92,7 @@ const (
 	Deleted byte = 1 << iota
 	Compressed
 	Encrypted
+	ParityChunk
 )
 
 // Config holds the backend config
@@ -580,7 +581,7 @@ func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
 	// XXX(tsileo): also, when ran at the end, it should also read all the parity blobs in the right order, and
 	// save it at the end of the current blobsfile
 	var lastRun bool
-	if backend.size >= backend.parityState.nextThresold {
+	if !strings.Contains(backend.Directory, "parity") && backend.size >= backend.parityState.nextThresold {
 		// FIXME(tsileo): handdle the thresold
 
 		if _, err := backend.current.Seek(((backend.parityState.nextThresold/parityChunkSize)-1)*parityChunkSize, os.SEEK_SET); err != nil {
@@ -603,6 +604,14 @@ func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
 			panic(err)
 		}
 		if lastRun {
+			iterFunc := func(blobPos *BlobPos, _ byte, hash string, data []byte) error {
+				// FIXME(tsileo): be able
+				// backend.Put(hash, data) FlagParityChunk
+				return nil
+			}
+			if err := backend.parityBlobs.(*BlobsFileBackend).scan(iterFunc); err != nil {
+				return err
+			}
 			// TODO(tsileo): iter parityBlobs and save the blobs in the backend,
 			// and close it
 			// and reset the parityBlobs
