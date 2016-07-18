@@ -5,9 +5,6 @@ import (
 	_ "encoding/json"
 	_ "encoding/xml"
 	"fmt"
-	"github.com/gorilla/mux"
-	log "github.com/inconshreveable/log15"
-	"golang.org/x/net/context"
 	"io"
 	"net/http"
 	"net/url"
@@ -15,6 +12,10 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/gorilla/mux"
+	log "github.com/inconshreveable/log15"
+	"golang.org/x/net/context"
 
 	"github.com/tsileo/blobstash/pkg/blob"
 	"github.com/tsileo/blobstash/pkg/blobstore"
@@ -43,6 +44,8 @@ var (
 	// PermTreeName = "filetree:root:"
 	// PermWrite    = "write"
 	// PermRead     = "read"
+
+	MaxUploadSize int64 = 32 << 20
 )
 
 type FileTreeExt struct {
@@ -103,6 +106,7 @@ func (ft *FileTreeExt) Close() error {
 
 // RegisterRoute registers all the HTTP handlers for the extension
 func (ft *FileTreeExt) Register(r *mux.Router, root *mux.Router, basicAuth func(http.Handler) http.Handler) {
+	// Raw node endpoint
 	r.Handle("/node/{ref}", basicAuth(http.HandlerFunc(ft.nodeHandler())))
 
 	// Public/semi-private handler
@@ -125,6 +129,7 @@ func (ft *FileTreeExt) Register(r *mux.Router, root *mux.Router, basicAuth func(
 	root.Handle("/f/{ref}", fileHandler)
 }
 
+// Node holds the data about the file node (either file/dir), analog to a Meta
 type Node struct {
 	Name     string  `json:"name"`
 	Type     string  `json:"type"`
@@ -142,6 +147,7 @@ type Node struct {
 	fs     *FS        `json:"-"`
 }
 
+// Update the given node with the given meta
 func (ft *FileTreeExt) Update(n *Node, m *meta.Meta) (*Node, error) {
 	newNode, err := metaToNode(m)
 	if err != nil {
@@ -192,6 +198,7 @@ func (ft *FileTreeExt) Update(n *Node, m *meta.Meta) (*Node, error) {
 	}
 	// n.parent.Hash = newRef
 	// parentMeta.Hash = newRef
+	// Propagate the change to the parents
 	if _, err := ft.Update(newNode.parent, newNode.parent.meta); err != nil {
 		return nil, err
 	}
@@ -199,6 +206,7 @@ func (ft *FileTreeExt) Update(n *Node, m *meta.Meta) (*Node, error) {
 }
 
 func (n *Node) Close() error {
+	// FIXME(tsileo): no nore Meta pool
 	n.meta.Close()
 	return nil
 }
@@ -245,6 +253,7 @@ func (ft *FileTreeExt) fetchDir(n *Node, depth, maxDepth int) error {
 	return nil
 }
 
+// FS fetch the FileSystem by name
 func (ft *FileTreeExt) FS(name string) (*FS, error) {
 	fs := &FS{}
 	kv, err := ft.kvStore.Get(context.TODO(), fmt.Sprintf(FSKeyFmt, name), -1)
@@ -265,10 +274,14 @@ func (ft *FileTreeExt) FS(name string) (*FS, error) {
 	return fs, nil
 }
 
-func (fs *FS) Root() (*Node, error) {
+// Root fetch the FS root, and creates a new one if `create` is set to true
+func (fs *FS) Root(create bool) (*Node, error) {
 	node, err := fs.ft.nodeByRef(fs.Ref)
 	switch err {
 	case clientutil.ErrBlobNotFound:
+		if !create {
+			return nil, err
+		}
 		meta := meta.NewMeta()
 		meta.Type = "dir"
 		meta.Name = "_root"
@@ -284,11 +297,13 @@ func (fs *FS) Root() (*Node, error) {
 	return node, nil
 }
 
+// Path returns the `Node` at the given path, create it if requested
 func (fs *FS) Path(path string, create bool) (*Node, error) {
-	node, err := fs.Root()
+	node, err := fs.Root(create)
 	if err != nil {
 		return nil, err
 	}
+	// XXX(tsileo): a 404 for the root?
 	var prev *Node
 	node.fs = fs
 	node.parent = nil
@@ -322,10 +337,10 @@ func (fs *FS) Path(path string, create bool) (*Node, error) {
 			}
 		}
 		// fmt.Printf("split:%+v, node=%+v\n", p, node)
-		if !found && !create {
-			return nil, fmt.Errorf("err not found")
-		}
 		if !found {
+			if !create {
+				return nil, clientutil.ErrBlobNotFound
+			}
 			// Create a new dir since it doesn't exist
 			meta := meta.NewMeta()
 			meta.Name = p
@@ -346,14 +361,14 @@ func (fs *FS) Path(path string, create bool) (*Node, error) {
 	return node, nil
 }
 
+// Handle multipart form upload to create a new Node (outside of any FS)
 func (ft *FileTreeExt) uploadHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		// TODO(tsileo): make the max memory a constant
-		r.ParseMultipartForm(32 << 20)
+		r.ParseMultipartForm(MaxUploadSize)
 		file, handler, err := r.FormFile("file")
 		if err != nil {
 			panic(err)
@@ -372,6 +387,7 @@ func (ft *FileTreeExt) uploadHandler() func(http.ResponseWriter, *http.Request) 
 	}
 }
 
+// FIXME(tsileo): replace this by s3layer
 // func (ft *FileTreeExt) s3Handler() func(http.ResponseWriter, *http.Request) {
 // 	return func(w http.ResponseWriter, r *http.Request) {
 // 		vars := mux.Vars(r)
@@ -462,22 +478,33 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 			panic(err)
 		}
 		switch r.Method {
-		case "GET":
+		case "GET", "HEAD":
 			node, err := fs.Path(path, false)
-			if err != nil {
+			switch err {
+			case clientutil.ErrBlobNotFound:
+				// Returns a 404 if the blob/children is not found
+				w.WriteHeader(http.StatusNotFound)
+				return
+			default:
 				panic(err)
 			}
+
+			// Handle HEAD request
+			if r.Method == "HEAD" {
+				return
+			}
+
+			// Returns the Node as JSON
 			httputil.WriteJSON(w, node)
-			// TODO(tsileo): handle 404
 		case "POST":
+			// Add a new node in the FS at the given path
 			node, err := fs.Path(path, true)
 			if err != nil {
 				panic(err)
 			}
 			// fmt.Printf("Current node:%v %+v %+v\n", path, node, node.meta)
 			// fmt.Printf("Current node parent:%+v %+v\n", node.parent, node.parent.meta)
-			// TODO(tsileo): make the max memory a constant
-			r.ParseMultipartForm(32 << 20)
+			r.ParseMultipartForm(MaxUploadSize)
 			file, _, err := r.FormFile("file")
 			if err != nil {
 				panic(err)
@@ -485,16 +512,21 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 			defer file.Close()
 			uploader := writer.NewUploader(&BlobStore{ft.blobStore})
 
+			// Create/save me Meta
 			meta, err := uploader.PutReader(filepath.Base(path), file)
 			if err != nil {
 				panic(err)
 			}
+
+			// Update the Node with the new Meta
 			// fmt.Printf("uploaded meta=%+v\nold node=%+v", meta, node)
 			newNode, err := ft.Update(node, meta)
 			if err != nil {
 				panic(err)
 			}
+
 			httputil.WriteJSON(w, newNode)
+		// FIXME(tsileo): handle delete
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
@@ -583,6 +615,7 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 // 	}
 // }
 
+// fileHandler serve the Meta like it's a standard file
 func (ft *FileTreeExt) fileHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" && r.Method != "HEAD" {
@@ -596,6 +629,7 @@ func (ft *FileTreeExt) fileHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
+// isPublic ensures the givem Meta is public
 func (ft *FileTreeExt) isPublic(m *meta.Meta) (bool, error) {
 	if m.IsPublic() {
 		ft.log.Debug("XAttrs public=1")
@@ -667,6 +701,7 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 	http.ServeContent(w, r, m.Name, mtime, f)
 }
 
+// Fetch a Node outside any FS
 func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Check permissions
@@ -741,6 +776,7 @@ func (ft *FileTreeExt) nodeByRef(hash string) (*Node, error) {
 	return n, nil
 }
 
+// Dummy hanler for 404 responses
 func notFound(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusNotFound)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -748,6 +784,7 @@ func notFound(w http.ResponseWriter) {
 
 }
 
+// dirHandler serve the directory like a standard directory (an HTML page with links to each Node)
 func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" && r.Method != "HEAD" {
