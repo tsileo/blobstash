@@ -63,6 +63,14 @@ const (
 	KvPrefixEnd
 )
 
+type Flag byte
+
+const (
+	// FIXME(tsileo): correct these flags from my notes
+	HashOnly Flag = iota
+	HashAndData
+)
+
 var ErrNotFound = errors.New("vkv: key does not exist")
 
 // KeyValue holds a singke key value pair, along with the version (the creation timestamp)
@@ -581,4 +589,28 @@ func (db *DB) ReversePrefixKeys(prefix, start, end string, limit int) ([]*KeyVal
 		i++
 	}
 	return res, nil
+}
+
+type VkvEntry struct {
+	Flag       Flag   `json:"flag"`
+	CustomFlag byte   `json:"cflag"`
+	Hash       string `json:"hash,omitempty"`
+	Data       []byte `json:"data,omitempty"`
+}
+
+func (ve *VkvEntry) Serialize() []byte {
+	// Serialize format:
+	// Flag + custom Flag + Hash (fixed size/optional) + vint len(data) + data
+
+	// Docstore serialize:
+	// HashOnly + (Indexed|Deleted|NoFlag) + Hash of the JSON body
+
+	// XXX(tsileo): find a way to do the GC using data via another ExtractFunc interface that returns a list of []Ref?
+	// e.g. parse the filetreemeta recursively until we discover all the blobs?
+	return nil
+}
+
+func Unserialize([]byte) (*VkvEntry, error) {
+	// TODO(tsileo): decoding logic on the serialize format is fixed
+	return nil, nil
 }

@@ -31,10 +31,10 @@ import (
 	"github.com/tsileo/blobstash/pkg/vkv"
 )
 
-// TODO(tsileo): handle the fetching of meta from the FS name and reconstruct the vkv key
+// XXX(tsileo): handle the fetching of meta from the FS name and reconstruct the vkv key
 // to the root in children link
-// TODO(tsileo): bind a folder to the root path, e.g. {hostname}/ => dirHandler?
-// TODO(tsileo): a multi-part upload endpoint (but without dir capabilities, at least for now)
+// XXX(tsileo): bind a folder to the root path, e.g. {hostname}/ => dirHandler?
+// XXX(tsileo): a multi-part upload endpoint (but without dir capabilities, at least for now)
 
 var (
 	indexFile = "index.html"
@@ -59,6 +59,7 @@ type FileTreeExt struct {
 	log log.Logger
 }
 
+// BlobStore is the interface to be compatible with both the server and the BlobStore client
 type BlobStore struct {
 	blobStore *blobstore.BlobStore
 }
@@ -188,7 +189,9 @@ func (ft *FileTreeExt) Update(n *Node, m *meta.Meta) (*Node, error) {
 	// parentMeta := n.parent.meta
 	// parentMeta.Refs = newRefs
 	// n.parent.Children = newChildren
-	// TODO(tsileo): also update modtime
+
+	// Update the node  modtime
+	newNode.parent.meta.ModTime = time.Now().Format(meta.ModTimeFmt)
 	fmt.Printf("saving parent meta: %+v\n", newNode.parent.meta)
 	newRef, data := newNode.parent.meta.Json()
 	newNode.parent.Hash = newRef
@@ -253,7 +256,7 @@ func (ft *FileTreeExt) fetchDir(n *Node, depth, maxDepth int) error {
 	return nil
 }
 
-// FS fetch the FileSystem by name
+// FS fetch the FileSystem by name, returns an empty one if not found
 func (ft *FileTreeExt) FS(name string) (*FS, error) {
 	fs := &FS{}
 	kv, err := ft.kvStore.Get(context.TODO(), fmt.Sprintf(FSKeyFmt, name), -1)
@@ -266,6 +269,7 @@ func (ft *FileTreeExt) FS(name string) (*FS, error) {
 			return nil, err
 		}
 	case vkv.ErrNotFound:
+		// XXX(tsileo): should the `ErrNotFound` be returned here?
 	default:
 		return nil, err
 	}
@@ -274,7 +278,7 @@ func (ft *FileTreeExt) FS(name string) (*FS, error) {
 	return fs, nil
 }
 
-// Root fetch the FS root, and creates a new one if `create` is set to true
+// Root fetch the FS root, and creates a new one if `create` is set to true (but it won't be savec automatically in the BlobStore
 func (fs *FS) Root(create bool) (*Node, error) {
 	node, err := fs.ft.nodeByRef(fs.Ref)
 	switch err {
@@ -303,7 +307,6 @@ func (fs *FS) Path(path string, create bool) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	// XXX(tsileo): a 404 for the root?
 	var prev *Node
 	node.fs = fs
 	node.parent = nil
@@ -315,6 +318,7 @@ func (fs *FS) Path(path string, create bool) (*Node, error) {
 	}
 	split := strings.Split(path[1:], "/")
 	// fmt.Printf("split res=%+v\n", split)
+	// Split the path, and fetch each node till the last one
 	pathCount := len(split)
 	for i, p := range split {
 		prev = node
@@ -337,6 +341,7 @@ func (fs *FS) Path(path string, create bool) (*Node, error) {
 			}
 		}
 		// fmt.Printf("split:%+v, node=%+v\n", p, node)
+		// At this point, we found no node at the given path
 		if !found {
 			if !create {
 				return nil, clientutil.ErrBlobNotFound
@@ -387,86 +392,6 @@ func (ft *FileTreeExt) uploadHandler() func(http.ResponseWriter, *http.Request) 
 	}
 }
 
-// FIXME(tsileo): replace this by s3layer
-// func (ft *FileTreeExt) s3Handler() func(http.ResponseWriter, *http.Request) {
-// 	return func(w http.ResponseWriter, r *http.Request) {
-// 		vars := mux.Vars(r)
-// 		fsName := vars["name"]
-// 		path := "/" + vars["path"]
-
-// 		fs, err := ft.FS(fsName)
-// 		if err != nil {
-// 			panic(err)
-// 		}
-// 		switch r.Method {
-// 		case "GET":
-// 			node, err := fs.Path(path, false)
-// 			if err != nil {
-// 				panic(err)
-// 			}
-// 			if path == "/" {
-// 				res := []*ListBucketResultItem{}
-// 				prefixes := []*ListBucketResultDir{}
-// 				for _, child := range node.Children {
-// 					if child.meta.IsFile() {
-// 						t, err := child.meta.Mtime()
-// 						if err != nil {
-// 							panic(err)
-// 						}
-// 						res = append(res, &ListBucketResultItem{
-// 							Key:          child.Name,
-// 							StorageClass: S3FakeStorageClass,
-// 							Size:         child.Size,
-// 							LastModified: t.Format(S3Date),
-// 							ETag:         "", // FIXME(tsileo): compute the ETag
-// 						})
-// 					} else {
-// 						prefixes = append(prefixes, &ListBucketResultDir{(filepath.Join(path, child.Name)[1:]) + "/"})
-// 					}
-// 				}
-// 				response, err := buildListBucketResult(fsName, res, prefixes)
-// 				if err != nil {
-// 					panic(err)
-// 				}
-// 				w.Write([]byte(response))
-// 				return
-// 			}
-// 			// httputil.WriteJSON(w, node)
-// 			// TODO(tsileo): handle 404
-// 		case "POST":
-// 			node, err := fs.Path(path, true)
-// 			if err != nil {
-// 				panic(err)
-// 			}
-// 			// fmt.Printf("Current node:%v %+v %+v\n", path, node, node.meta)
-// 			// fmt.Printf("Current node parent:%+v %+v\n", node.parent, node.parent.meta)
-// 			// TODO(tsileo): make the max memory a constant
-// 			r.ParseMultipartForm(32 << 20)
-// 			file, _, err := r.FormFile("file")
-// 			if err != nil {
-// 				panic(err)
-// 			}
-// 			defer file.Close()
-// 			uploader := writer.NewUploader(&BlobStore{ft.blobStore})
-
-// 			meta, err := uploader.PutReader(filepath.Base(path), file)
-// 			if err != nil {
-// 				panic(err)
-// 			}
-// 			// fmt.Printf("uploaded meta=%+v\nold node=%+v", meta, node)
-// 			newNode, err := ft.Update(node, meta)
-// 			if err != nil {
-// 				panic(err)
-// 			}
-// 			httputil.WriteJSON(w, newNode)
-// 		default:
-// 			w.WriteHeader(http.StatusMethodNotAllowed)
-// 			return
-// 		}
-
-// 	}
-// }
-
 func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
@@ -497,6 +422,7 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 			// Returns the Node as JSON
 			httputil.WriteJSON(w, node)
 		case "POST":
+			// FIXME(tsileo): add a way to upload a file as public ? like AWS S3 public-read canned ACL
 			// Add a new node in the FS at the given path
 			node, err := fs.Path(path, true)
 			if err != nil {

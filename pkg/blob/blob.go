@@ -22,6 +22,11 @@ type Blob struct {
 	Data []byte
 }
 
+// String implements the Stringer interface
+func (b *Blob) String() string {
+	return b.Hash
+}
+
 func New(data []byte) *Blob {
 	return &Blob{
 		Data: data,

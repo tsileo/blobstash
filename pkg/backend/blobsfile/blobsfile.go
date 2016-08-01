@@ -16,13 +16,6 @@ Blobs are indexed by a BlobPos entry (value stored as string):
 
 	Blob Hash => n (BlobFile index) + (space) + offset + (space) + Blob size
 
-Write-only mode
-
-The backend also support a write-only mode (Get operation is disabled in this mode)
-where older blobsfile aren't needed since they won't be loaded (used for cold storage,
-once uploaded, a blobsfile can be removed but are kept in the index, and since no metadata
-is needed for blobs, this format is better than a tar archive).
-
 */
 package blobsfile
 
@@ -46,11 +39,11 @@ import (
 	"github.com/golang/snappy"
 	log2 "gopkg.in/inconshreveable/log15.v2"
 
-	"github.com/tsileo/blobstash/pkg/backend"
+	_ "github.com/tsileo/blobstash/pkg/backend"
 	"github.com/tsileo/blobstash/pkg/blob"
 	"github.com/tsileo/blobstash/pkg/client/clientutil"
 	"github.com/tsileo/blobstash/pkg/config/pathutil"
-	"github.com/tsileo/blobstash/pkg/hashutil"
+	_ "github.com/tsileo/blobstash/pkg/hashutil"
 	"github.com/tsileo/blobstash/pkg/logger"
 )
 
@@ -150,14 +143,14 @@ type BlobsFileBackend struct {
 	wg sync.WaitGroup
 	sync.Mutex
 
-	parityBlobs backend.BlobHandler
-	parityState *parityState
+	// parityBlobs backend.BlobHandler
+	// parityState *parityState
 }
 
-type parityState struct {
-	nextThresold    int64
-	lastChunkOffest int64
-}
+// type parityState struct {
+// 	nextThresold    int64
+// 	lastChunkOffest int64
+// }
 
 // New intializes a new BlobsFileBackend
 func New(dir string, maxBlobsFileSize int64, compression bool, wg sync.WaitGroup) *BlobsFileBackend {
@@ -192,14 +185,14 @@ func New(dir string, maxBlobsFileSize int64, compression bool, wg sync.WaitGroup
 		backend.log.Debug("snappy compression enabled")
 	}
 
-	if !strings.Contains(dir, "blobs-parity") {
-		// XXX(tsileo): find a better dir
-		parityBackend := New(filepath.Join(pathutil.VarDir(), "blobs-parity"), 0, false, wg)
-		backend.parityBlobs = parityBackend
-		backend.parityState = &parityState{
-			nextThresold: parityChunkSize,
-		}
-	}
+	// if !strings.Contains(dir, "blobs-parity") {
+	// 	// XXX(tsileo): find a better dir
+	// 	parityBackend := New(filepath.Join(pathutil.VarDir(), "blobs-parity"), 0, false, wg)
+	// 	backend.parityBlobs = parityBackend
+	// 	backend.parityState = &parityState{
+	// 		nextThresold: parityChunkSize,
+	// 	}
+	// }
 	return backend
 }
 
@@ -246,9 +239,9 @@ func (backend *BlobsFileBackend) CloseOpenFiles() {
 
 func (backend *BlobsFileBackend) Close() {
 	backend.log.Debug("closing index...")
-	if backend.parityBlobs != nil {
-		backend.parityBlobs.Close()
-	}
+	// if backend.parityBlobs != nil {
+	// 	backend.parityBlobs.Close()
+	// }
 	backend.index.Close()
 }
 
@@ -580,43 +573,43 @@ func (backend *BlobsFileBackend) Put(hash string, data []byte) (err error) {
 	// FIXME(tsileo): extract this, and run it before creating a new blobsfile (with paddin if it's the last)
 	// XXX(tsileo): also, when ran at the end, it should also read all the parity blobs in the right order, and
 	// save it at the end of the current blobsfile
-	var lastRun bool
-	if !strings.Contains(backend.Directory, "parity") && backend.size >= backend.parityState.nextThresold {
-		// FIXME(tsileo): handdle the thresold
+	// var lastRun bool
+	// if !strings.Contains(backend.Directory, "parity") && backend.size >= backend.parityState.nextThresold {
+	// 	// FIXME(tsileo): handdle the thresold
 
-		if _, err := backend.current.Seek(((backend.parityState.nextThresold/parityChunkSize)-1)*parityChunkSize, os.SEEK_SET); err != nil {
-			panic(err)
-		}
-		data := make([]byte, parityChunkSize)
-		if _, err := backend.current.Read(data); err != nil {
-			panic(err)
-		}
-		parityBlobs := [][]byte{}
-		// FIXME(tsileo): compute the parity blobs and handling of chunk in the init
-		for _, blob := range parityBlobs {
-			hash := hashutil.Compute(blob)
-			if err := backend.parityBlobs.Put(hash, blob); err != nil {
-				panic(err)
-			}
-		}
-		backend.parityState.nextThresold = backend.parityState.nextThresold * 2
-		if _, err := backend.current.Seek(backend.size, os.SEEK_SET); err != nil {
-			panic(err)
-		}
-		if lastRun {
-			iterFunc := func(blobPos *BlobPos, _ byte, hash string, data []byte) error {
-				// FIXME(tsileo): be able
-				// backend.Put(hash, data) FlagParityChunk
-				return nil
-			}
-			if err := backend.parityBlobs.(*BlobsFileBackend).scan(iterFunc); err != nil {
-				return err
-			}
-			// TODO(tsileo): iter parityBlobs and save the blobs in the backend,
-			// and close it
-			// and reset the parityBlobs
-		}
-	}
+	// 	if _, err := backend.current.Seek(((backend.parityState.nextThresold/parityChunkSize)-1)*parityChunkSize, os.SEEK_SET); err != nil {
+	// 		panic(err)
+	// 	}
+	// 	data := make([]byte, parityChunkSize)
+	// 	if _, err := backend.current.Read(data); err != nil {
+	// 		panic(err)
+	// 	}
+	// 	parityBlobs := [][]byte{}
+	// 	// FIXME(tsileo): compute the parity blobs and handling of chunk in the init
+	// 	for _, blob := range parityBlobs {
+	// 		hash := hashutil.Compute(blob)
+	// 		if err := backend.parityBlobs.Put(hash, blob); err != nil {
+	// 			panic(err)
+	// 		}
+	// 	}
+	// 	backend.parityState.nextThresold = backend.parityState.nextThresold * 2
+	// 	if _, err := backend.current.Seek(backend.size, os.SEEK_SET); err != nil {
+	// 		panic(err)
+	// 	}
+	// 	if lastRun {
+	// 		iterFunc := func(blobPos *BlobPos, _ byte, hash string, data []byte) error {
+	// 			// FIXME(tsileo): be able
+	// 			// backend.Put(hash, data) FlagParityChunk
+	// 			return nil
+	// 		}
+	// 		if err := backend.parityBlobs.(*BlobsFileBackend).scan(iterFunc); err != nil {
+	// 			return err
+	// 		}
+	// 		// TODO(tsileo): iter parityBlobs and save the blobs in the backend,
+	// 		// and close it
+	// 		// and reset the parityBlobs
+	// 	}
+	// }
 
 	// Update the expvars
 	bytesUploaded.Add(backend.Directory, int64(len(blobEncoded)))
@@ -834,9 +827,8 @@ func (backend *BlobsFileBackend) Enumerate2(blobs chan<- *blob.SizedBlobRef, sta
 		// Remove the BlobPosKey prefix byte
 		sbr := &blob.SizedBlobRef{
 			Hash: hex.EncodeToString(k[1:]),
-			Size: blobPos.size, // TODO(tsileo): set the size
+			Size: blobPos.size,
 		}
-		// FIXME(tsileo): check end
 		blobs <- sbr
 		i++
 	}

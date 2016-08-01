@@ -60,7 +60,7 @@ type DB struct {
 }
 
 // New creates a new database.
-func New(logger log.Logger, conf *config.Config, blobStore *blobstore.BlobStore, m *meta.Meta, hub *hub.Hub) (*DB, error) {
+func New(logger log.Logger, conf *config.Config, blobStore *blobstore.BlobStore, m *meta.Meta, chub *hub.Hub) (*DB, error) {
 	logger.Debug("init")
 	path := filepath.Join(conf.VarDir(), "nsdb")
 	createOpen := kv.Open
@@ -72,7 +72,7 @@ func New(logger log.Logger, conf *config.Config, blobStore *blobstore.BlobStore,
 		return nil, err
 	}
 	nsdb := &DB{
-		hub:       hub,
+		hub:       chub,
 		db:        kvdb,
 		meta:      m,
 		log:       logger,
@@ -81,7 +81,7 @@ func New(logger log.Logger, conf *config.Config, blobStore *blobstore.BlobStore,
 		conf:      conf,
 	}
 	m.RegisterApplyFunc(NsType, nsdb.applyMetaFunc)
-	nsdb.hub.Subscribe("nsdb", nsdb.newBlobCallback)
+	nsdb.hub.Subscribe(hub.NewBlob, "nsdb", nsdb.newBlobCallback)
 	return nsdb, nil
 }
 

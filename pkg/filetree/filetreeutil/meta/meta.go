@@ -18,7 +18,13 @@ import (
 
 // XXX(tsileo): think about saving the parent in the `Meta` and if no parent, then, it's a root!
 
-var version = "1"
+var (
+	ModTimeFmt = time.RFC3339
+)
+
+var (
+	version = "1"
+)
 
 var metaPool = sync.Pool{
 	New: func() interface{} {

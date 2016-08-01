@@ -30,13 +30,15 @@ type Meta struct {
 	hub        *hub.Hub
 }
 
-func New(logger log.Logger, hub *hub.Hub) (*Meta, error) {
+func New(logger log.Logger, chub *hub.Hub) (*Meta, error) {
 	meta := &Meta{
 		log:        logger,
-		hub:        hub,
+		hub:        chub,
 		applyFuncs: map[string]func(string, []byte) error{},
 	}
-	meta.hub.Subscribe("meta", meta.newBlobCallback)
+	// Subscribe to "new blob" notification
+	meta.hub.Subscribe(hub.NewBlob, "meta", meta.newBlobCallback)
+	// XXX(tsileo): register to ScanBlob event too?
 	return meta, nil
 }
 
@@ -44,15 +46,21 @@ func (m *Meta) newBlobCallback(ctx context.Context, blob *blob.Blob) error {
 	metaType, metaData, isMeta := IsMetaBlob(blob.Data)
 	m.log.Debug("newBlobCallback", "is_meta", isMeta, "meta_type", metaType)
 	if isMeta {
-		// TODO(tsileo): ensure the type is registered
+		// TODO(tsileo): should we check for already applied blobs and use the same callback for both scan and new blob?
+		if _, ok := m.applyFuncs[metaType]; !ok {
+			return fmt.Errorf("Unknown meta type \"%s\"", metaType)
+		}
 		return m.applyFuncs[metaType](blob.Hash, metaData)
 	}
 	return nil
 }
 
+// RegisterApplyFunc registers a callback func for the given meta type
 func (m *Meta) RegisterApplyFunc(t string, f func(string, []byte) error) {
 	m.applyFuncs[t] = f
 }
+
+// Build convert the MetaData into a blo
 func (m *Meta) Build(data MetaData) (*blob.Blob, error) {
 	var buf bytes.Buffer
 	// <meta blob header> + <meta blob version> + <type size> + <type bytes> + <data size> + <data>
@@ -75,7 +83,10 @@ func (m *Meta) Build(data MetaData) (*blob.Blob, error) {
 	return metaBlob, nil
 }
 
-// FIXME(ts): Scan
+func (m *Meta) Scan() error {
+	// FIXME(ts): Scan
+	return nil
+}
 
 func IsMetaBlob(blob []byte) (string, []byte, bool) { // returns (string, bool) string => meta type
 	// TODO add a test with a tiny blob

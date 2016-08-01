@@ -51,6 +51,9 @@ import (
 	"github.com/tsileo/blobstash/pkg/vkv"
 )
 
+// FIXME(tsileo): use the new vkv format for future GC, don't forget indexes
+// and clean the full text index mess
+
 // FIXME(tsileo): create a "meta" hook for handling indexing
 // will need to solve few issues before:
 // - do we need to check if the doc is already indexed?
@@ -165,6 +168,7 @@ func (docstore *DocStoreExt) Register(r *mux.Router, basicAuth func(http.Handler
 // Expand a doc keys (fetch the blob as JSON, or a filesystem reference)
 // e.g: {"ref": "@blobstash/json:<hash>"}
 //      => {"ref": {"blob": "json decoded"}}
+// FIXME(tsileo): expanded ref must also works for marking a blob during GC
 func (docstore *DocStoreExt) expandKeys(doc map[string]interface{}) error {
 	// docstore.logger.Info("expandKeys")
 	for k, v := range doc {
@@ -462,6 +466,7 @@ func isQueryAll(q string) bool {
 func (docstore *DocStoreExt) Insert(collection string, idoc interface{}, ns string, index bool) (*id.ID, error) {
 	switch doc := idoc.(type) {
 	case *map[string]interface{}:
+		// TODO(tsileo): flag NoFlag by default
 		docFlag := FlagNoIndex
 		if index {
 			docFlag = FlagFullTextIndexed
