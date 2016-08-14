@@ -36,6 +36,7 @@ package vkv
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -63,41 +64,44 @@ const (
 	KvPrefixEnd
 )
 
+// KvType for meta serialization
+const KvType = "kv"
+
 type Flag byte
 
 const (
-	// FIXME(tsileo): correct these flags from my notes
-	HashOnly Flag = iota
+	Unknown Flag = iota
+	Deleted
+	HashOnly
+	DataOnly
 	HashAndData
 )
 
 var ErrNotFound = errors.New("vkv: key does not exist")
 
-// KeyValue holds a singke key value pair, along with the version (the creation timestamp)
-type KeyValue struct {
-	Key       string `json:"key,omitempty"`
-	Value     string `json:"value"`
-	Version   int    `json:"version"`
-	db        *DB    `json:"-"`
-	namespace string `json:"-"`
-}
+// // TODO(tsileo): no more `db` embedded into the KeyValue/VkvEntry
+// // KeyValue holds a singke key value pair, along with the version (the creation timestamp)
+// type KeyValue struct {
+// 	Key       string `json:"key,omitempty"`
+// 	Value     string `json:"value"`
+// 	Version   int    `json:"version"`
+// 	db        *DB    `json:"-"`
+// 	namespace string `json:"-"`
+// }
+// func (kvi *KeyValue) SetNamespace(ns string) error {
+// 	kvi.namespace = ns
+// 	return nil
+// }
 
-func (kvi *KeyValue) SetMetaBlob(hash string) error {
-	return kvi.db.setmetablob(kvi.Key, kvi.Version, hash)
-}
-
-func (kvi *KeyValue) SetNamespace(ns string) error {
-	kvi.namespace = ns
-	return nil
-}
-
-func (kvi *KeyValue) Namespace() string {
-	return kvi.namespace
-}
+// func (kvi *KeyValue) Namespace() string {
+// 	return kvi.namespace
+// }
 
 // KeyValueVersions holds the full history for a key value pair
 type KeyValueVersions struct {
-	Key      string      `json:"key"`
+	Key string `json:"key"`
+
+	// FIXME(tsileo): turn this into a []*VkvEntry
 	Versions []*KeyValue `json:"versions"`
 }
 
@@ -275,7 +279,7 @@ func (db *DB) setmetablob(key string, version int, hash string) error {
 
 // Put updates the value for the given version associated with key,
 // if version == -1, version will be set to time.Now().UTC().UnixNano().
-func (db *DB) Put(key, value string, version int) (*KeyValue, error) {
+func (db *DB) Put(key, ref string, data []byte, version int) (*KeyValue, error) {
 	if version == -1 {
 		version = int(time.Now().UTC().UnixNano())
 	}
@@ -317,21 +321,27 @@ func (db *DB) Put(key, value string, version int) (*KeyValue, error) {
 			return nil, err
 		}
 	}
+	kv := &KeyValue{
+		Hash:    ref,
+		Data:    data,
+		Version: version,
+		Key:     key,
+		db:      db,
+	}
+	value, err := kv.Serialize()
+	if err != nil {
+		return nil, err
+	}
 	if err := db.db.Set(kmember, []byte(value)); err != nil {
 		return nil, err
 	}
 	if err := db.db.Set(encodeMeta(KvKeyIndex, bkey), []byte{1}); err != nil {
 		return nil, err
 	}
-	return &KeyValue{
-		Key:     key,
-		Value:   value,
-		Version: version,
-		db:      db,
-	}, nil
+	return kv, nil
 }
 
-func (db *DB) PutPrefix(prefix, key, value string, version int) (*KeyValue, error) {
+func (db *DB) PutPrefix(prefix, key, ref string, data []byte, version int) (*KeyValue, error) {
 	// FIXME(tsileo): in meta, check if strings.Contains(s, ":") and PutPrefix instead of Put
 	prefixedKey := fmt.Sprintf("%s:%s", prefix, key)
 	bkey := []byte(prefixedKey)
@@ -358,9 +368,8 @@ func (db *DB) PutPrefix(prefix, key, value string, version int) (*KeyValue, erro
 			return nil, err
 		}
 	}
-
 	// Save the key prefix:key
-	return db.Put(prefixedKey, value, version)
+	return db.Put(prefixedKey, ref, data, version)
 }
 
 func (db *DB) Check(key string) (bool, error) {
@@ -397,11 +406,12 @@ func (db *DB) Get(key string, version int) (*KeyValue, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &KeyValue{
-		Key:     key,
-		Version: version,
-		Value:   string(val),
-	}, nil
+	kv, err := Unserialize(key, val)
+	if err != nil {
+		return nil, err
+	}
+	kv.Version = version
+	return kv, nil
 }
 
 // Return a lexicographical range
@@ -444,10 +454,12 @@ func (db *DB) Versions(key string, start, end, limit int) (*KeyValueVersions, er
 			return res, nil
 		}
 		_, index := decodeKey(k)
-		res.Versions = append(res.Versions, &KeyValue{
-			Value:   string(v),
-			Version: index,
-		})
+		kv, err := Unserialize(key, v)
+		if err != nil {
+			return nil, err
+		}
+		kv.Version = index
+		res.Versions = append(res.Versions, kv)
 		i++
 	}
 	return res, nil
@@ -483,10 +495,13 @@ func (db *DB) VersionsOld(key string, start, end, limit int) (*KeyValueVersions,
 			return res, nil
 		}
 		_, index := decodeKey(k)
-		res.Versions = append(res.Versions, &KeyValue{
-			Value:   string(v),
-			Version: index,
-		})
+		kv, err := Unserialize(key, v)
+		if err != nil {
+			return nil, err
+		}
+		kv.Version = index
+
+		res.Versions = append(res.Versions, kv)
 		i++
 	}
 	return res, nil
@@ -591,26 +606,226 @@ func (db *DB) ReversePrefixKeys(prefix, start, end string, limit int) ([]*KeyVal
 	return res, nil
 }
 
-type VkvEntry struct {
-	Flag       Flag   `json:"flag"`
-	CustomFlag byte   `json:"cflag"`
-	Hash       string `json:"hash,omitempty"`
-	Data       []byte `json:"data,omitempty"`
+type KeyValue struct {
+	Flag Flag `json:"flag"`
+	// CustomFlag byte `json:"cflag"`
+
+	Key     string `json:"key,omitempty"`
+	Version int    `json:"version"`
+	db      *DB    `json:"-"`
+
+	Hash string `json:"hash,omitempty"`
+	Data []byte `json:"data,omitempty"`
 }
 
-func (ve *VkvEntry) Serialize() []byte {
+func (kvi *KeyValue) SetMetaBlob(hash string) error {
+	return kvi.db.setmetablob(kvi.Key, kvi.Version, hash)
+}
+
+func (ve *KeyValue) Type() string {
+	return KvType
+}
+
+// Implements the `MetaData` interface
+func (ve *KeyValue) Dump() ([]byte, error) {
+	return ve.Serialize()
+}
+
+// Implements the `MetaData` interface
+func (ve *KeyValue) Serialize() ([]byte, error) {
+	// Check if the flag is set
+	if ve.Flag == Unknown {
+		if ve.Hash != "" && ve.Data != nil {
+			ve.Flag = HashAndData
+		} else if ve.Hash != "" {
+			ve.Flag = HashOnly
+		} else if ve.Data != nil {
+			ve.Flag = DataOnly
+		}
+	}
+
 	// Serialize format:
-	// Flag + custom Flag + Hash (fixed size/optional) + vint len(data) + data
+	// Flag + vint len(key) + key + version (4bytes uint32) + custom Flag + Hash (fixed size/optional) + vint len(data) + data
 
 	// Docstore serialize:
 	// HashOnly + (Indexed|Deleted|NoFlag) + Hash of the JSON body
 
 	// XXX(tsileo): find a way to do the GC using data via another ExtractFunc interface that returns a list of []Ref?
 	// e.g. parse the filetreemeta recursively until we discover all the blobs?
-	return nil
+
+	// Store the 1 byte flag
+	var buf bytes.Buffer
+	if err := buf.WriteByte(byte(ve.Flag)); err != nil {
+		return nil, err
+	}
+
+	// Store the key length
+	tmp := make([]byte, 4)
+	// binary.BigEndian.PutUint32(tmp[:], uint32(len(ve.Data)))
+	// if _, err := buf.Write(tmp); err != nil {
+	// 	return nil, err
+	// }
+
+	// Store the actual key
+	// if _, err := buf.WriteString(ve.Key); err != nil {
+	// return nil, err
+	// }
+
+	// Store the version
+	binary.BigEndian.PutUint32(tmp[:], uint32(ve.Version))
+	if _, err := buf.Write(tmp); err != nil {
+		return nil, err
+	}
+
+	// Store the custom flag
+	// if err := buf.WriteByte(byte(ve.CustomFlag)); err != nil {
+	// 	return nil, err
+	// }
+
+	// Store the Hash/Data
+	switch ve.Flag {
+	case HashOnly, HashAndData:
+		bhash, err := hex.DecodeString(ve.Hash)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := buf.Write(bhash); err != nil {
+			return nil, err
+		}
+		if ve.Flag == HashOnly {
+			return buf.Bytes(), nil
+		}
+
+		// Execute DataOnly too since the flag in HashAndData
+		fallthrough
+	case DataOnly:
+		binary.BigEndian.PutUint32(tmp[:], uint32(len(ve.Data)))
+		if _, err := buf.Write(tmp); err != nil {
+			return nil, err
+		}
+		if _, err := buf.Write(ve.Data); err != nil {
+			return nil, err
+		}
+
+	}
+	return buf.Bytes(), nil
 }
 
-func Unserialize([]byte) (*VkvEntry, error) {
-	// TODO(tsileo): decoding logic on the serialize format is fixed
-	return nil, nil
+func UnserializeBlob(data []byte) (*KeyValue, error) {
+	r := bytes.NewReader(data)
+	tmp := make([]byte, 4)
+
+	// Read the first flag
+	flag, err := r.ReadByte()
+	if err != nil {
+		return nil, err
+	}
+
+	// Read the Key size
+	if _, err := r.Read(tmp); err != nil {
+		return nil, err
+	}
+	keySize := int(binary.LittleEndian.Uint32(tmp[:]))
+
+	// Read the key (now that we know the size)
+	bkey := make([]byte, keySize)
+	if _, err := r.Read(bkey); err != nil {
+		return nil, err
+	}
+
+	// Read the version
+	if _, err := r.Read(tmp); err != nil {
+		return nil, err
+	}
+	version := int(binary.LittleEndian.Uint32(tmp[:]))
+
+	// Custom flag
+	// cflag, err := r.ReadByte()
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	ve := &KeyValue{
+		Key:     string(bkey),
+		Version: version,
+		Flag:    Flag(flag),
+		// CustomFlag: cflag,
+	}
+	// Read the Hash/Data according to the set Flag
+	switch ve.Flag {
+	case HashOnly, HashAndData:
+		bhash := make([]byte, 32)
+		if _, err := r.Read(bhash); err != nil {
+			return nil, err
+		}
+		ve.Hash = hex.EncodeToString(bhash)
+		if ve.Flag == HashOnly {
+			return ve, nil
+		}
+		fallthrough
+	case DataOnly:
+		if _, err := r.Read(tmp); err != nil {
+			return nil, err
+		}
+		size := int(binary.LittleEndian.Uint32(tmp[:]))
+		data := make([]byte, size)
+		if _, err := r.Read(data); err != nil {
+			return nil, err
+		}
+		ve.Data = data
+	}
+	return ve, nil
+}
+
+func Unserialize(key string, data []byte) (*KeyValue, error) {
+	r := bytes.NewReader(data)
+	tmp := make([]byte, 4)
+
+	// Read the first flag
+	flag, err := r.ReadByte()
+	if err != nil {
+		return nil, err
+	}
+
+	// Read the version
+	if _, err := r.Read(tmp); err != nil {
+		return nil, err
+	}
+	version := int(binary.LittleEndian.Uint32(tmp[:]))
+
+	// Custom flag
+	// cflag, err := r.ReadByte()
+	// if err != nil {
+	// 	return nil, err
+	// }
+	ve := &KeyValue{
+		Key:     key,
+		Version: version,
+		Flag:    Flag(flag),
+		// CustomFlag: cflag,
+	}
+	// Read the Hash/Data according to the set Flag
+	switch ve.Flag {
+	case HashOnly, HashAndData:
+		bhash := make([]byte, 32)
+		if _, err := r.Read(bhash); err != nil {
+			return nil, err
+		}
+		ve.Hash = hex.EncodeToString(bhash)
+		if ve.Flag == HashOnly {
+			return ve, nil
+		}
+		fallthrough
+	case DataOnly:
+		if _, err := r.Read(tmp); err != nil {
+			return nil, err
+		}
+		size := int(binary.LittleEndian.Uint32(tmp[:]))
+		data := make([]byte, size)
+		if _, err := r.Read(data); err != nil {
+			return nil, err
+		}
+		ve.Data = data
+	}
+	return ve, nil
 }

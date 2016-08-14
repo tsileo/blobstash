@@ -167,7 +167,7 @@ func (ft *FileTreeExt) Update(n *Node, m *meta.Meta) (*Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		if ft.kvStore.Put(context.TODO(), fmt.Sprintf(FSKeyFmt, n.fs.Name), string(js), -1); err != nil {
+		if ft.kvStore.Put(context.TODO(), fmt.Sprintf(FSKeyFmt, n.fs.Name), "", js, -1); err != nil {
 			return nil, err
 		}
 		return newNode, nil
@@ -265,7 +265,7 @@ func (ft *FileTreeExt) FS(name string) (*FS, error) {
 	}
 	switch err {
 	case nil:
-		if err := json.Unmarshal([]byte(kv.Value), fs); err != nil {
+		if err := json.Unmarshal([]byte(kv.Data), fs); err != nil {
 			return nil, err
 		}
 	case vkv.ErrNotFound:

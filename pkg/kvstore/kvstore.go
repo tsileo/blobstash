@@ -33,6 +33,7 @@ type KvStore struct {
 	vkv *vkv.DB
 }
 
+// TODO(tsileo): drop the KvMeta for VkvEntry diectly
 type KvMeta struct {
 	kv *vkv.KeyValue
 }
@@ -74,14 +75,15 @@ func (kv *KvStore) applyMetaFunc(hash string, data []byte) error {
 		return err
 	}
 	if !applied {
-		rkv := &vkv.KeyValue{}
-		if err := json.Unmarshal(data, rkv); err != nil {
-			return err
-		}
-		if _, err := kv.Put(context.Background(), rkv.Key, rkv.Value, rkv.Version); err != nil {
-			return err
-		}
-		kv.log.Debug("Applied meta", "kv", rkv)
+		// FIXME(tsileo): fix this
+		// rkv := &vkv.KeyValue{}
+		// if err := json.Unmarshal(data, rkv); err != nil {
+		// 	return err
+		// }
+		// if _, err := kv.Put(context.Background(), rkv.Key, rkv.Value, rkv.Version); err != nil {
+		// 	return err
+		// }
+		// kv.log.Debug("Applied meta", "kv", rkv)
 	}
 	return nil
 }
@@ -115,14 +117,14 @@ func (kv *KvStore) ReversePrefixKeys(prefix, start, end string, limit int) ([]*v
 	return kv.vkv.ReversePrefixKeys(prefix, start, end, limit)
 }
 
-func (kv *KvStore) PutPrefix(ctx context.Context, prefix, key, value string, version int) (*vkv.KeyValue, error) {
-	return kv.vkv.PutPrefix(prefix, key, value, version)
+func (kv *KvStore) PutPrefix(ctx context.Context, prefix, key, ref string, data []byte, version int) (*vkv.KeyValue, error) {
+	return kv.vkv.PutPrefix(prefix, key, ref, data, version)
 }
 
-func (kv *KvStore) Put(ctx context.Context, key, value string, version int) (*vkv.KeyValue, error) {
-	_, fromHttp := ctxutil.Request(ctx)
-	kv.log.Info("OP Put", "from_http", fromHttp, "key", key, "value", value, "version", version)
-	res, err := kv.vkv.Put(key, value, version)
+func (kv *KvStore) Put(ctx context.Context, key, ref string, data []byte, version int) (*vkv.KeyValue, error) {
+	// _, fromHttp := ctxutil.Request(ctx)
+	// kv.log.Info("OP Put", "from_http", fromHttp, "key", key, "value", value, "version", version)
+	res, err := kv.vkv.Put(key, ref, data, version)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +213,8 @@ func (kv *KvStore) getHandler() func(http.ResponseWriter, *http.Request) {
 				httputil.Error(w, err)
 				return
 			}
-			v := values.Get("value")
+			ref := values.Get("ref")
+			data := values.Get("data")
 			sversion := values.Get("version")
 			version := -1
 			if sversion != "" {
@@ -222,7 +225,7 @@ func (kv *KvStore) getHandler() func(http.ResponseWriter, *http.Request) {
 				}
 				version = iversion
 			}
-			res, err := kv.Put(ctx, key, v, version)
+			res, err := kv.Put(ctx, key, ref, []byte(data), version)
 			if err != nil {
 				httputil.Error(w, err)
 				return

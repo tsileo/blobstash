@@ -500,13 +500,8 @@ func (docstore *DocStoreExt) Insert(collection string, idoc interface{}, ns stri
 		_id.SetHash(hash)
 		_id.SetFlag(docFlag)
 
-		// Append the Flag to the KV value
-		bash := make([]byte, len(hash)+1)
-		bash[0] = docFlag
-		copy(bash[1:], []byte(hash)[:])
-
 		// Create a pointer in the key-value store
-		if _, err := docstore.kvStore.PutPrefix(ctx, fmt.Sprintf(PrefixKeyFmt, collection), _id.String(), string(bash), int(now.UnixNano())); err != nil {
+		if _, err := docstore.kvStore.PutPrefix(ctx, fmt.Sprintf(PrefixKeyFmt, collection), _id.String(), hash, []byte{docFlag}, int(now.UnixNano())); err != nil {
 			return nil, err
 		}
 
@@ -816,7 +811,8 @@ func (docstore *DocStoreExt) Fetch(collection, sid string, res interface{}) (*id
 
 	// Extract the hash (first byte is the Flag)
 	// XXX(tsileo): add/handle a `Deleted` flag
-	hash := kv.Value[1:len(kv.Value)]
+	hash := kv.Hash
+	// kv.Value[1:len(kv.Value)]
 
 	// Fetch the blob
 	blob, err := docstore.blobStore.Get(context.TODO(), hash)
@@ -838,7 +834,7 @@ func (docstore *DocStoreExt) Fetch(collection, sid string, res interface{}) (*id
 		*idoc = append(*idoc, blob...)
 	}
 	_id.SetHash(hash)
-	_id.SetFlag(byte(kv.Value[0]))
+	_id.SetFlag(byte(kv.Data[0]))
 	_id.SetVersion(kv.Version)
 	return _id, nil
 }
@@ -933,13 +929,9 @@ func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Reques
 				panic(err)
 			}
 
-			// Preprend the doc Flag for the VKV pointer
-			bash := make([]byte, len(hash)+1)
 			// XXX(tsileo): allow to update the flag?
-			bash[0] = _id.Flag()
-			copy(bash[1:], []byte(hash)[:])
 
-			kv, err := docstore.kvStore.Put(ctx, fmt.Sprintf(KeyFmt, collection, _id.String()), string(bash), -1)
+			kv, err := docstore.kvStore.Put(ctx, fmt.Sprintf(KeyFmt, collection, _id.String()), hash, []byte{_id.Flag()}, -1)
 			if err != nil {
 				panic(err)
 			}

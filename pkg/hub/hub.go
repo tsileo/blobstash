@@ -14,6 +14,7 @@ type EventType int
 const (
 	NewBlob EventType = iota
 	ScanBlob
+	GarbageCollection
 )
 
 type Hub struct {
