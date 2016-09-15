@@ -148,6 +148,10 @@ func fromJSON(L *lua.LState, value interface{}) lua.LValue {
 	switch converted := value.(type) {
 	case bool:
 		return lua.LBool(converted)
+	case int:
+		return lua.LNumber(converted)
+	case int64:
+		return lua.LNumber(converted)
 	case float64:
 		return lua.LNumber(converted)
 	case string:

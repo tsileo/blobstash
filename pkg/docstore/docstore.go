@@ -27,13 +27,11 @@ import (
 	"golang.org/x/net/context"
 	"io/ioutil"
 	"net/http"
-	"os"
 	_ "path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/blevesearch/bleve"
 	"github.com/dchest/blake2b"
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
@@ -84,8 +82,7 @@ func idFromKey(col, key string) (*id.ID, error) {
 }
 
 const (
-	FlagNoIndex         byte = iota // Won't be indexed by Bleve
-	FlagFullTextIndexed             // TODO(tsileo): the full text index shouldn't be managed via a Flag, but like regular indexes (HTTP API)
+	FlagNoop byte = iota // Won't be indexed by Bleve
 	FlagDeleted
 )
 
@@ -98,20 +95,11 @@ type executionStats struct {
 	TotalDocsExamined   int    `json:"totalDocsExamined"`
 	ExecutionTimeMillis int    `json:"executionTimeMillis"`
 	LastID              string `json:"-"`
-	Optimizer           string `json:"optimizer"`
+	Engine              string `json:"query_engine"`
 	Index               string `json:"index"`
 }
 
-func openIndex(path string) (bleve.Index, error) {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		mapping := bleve.NewIndexMapping()
-		return bleve.New(path, mapping)
-	}
-	return bleve.Open(path)
-}
-
-// TODO(tsileo): rename to `DocStore`
-type DocStoreExt struct {
+type DocStore struct {
 	kvStore   *kvstore.KvStore
 	blobStore *blobstore.BlobStore
 
@@ -123,21 +111,14 @@ type DocStoreExt struct {
 }
 
 // New initializes the `DocStoreExt`
-func New(logger log.Logger, conf *config.Config, kvStore *kvstore.KvStore, blobStore *blobstore.BlobStore) (*DocStoreExt, error) {
+func New(logger log.Logger, conf *config.Config, kvStore *kvstore.KvStore, blobStore *blobstore.BlobStore) (*DocStore, error) {
 	logger.Debug("init")
-	// FIXME(tsileo): add a way to disable the full-text index via the config file
-
 	// Try to load the docstore index (powered by a kv file)
 	// docIndex, err := index.New()
 	// if err != nil {
 	// 	return nil, fmt.Errorf("failed to open the docstore index: %v", err)
 	// }
-	// indexPath := filepath.Join(pathutil.VarDir(), "docstore.bleve")
-	// index, err := openIndex(indexPath)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to open the Bleve index (for full-text index): %v", err)
-	// }
-	return &DocStoreExt{
+	return &DocStore{
 		kvStore:   kvStore,
 		blobStore: blobStore,
 		conf:      conf,
@@ -148,19 +129,17 @@ func New(logger log.Logger, conf *config.Config, kvStore *kvstore.KvStore, blobS
 }
 
 // Close closes all the open DB files.
-func (docstore *DocStoreExt) Close() error {
+func (docstore *DocStore) Close() error {
 	// if err := docstore.docIndex.Close(); err != nil {
 	// 	return err
 	// }
-	// return docstore.index.Close()
 	return nil
 }
 
 // RegisterRoute registers all the HTTP handlers for the extension
-func (docstore *DocStoreExt) Register(r *mux.Router, basicAuth func(http.Handler) http.Handler) {
+func (docstore *DocStore) Register(r *mux.Router, basicAuth func(http.Handler) http.Handler) {
 	r.Handle("/", basicAuth(http.HandlerFunc(docstore.collectionsHandler())))
 	r.Handle("/{collection}", basicAuth(http.HandlerFunc(docstore.docsHandler())))
-	// r.Handle("/{collection}/search", middlewares.Auth(http.HandlerFunc(docstore.searchHandler())))
 	// r.Handle("/{collection}/_indexes", middlewares.Auth(http.HandlerFunc(docstore.indexesHandler())))
 	r.Handle("/{collection}/{_id}", basicAuth(http.HandlerFunc(docstore.docHandler())))
 }
@@ -168,8 +147,8 @@ func (docstore *DocStoreExt) Register(r *mux.Router, basicAuth func(http.Handler
 // Expand a doc keys (fetch the blob as JSON, or a filesystem reference)
 // e.g: {"ref": "@blobstash/json:<hash>"}
 //      => {"ref": {"blob": "json decoded"}}
-// FIXME(tsileo): expanded ref must also works for marking a blob during GC
-func (docstore *DocStoreExt) expandKeys(doc map[string]interface{}) error {
+// XXX(tsileo): expanded ref must also works for marking a blob during GC
+func (docstore *DocStore) expandKeys(doc map[string]interface{}) error {
 	// docstore.logger.Info("expandKeys")
 	for k, v := range doc {
 		switch vv := v.(type) {
@@ -199,81 +178,6 @@ func (docstore *DocStoreExt) expandKeys(doc map[string]interface{}) error {
 	return nil
 }
 
-// Search performs a full-text search on the given `collection`, expects a Bleve query string.
-// func (docstore *DocStoreExt) Search(collection, queryString string) ([]byte, *bleve.SearchResult, error) {
-// 	// We build the JSON response using a `[]byte`
-// 	js := []byte("[")
-// 	query := bleve.NewQueryStringQuery(queryString)
-// 	searchRequest := bleve.NewSearchRequest(query)
-// 	searchResult, err := docstore.index.Search(searchRequest)
-// 	if err != nil {
-// 		return nil, nil, err
-// 	}
-// 	for index, sr := range searchResult.Hits {
-// 		// Get the document as a raw bytes to prevent useless marsharlling/unmarshalling
-// 		jsPart := []byte{}
-// 		_, err := docstore.Fetch(collection, sr.ID, &jsPart)
-// 		if err != nil {
-// 			return nil, nil, err
-// 		}
-// 		js = append(js, addID(jsPart, sr.ID)...)
-// 		if index != len(searchResult.Hits)-1 {
-// 			js = append(js, []byte(",")...)
-// 		}
-// 	}
-// 	// Remove the last comma if there's more than one result
-// 	if len(searchResult.Hits) > 1 {
-// 		js = js[0 : len(js)-1]
-// 	}
-// 	js = append(js, []byte("]")...)
-
-// 	return js, searchResult, nil
-// }
-
-// HTTP handler for the full-text search
-// func (docstore *DocStoreExt) searchHandler() func(http.ResponseWriter, *http.Request) {
-// 	return func(w http.ResponseWriter, r *http.Request) {
-// 		// XXX(tsileo): handle pagination!
-
-// 		vars := mux.Vars(r)
-
-// 		collection := vars["collection"]
-// 		if collection == "" {
-// 			httputil.WriteJSONError(w, http.StatusInternalServerError, "Missing collection in the URL")
-// 			return
-// 		}
-
-// 		if r.Method != "GET" && r.Method != "HEAD" {
-// 			w.WriteHeader(http.StatusMethodNotAllowed)
-// 			return
-// 		}
-
-// 		permissions.CheckPerms(r, PermCollectionName, collection, PermRead)
-
-// 		// Actually performs the search
-// 		js, sr, err := docstore.Search(collection, r.URL.Query().Get("q"))
-// 		if err != nil {
-// 			panic(err)
-// 		}
-
-// 		// Add some debug headers for the client to be able to inspect what's going on
-// 		w.Header().Set("Content-Type", "application/json")
-// 		w.Header().Set("BlobStash-DocStore-Query-Returned", strconv.Itoa(int(sr.Total)))
-// 		w.Header().Set("BlobStash-DocStore-Query-Exec-Time", strconv.Itoa(int(sr.Took.Nanoseconds()*1e6)))
-// 		w.Header().Set("BlobStash-DocStore-Query-Index", "FULL-TEXT")
-// 		w.Header().Set("BlobStash-DocStore-Results-Count", strconv.Itoa(int(sr.Total)))
-
-// 		// A HEAD request may be used to check if there's any results or if the count changed.
-// 		if r.Method == "HEAD" {
-// 			return
-// 		}
-
-// 		srw := httputil.NewSnappyResponseWriter(w, r)
-// 		srw.Write(js)
-// 		srw.Close()
-// 	}
-// }
-
 // nextKey returns the next key for lexigraphical ordering (key = nextKey(lastkey))
 func nextKey(key string) string {
 	bkey := []byte(key)
@@ -289,7 +193,7 @@ func nextKey(key string) string {
 }
 
 // Collections returns all the existing collections
-func (docstore *DocStoreExt) Collections() ([]string, error) {
+func (docstore *DocStore) Collections() ([]string, error) {
 	collections := []string{}
 	lastKey := ""
 	for {
@@ -356,7 +260,7 @@ func (docstore *DocStoreExt) Collections() ([]string, error) {
 // }
 
 // HTTP handler for getting the collections list
-func (docstore *DocStoreExt) collectionsHandler() func(http.ResponseWriter, *http.Request) {
+func (docstore *DocStore) collectionsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
@@ -381,7 +285,7 @@ func (docstore *DocStoreExt) collectionsHandler() func(http.ResponseWriter, *htt
 
 // isQueryAll returns `true` if there's no query.
 func isQueryAll(q string) bool {
-	if q == "" || q == "{}" {
+	if q == "" {
 		return true
 	}
 	return false
@@ -463,19 +367,14 @@ func isQueryAll(q string) bool {
 // }
 
 // Insert the given doc (`*map[string]interface{}` for now) in the given collection
-func (docstore *DocStoreExt) Insert(collection string, idoc interface{}, ns string, index bool) (*id.ID, error) {
+func (docstore *DocStore) Insert(collection string, idoc interface{}) (*id.ID, error) {
 	switch doc := idoc.(type) {
 	case *map[string]interface{}:
-		// TODO(tsileo): flag NoFlag by default
-		docFlag := FlagNoIndex
-		if index {
-			docFlag = FlagFullTextIndexed
-		}
+		docFlag := FlagNoop
 		data, err := json.Marshal(doc)
 		if err != nil {
 			return nil, err
 		}
-
 		// If there's already an "_id" field in the doc, remove it
 		if _, ok := (*doc)["_id"]; ok {
 			delete(*doc, "_id")
@@ -484,7 +383,7 @@ func (docstore *DocStoreExt) Insert(collection string, idoc interface{}, ns stri
 		// Store the payload (JSON data) in a blob
 		hash := fmt.Sprintf("%x", blake2b.Sum256(data))
 
-		ctx := ctxutil.WithNamespace(context.Background(), ns)
+		ctx := context.Background()
 
 		blob := &blob.Blob{Hash: hash, Data: data}
 		if err := docstore.blobStore.Put(ctx, blob); err != nil {
@@ -516,8 +415,32 @@ func (docstore *DocStoreExt) Insert(collection string, idoc interface{}, ns stri
 	return nil, fmt.Errorf("doc must be a *map[string]interface{}")
 }
 
-// Query performs a MongoDB like query on the given collection
-func (docstore *DocStoreExt) Query(collection string, query map[string]interface{}, cursor string, limit int, res interface{}) (*executionStats, error) {
+type query struct {
+	storedQuery     string
+	storedQueryArgs interface{}
+	basicQuery      string
+	script          string
+}
+
+func queryToScript(q *query) string {
+	if q.basicQuery != "" {
+		return "if " + q.basicQuery + " then return true else return false end"
+	}
+	if q.script != "" {
+		return q.script
+	}
+	// FIXME(tsileo): handle stored queries
+	panic("shouldn't happen")
+}
+
+func (q *query) isMatchAll() bool {
+	if q.script == "" && q.basicQuery == "" && q.storedQuery == "" && q.storedQueryArgs == "" {
+		return true
+	}
+	return false
+}
+
+func (docstore *DocStore) Query(collection string, query *query, cursor string, limit int, res interface{}) (*executionStats, error) {
 	js, stats, err := docstore.query(collection, query, cursor, limit)
 	if err != nil {
 		return nil, err
@@ -537,10 +460,12 @@ func addID(js []byte, _id string) []byte {
 
 // query returns a JSON list as []byte for the given query
 // docs are unmarhsalled to JSON only when needed.
-func (docstore *DocStoreExt) query(collection string, query map[string]interface{}, cursor string, limit int) ([]byte, *executionStats, error) {
+func (docstore *DocStore) query(collection string, query *query, cursor string, limit int) ([]byte, *executionStats, error) {
 	// js := []byte("[")
 	tstart := time.Now()
-	stats := &executionStats{}
+	stats := &executionStats{
+		Engine: "lua",
+	}
 
 	// Check if the query can be optimized thanks to an already present index
 	// indexes, err := docstore.Indexes(collection)
@@ -557,17 +482,17 @@ func (docstore *DocStoreExt) query(collection string, query map[string]interface
 	end := "\xff"
 
 	// Tweak the query limit
-	var noQuery bool
 	fetchLimit := limit
-	if query != nil && len(query) > 0 {
+	isMatchAll := query.isMatchAll()
+	if isMatchAll {
+		stats.Engine = "match_all"
+	} else {
 		// Prefetch more docs since there's a lot of chance the query won't
 		// match every documents
 		fetchLimit = int(float64(limit) * 1.3)
-	} else {
-		noQuery = true
 	}
 
-	qLogger := docstore.logger.New("query", query, "id", logext.RandId(8))
+	qLogger := docstore.logger.New("query", query, "query_engine", stats.Engine, "id", logext.RandId(8))
 	qLogger.Info("new query")
 	docs := []map[string]interface{}{}
 
@@ -609,6 +534,20 @@ QUERY:
 		// 		panic(err)
 		// 	}
 		// }
+		var qmatcher QueryMatcher
+		switch stats.Engine {
+		case "match_all":
+			qmatcher = &MatchAllEngine{}
+		case "lua":
+			// FIXME(tsileo): handle stored queries
+			qmatcher, err = NewLuaQueryEngine(queryToScript(query), "", query.storedQueryArgs)
+			if err != nil {
+				return nil, stats, err
+			}
+		default:
+			panic("shouldn't happen")
+		}
+		defer qmatcher.Close()
 
 		// FIXME(tsileo): remake `_ids` a list of string
 		for _, _id := range _ids {
@@ -624,13 +563,9 @@ QUERY:
 				panic(err)
 			}
 			stats.TotalDocsExamined++
-			var ok bool
-			if noQuery {
-				ok = true
-			} else {
-				if matchQuery(qLogger, query, doc) {
-					ok = true
-				}
+			ok, err := qmatcher.Match(doc)
+			if err != nil {
+				return nil, stats, err
 			}
 			if ok {
 				doc["_id"] = _id
@@ -670,7 +605,7 @@ QUERY:
 }
 
 // HTTP handler for the collection (handle listing+query+insert)
-func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Request) {
+func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		vars := mux.Vars(r)
@@ -687,10 +622,10 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 			cursor := q.Get("cursor")
 
 			// Parse the query (JSON-encoded)
-			query := map[string]interface{}{}
-			jsQuery := q.Get("query")
+			var queryArgs interface{}
+			jsQuery := q.Get("stored_query_args")
 			if jsQuery != "" {
-				if err := json.Unmarshal([]byte(jsQuery), &query); err != nil {
+				if err := json.Unmarshal([]byte(jsQuery), &queryArgs); err != nil {
 					httputil.WriteJSONError(w, http.StatusInternalServerError, "Failed to decode JSON query")
 					return
 				}
@@ -705,7 +640,12 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 				}
 				limit = ilimit
 			}
-			js, stats, err := docstore.query(collection, query, cursor, limit)
+			js, stats, err := docstore.query(collection, &query{
+				storedQueryArgs: queryArgs,
+				storedQuery:     q.Get("stored_query"),
+				script:          q.Get("script"),
+				basicQuery:      q.Get("query"),
+			}, cursor, limit)
 			if err != nil {
 				panic(err)
 			}
@@ -728,6 +668,7 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 			// }
 
 			// Set headers for the query stats
+			w.Header().Set("BlobStash-DocStore-Query-Engine", stats.Engine)
 			w.Header().Set("BlobStash-DocStore-Query-Returned", strconv.Itoa(stats.NReturned))
 			w.Header().Set("BlobStash-DocStore-Query-Examined", strconv.Itoa(stats.TotalDocsExamined))
 			w.Header().Set("BlobStash-DocStore-Query-Exec-Time", strconv.Itoa(stats.ExecutionTimeMillis))
@@ -758,17 +699,9 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 				panic(httputil.NewPublicErrorFmt("Invalid JSON document"))
 			}
 			// XXX(tsileo): Ensures there's no field starting with "_", e.g. `_id`/`_created`/`_updated`
-			index := false
-			if indexHeader := r.Header.Get("BlobStash-DocStore-IndexFullText"); indexHeader != "" {
-				if shouldIndex, _ := strconv.ParseBool(indexHeader); shouldIndex {
-					index = true
-				}
-
-			}
-			ns := r.Header.Get("BlobStash-Namespace")
 
 			// Actually insert the doc
-			_id, err := docstore.Insert(collection, &doc, ns, index)
+			_id, err := docstore.Insert(collection, &doc)
 			if err != nil {
 				panic(err)
 			}
@@ -792,7 +725,7 @@ func (docstore *DocStoreExt) docsHandler() func(http.ResponseWriter, *http.Reque
 }
 
 // Fetch a single document into `res` and returns the `id.ID`
-func (docstore *DocStoreExt) Fetch(collection, sid string, res interface{}) (*id.ID, error) {
+func (docstore *DocStore) Fetch(collection, sid string, res interface{}) (*id.ID, error) {
 	if collection == "" {
 		return nil, errors.New("missing collection query arg")
 	}
@@ -840,7 +773,7 @@ func (docstore *DocStoreExt) Fetch(collection, sid string, res interface{}) (*id
 }
 
 // HTTP handler for serving/updating a single doc
-func (docstore *DocStoreExt) docHandler() func(http.ResponseWriter, *http.Request) {
+func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		collection := vars["collection"]
