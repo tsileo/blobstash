@@ -1,7 +1,7 @@
 package kvstore
 
 import (
-	"encoding/json"
+	"fmt"
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
 	"golang.org/x/net/context"
@@ -33,23 +33,6 @@ type KvStore struct {
 	vkv *vkv.DB
 }
 
-// TODO(tsileo): drop the KvMeta for VkvEntry diectly
-type KvMeta struct {
-	kv *vkv.KeyValue
-}
-
-func NewKvMeta(kv *vkv.KeyValue) *KvMeta {
-	return &KvMeta{kv: kv}
-}
-
-func (km *KvMeta) Type() string {
-	return KvType
-}
-
-func (km *KvMeta) Dump() ([]byte, error) {
-	return json.Marshal(km.kv)
-}
-
 func New(logger log.Logger, conf *config.Config, blobStore *blobstore.BlobStore, metaHandler *meta.Meta) (*KvStore, error) {
 	logger.Debug("init")
 	// TODO(tsileo): handle config
@@ -75,15 +58,15 @@ func (kv *KvStore) applyMetaFunc(hash string, data []byte) error {
 		return err
 	}
 	if !applied {
-		// FIXME(tsileo): fix this
-		// rkv := &vkv.KeyValue{}
-		// if err := json.Unmarshal(data, rkv); err != nil {
-		// 	return err
-		// }
-		// if _, err := kv.Put(context.Background(), rkv.Key, rkv.Value, rkv.Version); err != nil {
-		// 	return err
-		// }
-		// kv.log.Debug("Applied meta", "kv", rkv)
+		kv.log.Debug("meta not yet applied")
+		rkv, err := vkv.UnserializeBlob(data)
+		if err != nil {
+			return fmt.Errorf("failed to unserialize blob: %v", err)
+		}
+		if _, err := kv.Put(context.Background(), rkv.Key, rkv.Hash, rkv.Data, rkv.Version); err != nil {
+			return fmt.Errorf("failed to put: %v", err)
+		}
+		kv.log.Debug("Applied meta", "kv", rkv)
 	}
 	return nil
 }
@@ -118,7 +101,20 @@ func (kv *KvStore) ReversePrefixKeys(prefix, start, end string, limit int) ([]*v
 }
 
 func (kv *KvStore) PutPrefix(ctx context.Context, prefix, key, ref string, data []byte, version int) (*vkv.KeyValue, error) {
-	return kv.vkv.PutPrefix(prefix, key, ref, data, version)
+	res, err := kv.vkv.PutPrefix(prefix, key, ref, data, version)
+	// TODO(tsileo): cleanup/DRY the Put/PutPrefix
+	metaBlob, err := kv.meta.Build(res)
+	if err != nil {
+		return nil, err
+	}
+	if err := res.SetMetaBlob(metaBlob.Hash); err != nil {
+		return nil, err
+	}
+	if err := kv.blobStore.Put(ctx, metaBlob); err != nil {
+		return nil, err
+	}
+	return res, nil
+
 }
 
 func (kv *KvStore) Put(ctx context.Context, key, ref string, data []byte, version int) (*vkv.KeyValue, error) {
@@ -128,8 +124,7 @@ func (kv *KvStore) Put(ctx context.Context, key, ref string, data []byte, versio
 	if err != nil {
 		return nil, err
 	}
-	kvmeta := NewKvMeta(res)
-	metaBlob, err := kv.meta.Build(kvmeta)
+	metaBlob, err := kv.meta.Build(res)
 	if err != nil {
 		return nil, err
 	}

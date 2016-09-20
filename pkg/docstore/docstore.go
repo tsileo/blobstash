@@ -431,10 +431,11 @@ func queryToScript(q *query) string {
 	}
 	// FIXME(tsileo): handle stored queries
 	panic("shouldn't happen")
+
 }
 
 func (q *query) isMatchAll() bool {
-	if q.script == "" && q.basicQuery == "" && q.storedQuery == "" && q.storedQueryArgs == "" {
+	if q.script == "" && q.basicQuery == "" && q.storedQuery == "" && q.storedQueryArgs == nil {
 		return true
 	}
 	return false

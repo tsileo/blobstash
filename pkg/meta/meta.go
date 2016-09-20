@@ -38,13 +38,14 @@ func New(logger log.Logger, chub *hub.Hub) (*Meta, error) {
 	}
 	// Subscribe to "new blob" notification
 	meta.hub.Subscribe(hub.NewBlob, "meta", meta.newBlobCallback)
+	meta.hub.Subscribe(hub.ScanBlob, "meta", meta.newBlobCallback)
 	// XXX(tsileo): register to ScanBlob event too?
 	return meta, nil
 }
 
 func (m *Meta) newBlobCallback(ctx context.Context, blob *blob.Blob) error {
 	metaType, metaData, isMeta := IsMetaBlob(blob.Data)
-	m.log.Debug("newBlobCallback", "is_meta", isMeta, "meta_type", metaType)
+	m.log.Debug("newBlobCallback", "is_meta", isMeta, "meta_type", metaType, "blob", string(blob.Data))
 	if isMeta {
 		// TODO(tsileo): should we check for already applied blobs and use the same callback for both scan and new blob?
 		if _, ok := m.applyFuncs[metaType]; !ok {

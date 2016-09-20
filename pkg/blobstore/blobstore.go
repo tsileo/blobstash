@@ -107,7 +107,7 @@ func (bs *BlobStore) Stat(ctx context.Context, hash string) (bool, error) {
 
 // func (backend *BlobsFileBackend) Enumerate(blobs chan<- *blob.SizedBlobRef, start, stop string, limit int) error {
 
-func (bs *BlobStore) Enumerate(ctx context.Context, start, end string, limit int) ([]*blob.SizedBlobRef, error) {
+func (bs *BlobStore) Enumerate(ctx context.Context, start, end string, limit int, scan bool) ([]*blob.SizedBlobRef, error) {
 	_, fromHttp := ctxutil.Request(ctx)
 	bs.log.Info("OP Enumerate", "from_http", fromHttp, "start", start, "end", end, "limit", limit)
 	out := make(chan *blob.SizedBlobRef)
@@ -118,8 +118,15 @@ func (bs *BlobStore) Enumerate(ctx context.Context, start, end string, limit int
 	go func() {
 		errc <- back.Enumerate2(out, start, end, limit)
 	}()
-	for blob := range out {
-		refs = append(refs, blob)
+	for cblob := range out {
+		fullblob, err := bs.Get(ctx, cblob.Hash)
+		if err != nil {
+			return nil, err
+		}
+		if err := bs.hub.ScanBlobEvent(ctx, &blob.Blob{Hash: cblob.Hash, Data: fullblob}); err != nil {
+			return nil, err
+		}
+		refs = append(refs, cblob)
 	}
 	if err := <-errc; err != nil {
 		return nil, err

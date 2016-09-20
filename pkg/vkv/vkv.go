@@ -328,7 +328,7 @@ func (db *DB) Put(key, ref string, data []byte, version int) (*KeyValue, error) 
 		Key:     key,
 		db:      db,
 	}
-	value, err := kv.Serialize()
+	value, err := kv.Serialize(false)
 	if err != nil {
 		return nil, err
 	}
@@ -628,11 +628,11 @@ func (ve *KeyValue) Type() string {
 
 // Implements the `MetaData` interface
 func (ve *KeyValue) Dump() ([]byte, error) {
-	return ve.Serialize()
+	return ve.Serialize(true)
 }
 
 // Implements the `MetaData` interface
-func (ve *KeyValue) Serialize() ([]byte, error) {
+func (ve *KeyValue) Serialize(withKey bool) ([]byte, error) {
 	// Check if the flag is set
 	if ve.Flag == Unknown {
 		if ve.Hash != "" && ve.Data != nil {
@@ -661,15 +661,17 @@ func (ve *KeyValue) Serialize() ([]byte, error) {
 
 	// Store the key length
 	tmp := make([]byte, 4)
-	// binary.BigEndian.PutUint32(tmp[:], uint32(len(ve.Data)))
-	// if _, err := buf.Write(tmp); err != nil {
-	// 	return nil, err
-	// }
+	if withKey {
+		binary.BigEndian.PutUint32(tmp[:], uint32(len(ve.Key)))
+		if _, err := buf.Write(tmp); err != nil {
+			return nil, err
+		}
 
-	// Store the actual key
-	// if _, err := buf.WriteString(ve.Key); err != nil {
-	// return nil, err
-	// }
+		// Store the actual key
+		if _, err := buf.WriteString(ve.Key); err != nil {
+			return nil, err
+		}
+	}
 
 	// Store the version
 	binary.BigEndian.PutUint32(tmp[:], uint32(ve.Version))
@@ -712,6 +714,7 @@ func (ve *KeyValue) Serialize() ([]byte, error) {
 }
 
 func UnserializeBlob(data []byte) (*KeyValue, error) {
+	fmt.Printf("unser %d / %v\n", len(data), string(data))
 	r := bytes.NewReader(data)
 	tmp := make([]byte, 4)
 
@@ -725,19 +728,21 @@ func UnserializeBlob(data []byte) (*KeyValue, error) {
 	if _, err := r.Read(tmp); err != nil {
 		return nil, err
 	}
-	keySize := int(binary.LittleEndian.Uint32(tmp[:]))
+	keySize := int(binary.BigEndian.Uint32(tmp[:]))
+	fmt.Printf("ksize=%d\n", keySize)
 
 	// Read the key (now that we know the size)
 	bkey := make([]byte, keySize)
 	if _, err := r.Read(bkey); err != nil {
 		return nil, err
 	}
+	fmt.Printf("key read = %v\n", string(bkey))
 
 	// Read the version
 	if _, err := r.Read(tmp); err != nil {
 		return nil, err
 	}
-	version := int(binary.LittleEndian.Uint32(tmp[:]))
+	version := int(binary.BigEndian.Uint32(tmp[:]))
 
 	// Custom flag
 	// cflag, err := r.ReadByte()
@@ -751,6 +756,7 @@ func UnserializeBlob(data []byte) (*KeyValue, error) {
 		Flag:    Flag(flag),
 		// CustomFlag: cflag,
 	}
+	fmt.Printf("ve=%+v", ve)
 	// Read the Hash/Data according to the set Flag
 	switch ve.Flag {
 	case HashOnly, HashAndData:
@@ -767,7 +773,8 @@ func UnserializeBlob(data []byte) (*KeyValue, error) {
 		if _, err := r.Read(tmp); err != nil {
 			return nil, err
 		}
-		size := int(binary.LittleEndian.Uint32(tmp[:]))
+		size := int(binary.BigEndian.Uint32(tmp[:]))
+		fmt.Printf("data size=%d\n", size)
 		data := make([]byte, size)
 		if _, err := r.Read(data); err != nil {
 			return nil, err
@@ -791,7 +798,7 @@ func Unserialize(key string, data []byte) (*KeyValue, error) {
 	if _, err := r.Read(tmp); err != nil {
 		return nil, err
 	}
-	version := int(binary.LittleEndian.Uint32(tmp[:]))
+	version := int(binary.BigEndian.Uint32(tmp[:]))
 
 	// Custom flag
 	// cflag, err := r.ReadByte()
@@ -820,7 +827,7 @@ func Unserialize(key string, data []byte) (*KeyValue, error) {
 		if _, err := r.Read(tmp); err != nil {
 			return nil, err
 		}
-		size := int(binary.LittleEndian.Uint32(tmp[:]))
+		size := int(binary.BigEndian.Uint32(tmp[:]))
 		data := make([]byte, size)
 		if _, err := r.Read(data); err != nil {
 			return nil, err
