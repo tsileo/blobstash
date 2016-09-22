@@ -39,7 +39,20 @@ type Config struct {
 	SharingKey string `yaml:"sharing_key"`
 	DataDir    string `yaml:"data_dir"`
 
-	Apps []*AppConfig `yaml:"apps"`
+	Apps     []*AppConfig    `yaml:"apps"`
+	Docstore *DocstoreConfig `yaml:"docstore"`
+
+	// Code defiend config item
+	ScanMode bool `yaml:"-"`
+}
+
+type DocstoreConfig struct {
+	StoredQueries []*StoredQuery `yaml:"stored_queries"`
+}
+
+type StoredQuery struct {
+	Name string `yaml:"name"`
+	Path string `yaml:"path"`
 }
 
 // New initialize a config object by loading the YAML path at the given path

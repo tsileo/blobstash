@@ -35,8 +35,7 @@ func Secure(h http.Handler) http.Handler {
 
 func CorsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// FIXME(tsileo): better Allow-Headers
-		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, BlobStash-DocStore-IndexFullText, BlobStash-Namespace, BlobStash-DocStore-Doc-Id")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(200)
@@ -45,6 +44,7 @@ func CorsMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
 func NewBasicAuth(conf *config.Config) (func(*http.Request) bool, func(http.Handler) http.Handler) {
 	// FIXME(tsileo): clean this, and load passfrom config
 	if conf.APIKey == "" {

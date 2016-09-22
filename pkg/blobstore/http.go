@@ -123,13 +123,13 @@ func (bs *BlobStore) enumerateHandler() func(http.ResponseWriter, *http.Request)
 			// if end == "" {
 			// 	end = "\xff"
 			// }
-			var scan bool
-			if sscan := r.URL.Query().Get("scan"); sscan != "" {
-				scan = true
-			}
+			// var scan bool
+			// if sscan := r.URL.Query().Get("scan"); sscan != "" {
+			// 	scan = true
+			// }
 			end := "\xff"
 			// TODO(tsileo): parse limit and set default to 0
-			refs, err := bs.Enumerate(ctx, r.URL.Query().Get("start"), end, 0, scan)
+			refs, err := bs.Enumerate(ctx, r.URL.Query().Get("start"), end, 0)
 			if err != nil {
 				httputil.Error(w, err)
 				return

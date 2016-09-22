@@ -27,7 +27,8 @@ import (
 	"golang.org/x/net/context"
 	"io/ioutil"
 	"net/http"
-	_ "path/filepath"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -107,7 +108,15 @@ type DocStore struct {
 	// index    bleve.Index
 	// docIndex *index.HashIndexes
 
+	storedQueries map[string]*storedQuery
+
 	logger log.Logger
+}
+
+type storedQuery struct {
+	Name         string `json:"-"`
+	MatchCode    string `json:"match_code"`
+	PreQueryCode string `json:"pre_query_code"`
 }
 
 // New initializes the `DocStoreExt`
@@ -118,10 +127,42 @@ func New(logger log.Logger, conf *config.Config, kvStore *kvstore.KvStore, blobS
 	// if err != nil {
 	// 	return nil, fmt.Errorf("failed to open the docstore index: %v", err)
 	// }
+
+	// Load the docstore's stored queries from the config
+	storedQueries := map[string]*storedQuery{}
+	for _, squery := range conf.Docstore.StoredQueries {
+		// First ensure the required match.lua is present
+		if _, err := os.Stat(filepath.Join(squery.Path, "match.lua")); os.IsNotExist(err) {
+			return nil, fmt.Errorf("missing `match.lua` for stored query %s", squery.Name)
+		}
+		code, err := ioutil.ReadFile(filepath.Join(squery.Path, "match.lua"))
+		if err != nil {
+			return nil, fmt.Errorf("failed to open match.lua: %s", err)
+		}
+
+		var preQueryCode string
+		// Then, check for the optional prequery.lua
+		if _, err := os.Stat(filepath.Join(squery.Path, "prequery.lua")); !os.IsNotExist(err) {
+			preQuery, err := ioutil.ReadFile(filepath.Join(squery.Path, "prequery.lua"))
+			if err != nil {
+				return nil, fmt.Errorf("failed to open match.lua: %s", err)
+			}
+			preQueryCode = string(preQuery)
+		}
+
+		storedQuery := &storedQuery{
+			Name:         squery.Name,
+			MatchCode:    string(code),
+			PreQueryCode: preQueryCode,
+		}
+		storedQueries[squery.Name] = storedQuery
+	}
+
 	return &DocStore{
-		kvStore:   kvStore,
-		blobStore: blobStore,
-		conf:      conf,
+		kvStore:       kvStore,
+		blobStore:     blobStore,
+		storedQueries: storedQueries,
+		conf:          conf,
 		// index:     index,
 		// docIndex:  docIndex,
 		logger: logger,
@@ -139,6 +180,8 @@ func (docstore *DocStore) Close() error {
 // RegisterRoute registers all the HTTP handlers for the extension
 func (docstore *DocStore) Register(r *mux.Router, basicAuth func(http.Handler) http.Handler) {
 	r.Handle("/", basicAuth(http.HandlerFunc(docstore.collectionsHandler())))
+	r.Handle("/_stored_queries", basicAuth(http.HandlerFunc(docstore.storedQueriesHandler())))
+
 	r.Handle("/{collection}", basicAuth(http.HandlerFunc(docstore.docsHandler())))
 	// r.Handle("/{collection}/_indexes", middlewares.Auth(http.HandlerFunc(docstore.indexesHandler())))
 	r.Handle("/{collection}/{_id}", basicAuth(http.HandlerFunc(docstore.docHandler())))
@@ -258,6 +301,18 @@ func (docstore *DocStore) Collections() ([]string, error) {
 // 		}
 // 	}
 // }
+
+// HTTP handler for checking the loaded saved queries
+func (docstore *DocStore) storedQueriesHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case "GET":
+			httputil.WriteJSON(w, docstore.storedQueries)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}
+}
 
 // HTTP handler for getting the collections list
 func (docstore *DocStore) collectionsHandler() func(http.ResponseWriter, *http.Request) {
@@ -541,7 +596,7 @@ QUERY:
 			qmatcher = &MatchAllEngine{}
 		case "lua":
 			// FIXME(tsileo): handle stored queries
-			qmatcher, err = NewLuaQueryEngine(queryToScript(query), "", query.storedQueryArgs)
+			qmatcher, err = docstore.newLuaQueryEngine(queryToScript(query), "", query.storedQueryArgs)
 			if err != nil {
 				return nil, stats, err
 			}
@@ -573,6 +628,7 @@ QUERY:
 
 				doc["_created"] = _id.Ts()
 				updated := _id.Version() / 1e9
+				fmt.Printf("current_id created=%d, version=%d\n", _id.Ts(), _id.Version())
 				if updated != doc["_created"] {
 					doc["_updated"] = updated
 				}
@@ -660,7 +716,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			if stats.NReturned == limit {
 				hasMore = true
 			}
-			w.Header().Set("BlobStahs-DocStore-Iter-Has-More", strconv.FormatBool(hasMore))
+			w.Header().Set("BlobStash-DocStore-Iter-Has-More", strconv.FormatBool(hasMore))
 			w.Header().Set("BlobStash-DocStore-Iter-Cursor", nextKey(stats.LastID))
 
 			// w.Header().Set("BlobStash-DocStore-Query-Optimizer", stats.Optimizer)
@@ -672,7 +728,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			w.Header().Set("BlobStash-DocStore-Query-Engine", stats.Engine)
 			w.Header().Set("BlobStash-DocStore-Query-Returned", strconv.Itoa(stats.NReturned))
 			w.Header().Set("BlobStash-DocStore-Query-Examined", strconv.Itoa(stats.TotalDocsExamined))
-			w.Header().Set("BlobStash-DocStore-Query-Exec-Time", strconv.Itoa(stats.ExecutionTimeMillis))
+			w.Header().Set("BlobStash-DocStore-Query-Exec-Time-Ms", strconv.Itoa(stats.ExecutionTimeMillis))
 
 			w.Header().Set("BlobStash-DocStore-Results-Count", strconv.Itoa(stats.NReturned))
 
@@ -699,6 +755,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				docstore.logger.Error("Failed to parse JSON input", "collection", collection, "err", err)
 				panic(httputil.NewPublicErrorFmt("Invalid JSON document"))
 			}
+
 			// XXX(tsileo): Ensures there's no field starting with "_", e.g. `_id`/`_created`/`_updated`
 
 			// Actually insert the doc

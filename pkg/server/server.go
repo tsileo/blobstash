@@ -3,6 +3,7 @@ package server
 import (
 	"crypto/tls"
 	"fmt"
+	"golang.org/x/net/context"
 	_ "io"
 	_ "log"
 	"net/http"
@@ -41,6 +42,8 @@ type Server struct {
 	log       log.Logger
 	closeFunc func() error
 
+	blobstore *blobstore.BlobStore
+
 	shutdown chan struct{}
 	wg       sync.WaitGroup
 }
@@ -64,8 +67,10 @@ func New(conf *config.Config) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize blobstore app: %v", err)
 	}
+	s.blobstore = blobstore
 	// FIXME(tsileo): handle middleware in the `Register` interface
 	blobstore.Register(s.router.PathPrefix("/api/blobstore").Subrouter(), basicAuth)
+
 	// Load the meta
 	metaHandler, err := meta.New(logger.New("app", "meta"), hub)
 	if err != nil {
@@ -134,6 +139,20 @@ func New(conf *config.Config) (*Server, error) {
 
 func (s *Server) Shutdown() {
 	s.shutdown <- struct{}{}
+}
+
+func (s *Server) Bootstrap() error {
+	s.log.Debug("Bootstrap the server")
+
+	// Check if a full scan is requested
+	if s.conf.ScanMode {
+		s.log.Info("Starting full scan")
+		if err := s.blobstore.Scan(context.Background()); err != nil {
+			return err
+		}
+		s.log.Info("Scan done")
+	}
+	return nil
 }
 
 func (s *Server) Serve() error {

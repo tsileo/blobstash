@@ -659,9 +659,13 @@ func (ve *KeyValue) Serialize(withKey bool) ([]byte, error) {
 		return nil, err
 	}
 
-	// Store the key length
 	tmp := make([]byte, 4)
+	tmp2 := make([]byte, 8)
+
 	if withKey {
+		// The `withKey` option should only be true when dumping the vkv entry in a meta blob
+
+		// Store the key length
 		binary.BigEndian.PutUint32(tmp[:], uint32(len(ve.Key)))
 		if _, err := buf.Write(tmp); err != nil {
 			return nil, err
@@ -674,8 +678,8 @@ func (ve *KeyValue) Serialize(withKey bool) ([]byte, error) {
 	}
 
 	// Store the version
-	binary.BigEndian.PutUint32(tmp[:], uint32(ve.Version))
-	if _, err := buf.Write(tmp); err != nil {
+	binary.BigEndian.PutUint64(tmp2[:], uint64(ve.Version))
+	if _, err := buf.Write(tmp2); err != nil {
 		return nil, err
 	}
 
@@ -717,6 +721,7 @@ func UnserializeBlob(data []byte) (*KeyValue, error) {
 	fmt.Printf("unser %d / %v\n", len(data), string(data))
 	r := bytes.NewReader(data)
 	tmp := make([]byte, 4)
+	tmp2 := make([]byte, 8)
 
 	// Read the first flag
 	flag, err := r.ReadByte()
@@ -739,10 +744,10 @@ func UnserializeBlob(data []byte) (*KeyValue, error) {
 	fmt.Printf("key read = %v\n", string(bkey))
 
 	// Read the version
-	if _, err := r.Read(tmp); err != nil {
+	if _, err := r.Read(tmp2); err != nil {
 		return nil, err
 	}
-	version := int(binary.BigEndian.Uint32(tmp[:]))
+	version := int(binary.BigEndian.Uint64(tmp2[:]))
 
 	// Custom flag
 	// cflag, err := r.ReadByte()
@@ -787,6 +792,7 @@ func UnserializeBlob(data []byte) (*KeyValue, error) {
 func Unserialize(key string, data []byte) (*KeyValue, error) {
 	r := bytes.NewReader(data)
 	tmp := make([]byte, 4)
+	tmp2 := make([]byte, 8)
 
 	// Read the first flag
 	flag, err := r.ReadByte()
@@ -795,10 +801,10 @@ func Unserialize(key string, data []byte) (*KeyValue, error) {
 	}
 
 	// Read the version
-	if _, err := r.Read(tmp); err != nil {
+	if _, err := r.Read(tmp2); err != nil {
 		return nil, err
 	}
-	version := int(binary.BigEndian.Uint32(tmp[:]))
+	version := int(binary.BigEndian.Uint64(tmp2[:]))
 
 	// Custom flag
 	// cflag, err := r.ReadByte()
