@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"github.com/dchest/blake2b"
+	"github.com/evanphx/json-patch"
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
 	logext "github.com/inconshreveable/log15/ext"
@@ -484,9 +485,8 @@ func queryToScript(q *query) string {
 	if q.script != "" {
 		return q.script
 	}
-	// FIXME(tsileo): handle stored queries
-	panic("shouldn't happen")
-
+	// Must be a stored query, return an empty string
+	return ""
 }
 
 func (q *query) isMatchAll() bool {
@@ -596,7 +596,7 @@ QUERY:
 			qmatcher = &MatchAllEngine{}
 		case "lua":
 			// FIXME(tsileo): handle stored queries
-			qmatcher, err = docstore.newLuaQueryEngine(queryToScript(query), "", query.storedQueryArgs)
+			qmatcher, err = docstore.newLuaQueryEngine(query)
 			if err != nil {
 				return nil, stats, err
 			}
@@ -628,7 +628,6 @@ QUERY:
 
 				doc["_created"] = _id.Ts()
 				updated := _id.Version() / 1e9
-				fmt.Printf("current_id created=%d, version=%d\n", _id.Ts(), _id.Version())
 				if updated != doc["_created"] {
 					doc["_updated"] = updated
 				}
@@ -756,7 +755,12 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				panic(httputil.NewPublicErrorFmt("Invalid JSON document"))
 			}
 
-			// XXX(tsileo): Ensures there's no field starting with "_", e.g. `_id`/`_created`/`_updated`
+			// Field/key starting with `_` are forbidden, remove them
+			for k, _ := range doc {
+				if strings.HasPrefix(k, "_") {
+					delete(doc, k)
+				}
+			}
 
 			// Actually insert the doc
 			_id, err := docstore.Insert(collection, &doc)
@@ -866,14 +870,15 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 				w.Header().Set("Content-Type", "application/json")
 				srw.Write(addID(js, sid))
 			}
-		case "POST":
-			// Update the document
-			// permissions.CheckPerms(r, PermCollectionName, collection, PermWrite)
+		case "PATCH":
+			// Patch the document (JSON-Patch/RFC6902)
+
 			ns := r.Header.Get("BlobStash-Namespace")
 			ctx := ctxutil.WithNamespace(context.Background(), ns)
-			// Fetch the actual doc
-			doc := map[string]interface{}{}
-			if _id, err = docstore.Fetch(collection, sid, &doc); err != nil {
+
+			// Fetch the current doc
+			js := []byte{}
+			if _id, err = docstore.Fetch(collection, sid, &js); err != nil {
 				if err == vkv.ErrNotFound {
 					// Document doesn't exist, returns a status 404
 					w.WriteHeader(http.StatusNotFound)
@@ -882,33 +887,18 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 				panic(err)
 			}
 
-			// Parse the update query
-			var update map[string]interface{}
-			decoder := json.NewDecoder(r.Body)
-			if err := decoder.Decode(&update); err != nil {
-				panic(httputil.NewPublicErrorFmt("Invalid JSON input"))
+			buf, err := ioutil.ReadAll(r.Body)
+			if err != nil {
+				panic(err)
 			}
 
-			docstore.logger.Debug("Update", "_id", sid, "ns", ns, "update_query", update)
-			// XXX(tsileo): no more $set, move to PATCH and make it acts like $set???
-
-			// Actually update the doc
-			newDoc, err := updateDoc(doc, update)
-
-			if _, ok := newDoc["_id"]; ok {
-				delete(newDoc, "_id")
+			patch, err := jsonpatch.DecodePatch(buf)
+			if err != nil {
+				panic(err)
 			}
+			docstore.logger.Debug("patch decoded", "patch", patch)
 
-			if _, ok := newDoc["_created"]; ok {
-				delete(newDoc, "_created")
-			}
-
-			if _, ok := newDoc["_updated"]; ok {
-				delete(newDoc, "_updated")
-			}
-
-			// Marshal it to JSON to save it back as a blob
-			data, err := json.Marshal(newDoc)
+			data, err := patch.Apply(js)
 			if err != nil {
 				panic(err)
 			}
@@ -920,16 +910,60 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 				panic(err)
 			}
 
-			// XXX(tsileo): allow to update the flag?
+			if _, err := docstore.kvStore.Put(ctx, fmt.Sprintf(KeyFmt, collection, _id.String()), hash, []byte{_id.Flag()}, -1); err != nil {
+				panic(err)
+			}
 
-			kv, err := docstore.kvStore.Put(ctx, fmt.Sprintf(KeyFmt, collection, _id.String()), hash, []byte{_id.Flag()}, -1)
+			return
+		case "POST":
+			// Update the whole document
+			// permissions.CheckPerms(r, PermCollectionName, collection, PermWrite)
+			ns := r.Header.Get("BlobStash-Namespace")
+			ctx := ctxutil.WithNamespace(context.Background(), ns)
+			// Fetch the actual doc
+			doc := map[string]interface{}{}
+			if _, err = docstore.Fetch(collection, sid, &doc); err != nil {
+				if err == vkv.ErrNotFound {
+					// Document doesn't exist, returns a status 404
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				panic(err)
+			}
+
+			data, err := ioutil.ReadAll(r.Body)
 			if err != nil {
 				panic(err)
 			}
-			newDoc["_id"] = _id.String()
-			newDoc["_created"] = _id.Ts()
-			newDoc["_updated"] = kv.Version / 1e9
-			httputil.WriteJSON(srw, newDoc)
+
+			// Parse the update query
+			var update map[string]interface{}
+			if err := json.Unmarshal(data, &update); err != nil {
+				panic(err)
+			}
+
+			// Field/key starting with `_` are forbidden, remove them
+			for k, _ := range update {
+				if strings.HasPrefix(k, "_") {
+					delete(update, k)
+				}
+			}
+
+			docstore.logger.Debug("Update", "_id", sid, "ns", ns, "new_doc", update)
+
+			// Compute the Blake2B hash and save the blob
+			hash := fmt.Sprintf("%x", blake2b.Sum256(data))
+			blob := &blob.Blob{Hash: hash, Data: data}
+			if err := docstore.blobStore.Put(ctx, blob); err != nil {
+				panic(err)
+			}
+
+			// XXX(tsileo): allow to update the flag?
+
+			if _, err := docstore.kvStore.Put(ctx, fmt.Sprintf(KeyFmt, collection, _id.String()), hash, []byte{_id.Flag()}, -1); err != nil {
+				panic(err)
+			}
+			return
 		case "DELETE":
 			// FIXME(tsileo): empty the key, and hanlde it in the get/query
 		}
