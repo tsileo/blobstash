@@ -1,6 +1,7 @@
 package vkv
 
 import (
+	"bytes"
 	"reflect"
 	"sync"
 	"testing"
@@ -64,7 +65,7 @@ func TestDB(t *testing.T) {
 	if len(keys) != 0 {
 		t.Errorf("Keys() should be empty: %q", keys)
 	}
-	res, err := db.Put("test_key_1", "test_value_1", -1)
+	res, err := db.Put("test_key_1", "", []byte("test_value_1"), -1)
 	check(err)
 	v1 := res.Version
 	res.db = nil
@@ -72,7 +73,8 @@ func TestDB(t *testing.T) {
 	if !reflect.DeepEqual(res, res2) {
 		t.Errorf("bad KeyValue result got %+v, expected %+v", res2, res)
 	}
-	res, err = db.Put("test_key_1", "test_value_1.1", -1)
+	// FIXME(tsileo): also thest the Hash (by setting a real Blake2B hash)!
+	res, err = db.Put("test_key_1", "", []byte("test_value_1.1"), -1)
 	check(err)
 	check(res.SetMetaBlob("fakeblobhash"))
 	h, err := db.MetaBlob(res.Key, res.Version)
@@ -90,8 +92,11 @@ func TestDB(t *testing.T) {
 	if len(versions.Versions) != 2 {
 		t.Errorf("key test_key_1 should have 2 versions, got %d", len(versions.Versions))
 	}
-	if versions.Versions[0].Value != res2.Value {
-		t.Errorf("bad KeyValue result got %+v, expected %+v", versions.Versions[0].Value, res2.Value)
+	if versions.Versions[0].Hash != res2.Hash {
+		t.Errorf("bad KeyValue (Hash) result got %+v, expected %+v", versions.Versions[0].Hash, res2.Hash)
+	}
+	if !bytes.Equal(versions.Versions[0].Data, res2.Data) {
+		t.Errorf("bad KeyValue (Data) result got %s, expected %s", versions.Versions[0].Data, res2.Data)
 	}
 	keys, err = db.Keys("", "\xff", 0)
 	check(err)
