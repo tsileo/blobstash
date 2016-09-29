@@ -51,9 +51,6 @@ import (
 	"github.com/tsileo/blobstash/pkg/vkv"
 )
 
-// FIXME(tsileo): use the new vkv format for future GC, don't forget indexes
-// and clean the full text index mess
-
 // FIXME(tsileo): create a "meta" hook for handling indexing
 // will need to solve few issues before:
 // - do we need to check if the doc is already indexed?
@@ -84,12 +81,12 @@ func idFromKey(col, key string) (*id.ID, error) {
 }
 
 const (
-	FlagNoop byte = iota // Won't be indexed by Bleve
+	FlagNoop byte = iota // Default flag
 	FlagDeleted
 )
 
 const (
-	ExpandJson = "#blobstash/json:"
+	ExpandJson = "#blobstash/json:" // FIXME(tsileo): document the Expand feature
 )
 
 type executionStats struct {
@@ -106,10 +103,11 @@ type DocStore struct {
 	blobStore *blobstore.BlobStore
 
 	conf *config.Config
-	// index    bleve.Index
 	// docIndex *index.HashIndexes
 
 	storedQueries map[string]*storedQuery
+
+	locker *locker
 
 	logger log.Logger
 }
@@ -164,9 +162,9 @@ func New(logger log.Logger, conf *config.Config, kvStore *kvstore.KvStore, blobS
 		blobStore:     blobStore,
 		storedQueries: storedQueries,
 		conf:          conf,
-		// index:     index,
+		locker:        newLocker(),
+		logger:        logger,
 		// docIndex:  docIndex,
-		logger: logger,
 	}, nil
 }
 
@@ -873,6 +871,10 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 		case "PATCH":
 			// Patch the document (JSON-Patch/RFC6902)
 
+			// Lock the document before making any change to it, this way the PATCH operation is *truly* atomic/safe
+			docstore.locker.Lock(sid)
+			defer docstore.locker.Unlock(sid)
+
 			ns := r.Header.Get("BlobStash-Namespace")
 			ctx := ctxutil.WithNamespace(context.Background(), ns)
 
@@ -917,6 +919,11 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			return
 		case "POST":
 			// Update the whole document
+
+			// Lock the document before making any change to it
+			docstore.locker.Lock(sid)
+			defer docstore.locker.Unlock(sid)
+
 			// permissions.CheckPerms(r, PermCollectionName, collection, PermWrite)
 			ns := r.Header.Get("BlobStash-Namespace")
 			ctx := ctxutil.WithNamespace(context.Background(), ns)

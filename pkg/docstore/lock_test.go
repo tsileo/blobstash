@@ -6,7 +6,7 @@ import (
 )
 
 func TestLock(t *testing.T) {
-	l := NewLocker()
+	l := newLocker()
 	var wg sync.WaitGroup
 	out := 0
 	for i := 0; i < 100; i++ {

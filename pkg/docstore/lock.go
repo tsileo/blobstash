@@ -4,21 +4,20 @@ import (
 	"sync"
 )
 
-// XXX(tsileo): should this be exported?
-type Locker struct {
+type locker struct {
 	locks map[string]chan struct{} // Map of lock for each doc ID
 
 	mu *sync.Mutex // Guard for the locks
 }
 
-func NewLocker() *Locker {
-	return &Locker{
+func newLocker() *locker {
+	return &locker{
 		locks: map[string]chan struct{}{},
 		mu:    &sync.Mutex{},
 	}
 }
 
-func (l *Locker) Lock(id string) {
+func (l *locker) Lock(id string) {
 	for {
 		l.mu.Lock()
 		// Try to retrieve the existing lock
@@ -41,7 +40,7 @@ func (l *Locker) Lock(id string) {
 	}
 }
 
-func (l *Locker) Unlock(id string) {
+func (l *locker) Unlock(id string) {
 	l.mu.Lock()
 	// Try to retrieve the existing lock
 	lchan, ok := l.locks[id]
