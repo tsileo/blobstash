@@ -623,6 +623,7 @@ QUERY:
 			}
 			if ok {
 				doc["_id"] = _id
+				doc["_hash"] = _id.Hash()
 
 				doc["_created"] = _id.Ts()
 				updated := _id.Version() / 1e9
@@ -775,6 +776,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			httputil.WriteJSON(srw, map[string]interface{}{
 				"_id":      _id.String(),
 				"_created": _id.Ts(),
+				"_hash":    _id.Hash(),
 			})
 			srw.Close()
 
@@ -819,6 +821,7 @@ func (docstore *DocStore) Fetch(collection, sid string, res interface{}) (*id.ID
 		if err := json.Unmarshal(blob, idoc); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal blob: %s", blob)
 		}
+		// TODO(tsileo): set the special fields _created/_updated/_hash
 		if err := docstore.expandKeys(*idoc); err != nil {
 			return nil, err
 		}
@@ -864,6 +867,15 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 				panic(err)
 			}
 
+			if hash := r.Header.Get("If-None-Match"); hash != "" {
+				if hash == _id.Hash() {
+					w.WriteHeader(http.StatusNotModified)
+					return
+				}
+			}
+
+			w.Header().Set("Etag", _id.Hash())
+
 			if r.Method == "GET" {
 				w.Header().Set("Content-Type", "application/json")
 				srw.Write(addID(js, sid))
@@ -887,6 +899,13 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 					return
 				}
 				panic(err)
+			}
+
+			if hash := r.Header.Get("If-Match"); hash != "" {
+				if _id.Hash() != hash {
+					w.WriteHeader(http.StatusPreconditionFailed)
+					return
+				}
 			}
 
 			buf, err := ioutil.ReadAll(r.Body)
@@ -916,6 +935,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 				panic(err)
 			}
 
+			w.WriteHeader(http.StatusNoContent)
 			return
 		case "POST":
 			// Update the whole document
@@ -936,6 +956,13 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 					return
 				}
 				panic(err)
+			}
+
+			if hash := r.Header.Get("If-Match"); hash != "" {
+				if _id.Hash() != hash {
+					w.WriteHeader(http.StatusPreconditionFailed)
+					return
+				}
 			}
 
 			data, err := ioutil.ReadAll(r.Body)
@@ -972,6 +999,9 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			}
 			return
 		case "DELETE":
+			docstore.locker.Lock(sid)
+			defer docstore.locker.Unlock(sid)
+
 			// FIXME(tsileo): empty the key, and hanlde it in the get/query
 		}
 
