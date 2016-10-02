@@ -71,6 +71,12 @@ var (
 	PermRead           = "read"
 )
 
+var reservedKeys = map[string]struct{}{
+	"_id":      struct{}{},
+	"_updated": struct{}{},
+	"_created": struct{}{},
+}
+
 func idFromKey(col, key string) (*id.ID, error) {
 	hexID := strings.Replace(key, fmt.Sprintf("docstore:%s:", col), "", 1)
 	_id, err := id.FromHex(hexID)
@@ -754,9 +760,9 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				panic(httputil.NewPublicErrorFmt("Invalid JSON document"))
 			}
 
-			// Field/key starting with `_` are forbidden, remove them
+			// Check for reserved keys
 			for k, _ := range doc {
-				if strings.HasPrefix(k, "_") {
+				if _, ok := reservedKeys[k]; ok {
 					delete(doc, k)
 				}
 			}
@@ -924,6 +930,8 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 				panic(err)
 			}
 
+			// TODO(tsileo): also check for reserved keys here
+
 			// Compute the Blake2B hash and save the blob
 			hash := fmt.Sprintf("%x", blake2b.Sum256(data))
 			blob := &blob.Blob{Hash: hash, Data: data}
@@ -978,7 +986,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 
 			// Field/key starting with `_` are forbidden, remove them
 			for k, _ := range update {
-				if strings.HasPrefix(k, "_") {
+				if _, ok := reservedKeys[k]; ok {
 					delete(update, k)
 				}
 			}
