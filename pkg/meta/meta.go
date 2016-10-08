@@ -45,8 +45,9 @@ func New(logger log.Logger, chub *hub.Hub) (*Meta, error) {
 
 func (m *Meta) newBlobCallback(ctx context.Context, blob *blob.Blob) error {
 	metaType, metaData, isMeta := IsMetaBlob(blob.Data)
-	m.log.Debug("newBlobCallback", "is_meta", isMeta, "meta_type", metaType, "blob", string(blob.Data))
+	m.log.Debug("newBlobCallback", "is_meta", isMeta, "meta_type", metaType, "blob_size", len(blob.Data))
 	if isMeta {
+		m.log.Debug("blob callback", "blob", string(blob.Data))
 		// TODO(tsileo): should we check for already applied blobs and use the same callback for both scan and new blob?
 		if _, ok := m.applyFuncs[metaType]; !ok {
 			return fmt.Errorf("Unknown meta type \"%s\"", metaType)
