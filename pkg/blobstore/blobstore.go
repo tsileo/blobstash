@@ -41,7 +41,7 @@ func New(logger log.Logger, conf2 *config.Config, hub *hub.Hub, wg sync.WaitGrou
 		"router":    []interface{}{[]interface{}{"default", "blobs"}},
 		"data_path": conf2.VarDir(),
 	}
-	// Intialize the router and load the backends
+	// Initialize the router and load the backends
 	r := router.New(conf["router"].([]interface{}))
 	backendsConf := conf["backends"].(map[string]interface{})
 	for _, b := range r.ResolveBackends() {
