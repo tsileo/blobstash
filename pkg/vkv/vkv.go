@@ -416,7 +416,6 @@ func (db *DB) Get(key string, version int) (*KeyValue, error) {
 
 // Return a lexicographical range
 func (db *DB) Versions(key string, start, end, limit int) (*KeyValueVersions, error) {
-	// FIXME(tsileo): returns versions in desc by default
 	res := &KeyValueVersions{
 		Key:      key,
 		Versions: []*KeyValue{},

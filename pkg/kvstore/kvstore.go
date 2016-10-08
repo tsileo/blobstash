@@ -90,6 +90,7 @@ func (kv *KvStore) Keys(ctx context.Context, start, end string, limit int) ([]*v
 func (kv *KvStore) Versions(ctx context.Context, key string, start, end, limit int) (*vkv.KeyValueVersions, error) {
 	_, fromHttp := ctxutil.Request(ctx)
 	kv.log.Info("OP Versions", "from_http", fromHttp, "key", key, "start", start, "end", end)
+	// FIXME(tsileo): decide between -1/0 for default, or introduce a constant Max/Min?? and the end only make sense for the reverse Versions?
 	if end == -1 {
 		end = int(time.Now().UTC().UnixNano())
 	}

@@ -793,6 +793,59 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 }
 
 // Fetch a single document into `res` and returns the `id.ID`
+// Start acts like a cursor.
+func (docstore *DocStore) FetchVersions(collection, sid string, start, limit int) ([]map[string]interface{}, error) {
+	// TODO(tsileo): better output than a slice of `map[string]interface{}`
+	if collection == "" {
+		return nil, errors.New("missing collection query arg")
+	}
+
+	// Fetch the KV versions entry for this _id
+	// XXX(tsileo): use int64 for start/end
+	kvv, err := docstore.kvStore.Versions(context.TODO(), fmt.Sprintf(KeyFmt, collection, sid), int(time.Now().UnixNano()), 0, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse the ID
+	// _id, err := id.FromHex(sid)
+	// if err != nil {
+	// 	return nil, nil, fmt.Errorf("invalid _id: %v", err)
+	// }
+	docs := []map[string]interface{}{}
+
+	for _, kv := range kvv.Versions {
+		var doc map[string]interface{}
+		// Extract the hash (first byte is the Flag)
+		// XXX(tsileo): add/handle a `Deleted` flag
+		hash := kv.Hash
+		// kv.Value[1:len(kv.Value)]
+
+		// Fetch the blob
+		blob, err := docstore.blobStore.Get(context.TODO(), hash)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch blob %v", hash)
+		}
+
+		// Build the doc
+		if err := json.Unmarshal(blob, &doc); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal blob: %s", blob)
+		}
+		// TODO(tsileo): set the special fields _created/_updated/_hash
+		if err := docstore.expandKeys(doc); err != nil {
+			return nil, err
+		}
+
+		docs = append(docs, doc)
+		// _id.SetHash(hash)
+		// _id.SetFlag(byte(kv.Data[0]))
+		// _id.SetVersion(kv.Version)
+
+	}
+	return docs, nil
+}
+
+// Fetch a single document into `res` and returns the `id.ID`
 func (docstore *DocStore) Fetch(collection, sid string, res interface{}) (*id.ID, error) {
 	if collection == "" {
 		return nil, errors.New("missing collection query arg")
