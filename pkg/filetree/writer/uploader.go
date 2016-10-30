@@ -6,7 +6,7 @@ var (
 )
 
 type BlobStorer interface {
-	Get(string) ([]byte, error)
+	// Get(context.Context, string) ([]byte, error)
 	// Enumerate(chan<- string, string, string, int) error
 	Stat(string) (bool, error)
 	Put(string, []byte) error

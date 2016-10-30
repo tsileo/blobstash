@@ -161,18 +161,18 @@ func (up *Uploader) PutMeta(meta *meta.Meta) error {
 	return nil
 }
 
-func (up *Uploader) RenameMeta(meta *meta.Meta, name string) (*meta.Meta, error) {
+func (up *Uploader) RenameMeta(meta *meta.Meta, name string) error {
 	meta.Name = filepath.Base(name)
 	meta.ModTime = time.Now().Format(time.RFC3339)
 	mhash, mjs := meta.Json()
 	mexists, err := up.bs.Stat(mhash)
 	if err != nil {
-		return nil, fmt.Errorf("failed to stat blob %v: %v", mhash, err)
+		return fmt.Errorf("failed to stat blob %v: %v", mhash, err)
 	}
 	// wr.Size += len(mjs)
 	if !mexists {
 		if err := up.bs.Put(mhash, mjs); err != nil {
-			return nil, fmt.Errorf("failed to put blob %v: %v", mhash, err)
+			return fmt.Errorf("failed to put blob %v: %v", mhash, err)
 		}
 		// wr.BlobsCount++
 		// wr.BlobsUploaded++
@@ -181,7 +181,7 @@ func (up *Uploader) RenameMeta(meta *meta.Meta, name string) (*meta.Meta, error)
 	// wr.SizeSkipped += len(mjs)
 	// }
 	meta.Hash = mhash
-	return meta, nil
+	return nil
 }
 
 // fmt.Sprintf("%x", blake2b.Sum256(js))

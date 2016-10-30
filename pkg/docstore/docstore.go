@@ -135,32 +135,34 @@ func New(logger log.Logger, conf *config.Config, kvStore *kvstore.KvStore, blobS
 
 	// Load the docstore's stored queries from the config
 	storedQueries := map[string]*storedQuery{}
-	for _, squery := range conf.Docstore.StoredQueries {
-		// First ensure the required match.lua is present
-		if _, err := os.Stat(filepath.Join(squery.Path, "match.lua")); os.IsNotExist(err) {
-			return nil, fmt.Errorf("missing `match.lua` for stored query %s", squery.Name)
-		}
-		code, err := ioutil.ReadFile(filepath.Join(squery.Path, "match.lua"))
-		if err != nil {
-			return nil, fmt.Errorf("failed to open match.lua: %s", err)
-		}
-
-		var preQueryCode string
-		// Then, check for the optional prequery.lua
-		if _, err := os.Stat(filepath.Join(squery.Path, "prequery.lua")); !os.IsNotExist(err) {
-			preQuery, err := ioutil.ReadFile(filepath.Join(squery.Path, "prequery.lua"))
+	if conf.Docstore.StoredQueries != nil {
+		for _, squery := range conf.Docstore.StoredQueries {
+			// First ensure the required match.lua is present
+			if _, err := os.Stat(filepath.Join(squery.Path, "match.lua")); os.IsNotExist(err) {
+				return nil, fmt.Errorf("missing `match.lua` for stored query %s", squery.Name)
+			}
+			code, err := ioutil.ReadFile(filepath.Join(squery.Path, "match.lua"))
 			if err != nil {
 				return nil, fmt.Errorf("failed to open match.lua: %s", err)
 			}
-			preQueryCode = string(preQuery)
-		}
 
-		storedQuery := &storedQuery{
-			Name:         squery.Name,
-			MatchCode:    string(code),
-			PreQueryCode: preQueryCode,
+			var preQueryCode string
+			// Then, check for the optional prequery.lua
+			if _, err := os.Stat(filepath.Join(squery.Path, "prequery.lua")); !os.IsNotExist(err) {
+				preQuery, err := ioutil.ReadFile(filepath.Join(squery.Path, "prequery.lua"))
+				if err != nil {
+					return nil, fmt.Errorf("failed to open match.lua: %s", err)
+				}
+				preQueryCode = string(preQuery)
+			}
+
+			storedQuery := &storedQuery{
+				Name:         squery.Name,
+				MatchCode:    string(code),
+				PreQueryCode: preQueryCode,
+			}
+			storedQueries[squery.Name] = storedQuery
 		}
-		storedQueries[squery.Name] = storedQuery
 	}
 
 	return &DocStore{
@@ -500,15 +502,13 @@ func (q *query) isMatchAll() bool {
 	return false
 }
 
-func (docstore *DocStore) Query(collection string, query *query, cursor string, limit int, res interface{}) (*executionStats, error) {
-	js, stats, err := docstore.query(collection, query, cursor, limit)
+func (docstore *DocStore) Query(collection string, query *query, cursor string, limit int) ([]map[string]interface{}, *executionStats, error) {
+	docs, stats, err := docstore.query(collection, query, cursor, limit)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if err := json.Unmarshal(js, res); err != nil {
-		return nil, err
-	}
-	return stats, nil
+	// TODO(tsileo): fix this
+	return docs, stats, nil
 }
 
 func addID(js []byte, _id string) []byte {
@@ -520,7 +520,7 @@ func addID(js []byte, _id string) []byte {
 
 // query returns a JSON list as []byte for the given query
 // docs are unmarhsalled to JSON only when needed.
-func (docstore *DocStore) query(collection string, query *query, cursor string, limit int) ([]byte, *executionStats, error) {
+func (docstore *DocStore) query(collection string, query *query, cursor string, limit int) ([]map[string]interface{}, *executionStats, error) {
 	// js := []byte("[")
 	tstart := time.Now()
 	stats := &executionStats{
@@ -653,16 +653,16 @@ QUERY:
 	// if stats.NReturned > 0 {
 	// js = js[0 : len(js)-1]
 	// }
-	js, err := json.Marshal(docs)
-	if err != nil {
-		return nil, nil, err
-	}
+	// js, err := json.Marshal(docs)
+	// if err != nil {
+	// 	return nil, nil, err
+	// }
 
 	duration := time.Since(tstart)
 	qLogger.Debug("scan done", "duration", duration, "nReturned", stats.NReturned, "scanned", stats.TotalDocsExamined)
 	// XXX(tsileo): display duration in string format or nanosecond precision??
 	stats.ExecutionTimeMillis = int(duration.Nanoseconds() / 1e6)
-	return js, stats, nil
+	return docs, stats, nil
 }
 
 // HTTP handler for the collection (handle listing+query+insert)
@@ -701,7 +701,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				}
 				limit = ilimit
 			}
-			js, stats, err := docstore.query(collection, &query{
+			docs, stats, err := docstore.query(collection, &query{
 				storedQueryArgs: queryArgs,
 				storedQuery:     q.Get("stored_query"),
 				script:          q.Get("script"),
@@ -739,6 +739,18 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			// This way, HEAD request can acts as a count query
 			if r.Method == "HEAD" {
 				return
+			}
+
+			js, err := json.Marshal(&map[string]interface{}{
+				"data": docs,
+				"pagination": map[string]interface{}{
+					"cursor":   nextKey(stats.LastID),
+					"has_more": hasMore,
+				},
+			})
+
+			if err != nil {
+				panic(err)
 			}
 
 			// Write the JSON response (encoded if requested)

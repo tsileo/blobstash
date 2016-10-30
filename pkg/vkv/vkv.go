@@ -79,24 +79,6 @@ const (
 
 var ErrNotFound = errors.New("vkv: key does not exist")
 
-// // TODO(tsileo): no more `db` embedded into the KeyValue/VkvEntry
-// // KeyValue holds a singke key value pair, along with the version (the creation timestamp)
-// type KeyValue struct {
-// 	Key       string `json:"key,omitempty"`
-// 	Value     string `json:"value"`
-// 	Version   int    `json:"version"`
-// 	db        *DB    `json:"-"`
-// 	namespace string `json:"-"`
-// }
-// func (kvi *KeyValue) SetNamespace(ns string) error {
-// 	kvi.namespace = ns
-// 	return nil
-// }
-
-// func (kvi *KeyValue) Namespace() string {
-// 	return kvi.namespace
-// }
-
 // KeyValueVersions holds the full history for a key value pair
 type KeyValueVersions struct {
 	Key string `json:"key"`
@@ -611,7 +593,7 @@ type KeyValue struct {
 
 	Key     string `json:"key,omitempty"`
 	Version int    `json:"version"`
-	db      *DB    `json:"-"`
+	db      *DB
 
 	Hash string `json:"hash,omitempty"`
 	Data []byte `json:"data,omitempty"`
