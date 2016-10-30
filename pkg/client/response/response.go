@@ -3,7 +3,8 @@ package response
 // KeyValue holds a singke key value pair, along with the version (the creation timestamp)
 type KeyValue struct {
 	Key     string `json:"key,omitempty"`
-	Value   string `json:"value"`
+	Hash    string `json:"hash"`
+	Data    []byte `json:"data"`
 	Version int    `json:"version"`
 }
 

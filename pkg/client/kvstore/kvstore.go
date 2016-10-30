@@ -42,9 +42,10 @@ func New(opts *clientutil.Opts) *KvStore {
 	}
 }
 
-func (kvs *KvStore) Put(key, value string, version int) (*response.KeyValue, error) {
+func (kvs *KvStore) Put(key, ref string, pdata []byte, version int) (*response.KeyValue, error) {
 	data := url.Values{}
-	data.Set("value", value)
+	data.Set("data", string(pdata))
+	data.Set("ref", ref)
 	if version != -1 {
 		data.Set("version", strconv.Itoa(version))
 	}
