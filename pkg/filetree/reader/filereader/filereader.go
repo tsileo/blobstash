@@ -138,7 +138,7 @@ func (f *File) ReadAt(p []byte, offset int64) (n int, err error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
-	if f.size == 0 || f.offset >= f.size {
+	if f.size == 0 { // || f.offset >= f.size {
 		return 0, io.EOF
 	}
 	buf, err := f.read(offset, len(p))
@@ -152,7 +152,6 @@ func (f *File) ReadAt(p []byte, offset int64) (n int, err error) {
 // Low level read function, read a size from an offset
 // Iterate only the needed blobs
 func (f *File) read(offset int64, cnt int) ([]byte, error) {
-	//log.Printf("FakeFile %v read(%v, %v)", f.ref, offset, cnt)
 	if cnt < 0 || int64(cnt) > f.size {
 		cnt = int(f.size)
 	}
