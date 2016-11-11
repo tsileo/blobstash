@@ -99,7 +99,7 @@ func decodeBlobPos(data []byte) (blob BlobPos, error error) {
 // NewIndex initializes a new index.
 func NewIndex(path string) (*BlobsIndex, error) {
 	db_path := filepath.Join(path, "blobs-index")
-	if err := os.MkdirAll(path, 0777); err != nil { // FIXME(tsileo): fix perms
+	if err := os.MkdirAll(path, 0700); err != nil {
 		return nil, err
 	}
 	createOpen := kv.Open

@@ -155,7 +155,7 @@ type BlobsFileBackend struct {
 // New intializes a new BlobsFileBackend
 func New(dir string, maxBlobsFileSize int64, compression bool, wg sync.WaitGroup) *BlobsFileBackend {
 	dir = strings.Replace(dir, "$VAR", pathutil.VarDir(), -1)
-	os.MkdirAll(dir, 0750)
+	os.MkdirAll(dir, 0700)
 	var reindex bool
 	if _, err := os.Stat(filepath.Join(dir, "blobs-index")); os.IsNotExist(err) {
 		reindex = true

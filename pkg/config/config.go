@@ -90,17 +90,17 @@ func (c *Config) Init() error {
 		return nil
 	}
 	if _, err := os.Stat(c.VarDir()); os.IsNotExist(err) {
-		if err := os.MkdirAll(c.VarDir(), 0644); err != nil {
+		if err := os.MkdirAll(c.VarDir(), 0700); err != nil {
 			return err
 		}
 	}
 	if _, err := os.Stat(c.ConfigDir()); os.IsNotExist(err) {
-		if err := os.MkdirAll(c.ConfigDir(), 0644); err != nil {
+		if err := os.MkdirAll(c.ConfigDir(), 0700); err != nil {
 			return err
 		}
 	}
 	if _, err := os.Stat(filepath.Join(c.ConfigDir(), LetsEncryptDir)); os.IsNotExist(err) {
-		if err := os.MkdirAll(filepath.Join(c.ConfigDir(), LetsEncryptDir), 0644); err != nil {
+		if err := os.MkdirAll(filepath.Join(c.ConfigDir(), LetsEncryptDir), 0700); err != nil {
 			return err
 		}
 	}
