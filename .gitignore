@@ -1,3 +1,4 @@
+releases/
 *.zip
 output/
 .lego*

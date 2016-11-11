@@ -5,12 +5,17 @@ install: true
 script:
 - go get -v github.com/tsileo/blobstash/...
 - go test $(go list ./... | grep pkg)
-- go build
+- ./extras/cross_compile.sh
 deploy:
   provider: releases
   api_key:
     secure: iWV46e1ZV5rrQOogkp4MQvs7qycWcvWHRlXcWSaCukigsAWXUoWebEAsUXEc+81vNQQYY7gUWsUss5kRObhutR0eYSGwLEZAps84hOZM6WeKZyzt8eARH+z11C1+zTZdan8+wNp0hMu+lYR/7XCrJkWpbt2Swvm0furJCFfz12Z6XjHhsUMUAbdU2Kj4bV4dxn/nuCzhK3OxIa6rfa8X/cmQu6HABYXsJDRg1nmGmFLpoHHR44oi9562CuTmgGK1HaicppqTPMP6Dxx0MEmItCxX2GZ2cHtSZTDDw8I4lRX05kaAc/HZMOjWtIDP4WbMQaPCpN5YSt2+/ap4rM8ILoz6oMWhcQGzbVpgiwb4GcogOP72rq/HzZZeB36lCq8ojuqtAwbdFqm94twHX3CcO09Vnhpx8YKVUwxyvZsKcjriDU6oEq4d/rCagzx3Y4TUlhNIw4WAxodhTc0/95s7kcAcvxuzHdClj9jWAWmTwTDcMmh1BIrTEarXMVFS91IkQFFiJY3TJc3CXrqaLvV0j4Fk7KLOjzRP60g8Oe/ozLAu49zgszLvaXSuw5apUB4Hdb1iOd3khiRy7kp1DsoTTOSqnwlGURx2weDo5UtyT5etYvA3kfFJTIDkduLJf9oCEXHvzQhzSogU9eSKWzT56dxqfQ3unwe6offCWL9xpQQ=
-  file: blobstash
+  file:
+    - releases/blobstash-darwin-amd64
+    - releases/blobstash-freebsd-386
+    - releases/blobstash-freebsd-amd64
+    - releases/blobstash-linux-386
+    - releases/blobstash-linux-amd64
   skip_cleanup: true
   on:
     tags: true
