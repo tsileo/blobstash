@@ -1,7 +1,7 @@
 language: go
 
 go:
-  - 1.6
+  - 1.7
 install: true
 script:
   - go get -v github.com/tsileo/blobstash/...
