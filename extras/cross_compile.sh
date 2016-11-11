@@ -6,6 +6,7 @@ echo '
   freebsd  amd64    FreeBSD 64-bit
   linux    386      Linux 32-bit
   linux    amd64    Linux 64-bit
+  linux    arm      Linux ARM
 ' | {
   while read os arch label; do
     [ -n "$os" ] || continue

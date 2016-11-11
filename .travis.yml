@@ -16,6 +16,7 @@ deploy:
     - releases/blobstash-freebsd-amd64
     - releases/blobstash-linux-386
     - releases/blobstash-linux-amd64
+    - releases/blobstash-linux-arm
   skip_cleanup: true
   on:
     tags: true
