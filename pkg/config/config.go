@@ -82,7 +82,7 @@ func (c *Config) VarDir() string {
 	return pathutil.VarDir()
 }
 
-// Init intialize the config.
+// Init initialize the config.
 //
 // It will try to create all the needed directory.
 func (c *Config) Init() error {
