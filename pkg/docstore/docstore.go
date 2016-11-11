@@ -135,7 +135,7 @@ func New(logger log.Logger, conf *config.Config, kvStore *kvstore.KvStore, blobS
 
 	// Load the docstore's stored queries from the config
 	storedQueries := map[string]*storedQuery{}
-	if conf.Docstore.StoredQueries != nil {
+	if conf.Docstore != nil && conf.Docstore.StoredQueries != nil {
 		for _, squery := range conf.Docstore.StoredQueries {
 			// First ensure the required match.lua is present
 			if _, err := os.Stat(filepath.Join(squery.Path, "match.lua")); os.IsNotExist(err) {
