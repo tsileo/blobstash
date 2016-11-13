@@ -149,7 +149,29 @@ func (kv *KvStore) versionsHandler() func(http.ResponseWriter, *http.Request) {
 			if ns := r.Header.Get("BlobStash-Namespace"); ns != "" {
 				ctx = ctxutil.WithNamespace(ctx, ns)
 			}
-			resp, err := kv.Versions(ctx, key, 0, -1, 0)
+			limit := 0
+			start := 0
+			end := -1
+			for _, q := range []struct {
+				v    *int
+				def  int
+				name string
+			}{
+				{&limit, 0, "limit"},
+				{&start, 0, "start"},
+				{&end, -1, "end"},
+			} {
+				var err error
+				val := q.def
+				if svalue := r.URL.Query().Get(q.name); svalue != "" {
+					val, err = strconv.Atoi(svalue)
+					if err != nil {
+						panic(err)
+					}
+				}
+				*q.v = val
+			}
+			resp, err := kv.Versions(ctx, key, start, end, 0)
 			if err != nil {
 				if err == vkv.ErrNotFound {
 					w.WriteHeader(http.StatusNotFound)

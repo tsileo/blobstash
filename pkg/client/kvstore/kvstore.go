@@ -95,7 +95,7 @@ func (kvs *KvStore) Get(key string, version int) (*response.KeyValue, error) {
 
 func (kvs *KvStore) Versions(key string, start, end, limit int) (*response.KeyValueVersions, error) {
 	// TODO handle start, end and limit
-	resp, err := kvs.client.DoReq("GET", "/api/kvstore/key/"+key+"/_versions", nil, nil)
+	resp, err := kvs.client.DoReq("GET", "/api/kvstore/key/"+key+fmt.Sprintf("/_versions?start=%d&end=%d&limit=%d", start, end, limit), nil, nil)
 	if err != nil {
 		return nil, err
 	}
