@@ -404,9 +404,8 @@ func (ft *FileTreeExt) buildIndex(path string, node *Node) map[string]string {
 		}
 	}
 	if dpath != "/" {
-		dpath = dpath + "/"
+		out[dpath+"/"] = node.Hash
 	}
-	out[dpath] = node.Hash
 	return out
 }
 
