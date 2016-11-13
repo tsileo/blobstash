@@ -125,6 +125,8 @@ func (ft *FileTreeExt) Register(r *mux.Router, root *mux.Router, basicAuth func(
 	r.Handle("/dir/{ref}", dirHandler)
 	r.Handle("/file/{ref}", fileHandler)
 
+	r.Handle("/index/{ref}", basicAuth(http.HandlerFunc(ft.indexHandler())))
+
 	// Enable shortcut path from the root
 	root.Handle("/d/{ref}", dirHandler)
 	root.Handle("/f/{ref}", fileHandler)
@@ -364,6 +366,48 @@ func (fs *FS) Path(path string, create bool) (*Node, error) {
 		}
 	}
 	return node, nil
+}
+func (ft *FileTreeExt) indexHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		vars := mux.Vars(r)
+		ref := vars["ref"]
+		node, err := ft.nodeByRef(ref)
+		if err != nil {
+			if err == clientutil.ErrBlobNotFound {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			panic(err)
+		}
+		out := ft.buildIndex("/", node)
+		httputil.WriteJSON(w, out)
+	}
+}
+
+func (ft *FileTreeExt) buildIndex(path string, node *Node) map[string]string {
+	out := map[string]string{}
+	if err := ft.fetchDir(node, 1, 1); err != nil {
+		panic(err)
+	}
+	dpath := filepath.Join(path, node.Name)
+	for _, child := range node.Children {
+		if child.Type == "file" {
+			out[filepath.Join(dpath, child.Name)] = child.Hash
+		} else {
+			for p, ref := range ft.buildIndex(dpath, child) {
+				out[p] = ref
+			}
+		}
+	}
+	if dpath != "/" {
+		dpath = dpath + "/"
+	}
+	out[dpath] = node.Hash
+	return out
 }
 
 // Handle multipart form upload to create a new Node (outside of any FS)
