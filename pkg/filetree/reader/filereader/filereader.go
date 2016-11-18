@@ -252,7 +252,7 @@ func (f *File) Read(p []byte) (n int, err error) {
 		return 0, io.EOF
 	}
 	if err != nil {
-		return 0, fmt.Errorf("failed to read %+v at range %v-%v", f, f.offset, limit)
+		return 0, fmt.Errorf("failed to read %+v at range %v-%v: %v", f, f.offset, limit, err)
 	}
 	n = copy(p, b)
 	f.offset += int64(n)
