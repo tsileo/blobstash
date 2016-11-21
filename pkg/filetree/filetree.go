@@ -114,8 +114,8 @@ func (ft *FileTreeExt) Register(r *mux.Router, root *mux.Router, basicAuth func(
 	dirHandler := http.HandlerFunc(ft.dirHandler())
 	fileHandler := http.HandlerFunc(ft.fileHandler())
 
-	r.Handle("/fs/{name}", http.HandlerFunc(ft.fsHandler()))
-	r.Handle("/fs/{name}/{path:.+}", http.HandlerFunc(ft.fsHandler()))
+	r.Handle("/fs/{type}/{name}", http.HandlerFunc(ft.fsHandler()))
+	r.Handle("/fs/{type}/{name}/{path:.+}", http.HandlerFunc(ft.fsHandler()))
 	// r.Handle("/fs", http.HandlerFunc(ft.fsHandler()))
 	// r.Handle("/fs/{name}", http.HandlerFunc(ft.fsByNameHandler()))
 
@@ -440,10 +440,19 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 		vars := mux.Vars(r)
 		fsName := vars["name"]
 		path := "/" + vars["path"]
-
-		fs, err := ft.FS(fsName)
-		if err != nil {
-			panic(err)
+		refType := vars["type"]
+		var fs *FS
+		var err error
+		if refType == "ref" {
+			fs = &FS{
+				Ref: fsName,
+				ft:  ft,
+			}
+		} else {
+			fs, err = ft.FS(fsName)
+			if err != nil {
+				panic(err)
+			}
 		}
 		switch r.Method {
 		case "GET", "HEAD":

@@ -16,7 +16,7 @@ var BasicRealm = "Authorization Required"
 
 func BasicAuthFunc(username string, password string) func(*http.Request) bool {
 	return func(req *http.Request) bool {
-		fmt.Printf("\n\nINSIDE BASICAUTH %+v\n\n", req)
+		// fmt.Printf("\n\nINSIDE BASICAUTH %+v\n\n", req)
 		auth := req.Header.Get("Authorization")
 		switch {
 		case strings.HasPrefix(auth, "Basic "):
