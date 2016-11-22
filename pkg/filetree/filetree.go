@@ -443,16 +443,19 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 		refType := vars["type"]
 		var fs *FS
 		var err error
-		if refType == "ref" {
+		switch refType {
+		case "ref":
 			fs = &FS{
 				Ref: fsName,
 				ft:  ft,
 			}
-		} else {
+		case "fs":
 			fs, err = ft.FS(fsName)
 			if err != nil {
 				panic(err)
 			}
+		default:
+			panic(fmt.Errorf("Unknown type \"%s\"", refType))
 		}
 		switch r.Method {
 		case "GET", "HEAD":
