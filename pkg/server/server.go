@@ -50,8 +50,8 @@ type Server struct {
 
 func New(conf *config.Config) (*Server, error) {
 	conf.Init()
-	logger := log.New()
-	logger.SetHandler(log.StreamHandler(os.Stdout, log.TerminalFormat()))
+	logger := log.New("logger", "blobstash")
+	logger.SetHandler(log.LvlFilterHandler(conf.LogLvl(), log.StreamHandler(os.Stdout, log.TerminalFormat())))
 	var wg sync.WaitGroup
 	s := &Server{
 		router:   mux.NewRouter().StrictSlash(true),

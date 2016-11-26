@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/inconshreveable/log15"
 	"gopkg.in/yaml.v2"
 
 	"github.com/tsileo/blobstash/pkg/config/pathutil"
@@ -29,8 +30,9 @@ type AppConfig struct {
 
 // Config holds the configuration items
 type Config struct {
-	init   bool
-	Listen string `yaml:"listen"`
+	init     bool
+	Listen   string `yaml:"listen"`
+	LogLevel string `yaml:"log_level"`
 	// TLS     bool     `yaml:"tls"`
 	AutoTLS bool     `yaml:"tls_auto"`
 	Domains []string `yaml:"tls_domains"`
@@ -42,8 +44,19 @@ type Config struct {
 	Apps     []*AppConfig    `yaml:"apps"`
 	Docstore *DocstoreConfig `yaml:"docstore"`
 
-	// Code defiend config item
+	// Items defined with the CLI flags
 	ScanMode bool `yaml:"-"`
+}
+
+func (c *Config) LogLvl() log15.Lvl {
+	if c.LogLevel == "" {
+		c.LogLevel = "info"
+	}
+	lvl, err := log15.LvlFromString(c.LogLevel)
+	if err != nil {
+		panic(err)
+	}
+	return lvl
 }
 
 type DocstoreConfig struct {
