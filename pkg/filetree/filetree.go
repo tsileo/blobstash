@@ -39,7 +39,8 @@ import (
 var (
 	indexFile = "index.html"
 
-	FSKeyFmt = "_:filetree:fs:%s"
+	FSKeyFmt = "blobfs:root:%s"
+	// FSKeyFmt = "_:filetree:fs:%s"
 	// PermName     = "filetree"
 	// PermTreeName = "filetree:root:"
 	// PermWrite    = "write"
@@ -114,7 +115,7 @@ func (ft *FileTreeExt) Register(r *mux.Router, root *mux.Router, basicAuth func(
 	dirHandler := http.HandlerFunc(ft.dirHandler())
 	fileHandler := http.HandlerFunc(ft.fileHandler())
 
-	r.Handle("/fs/{type}/{name}", http.HandlerFunc(ft.fsHandler()))
+	r.Handle("/fs/{type}/{name}/", http.HandlerFunc(ft.fsHandler()))
 	r.Handle("/fs/{type}/{name}/{path:.+}", http.HandlerFunc(ft.fsHandler()))
 	// r.Handle("/fs", http.HandlerFunc(ft.fsHandler()))
 	// r.Handle("/fs/{name}", http.HandlerFunc(ft.fsByNameHandler()))
@@ -282,6 +283,7 @@ func (ft *FileTreeExt) FS(name string) (*FS, error) {
 
 // Root fetch the FS root, and creates a new one if `create` is set to true (but it won't be savec automatically in the BlobStore
 func (fs *FS) Root(create bool) (*Node, error) {
+	fs.ft.log.Info("Root", "fs", fs)
 	node, err := fs.ft.nodeByRef(fs.Ref)
 	switch err {
 	case clientutil.ErrBlobNotFound:
@@ -316,6 +318,7 @@ func (fs *FS) Path(path string, create bool) (*Node, error) {
 		return nil, err
 	}
 	if path == "/" {
+		fs.ft.log.Info("returning root")
 		return node, nil
 	}
 	split := strings.Split(path[1:], "/")
@@ -461,6 +464,7 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 		case "GET", "HEAD":
 			node, err := fs.Path(path, false)
 			switch err {
+			case nil:
 			case clientutil.ErrBlobNotFound:
 				// Returns a 404 if the blob/children is not found
 				w.WriteHeader(http.StatusNotFound)
@@ -512,7 +516,6 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-
 	}
 }
 
