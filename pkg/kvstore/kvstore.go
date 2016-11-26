@@ -203,6 +203,7 @@ func (kv *KvStore) getHandler() func(http.ResponseWriter, *http.Request) {
 				ctx = ctxutil.WithNamespace(ctx, ns)
 			}
 
+			// FIXME(tsileo): read the version from query args
 			item, err := kv.Get(ctx, key, -1)
 			if err != nil {
 				if err == vkv.ErrNotFound {

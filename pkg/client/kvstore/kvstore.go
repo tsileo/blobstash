@@ -69,7 +69,7 @@ func (kvs *KvStore) Put(key, ref string, pdata []byte, version int) (*response.K
 }
 
 func (kvs *KvStore) Get(key string, version int) (*response.KeyValue, error) {
-	resp, err := kvs.client.DoReq("GET", "/api/kvstore/key/"+key, nil, nil)
+	resp, err := kvs.client.DoReq("GET", fmt.Sprintf("/api/kvstore/key/%s?version=%v", key, version), nil, nil)
 	if err != nil {
 		return nil, err
 	}
