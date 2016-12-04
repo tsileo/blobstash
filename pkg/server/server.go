@@ -3,6 +3,7 @@ package server
 import (
 	"crypto/tls"
 	"fmt"
+	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/net/context"
 	_ "io"
 	_ "log"
@@ -26,10 +27,8 @@ import (
 	"github.com/tsileo/blobstash/pkg/nsdb"
 	"github.com/tsileo/blobstash/pkg/synctable"
 
-	"github.com/dkumor/acmewrapper"
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
-	"github.com/xenolf/lego/acme"
 )
 
 type App interface {
@@ -164,41 +163,20 @@ func (s *Server) Serve() error {
 		s.log.Info(fmt.Sprintf("listening on %v", listen))
 		reqLogger := httputil.LoggerMiddleware(s.log)
 		h := httputil.RecoverHandler(middleware.CorsMiddleware(reqLogger(middleware.Secure(s.router))))
-
 		if s.conf.AutoTLS {
-			w, err := acmewrapper.New(acmewrapper.Config{
-				Domains: s.conf.Domains,
-				Address: listen,
+			cacheDir := autocert.DirCache(filepath.Join(s.conf.ConfigDir(), config.LetsEncryptDir))
 
-				TLSCertFile: filepath.Join(s.conf.ConfigDir(), config.LetsEncryptDir, "cert.pem"),
-				TLSKeyFile:  filepath.Join(s.conf.ConfigDir(), config.LetsEncryptDir, "key.pem"),
-
-				RegistrationFile: filepath.Join(s.conf.ConfigDir(), config.LetsEncryptDir, "user.reg"),
-				PrivateKeyFile:   filepath.Join(s.conf.ConfigDir(), config.LetsEncryptDir, "user.pem"),
-				PrivateKeyType:   acme.EC384, // Use `elliptic.P384()` for the private key
-				TOSCallback:      acmewrapper.TOSAgree,
-			})
-
-			if err != nil {
-				panic(err)
+			m := autocert.Manager{
+				Prompt:     autocert.AcceptTOS,
+				HostPolicy: autocert.HostWhitelist(s.conf.Domains...),
+				Cache:      cacheDir,
 			}
-
-			tlsconfig := w.TLSConfig()
-			tlsconfig.MinVersion = tls.VersionSSL30
-
-			listener, err := tls.Listen("tcp", listen, tlsconfig)
-			if err != nil {
-				panic(err)
-			}
-
-			// To enable http2, we need http.Server to have reference to tlsconfig
-			// https://github.com/golang/go/issues/14374
-			server := &http.Server{
+			s := &http.Server{
 				Addr:      listen,
 				Handler:   h,
-				TLSConfig: tlsconfig,
+				TLSConfig: &tls.Config{GetCertificate: m.GetCertificate},
 			}
-			server.Serve(listener)
+			s.ListenAndServeTLS("", "")
 		} else {
 			http.ListenAndServe(listen, h)
 		}
