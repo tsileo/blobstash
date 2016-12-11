@@ -394,7 +394,7 @@ func (docstore *DocStore) UploadAttachment(path string) (string, error) {
 }
 
 func (docstore *DocStore) Collections() ([]string, error) {
-	resp, err := docstore.client.DoReq("GET", "/api/ext/docstore/v1/", nil, nil)
+	resp, err := docstore.client.DoReq("GET", "/api/docstore/", nil, nil)
 	if err != nil {
 		return nil, err
 	}
