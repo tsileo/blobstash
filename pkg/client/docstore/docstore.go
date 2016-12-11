@@ -8,7 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/url"
+	"os"
+	"path/filepath"
 	"time"
 	// "reflect"
 	"strconv"
@@ -138,7 +141,7 @@ func (col *Collection) Insert(idoc interface{}, opts *InsertOpts) (*ID, error) {
 	}
 	defer resp.Body.Close()
 	switch resp.StatusCode {
-	case 204:
+	case 204, 200, 201:
 		_id, err := IDFromHex(resp.Header.Get("BlobStash-DocStore-Doc-Id"))
 		if err != nil {
 			return nil, err
@@ -148,7 +151,7 @@ func (col *Collection) Insert(idoc interface{}, opts *InsertOpts) (*ID, error) {
 	default:
 		var body bytes.Buffer
 		body.ReadFrom(resp.Body)
-		return nil, fmt.Errorf("failed to insert doc: %v", body.String())
+		return nil, fmt.Errorf("failed to insert doc (%d): %v", resp.StatusCode, body.String())
 	}
 }
 
@@ -200,7 +203,7 @@ func (col *Collection) GetID(id string, doc interface{}) error {
 
 type Iter struct {
 	col   *Collection
-	query string // JSON marshalled and URI encoded query
+	query *Query
 
 	Opts     *IterOpts // Contains the current `IterOpts`
 	LatestID string    // Needed for the subsequent API calls
@@ -229,8 +232,21 @@ func (iter *Iter) Next(res interface{}) bool {
 	if iter.closed {
 		return false
 	}
-	// FIXME(tsileo): support Lua query
-	resp, err := iter.col.docstore.client.DoReq("GET", fmt.Sprintf("/api/docstore/%s?cursor=%s", iter.col.col, iter.cursor), nil, nil)
+	u := fmt.Sprintf("/api/docstore/%s", iter.col.col)
+	qcnt := 0
+	if iter.cursor != "" {
+		u = u + "?cursor=" + iter.cursor
+		qcnt = 1
+	}
+	qqs := iter.query.ToQueryString()
+	if qqs != "" {
+		if qcnt == 0 {
+			u = u + "?" + qqs
+		} else {
+			u = u + "&" + qqs
+		}
+	}
+	resp, err := iter.col.docstore.client.DoReq("GET", u, nil, nil)
 	if err != nil {
 		iter.err = err
 		return false
@@ -268,24 +284,113 @@ func DefaultIterOtps() *IterOpts {
 	}
 }
 
-func (col *Collection) Iter(query map[string]interface{}, opts *IterOpts) (*Iter, error) {
+type Query struct {
+	StoredQuery     string
+	StoredQueryArgs interface{}
+
+	Query string
+
+	Script string
+}
+
+func (q *Query) ToQueryString() string {
+	if q.Query != "" {
+		return fmt.Sprintf("query=%s", url.QueryEscape(q.Query))
+	}
+	if q.Script != "" {
+		return fmt.Sprintf("script=%s", url.QueryEscape(q.Script))
+	}
+	if q.StoredQueryArgs != nil {
+		js, err := json.Marshal(q.StoredQueryArgs)
+		if err != nil {
+			panic(err)
+		}
+		return fmt.Sprintf("stored_query=%s&stored_query_args=%s", q.StoredQuery, url.QueryEscape(string(js)))
+	}
+	return ""
+}
+
+func (col *Collection) Iter(query *Query, opts *IterOpts) (*Iter, error) {
 	if opts == nil {
 		opts = DefaultIterOtps()
 	}
-	js, err := json.Marshal(query)
-	if err != nil {
-		return nil, err
+	if query == nil {
+		query = &Query{}
 	}
-	queryEscaped := url.QueryEscape(string(js))
 	return &Iter{
 		col:   col,
-		query: queryEscaped,
+		query: query,
 		Opts:  opts,
 	}, nil
 }
 
 type collectionResp struct {
 	Collections []string `json:"collections"`
+}
+
+func (docstore *DocStore) DownloadAttachment(ref, path string) error {
+	resp, err := docstore.client.DoReq("GET", "/api/filetree/file/"+ref, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case 200:
+		output, err := os.Create(path)
+		if err != nil {
+			return err
+		}
+		defer output.Close()
+		if _, err := io.Copy(output, resp.Body); err != nil {
+			return err
+		}
+		fmt.Printf("downloaded %s", path)
+		return nil
+	default:
+		var body bytes.Buffer
+		body.ReadFrom(resp.Body)
+		return fmt.Errorf("failed to insert doc: %v", body.String())
+	}
+}
+
+func (docstore *DocStore) UploadAttachment(path string) (string, error) {
+	bodyBuf := &bytes.Buffer{}
+	bodyWriter := multipart.NewWriter(bodyBuf)
+	fileWriter, err := bodyWriter.CreateFormFile("file", filepath.Base(path))
+	if err != nil {
+		return "", err
+	}
+
+	fh, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+
+	if _, err := io.Copy(fileWriter, fh); err != nil {
+		return "", err
+	}
+
+	contentType := bodyWriter.FormDataContentType()
+	bodyWriter.Close()
+	resp, err := docstore.client.DoReq("POST", "/api/filetree/upload", map[string]string{
+		"Content-Type": contentType,
+	}, bodyBuf)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case 200:
+		res := map[string]interface{}{}
+		if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+			return "", err
+		}
+		return res["ref"].(string), nil
+	default:
+		var body bytes.Buffer
+		body.ReadFrom(resp.Body)
+		return "", fmt.Errorf("failed to insert doc: %v", body.String())
+	}
 }
 
 func (docstore *DocStore) Collections() ([]string, error) {
