@@ -1022,7 +1022,8 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			ctx := ctxutil.WithNamespace(context.Background(), ns)
 			// Fetch the actual doc
 			doc := map[string]interface{}{}
-			if _, err = docstore.Fetch(collection, sid, &doc); err != nil {
+			_id, err = docstore.Fetch(collection, sid, &doc)
+			if err != nil {
 				if err == vkv.ErrNotFound {
 					// Document doesn't exist, returns a status 404
 					w.WriteHeader(http.StatusNotFound)
@@ -1044,19 +1045,24 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			}
 
 			// Parse the update query
-			var update map[string]interface{}
-			if err := json.Unmarshal(data, &update); err != nil {
+			var newDoc map[string]interface{}
+			if err := json.Unmarshal(data, &newDoc); err != nil {
 				panic(err)
 			}
 
 			// Field/key starting with `_` are forbidden, remove them
-			for k, _ := range update {
+			for k, _ := range newDoc {
 				if _, ok := reservedKeys[k]; ok {
-					delete(update, k)
+					delete(newDoc, k)
 				}
 			}
 
-			docstore.logger.Debug("Update", "_id", sid, "ns", ns, "new_doc", update)
+			data, err = json.Marshal(newDoc)
+			if err != nil {
+				panic(err)
+			}
+
+			docstore.logger.Debug("Update", "_id", sid, "ns", ns, "new_doc", newDoc)
 
 			// Compute the Blake2B hash and save the blob
 			hash := fmt.Sprintf("%x", blake2b.Sum256(data))
