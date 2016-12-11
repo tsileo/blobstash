@@ -129,10 +129,10 @@ func (col *Collection) Insert(idoc interface{}, opts *InsertOpts) (*ID, error) {
 		payload = bytes.NewReader(js)
 	}
 	headers := map[string]string{}
-	if opts.Indexed {
-		headers["BlobStash-DocStore-IndexFullText"] = "1"
-	}
-	resp, err := col.docstore.client.DoReq("POST", fmt.Sprintf("/api/ext/docstore/v1/%s", col.col), headers, payload)
+	// if opts.Indexed {
+	// 	headers["BlobStash-DocStore-IndexFullText"] = "1"
+	// }
+	resp, err := col.docstore.client.DoReq("POST", fmt.Sprintf("/api/docstore/%s", col.col), headers, payload)
 	if err != nil {
 		return nil, err
 	}
@@ -152,12 +152,13 @@ func (col *Collection) Insert(idoc interface{}, opts *InsertOpts) (*ID, error) {
 	}
 }
 
-func (col *Collection) UpdateID(id string, update map[string]interface{}) error {
-	js, err := json.Marshal(update)
+// Update the whole document
+func (col *Collection) UpdateID(id string, doc interface{}) error {
+	js, err := json.Marshal(doc)
 	if err != nil {
 		return err
 	}
-	resp, err := col.docstore.client.DoReq("POST", fmt.Sprintf("/api/ext/docstore/v1/%s/%s", col.col, id), nil, bytes.NewReader(js))
+	resp, err := col.docstore.client.DoReq("POST", fmt.Sprintf("/api/docstore/%s/%s", col.col, id), nil, bytes.NewReader(js))
 	if err != nil {
 		return err
 	}
@@ -174,7 +175,7 @@ func (col *Collection) UpdateID(id string, update map[string]interface{}) error 
 
 // Get retrieve the document, `doc` must a map[string]interface{} or a struct pointer.
 func (col *Collection) GetID(id string, doc interface{}) error {
-	resp, err := col.docstore.client.DoReq("GET", fmt.Sprintf("/api/ext/docstore/v1/%s/%s", col.col, id), nil, nil)
+	resp, err := col.docstore.client.DoReq("GET", fmt.Sprintf("/api/docstore/%s/%s", col.col, id), nil, nil)
 	if err != nil {
 		return err
 	}
@@ -228,7 +229,8 @@ func (iter *Iter) Next(res interface{}) bool {
 	if iter.closed {
 		return false
 	}
-	resp, err := iter.col.docstore.client.DoReq("GET", fmt.Sprintf("/api/ext/docstore/v1/%s?cursor=%s&query=%s", iter.col.col, iter.cursor, iter.query), nil, nil)
+	// FIXME(tsileo): support Lua query
+	resp, err := iter.col.docstore.client.DoReq("GET", fmt.Sprintf("/api/docstore/%s?cursor=%s", iter.col.col, iter.cursor), nil, nil)
 	if err != nil {
 		iter.err = err
 		return false
