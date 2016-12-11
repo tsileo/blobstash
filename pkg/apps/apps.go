@@ -6,6 +6,8 @@ import (
 	_ "io"
 	"io/ioutil"
 	"net/http"
+	rhttputil "net/http/httputil"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -49,6 +51,9 @@ func (app *App) visit(path string, f os.FileInfo, err error) error {
 }
 
 func (app *App) reload() error {
+	if app.path == "" {
+		return nil
+	}
 	app.index = map[string]os.FileInfo{}
 	if err := filepath.Walk(app.path, app.visit); err != nil {
 		return err
@@ -57,6 +62,9 @@ func (app *App) reload() error {
 }
 
 func (app *App) watch() {
+	if app.path == "" {
+		return
+	}
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		panic(err)
@@ -93,6 +101,10 @@ type App struct {
 	entrypoint string
 	domain     string
 	config     map[string]interface{}
+	auth       func(*http.Request) bool
+
+	proxyTarget *url.URL
+	proxy       *rhttputil.ReverseProxy
 
 	index map[string]os.FileInfo
 	log   log.Logger
@@ -110,6 +122,20 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 		log:        apps.log.New("app", appConf.Name),
 		mu:         sync.Mutex{},
 	}
+
+	if appConf.Username != "" || appConf.Password != "" {
+		app.auth = httputil.BasicAuthFunc(appConf.Username, appConf.Password)
+	}
+
+	if appConf.Proxy != "" {
+		// XXX(tsileo): only allow domain for proxy?
+		url, err := url.Parse(appConf.Proxy)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse proxy URL target: %v", err)
+		}
+		app.proxy = rhttputil.NewSingleHostReverseProxy(url)
+	}
+
 	// TODO(tsileo): check that `path` exists, create it if it doesn't exist?
 	app.log.Debug("new app")
 	return app, app.reload()
@@ -117,11 +143,26 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 
 // Serve the request for the given path
 func (app *App) serve(ctx context.Context, p string, w http.ResponseWriter, req *http.Request) {
+	if app.auth != nil {
+		if !app.auth(req) {
+			w.Header().Set("WWW-Authenticate", fmt.Sprintf("Basic realm=\"BlobStash App %s\"", app.name))
+			w.WriteHeader(http.StatusUnauthorized)
+		}
+		return
+	}
+
 	// Clean the path and check there's no double dot
 	p = path.Clean(p)
 	if containsDotDot(p) {
 		w.WriteHeader(500)
 		w.Write([]byte("Invalid URL path"))
+	}
+
+	if app.proxy != nil {
+		app.log.Info("Proxying request", "path", p)
+		req.URL.Path = p
+		app.proxy.ServeHTTP(w, req)
+		return
 	}
 
 	// Determine the default entry point if the path is the root

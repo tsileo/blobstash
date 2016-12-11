@@ -20,10 +20,12 @@ var (
 // AppConfig holds an app configuration items
 type AppConfig struct {
 	Name       string `yaml:"name"`
-	Path       string `yaml:"path"`
+	Path       string `yaml:"path"` // App path, optional?
 	Entrypoint string `yaml:"entrypoint"`
 	Domain     string `yaml:"domain"`
-	Auth       string `yaml:"auth"`
+	Username   string `yaml:"username"`
+	Password   string `yaml:"password"`
+	Proxy      string `yaml:"proxy"`
 
 	Config map[string]interface{} `yaml:"config"`
 }
