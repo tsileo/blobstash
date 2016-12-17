@@ -24,16 +24,24 @@ import (
 
 	luamod "github.com/tsileo/blobstash/pkg/apps/lua"
 	"github.com/tsileo/blobstash/pkg/apps/luautil"
+	"github.com/tsileo/blobstash/pkg/blob"
 	"github.com/tsileo/blobstash/pkg/config"
 	_ "github.com/tsileo/blobstash/pkg/ctxutil"
+	"github.com/tsileo/blobstash/pkg/filetree"
 	"github.com/tsileo/blobstash/pkg/httputil"
+	"github.com/tsileo/blobstash/pkg/hub"
 )
+
+// TODO(tsileo): at startup, scan all filetree FS and looks for app.yaml for registering
 
 // Apps holds the Apps manager data
 type Apps struct {
 	apps   map[string]*App
 	config *config.Config
+	ft     *filetree.FileTreeExt
+	hub    *hub.Hub
 	log    log.Logger
+	sync.Mutex
 }
 
 // Close cleanly shutdown thes AppsManager
@@ -139,6 +147,12 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 	// TODO(tsileo): check that `path` exists, create it if it doesn't exist?
 	app.log.Debug("new app")
 	return app, app.reload()
+}
+
+func (apps *Apps) appUpdateCallback(ctx context.Context, _ *blob.Blob, data interface{}) error {
+	// appUpdate := data.(*hub.AppUpdateData)
+	// FIXME(tsileo): update the configuration
+	return nil
 }
 
 // Serve the request for the given path
@@ -303,13 +317,16 @@ func (app *App) doLua(script string, r *http.Request, w http.ResponseWriter) err
 }
 
 // New initializes the Apps manager
-func New(logger log.Logger, conf *config.Config) (*Apps, error) {
+func New(logger log.Logger, conf *config.Config, ft *filetree.FileTreeExt, chub *hub.Hub) (*Apps, error) {
 	// var err error
 	apps := &Apps{
 		apps:   map[string]*App{},
+		ft:     ft,
 		log:    logger,
 		config: conf,
+		hub:    chub,
 	}
+	chub.Subscribe(hub.ScanBlob, "apps", apps.appUpdateCallback)
 	for _, appConf := range conf.Apps {
 		app, err := apps.newApp(appConf)
 		if err != nil {
@@ -340,6 +357,7 @@ func (apps *Apps) appHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	p := vars["path"]
+	req.URL.Path = "/" + p
 	app.serve(context.TODO(), "/"+p, w, req)
 }
 

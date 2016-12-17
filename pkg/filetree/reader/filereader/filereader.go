@@ -14,6 +14,8 @@ import (
 	"github.com/tsileo/blobstash/pkg/filetree/filetreeutil/meta"
 )
 
+// FIXME(tsileo): implements os.FileInfo
+
 const (
 	SEEK_SET int = 0 // seek relative to the origin of the file
 	SEEK_CUR int = 1 // seek relative to the current offset

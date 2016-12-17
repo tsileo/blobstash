@@ -86,7 +86,7 @@ func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
 		return err
 	}
 	// TODO(tsileo): make this async with the put blob
-	if err := bs.hub.NewBlobEvent(ctx, blob); err != nil {
+	if err := bs.hub.NewBlobEvent(ctx, blob, nil); err != nil {
 		return err
 	}
 	bs.log.Debug("blob saved", "hash", blob.Hash)
@@ -132,7 +132,7 @@ func (bs *BlobStore) enumerate(ctx context.Context, start, end string, limit int
 			if err != nil {
 				return nil, err
 			}
-			if err := bs.hub.ScanBlobEvent(ctx, &blob.Blob{Hash: cblob.Hash, Data: fullblob}); err != nil {
+			if err := bs.hub.ScanBlobEvent(ctx, &blob.Blob{Hash: cblob.Hash, Data: fullblob}, nil); err != nil {
 				return nil, err
 			}
 		}

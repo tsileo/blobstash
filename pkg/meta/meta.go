@@ -43,7 +43,7 @@ func New(logger log.Logger, chub *hub.Hub) (*Meta, error) {
 	return meta, nil
 }
 
-func (m *Meta) newBlobCallback(ctx context.Context, blob *blob.Blob) error {
+func (m *Meta) newBlobCallback(ctx context.Context, blob *blob.Blob, _ interface{}) error {
 	metaType, metaData, isMeta := IsMetaBlob(blob.Data)
 	m.log.Debug("newBlobCallback", "is_meta", isMeta, "meta_type", metaType, "blob_size", len(blob.Data))
 	if isMeta {

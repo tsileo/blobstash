@@ -89,13 +89,13 @@ func New(conf *config.Config) (*Server, error) {
 	synctable := synctable.New(logger.New("app", "sync"), conf, blobstore, nsDB)
 	synctable.Register(s.router.PathPrefix("/api/sync").Subrouter(), basicAuth)
 
-	filetree, err := filetree.New(logger.New("app", "filetree"), conf, authFunc, kvstore, blobstore)
+	filetree, err := filetree.New(logger.New("app", "filetree"), conf, authFunc, kvstore, blobstore, hub)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize filetree app: %v", err)
 	}
 	filetree.Register(s.router.PathPrefix("/api/filetree").Subrouter(), s.router, basicAuth)
 
-	apps, err := apps.New(logger.New("app", "apps"), conf)
+	apps, err := apps.New(logger.New("app", "apps"), conf, filetree, hub)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize filetree app: %v", err)
 	}

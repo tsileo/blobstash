@@ -1,7 +1,3 @@
-/*
-
- */
-
 package nsdb
 
 import (
@@ -85,7 +81,7 @@ func New(logger log.Logger, conf *config.Config, blobStore *blobstore.BlobStore,
 	return nsdb, nil
 }
 
-func (db *DB) newBlobCallback(ctx context.Context, blob *blob.Blob) error {
+func (db *DB) newBlobCallback(ctx context.Context, blob *blob.Blob, _ interface{}) error {
 	metaType, _, isMeta := meta.IsMetaBlob(blob.Data)
 	db.log.Debug("newBlobCallback", "is_meta", isMeta, "meta_type", metaType)
 	if !(isMeta && metaType == NsType) {

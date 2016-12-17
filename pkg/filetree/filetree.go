@@ -6,6 +6,7 @@ import (
 	_ "encoding/xml"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
 	"golang.org/x/net/context"
+	"gopkg.in/yaml.v2"
 
 	"github.com/tsileo/blobstash/pkg/blob"
 	"github.com/tsileo/blobstash/pkg/blobstore"
@@ -27,6 +29,7 @@ import (
 	"github.com/tsileo/blobstash/pkg/httputil"
 	"github.com/tsileo/blobstash/pkg/httputil/bewit"
 	"github.com/tsileo/blobstash/pkg/httputil/resize"
+	"github.com/tsileo/blobstash/pkg/hub"
 	"github.com/tsileo/blobstash/pkg/kvstore"
 	"github.com/tsileo/blobstash/pkg/vkv"
 )
@@ -53,6 +56,7 @@ type FileTreeExt struct {
 	kvStore     *kvstore.KvStore
 	blobStore   *blobstore.BlobStore
 	conf        *config.Config
+	hub         *hub.Hub
 	sharingCred *bewit.Cred
 	authFunc    func(*http.Request) bool
 	shareTTL    time.Duration
@@ -85,7 +89,7 @@ type FS struct {
 }
 
 // New initializes the `DocStoreExt`
-func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bool, kvStore *kvstore.KvStore, blobStore *blobstore.BlobStore) (*FileTreeExt, error) {
+func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bool, kvStore *kvstore.KvStore, blobStore *blobstore.BlobStore, chub *hub.Hub) (*FileTreeExt, error) {
 	logger.Debug("init")
 	return &FileTreeExt{
 		conf:      conf,
@@ -97,6 +101,7 @@ func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bo
 		},
 		authFunc: authFunc,
 		shareTTL: 1 * time.Hour,
+		hub:      chub,
 		log:      logger,
 	}, nil
 }
@@ -116,6 +121,7 @@ func (ft *FileTreeExt) Register(r *mux.Router, root *mux.Router, basicAuth func(
 	fileHandler := http.HandlerFunc(ft.fileHandler())
 
 	r.Handle("/fs/{type}/{name}/", http.HandlerFunc(ft.fsHandler()))
+	r.Handle("/fs/{type}/{name}/_app", http.HandlerFunc(ft.fsAppHandler()))
 	r.Handle("/fs/{type}/{name}/{path:.+}", http.HandlerFunc(ft.fsHandler()))
 	// r.Handle("/fs", http.HandlerFunc(ft.fsHandler()))
 	// r.Handle("/fs/{name}", http.HandlerFunc(ft.fsByNameHandler()))
@@ -306,20 +312,21 @@ func (fs *FS) Root(create bool) (*Node, error) {
 }
 
 // Path returns the `Node` at the given path, create it if requested
-func (fs *FS) Path(path string, create bool) (*Node, error) {
+func (fs *FS) Path(path string, create bool) (*Node, *meta.Meta, error) {
 	node, err := fs.Root(create)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var prev *Node
+	var cmeta *meta.Meta
 	node.fs = fs
 	node.parent = nil
 	if err := fs.ft.fetchDir(node, 1, 1); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if path == "/" {
 		fs.ft.log.Info("returning root")
-		return node, nil
+		return nil, nil, err
 	}
 	split := strings.Split(path[1:], "/")
 	// fmt.Printf("split res=%+v\n", split)
@@ -333,10 +340,10 @@ func (fs *FS) Path(path string, create bool) (*Node, error) {
 			if child.Name == p {
 				node, err = fs.ft.nodeByRef(child.Hash)
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				if err := fs.ft.fetchDir(node, 1, 1); err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				node.parent = prev
 				node.fs = fs
@@ -349,26 +356,26 @@ func (fs *FS) Path(path string, create bool) (*Node, error) {
 		// At this point, we found no node at the given path
 		if !found {
 			if !create {
-				return nil, clientutil.ErrBlobNotFound
+				return nil, nil, clientutil.ErrBlobNotFound
 			}
 			// Create a new dir since it doesn't exist
-			meta := meta.NewMeta()
-			meta.Name = p
-			meta.Type = "dir"
+			cmeta = meta.NewMeta()
+			cmeta.Name = p
+			cmeta.Type = "dir"
 			if i == pathCount-1 {
-				meta.Type = "file"
+				cmeta.Type = "file"
 			}
 			//  we don't set the meta type, it will be set on Update if it doesn't exist
-			node, err = metaToNode(meta)
+			node, err = metaToNode(cmeta)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			node.parent = prev
 			node.fs = fs
 			// fmt.Printf("split:%+v created:%+v\n", p, node)
 		}
 	}
-	return node, nil
+	return node, cmeta, nil
 }
 func (ft *FileTreeExt) indexHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -438,6 +445,67 @@ func (ft *FileTreeExt) uploadHandler() func(http.ResponseWriter, *http.Request) 
 	}
 }
 
+type AppConfig struct {
+	Name string `yaml:"name"`
+}
+
+func (ft *FileTreeExt) fsAppHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		fsName := vars["name"]
+		refType := vars["type"]
+		var fs *FS
+		var err error
+		switch refType {
+		case "ref":
+			fs = &FS{
+				Ref: fsName,
+				ft:  ft,
+			}
+		case "fs":
+			fs, err = ft.FS(fsName)
+			if err != nil {
+				panic(err)
+			}
+		default:
+			panic(fmt.Errorf("Unknown type \"%s\"", refType))
+		}
+		switch r.Method {
+		case "POST":
+			_, cmeta, err := fs.Path("/.app.yaml", false)
+			switch err {
+			case nil:
+			case clientutil.ErrBlobNotFound:
+				// Returns a 404 if the blob/children is not found
+				w.WriteHeader(http.StatusNotFound)
+				return
+			default:
+				panic(err)
+			}
+			f := filereader.NewFile(ft.blobStore, cmeta)
+			defer f.Close()
+			yamlData, err := ioutil.ReadAll(f)
+			if err != nil {
+				panic(err)
+			}
+			appConfig := &AppConfig{}
+			if err := yaml.Unmarshal(yamlData, appConfig); err != nil {
+				panic(err)
+			}
+			if err := ft.hub.NewAppUpdateEvent(context.TODO(), nil, &hub.AppUpdateData{
+				Name: appConfig.Name,
+				Ref:  fs.Ref,
+			}); err != nil {
+				panic(err)
+			}
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+	}
+}
+
 func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
@@ -462,7 +530,7 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 		}
 		switch r.Method {
 		case "GET", "HEAD":
-			node, err := fs.Path(path, false)
+			node, _, err := fs.Path(path, false)
 			switch err {
 			case nil:
 			case clientutil.ErrBlobNotFound:
@@ -483,7 +551,7 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 		case "POST":
 			// FIXME(tsileo): add a way to upload a file as public ? like AWS S3 public-read canned ACL
 			// Add a new node in the FS at the given path
-			node, err := fs.Path(path, true)
+			node, _, err := fs.Path(path, true)
 			if err != nil {
 				panic(err)
 			}
