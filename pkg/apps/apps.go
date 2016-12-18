@@ -162,8 +162,8 @@ func (app *App) serve(ctx context.Context, p string, w http.ResponseWriter, req 
 		if !app.auth(req) {
 			w.Header().Set("WWW-Authenticate", fmt.Sprintf("Basic realm=\"BlobStash App %s\"", app.name))
 			w.WriteHeader(http.StatusUnauthorized)
+			return
 		}
-		return
 	}
 
 	// Clean the path and check there's no double dot
@@ -365,7 +365,7 @@ func (apps *Apps) appHandler(w http.ResponseWriter, req *http.Request) {
 
 func (apps *Apps) subdomainHandler(app *App) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		apps.log.Info("subdomain handler")
+		apps.log.Info("subdomain handler", "app", app)
 		app.serve(context.TODO(), r.URL.Path, w, r)
 	}
 }
