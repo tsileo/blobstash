@@ -142,6 +142,7 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 			return nil, fmt.Errorf("failed to parse proxy URL target: %v", err)
 		}
 		app.proxy = rhttputil.NewSingleHostReverseProxy(url)
+		app.log.Info("proxy registered", "url", url)
 	}
 
 	// TODO(tsileo): check that `path` exists, create it if it doesn't exist?
@@ -172,6 +173,7 @@ func (app *App) serve(ctx context.Context, p string, w http.ResponseWriter, req 
 		w.Write([]byte("Invalid URL path"))
 	}
 
+	app.log.Info("Serving", "app", app)
 	if app.proxy != nil {
 		app.log.Info("Proxying request", "path", p)
 		req.URL.Path = p
@@ -363,6 +365,7 @@ func (apps *Apps) appHandler(w http.ResponseWriter, req *http.Request) {
 
 func (apps *Apps) subdomainHandler(app *App) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		apps.log.Info("subdomain handler")
 		app.serve(context.TODO(), r.URL.Path, w, r)
 	}
 }

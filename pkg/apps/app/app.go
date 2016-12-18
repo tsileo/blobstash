@@ -121,6 +121,7 @@ func (app *App) Serve(ctx context.Context, w http.ResponseWriter, req *http.Requ
 	}
 	if f == nil {
 		handle404(w)
+		return
 	}
 	// if fi, ok := app.index[p[1:]]; ok {
 	// 	// Open the file
