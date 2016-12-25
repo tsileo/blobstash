@@ -2,6 +2,7 @@ package server
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/net/context"
@@ -43,8 +44,9 @@ type Server struct {
 
 	blobstore *blobstore.BlobStore
 
-	shutdown chan struct{}
-	wg       sync.WaitGroup
+	hostWhitelist map[string]bool
+	shutdown      chan struct{}
+	wg            sync.WaitGroup
 }
 
 func New(conf *config.Config) (*Server, error) {
@@ -53,11 +55,12 @@ func New(conf *config.Config) (*Server, error) {
 	logger.SetHandler(log.LvlFilterHandler(conf.LogLvl(), log.StreamHandler(os.Stdout, log.TerminalFormat())))
 	var wg sync.WaitGroup
 	s := &Server{
-		router:   mux.NewRouter().StrictSlash(true),
-		conf:     conf,
-		log:      logger,
-		wg:       wg,
-		shutdown: make(chan struct{}),
+		router:        mux.NewRouter().StrictSlash(true),
+		conf:          conf,
+		hostWhitelist: map[string]bool{},
+		log:           logger,
+		wg:            wg,
+		shutdown:      make(chan struct{}),
 	}
 	authFunc, basicAuth := middleware.NewBasicAuth(conf)
 	hub := hub.New(logger.New("app", "hub"))
@@ -95,7 +98,7 @@ func New(conf *config.Config) (*Server, error) {
 	}
 	filetree.Register(s.router.PathPrefix("/api/filetree").Subrouter(), s.router, basicAuth)
 
-	apps, err := apps.New(logger.New("app", "apps"), conf, filetree, hub)
+	apps, err := apps.New(logger.New("app", "apps"), conf, filetree, hub, s.whitelistHosts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize filetree app: %v", err)
 	}
@@ -154,6 +157,22 @@ func (s *Server) Bootstrap() error {
 	return nil
 }
 
+func (s *Server) hostPolicy(hosts ...string) autocert.HostPolicy {
+	s.whitelistHosts(hosts...)
+	return func(_ context.Context, host string) error {
+		if !s.hostWhitelist[host] {
+			return errors.New("blobstash: tls host not configured")
+		}
+		return nil
+	}
+}
+
+func (s *Server) whitelistHosts(hosts ...string) {
+	for _, h := range hosts {
+		s.hostWhitelist[h] = true
+	}
+}
+
 func (s *Server) Serve() error {
 	go func() {
 		listen := config.DefaultListen
@@ -168,7 +187,7 @@ func (s *Server) Serve() error {
 
 			m := autocert.Manager{
 				Prompt:     autocert.AcceptTOS,
-				HostPolicy: autocert.HostWhitelist(s.conf.Domains...),
+				HostPolicy: s.hostPolicy(s.conf.Domains...),
 				Cache:      cacheDir,
 			}
 			s := &http.Server{

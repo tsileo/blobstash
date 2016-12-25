@@ -36,11 +36,12 @@ import (
 
 // Apps holds the Apps manager data
 type Apps struct {
-	apps   map[string]*App
-	config *config.Config
-	ft     *filetree.FileTreeExt
-	hub    *hub.Hub
-	log    log.Logger
+	apps            map[string]*App
+	config          *config.Config
+	ft              *filetree.FileTreeExt
+	hub             *hub.Hub
+	hostWhitelister func(...string)
+	log             log.Logger
 	sync.Mutex
 }
 
@@ -151,7 +152,13 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 }
 
 func (apps *Apps) appUpdateCallback(ctx context.Context, _ *blob.Blob, data interface{}) error {
-	// appUpdate := data.(*hub.AppUpdateData)
+	appUpdate := data.(*hub.AppUpdateData)
+	appConfig := &config.AppConfig{}
+	if err := yaml.Unmarshal(appUpdate.RawAppConfig, &appConfig); err != nil {
+		return err
+	}
+	appUpdate.Name
+	appUpdate.Ref
 	// FIXME(tsileo): update the configuration
 	return nil
 }
@@ -319,14 +326,15 @@ func (app *App) doLua(script string, r *http.Request, w http.ResponseWriter) err
 }
 
 // New initializes the Apps manager
-func New(logger log.Logger, conf *config.Config, ft *filetree.FileTreeExt, chub *hub.Hub) (*Apps, error) {
+func New(logger log.Logger, conf *config.Config, ft *filetree.FileTreeExt, chub *hub.Hub, hostWhitelister func(...string)) (*Apps, error) {
 	// var err error
 	apps := &Apps{
-		apps:   map[string]*App{},
-		ft:     ft,
-		log:    logger,
-		config: conf,
-		hub:    chub,
+		apps:            map[string]*App{},
+		ft:              ft,
+		log:             logger,
+		config:          conf,
+		hub:             chub,
+		hostWhitelister: hostWhitelister,
 	}
 	chub.Subscribe(hub.ScanBlob, "apps", apps.appUpdateCallback)
 	for _, appConf := range conf.Apps {
