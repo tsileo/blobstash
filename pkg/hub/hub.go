@@ -19,8 +19,9 @@ const (
 )
 
 type AppUpdateData struct {
-	Ref  string `json:"ref"`
-	Name string `json:"name"`
+	Ref          string
+	Name         string
+	RawAppConfig []byte
 }
 
 type Hub struct {
