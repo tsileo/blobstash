@@ -1,6 +1,8 @@
 package filetree
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
 	_ "encoding/json"
 	_ "encoding/xml"
@@ -127,6 +129,7 @@ func (ft *FileTreeExt) Register(r *mux.Router, root *mux.Router, basicAuth func(
 	// r.Handle("/fs/{name}", http.HandlerFunc(ft.fsByNameHandler()))
 
 	r.Handle("/upload", http.HandlerFunc(ft.uploadHandler()))
+	r.Handle("/zip", http.HandlerFunc(ft.zipHandler()))
 
 	// Hook the standard endpint
 	r.Handle("/dir/{ref}", dirHandler)
@@ -266,21 +269,23 @@ func (ft *FileTreeExt) fetchDir(n *Node, depth, maxDepth int) error {
 }
 
 // FS fetch the FileSystem by name, returns an empty one if not found
-func (ft *FileTreeExt) FS(name string) (*FS, error) {
+func (ft *FileTreeExt) FS(name string, newState bool) (*FS, error) {
 	fs := &FS{}
-	kv, err := ft.kvStore.Get(context.TODO(), fmt.Sprintf(FSKeyFmt, name), -1)
-	if err != nil && err != vkv.ErrNotFound {
-		return nil, err
-	}
-	switch err {
-	case nil:
-		if err := json.Unmarshal([]byte(kv.Data), fs); err != nil {
+	if !newState {
+		kv, err := ft.kvStore.Get(context.TODO(), fmt.Sprintf(FSKeyFmt, name), -1)
+		if err != nil && err != vkv.ErrNotFound {
 			return nil, err
 		}
-	case vkv.ErrNotFound:
-		// XXX(tsileo): should the `ErrNotFound` be returned here?
-	default:
-		return nil, err
+		switch err {
+		case nil:
+			if err := json.Unmarshal([]byte(kv.Data), fs); err != nil {
+				return nil, err
+			}
+		case vkv.ErrNotFound:
+			// XXX(tsileo): should the `ErrNotFound` be returned here?
+		default:
+			return nil, err
+		}
 	}
 	fs.Name = name
 	fs.ft = ft
@@ -326,7 +331,7 @@ func (fs *FS) Path(path string, create bool) (*Node, *meta.Meta, error) {
 	}
 	if path == "/" {
 		fs.ft.log.Info("returning root")
-		return nil, nil, err
+		return node, cmeta, err
 	}
 	split := strings.Split(path[1:], "/")
 	// fmt.Printf("split res=%+v\n", split)
@@ -419,6 +424,53 @@ func (ft *FileTreeExt) buildIndex(path string, node *Node) map[string]string {
 	return out
 }
 
+func (ft *FileTreeExt) zipHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		body, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			panic(err)
+		}
+
+		fs, err := ft.FS(r.URL.Query().Get("name"), true)
+		if err != nil {
+			panic(err)
+		}
+
+		zr, err := zip.NewReader(bytes.NewReader(body), r.ContentLength)
+		if err != nil {
+			panic(err)
+		}
+
+		for _, zf := range zr.File {
+			path := filepath.Join("/", zf.Name)
+			node, _, err := fs.Path(path, true)
+			if err != nil {
+				panic(err)
+			}
+			uploader := writer.NewUploader(&BlobStore{ft.blobStore})
+
+			// Create/save me Meta
+			file, err := zf.Open()
+			meta, err := uploader.PutReader(filepath.Base(path), file)
+			if err != nil {
+				panic(err)
+			}
+			file.Close()
+
+			// Update the Node with the new Meta
+			// fmt.Printf("uploaded meta=%+v\nold node=%+v", meta, node)
+			if _, err := ft.Update(node, meta); err != nil {
+				panic(err)
+			}
+
+		}
+	}
+}
+
 // Handle multipart form upload to create a new Node (outside of any FS)
 func (ft *FileTreeExt) uploadHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -463,7 +515,7 @@ func (ft *FileTreeExt) fsAppHandler() func(http.ResponseWriter, *http.Request) {
 				ft:  ft,
 			}
 		case "fs":
-			fs, err = ft.FS(fsName)
+			fs, err = ft.FS(fsName, false)
 			if err != nil {
 				panic(err)
 			}
@@ -521,7 +573,7 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 				ft:  ft,
 			}
 		case "fs":
-			fs, err = ft.FS(fsName)
+			fs, err = ft.FS(fsName, false)
 			if err != nil {
 				panic(err)
 			}
