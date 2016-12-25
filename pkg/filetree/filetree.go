@@ -44,6 +44,9 @@ import (
 var (
 	indexFile = "index.html"
 
+	// FIXME(tsile): check forbidden
+	forbidden = map[string]bool{"app.yaml": true}
+
 	FSKeyFmt = "blobfs:root:%s"
 	// FSKeyFmt = "_:filetree:fs:%s"
 	// PermName     = "filetree"
@@ -122,14 +125,14 @@ func (ft *FileTreeExt) Register(r *mux.Router, root *mux.Router, basicAuth func(
 	dirHandler := http.HandlerFunc(ft.dirHandler())
 	fileHandler := http.HandlerFunc(ft.fileHandler())
 
-	r.Handle("/fs/{type}/{name}/", http.HandlerFunc(ft.fsHandler()))
-	r.Handle("/fs/{type}/{name}/_app", http.HandlerFunc(ft.fsAppHandler()))
-	r.Handle("/fs/{type}/{name}/{path:.+}", http.HandlerFunc(ft.fsHandler()))
+	r.Handle("/fs/{type}/{name}/", basicAuth(http.HandlerFunc(ft.fsHandler())))
+	r.Handle("/fs/{type}/{name}/_app", basicAuth(http.HandlerFunc(ft.fsAppHandler())))
+	r.Handle("/fs/{type}/{name}/{path:.+}", basicAuth(http.HandlerFunc(ft.fsHandler())))
 	// r.Handle("/fs", http.HandlerFunc(ft.fsHandler()))
 	// r.Handle("/fs/{name}", http.HandlerFunc(ft.fsByNameHandler()))
 
-	r.Handle("/upload", http.HandlerFunc(ft.uploadHandler()))
-	r.Handle("/zip", http.HandlerFunc(ft.zipHandler()))
+	r.Handle("/upload", basicAuth(http.HandlerFunc(ft.uploadHandler())))
+	r.Handle("/zip", basicAuth(http.HandlerFunc(ft.zipHandler())))
 
 	// Hook the standard endpint
 	r.Handle("/dir/{ref}", dirHandler)
@@ -168,11 +171,11 @@ func (ft *FileTreeExt) Update(n *Node, m *meta.Meta) (*Node, error) {
 	}
 	newNode.fs = n.fs
 	newNode.parent = n.parent
-	fmt.Printf("\n\n\n###Update: n=%+v\nn.meta=%+v\nn.parent=%+v\nm=%+v\nnewNode=%+v\n\n\n###", n, n.meta, n.parent, m, newNode)
-	if n.parent != nil {
-		fmt.Printf("n.parent.meta=%+v\n", n.parent.meta)
+	// fmt.Printf("\n\n\n###Update: n=%+v\nn.meta=%+v\nn.parent=%+v\nm=%+v\nnewNode=%+v\n\n\n###", n, n.meta, n.parent, m, newNode)
+	// if n.parent != nil {
+	// 	fmt.Printf("n.parent.meta=%+v\n", n.parent.meta)
 
-	}
+	// }
 	if n.parent == nil {
 		n.fs.Ref = newNode.Hash
 		js, err := json.Marshal(n.fs)
@@ -204,7 +207,7 @@ func (ft *FileTreeExt) Update(n *Node, m *meta.Meta) (*Node, error) {
 
 	// Update the node  modtime
 	newNode.parent.meta.ModTime = time.Now().Format(meta.ModTimeFmt)
-	fmt.Printf("saving parent meta: %+v\n", newNode.parent.meta)
+	// fmt.Printf("saving parent meta: %+v\n", newNode.parent.meta)
 	newRef, data := newNode.parent.meta.Json()
 	newNode.parent.Hash = newRef
 	newNode.parent.meta.Hash = newRef
@@ -430,6 +433,11 @@ func (ft *FileTreeExt) zipHandler() func(http.ResponseWriter, *http.Request) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+
+		if r.URL.Query().Get("name") == "" {
+			panic("missing name")
+		}
+
 		body, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			panic(err)
@@ -451,6 +459,18 @@ func (ft *FileTreeExt) zipHandler() func(http.ResponseWriter, *http.Request) {
 			if err != nil {
 				panic(err)
 			}
+			if zf.FileInfo().IsDir() {
+				cmeta := meta.NewMeta()
+				cmeta.Name = filepath.Base(path)
+				cmeta.Type = "dir"
+
+				if _, err := ft.Update(node, cmeta); err != nil {
+					panic(err)
+				}
+
+				// Skip dir as we won't display them
+				continue
+			}
 			uploader := writer.NewUploader(&BlobStore{ft.blobStore})
 
 			// Create/save me Meta
@@ -466,7 +486,26 @@ func (ft *FileTreeExt) zipHandler() func(http.ResponseWriter, *http.Request) {
 			if _, err := ft.Update(node, meta); err != nil {
 				panic(err)
 			}
+		}
 
+		_, cmeta, err := fs.Path("/.app.yaml", false)
+		switch err {
+		case nil:
+		case clientutil.ErrBlobNotFound:
+		default:
+			panic(err)
+		}
+		f := filereader.NewFile(ft.blobStore, cmeta)
+		defer f.Close()
+		yamlData, err := ioutil.ReadAll(f)
+
+		// FIXME(tsileo): fire an app if needed
+		if err := ft.hub.NewAppUpdateEvent(context.TODO(), nil, &hub.AppUpdateData{
+			Name:         r.URL.Query().Get("name"),
+			Ref:          fs.Ref,
+			RawAppConfig: yamlData,
+		}); err != nil {
+			panic(err)
 		}
 	}
 }
@@ -495,10 +534,6 @@ func (ft *FileTreeExt) uploadHandler() func(http.ResponseWriter, *http.Request) 
 		}
 		httputil.WriteJSON(w, node)
 	}
-}
-
-type AppConfig struct {
-	Name string `yaml:"name"`
 }
 
 func (ft *FileTreeExt) fsAppHandler() func(http.ResponseWriter, *http.Request) {
@@ -540,16 +575,16 @@ func (ft *FileTreeExt) fsAppHandler() func(http.ResponseWriter, *http.Request) {
 			if err != nil {
 				panic(err)
 			}
-			appConfig := &AppConfig{}
-			if err := yaml.Unmarshal(yamlData, appConfig); err != nil {
-				panic(err)
-			}
-			if err := ft.hub.NewAppUpdateEvent(context.TODO(), nil, &hub.AppUpdateData{
-				Name: appConfig.Name,
-				Ref:  fs.Ref,
-			}); err != nil {
-				panic(err)
-			}
+			// appConfig := &AppConfig{}
+			// if err := yaml.Unmarshal(yamlData, appConfig); err != nil {
+			// 	panic(err)
+			// }
+			// if err := ft.hub.NewAppUpdateEvent(context.TODO(), nil, &hub.AppUpdateData{
+			// 	Name: appConfig.Name,
+			// 	Ref:  fs.Ref,
+			// }); err != nil {
+			// 	panic(err)
+			// }
 			w.WriteHeader(http.StatusNoContent)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
