@@ -344,7 +344,6 @@ func (docstore *DocStore) DownloadAttachment(ref, path string) error {
 		if _, err := io.Copy(output, resp.Body); err != nil {
 			return err
 		}
-		fmt.Printf("downloaded %s", path)
 		return nil
 	default:
 		var body bytes.Buffer
