@@ -32,6 +32,13 @@ type EntryPoint struct {
 	Domain   string `yaml:"domain"`
 }
 
+type AppConfig struct {
+	Name       string      `yaml:"name"`
+	Username   string      `yaml:"username"`
+	Password   string      `yaml:"password"`
+	EntryPoint *EntryPoint `yaml:"entrypoint"`
+}
+
 // App handle an app meta data
 type App struct {
 	Name       string

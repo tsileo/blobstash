@@ -22,6 +22,7 @@ import (
 	"github.com/yuin/gopher-lua"
 	"golang.org/x/net/context"
 
+	_ "github.com/tsileo/blobstash/pkg/apps/app"
 	luamod "github.com/tsileo/blobstash/pkg/apps/lua"
 	"github.com/tsileo/blobstash/pkg/apps/luautil"
 	"github.com/tsileo/blobstash/pkg/blob"
@@ -152,13 +153,13 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 }
 
 func (apps *Apps) appUpdateCallback(ctx context.Context, _ *blob.Blob, data interface{}) error {
-	appUpdate := data.(*hub.AppUpdateData)
-	appConfig := &config.AppConfig{}
-	if err := yaml.Unmarshal(appUpdate.RawAppConfig, &appConfig); err != nil {
-		return err
-	}
-	appUpdate.Name
-	appUpdate.Ref
+	// appUpdate := data.(*hub.AppUpdateData)
+	// appConfig := &app.AppConfig{}
+	// if err := yaml.Unmarshal(appUpdate.RawAppConfig, &appConfig); err != nil {
+	// 	return err
+	// }
+	// appUpdate.Name
+	// appUpdate.Ref
 	// FIXME(tsileo): update the configuration
 	return nil
 }

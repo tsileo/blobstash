@@ -19,7 +19,6 @@ import (
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
 	"golang.org/x/net/context"
-	"gopkg.in/yaml.v2"
 
 	"github.com/tsileo/blobstash/pkg/blob"
 	"github.com/tsileo/blobstash/pkg/blobstore"
@@ -559,7 +558,7 @@ func (ft *FileTreeExt) fsAppHandler() func(http.ResponseWriter, *http.Request) {
 		}
 		switch r.Method {
 		case "POST":
-			_, cmeta, err := fs.Path("/.app.yaml", false)
+			_, _, err := fs.Path("/.app.yaml", false)
 			switch err {
 			case nil:
 			case clientutil.ErrBlobNotFound:
@@ -569,12 +568,12 @@ func (ft *FileTreeExt) fsAppHandler() func(http.ResponseWriter, *http.Request) {
 			default:
 				panic(err)
 			}
-			f := filereader.NewFile(ft.blobStore, cmeta)
-			defer f.Close()
-			yamlData, err := ioutil.ReadAll(f)
-			if err != nil {
-				panic(err)
-			}
+			// f := filereader.NewFile(ft.blobStore, cmeta)
+			// defer f.Close()
+			// yamlData, err := ioutil.ReadAll(f)
+			// if err != nil {
+			// 	panic(err)
+			// }
 			// appConfig := &AppConfig{}
 			// if err := yaml.Unmarshal(yamlData, appConfig); err != nil {
 			// 	panic(err)
