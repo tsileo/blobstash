@@ -474,7 +474,7 @@ func (ft *FileTreeExt) zipHandler() func(http.ResponseWriter, *http.Request) {
 
 			// Create/save me Meta
 			file, err := zf.Open()
-			meta, err := uploader.PutReader(filepath.Base(path), file)
+			meta, err := uploader.PutReader(filepath.Base(path), file, nil)
 			if err != nil {
 				panic(err)
 			}
@@ -523,7 +523,7 @@ func (ft *FileTreeExt) uploadHandler() func(http.ResponseWriter, *http.Request) 
 		}
 		defer file.Close()
 		uploader := writer.NewUploader(&BlobStore{ft.blobStore})
-		meta, err := uploader.PutReader(handler.Filename, file)
+		meta, err := uploader.PutReader(handler.Filename, file, nil)
 		if err != nil {
 			panic(err)
 		}
@@ -652,7 +652,7 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 			uploader := writer.NewUploader(&BlobStore{ft.blobStore})
 
 			// Create/save me Meta
-			meta, err := uploader.PutReader(filepath.Base(path), file)
+			meta, err := uploader.PutReader(filepath.Base(path), file, nil)
 			if err != nil {
 				panic(err)
 			}
