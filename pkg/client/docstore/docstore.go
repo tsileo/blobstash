@@ -10,8 +10,6 @@ import (
 	"io"
 	"mime/multipart"
 	"net/url"
-	"os"
-	"path/filepath"
 	"time"
 	// "reflect"
 	"strconv"
@@ -328,44 +326,40 @@ type collectionResp struct {
 	Collections []string `json:"collections"`
 }
 
-func (docstore *DocStore) DownloadAttachment(ref, path string) error {
+func (docstore *DocStore) DownloadAttachment(ref string) (io.ReadCloser, error) {
 	resp, err := docstore.client.DoReq("GET", "/api/filetree/file/"+ref, nil, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case 200:
-		output, err := os.Create(path)
-		if err != nil {
-			return err
-		}
-		defer output.Close()
-		if _, err := io.Copy(output, resp.Body); err != nil {
-			return err
-		}
-		return nil
+		return resp.Body, nil
+		// output, err := os.Create(path)
+		// if err != nil {
+		// 	return err
+		// }
+		// defer output.Close()
+		// if _, err := io.Copy(output, resp.Body); err != nil {
+		// 	return err
+		// }
+		// return nil
 	default:
 		var body bytes.Buffer
 		body.ReadFrom(resp.Body)
-		return fmt.Errorf("failed to insert doc: %v", body.String())
+		return nil, fmt.Errorf("failed to insert doc: %v", body.String())
 	}
 }
 
-func (docstore *DocStore) UploadAttachment(path string) (string, error) {
+func (docstore *DocStore) UploadAttachment(name string, r io.Reader) (string, error) {
 	bodyBuf := &bytes.Buffer{}
 	bodyWriter := multipart.NewWriter(bodyBuf)
-	fileWriter, err := bodyWriter.CreateFormFile("file", filepath.Base(path))
+	fileWriter, err := bodyWriter.CreateFormFile("file", name)
 	if err != nil {
 		return "", err
 	}
 
-	fh, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-
-	if _, err := io.Copy(fileWriter, fh); err != nil {
+	if _, err := io.Copy(fileWriter, r); err != nil {
 		return "", err
 	}
 
