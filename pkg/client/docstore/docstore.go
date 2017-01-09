@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"mime/multipart"
 	"net/url"
 	"time"
@@ -327,14 +328,19 @@ type collectionResp struct {
 }
 
 // DownloadAttachment returns an `io.ReadCloser` with the file content for the given ref.
-func (docstore *DocStore) DownloadAttachment(ref string) (io.ReadCloser, error) {
+func (docstore *DocStore) DownloadAttachment(ref string) (io.Reader, error) {
 	resp, err := docstore.client.DoReq("GET", "/api/filetree/file/"+ref, nil, nil)
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case 200:
-		return resp.Body, nil
+		data, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		return bytes.NewReader(data), nil
 	default:
 		var body bytes.Buffer
 		body.ReadFrom(resp.Body)
