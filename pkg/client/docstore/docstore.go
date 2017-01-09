@@ -326,12 +326,12 @@ type collectionResp struct {
 	Collections []string `json:"collections"`
 }
 
+// DownloadAttachment returns an `io.ReadCloser` with the file content for the given ref.
 func (docstore *DocStore) DownloadAttachment(ref string) (io.ReadCloser, error) {
 	resp, err := docstore.client.DoReq("GET", "/api/filetree/file/"+ref, nil, nil)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case 200:
 		return resp.Body, nil
