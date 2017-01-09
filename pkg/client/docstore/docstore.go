@@ -335,15 +335,6 @@ func (docstore *DocStore) DownloadAttachment(ref string) (io.ReadCloser, error) 
 	switch resp.StatusCode {
 	case 200:
 		return resp.Body, nil
-		// output, err := os.Create(path)
-		// if err != nil {
-		// 	return err
-		// }
-		// defer output.Close()
-		// if _, err := io.Copy(output, resp.Body); err != nil {
-		// 	return err
-		// }
-		// return nil
 	default:
 		var body bytes.Buffer
 		body.ReadFrom(resp.Body)
@@ -351,7 +342,7 @@ func (docstore *DocStore) DownloadAttachment(ref string) (io.ReadCloser, error) 
 	}
 }
 
-func (docstore *DocStore) UploadAttachment(name string, r io.Reader) (string, error) {
+func (docstore *DocStore) UploadAttachment(name string, r io.Reader, data map[string]interface{}) (string, error) {
 	bodyBuf := &bytes.Buffer{}
 	bodyWriter := multipart.NewWriter(bodyBuf)
 	fileWriter, err := bodyWriter.CreateFormFile("file", name)
@@ -365,7 +356,13 @@ func (docstore *DocStore) UploadAttachment(name string, r io.Reader) (string, er
 
 	contentType := bodyWriter.FormDataContentType()
 	bodyWriter.Close()
-	resp, err := docstore.client.DoReq("POST", "/api/filetree/upload", map[string]string{
+	// FIXME(tsileo):
+	jsData, err := json.Marshal(data)
+	if err != nil {
+		return "", err
+	}
+	// FIXME(tsileo): make the server url.QueryUnescape the result and set it to data
+	resp, err := docstore.client.DoReq("POST", "/api/filetree/upload?data="+url.QueryEscape(string(jsData)), map[string]string{
 		"Content-Type": contentType,
 	}, bodyBuf)
 	if err != nil {

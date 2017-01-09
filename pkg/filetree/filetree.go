@@ -516,6 +516,18 @@ func (ft *FileTreeExt) uploadHandler() func(http.ResponseWriter, *http.Request) 
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+		// Try to parse the metadata
+		var data map[string]interface{}
+		if d := r.URL.Query().Get("data"); d != "" {
+			udata, err := url.QueryUnescape(d)
+			if err != nil {
+				panic(err)
+			}
+			if err := json.Unmarshal([]byte(udata), &data); err != nil {
+				panic(err)
+			}
+		}
+
 		r.ParseMultipartForm(MaxUploadSize)
 		file, handler, err := r.FormFile("file")
 		if err != nil {
@@ -523,7 +535,7 @@ func (ft *FileTreeExt) uploadHandler() func(http.ResponseWriter, *http.Request) 
 		}
 		defer file.Close()
 		uploader := writer.NewUploader(&BlobStore{ft.blobStore})
-		meta, err := uploader.PutReader(handler.Filename, file, nil)
+		meta, err := uploader.PutReader(handler.Filename, file, data)
 		if err != nil {
 			panic(err)
 		}
