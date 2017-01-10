@@ -20,8 +20,10 @@ import (
 
 var ErrIDNotFound = errors.New("ID doest not exist")
 
-var defaultServerAddr = "http://localhost:8050"
-var defaultUserAgent = "DocStore Go client v1"
+var (
+	defaultServerAddr = "http://localhost:8050"
+	defaultUserAgent  = "DocStore Go client v1"
+)
 
 type ID struct {
 	data []byte

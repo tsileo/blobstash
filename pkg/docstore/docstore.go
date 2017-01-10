@@ -928,13 +928,17 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 		case "GET", "HEAD":
 			// Serve the document JSON encoded
 			// permissions.CheckPerms(r, PermCollectionName, collection, PermRead)
-			js := []byte{}
-			if _id, err = docstore.Fetch(collection, sid, &js); err != nil {
+			// js := []byte{}
+			var doc map[string]interface{}
+			if _id, err = docstore.Fetch(collection, sid, &doc); err != nil {
 				if err == vkv.ErrNotFound {
 					// Document doesn't exist, returns a status 404
 					w.WriteHeader(http.StatusNotFound)
 					return
 				}
+				panic(err)
+			}
+			if err := docstore.expandKeys(doc); err != nil {
 				panic(err)
 			}
 
@@ -946,6 +950,11 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			}
 
 			w.Header().Set("Etag", _id.Hash())
+
+			js, err := json.Marshal(doc)
+			if err != nil {
+				panic(err)
+			}
 
 			if r.Method == "GET" {
 				w.Header().Set("Content-Type", "application/json")

@@ -516,7 +516,7 @@ func (ft *FileTreeExt) uploadHandler() func(http.ResponseWriter, *http.Request) 
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		// Try to parse the metadata
+		// Try to parse the metadata (JSON encoded in the `data` query argument)
 		var data map[string]interface{}
 		if d := r.URL.Query().Get("data"); d != "" {
 			udata, err := url.QueryUnescape(d)
