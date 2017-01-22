@@ -9,10 +9,10 @@ import (
 	"fmt"
 	"strings"
 
-	"a4.io/blobstash/pkg/ctxutil"
 	"golang.org/x/net/context"
 
 	"a4.io/blobstash/pkg/backend"
+	"a4.io/blobstash/pkg/ctxutil"
 )
 
 type Rule struct {

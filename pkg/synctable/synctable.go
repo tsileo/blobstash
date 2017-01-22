@@ -22,7 +22,6 @@ import (
 	"net/http"
 	"sync"
 
-	_ "a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/blobstore"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/httputil"

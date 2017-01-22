@@ -3,7 +3,7 @@ go:
 - 1.7
 install: true
 script:
-- go get -v github.com/tsileo/blobstash/...
+- go get -v a4.io/blobstash/...
 - go test $(go list ./... | grep pkg)
 - ./extras/cross_compile.sh
 deploy:

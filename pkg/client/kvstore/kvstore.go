@@ -1,4 +1,4 @@
-package kvstore // import "a4.io/blobstash/pkg/clinet/kvstore"
+package kvstore // import "a4.io/blobstash/pkg/client/kvstore"
 
 import (
 	"bytes"

@@ -16,9 +16,9 @@ import (
 	"github.com/yuin/gopher-lua"
 	"golang.org/x/net/context"
 
+	luamod "a4.io/blobstash/pkg/apps/lua"
 	luautil "a4.io/blobstash/pkg/apps/luautil"
 	"a4.io/blobstash/pkg/httputil"
-	luamod "github.com/tsileo/blobstash/pkg/apps/lua"
 )
 
 func handle404(w http.ResponseWriter) {

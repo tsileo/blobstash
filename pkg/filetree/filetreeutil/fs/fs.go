@@ -1,10 +1,7 @@
-package fs // import "a4.io/blobstash/pkg/filetree/filetreutil/fs"
+package fs // import "a4.io/blobstash/pkg/filetree/filetreeutil/fs"
 
 import (
 	"encoding/json"
-	_ "fmt"
-
-	_ "a4.io/blobstash/pkg/vkv"
 )
 
 var FSKeyFmt = "filetree:fs:%v"
