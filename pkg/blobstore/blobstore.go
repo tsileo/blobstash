@@ -1,4 +1,4 @@
-package blobstore
+package blobstore // import "a4.io/blobstash/pkg/blobstore"
 
 import (
 	log "github.com/inconshreveable/log15"
@@ -6,12 +6,12 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/tsileo/blobstash/pkg/backend/blobsfile"
-	"github.com/tsileo/blobstash/pkg/blob"
-	"github.com/tsileo/blobstash/pkg/config"
-	"github.com/tsileo/blobstash/pkg/ctxutil"
-	"github.com/tsileo/blobstash/pkg/hub"
-	"github.com/tsileo/blobstash/pkg/router"
+	"a4.io/blobstash/pkg/backend/blobsfile"
+	"a4.io/blobstash/pkg/blob"
+	"a4.io/blobstash/pkg/config"
+	"a4.io/blobstash/pkg/ctxutil"
+	"a4.io/blobstash/pkg/hub"
+	"a4.io/blobstash/pkg/router"
 )
 
 // FIXME(tsileo): take a ctx as first arg for each method

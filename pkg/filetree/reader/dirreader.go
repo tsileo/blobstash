@@ -1,4 +1,4 @@
-package reader
+package reader // import "a4.io/blobstash/pkg/filetree/reader"
 
 import (
 	"fmt"
@@ -8,9 +8,9 @@ import (
 	_ "github.com/dchest/blake2b"
 	"golang.org/x/net/context"
 
-	"github.com/tsileo/blobstash/pkg/client/blobstore"
-	"github.com/tsileo/blobstash/pkg/filetree/filetreeutil/meta"
-	"github.com/tsileo/blobstash/pkg/filetree/reader/filereader"
+	"a4.io/blobstash/pkg/client/blobstore"
+	"a4.io/blobstash/pkg/filetree/filetreeutil/meta"
+	"a4.io/blobstash/pkg/filetree/reader/filereader"
 )
 
 // GetDir restore the directory to path

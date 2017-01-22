@@ -1,4 +1,4 @@
-package nsdb
+package nsdb // import "a4.io/blobstash/pkg/nsdb"
 
 import (
 	"bytes"
@@ -14,12 +14,12 @@ import (
 	log "github.com/inconshreveable/log15"
 	"golang.org/x/net/context"
 
-	"github.com/tsileo/blobstash/pkg/blob"
-	"github.com/tsileo/blobstash/pkg/blobstore"
-	"github.com/tsileo/blobstash/pkg/config"
-	"github.com/tsileo/blobstash/pkg/ctxutil"
-	"github.com/tsileo/blobstash/pkg/hub"
-	"github.com/tsileo/blobstash/pkg/meta"
+	"a4.io/blobstash/pkg/blob"
+	"a4.io/blobstash/pkg/blobstore"
+	"a4.io/blobstash/pkg/config"
+	"a4.io/blobstash/pkg/ctxutil"
+	"a4.io/blobstash/pkg/hub"
+	"a4.io/blobstash/pkg/meta"
 )
 
 const NsType = "ns"

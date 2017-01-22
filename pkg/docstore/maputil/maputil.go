@@ -1,4 +1,4 @@
-package maputil
+package maputil // import "a4.io/blobstash/pkg/docstore/maputil"
 
 import (
 	"errors"

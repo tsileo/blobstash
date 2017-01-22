@@ -4,8 +4,8 @@ import (
 	"flag"
 	"log"
 
-	"github.com/tsileo/blobstash/pkg/config"
-	"github.com/tsileo/blobstash/pkg/server"
+	"a4.io/blobstash/pkg/config"
+	"a4.io/blobstash/pkg/server"
 )
 
 var (

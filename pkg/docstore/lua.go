@@ -5,12 +5,12 @@ package docstore
 // TODO(tsileo): use   -tags 'prod' for building binary
 
 import (
+	luautil "a4.io/blobstash/pkg/apps/luatuil"
 	"bytes"
 	"fmt"
 	"github.com/blevesearch/segment"
 	log "github.com/inconshreveable/log15"
 	"github.com/reiver/go-porterstemmer"
-	"github.com/tsileo/blobstash/pkg/apps/luautil"
 	"github.com/yuin/gopher-lua"
 	"time"
 )

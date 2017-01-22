@@ -1,4 +1,4 @@
-package server
+package server // import "a4.io/blobstash/pkg/server"
 
 import (
 	"crypto/tls"
@@ -15,18 +15,18 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/tsileo/blobstash/pkg/apps"
-	"github.com/tsileo/blobstash/pkg/blobstore"
-	"github.com/tsileo/blobstash/pkg/config"
-	"github.com/tsileo/blobstash/pkg/docstore"
-	"github.com/tsileo/blobstash/pkg/filetree"
-	"github.com/tsileo/blobstash/pkg/httputil"
-	"github.com/tsileo/blobstash/pkg/hub"
-	"github.com/tsileo/blobstash/pkg/kvstore"
-	"github.com/tsileo/blobstash/pkg/meta"
-	"github.com/tsileo/blobstash/pkg/middleware"
-	"github.com/tsileo/blobstash/pkg/nsdb"
-	"github.com/tsileo/blobstash/pkg/synctable"
+	"a4.io/blobstash/pkg/apps"
+	"a4.io/blobstash/pkg/blobstore"
+	"a4.io/blobstash/pkg/config"
+	"a4.io/blobstash/pkg/docstore"
+	"a4.io/blobstash/pkg/filetree"
+	"a4.io/blobstash/pkg/httputil"
+	"a4.io/blobstash/pkg/hub"
+	"a4.io/blobstash/pkg/kvstore"
+	"a4.io/blobstash/pkg/meta"
+	"a4.io/blobstash/pkg/middleware"
+	"a4.io/blobstash/pkg/nsdb"
+	"a4.io/blobstash/pkg/synctable"
 
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"

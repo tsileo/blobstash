@@ -11,7 +11,7 @@ For each indexed doc:
 {hash index} is the FNV 64a Hash of the index key-value.
 
 */
-package index
+package index // import "a4.io/blobstash/pkg/docstore/index"
 
 import (
 	"bytes"
@@ -24,7 +24,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/tsileo/blobstash/pkg/config/pathutil"
+	"a4.io/blobstash/pkg/config/pathutil"
 
 	"github.com/cznic/kv"
 )

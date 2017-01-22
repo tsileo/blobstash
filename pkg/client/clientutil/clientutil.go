@@ -1,4 +1,4 @@
-package clientutil
+package clientutil // import "a4.io/blobstash/pkg/client/clientutil"
 
 import (
 	"errors"

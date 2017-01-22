@@ -9,11 +9,11 @@ import (
 	"mime/multipart"
 	"time"
 
-	"github.com/tsileo/blobstash/pkg/blob"
-	"github.com/tsileo/blobstash/pkg/blobstore"
-	"github.com/tsileo/blobstash/pkg/client/clientutil"
-	"github.com/tsileo/blobstash/pkg/ctxutil"
-	"github.com/tsileo/blobstash/pkg/nsdb"
+	"a4.io/blobstash/pkg/blob"
+	"a4.io/blobstash/pkg/blobstore"
+	"a4.io/blobstash/pkg/client/clientutil"
+	"a4.io/blobstash/pkg/ctxutil"
+	"a4.io/blobstash/pkg/nsdb"
 
 	log "github.com/inconshreveable/log15"
 )

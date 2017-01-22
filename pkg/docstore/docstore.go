@@ -18,7 +18,7 @@ Document will be automatically sorted by creation time thanks to the ID.
 The raw JSON will be stored as is, but the API will add the _id field on the fly.
 
 */
-package docstore
+package docstore // import "a4.io/blobstash/pkg/docstore"
 
 import (
 	"encoding/json"
@@ -39,16 +39,16 @@ import (
 	log "github.com/inconshreveable/log15"
 	logext "github.com/inconshreveable/log15/ext"
 
-	"github.com/tsileo/blobstash/pkg/blob"
-	"github.com/tsileo/blobstash/pkg/blobstore"
-	"github.com/tsileo/blobstash/pkg/config"
-	"github.com/tsileo/blobstash/pkg/ctxutil"
-	"github.com/tsileo/blobstash/pkg/docstore/id"
-	_ "github.com/tsileo/blobstash/pkg/docstore/index"
+	"a4.io/blobstash/pkg/blob"
+	"a4.io/blobstash/pkg/blobstore"
+	"a4.io/blobstash/pkg/config"
+	"a4.io/blobstash/pkg/ctxutil"
+	"a4.io/blobstash/pkg/docstore/id"
+	_ "a4.io/blobstash/pkg/docstore/index"
+	"a4.io/blobstash/pkg/httputil"
+	"a4.io/blobstash/pkg/kvstore"
+	"a4.io/blobstash/pkg/vkv"
 	_ "github.com/tsileo/blobstash/pkg/docstore/optimizer"
-	"github.com/tsileo/blobstash/pkg/httputil"
-	"github.com/tsileo/blobstash/pkg/kvstore"
-	"github.com/tsileo/blobstash/pkg/vkv"
 )
 
 // FIXME(tsileo): create a "meta" hook for handling indexing

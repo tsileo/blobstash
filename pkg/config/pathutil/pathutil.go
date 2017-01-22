@@ -6,7 +6,7 @@ Follow XDG Base Directory Specification:
 http://standards.freedesktop.org/basedir-spec/basedir-spec-0.6.html
 
 */
-package pathutil
+package pathutil // import "a4.io/blobstash/pkg/config/pathutil"
 
 import (
 	"os"

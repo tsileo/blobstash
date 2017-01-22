@@ -8,11 +8,11 @@ import (
 	"github.com/gorilla/mux"
 	"golang.org/x/net/context"
 
-	mblob "github.com/tsileo/blobstash/pkg/blob"
-	"github.com/tsileo/blobstash/pkg/client/clientutil"
-	"github.com/tsileo/blobstash/pkg/ctxutil"
-	"github.com/tsileo/blobstash/pkg/hashutil"
-	"github.com/tsileo/blobstash/pkg/httputil"
+	mblob "a4.io/blobstash/pkg/blob"
+	"a4.io/blobstash/pkg/client/clientutil"
+	"a4.io/blobstash/pkg/ctxutil"
+	"a4.io/blobstash/pkg/hashutil"
+	"a4.io/blobstash/pkg/httputil"
 )
 
 func (bs *BlobStore) uploadHandler() func(http.ResponseWriter, *http.Request) {

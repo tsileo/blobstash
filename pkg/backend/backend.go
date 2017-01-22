@@ -1,4 +1,4 @@
-package backend
+package backend // import "a4.io/blobstash/pkg/backend"
 
 import (
 	"errors"

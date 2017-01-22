@@ -30,8 +30,7 @@ Number of versions for each key:
 
 
 */
-
-package vkv
+package vkv // import "a4.io/blobstash/pkg/vkv"
 
 import (
 	"bytes"

@@ -5,7 +5,7 @@ Package chunker implements a chunker based on a rolling Rabin fingerprint to det
 Implementation similar to https://github.com/cschwede/python-rabin-fingerprint
 
 */
-package chunker
+package chunker // import "a4.io/blobstash/pkg/filetree/filetreeutil/chunker"
 
 type Chunker struct {
 	window  []uint64

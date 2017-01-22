@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	_ "github.com/tsileo/blobstash/pkg/backend"
+	_ "a4.io/blobstash/pkg/backend"
 )
 
 func check(e error) {

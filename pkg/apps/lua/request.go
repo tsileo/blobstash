@@ -6,8 +6,8 @@ import (
 
 	"github.com/yuin/gopher-lua"
 
-	"github.com/tsileo/blobstash/pkg/apps/luautil"
-	"github.com/tsileo/blobstash/pkg/httputil"
+	luautil "a4.io/blobstash/pkg/apps/luatuil"
+	"a4.io/blobstash/pkg/httputil"
 )
 
 type RequestModule struct {

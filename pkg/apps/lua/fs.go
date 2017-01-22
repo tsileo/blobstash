@@ -3,13 +3,13 @@
 Package response implements a Lua module to interact with an HTTP response.
 
 */
-package lua
+package lua // import "a4.io/blobstash/pkg/apps/lua"
 
 import (
 	"io/ioutil"
 	"path/filepath"
 
-	_ "github.com/tsileo/blobstash/pkg/apps/luautil"
+	_ "a4.io/blobstash/pkg/apps/luatuil"
 	"github.com/yuin/gopher-lua"
 )
 

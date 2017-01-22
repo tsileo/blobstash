@@ -1,4 +1,4 @@
-package kvstore
+package kvstore // import "a4.io/blobstash/pkg/kvstore"
 
 import (
 	"fmt"
@@ -12,12 +12,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/tsileo/blobstash/pkg/blobstore"
-	"github.com/tsileo/blobstash/pkg/config"
-	"github.com/tsileo/blobstash/pkg/ctxutil"
-	"github.com/tsileo/blobstash/pkg/httputil"
-	"github.com/tsileo/blobstash/pkg/meta"
-	"github.com/tsileo/blobstash/pkg/vkv"
+	"a4.io/blobstash/pkg/blobstore"
+	"a4.io/blobstash/pkg/config"
+	"a4.io/blobstash/pkg/ctxutil"
+	"a4.io/blobstash/pkg/httputil"
+	"a4.io/blobstash/pkg/meta"
+	"a4.io/blobstash/pkg/vkv"
 )
 
 const KvType = "kv"

@@ -16,7 +16,7 @@ Links
   [1]: https://github.com/hueniverse/hawk
 
 */
-package bewit
+package bewit // import "a4.io/blobstash/pkg/httputil/bewit"
 
 import (
 	"bytes"

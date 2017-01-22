@@ -1,9 +1,9 @@
-package blob
+package blob // import "a4.io/blobstash/pkg/blob"
 
 import (
 	"fmt"
 
-	"github.com/tsileo/blobstash/pkg/hashutil"
+	"a4.io/blobstash/pkg/hashutil"
 )
 
 type NamespacedBlobRef struct {

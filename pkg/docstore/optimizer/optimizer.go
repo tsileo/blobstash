@@ -1,10 +1,10 @@
-package optimizer
+package optimizer // impport "a4.io/blobstash/pkg/docstore/optimizier"
 
 import (
 	"fmt"
 
-	"github.com/tsileo/blobstash/pkg/docstore/index"
-	"github.com/tsileo/blobstash/pkg/docstore/maputil"
+	"a4.io/blobstash/pkg/docstore/index"
+	"a4.io/blobstash/pkg/docstore/maputil"
 
 	log "gopkg.in/inconshreveable/log15.v2"
 	logext "gopkg.in/inconshreveable/log15.v2/ext"

@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/tsileo/blobstash/pkg/httputil/bewit"
+	"a4.io/blobstash/pkg/httputil/bewit"
 )
 
 /*

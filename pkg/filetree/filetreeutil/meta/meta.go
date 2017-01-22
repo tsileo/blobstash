@@ -3,7 +3,7 @@
 Package meta implement the node specification for the filetree extension.
 
 */
-package meta
+package meta // import "a4.io/blobstash/pkg/filetree/filetreeutil/meta"
 
 import (
 	"encoding/json"

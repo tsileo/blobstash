@@ -1,4 +1,4 @@
-package docstore
+package docstore // import "a4.io/blobstash/pkg/client/docstore"
 
 import (
 	"bytes"
@@ -15,7 +15,7 @@ import (
 	// "reflect"
 	"strconv"
 
-	"github.com/tsileo/blobstash/pkg/client/clientutil"
+	"a4.io/blobstash/pkg/client/clientutil"
 )
 
 var ErrIDNotFound = errors.New("ID doest not exist")

@@ -1,4 +1,4 @@
-package hashutil
+package hashutil // import "a4.io/blobstash/pkg/hashutil"
 
 import (
 	"fmt"

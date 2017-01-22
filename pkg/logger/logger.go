@@ -1,4 +1,4 @@
-package logger
+package logger // import "a4.io/blobstash/pkg/logger"
 
 import (
 	"os"

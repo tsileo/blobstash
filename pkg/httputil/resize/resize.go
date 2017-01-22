@@ -1,4 +1,4 @@
-package resize
+package resize // import "a4.io/blobstash/pkg/httputil/resize"
 
 import (
 	"bytes"

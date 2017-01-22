@@ -1,8 +1,8 @@
 package blobsfile
 
 import (
+	_ "a4.io/blobstash/pkg/logger"
 	"github.com/klauspost/reedsolomon"
-	_ "github.com/tsileo/blobstash/pkg/logger"
 )
 
 const (

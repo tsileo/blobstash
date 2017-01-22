@@ -1,4 +1,4 @@
-package meta
+package meta // import "a4.io/blobstash/pkg/meta"
 
 import (
 	"bytes"
@@ -8,8 +8,8 @@ import (
 	log "github.com/inconshreveable/log15"
 	"golang.org/x/net/context"
 
-	"github.com/tsileo/blobstash/pkg/blob"
-	"github.com/tsileo/blobstash/pkg/hub"
+	"a4.io/blobstash/pkg/blob"
+	"a4.io/blobstash/pkg/hub"
 )
 
 var (

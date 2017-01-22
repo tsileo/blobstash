@@ -1,4 +1,4 @@
-package ctxutil
+package ctxutil // import "a4.io/blobstash/pkg/ctxutil"
 
 import (
 	"golang.org/x/net/context"

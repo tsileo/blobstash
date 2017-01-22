@@ -1,12 +1,12 @@
-package middleware
+package middleware // import "a4.io/blobstash/pkg/middleware"
 
 import (
 	"net/http"
 	"os"
 	"strconv"
 
-	"github.com/tsileo/blobstash/pkg/config"
-	"github.com/tsileo/blobstash/pkg/httputil"
+	"a4.io/blobstash/pkg/config"
+	"a4.io/blobstash/pkg/httputil"
 
 	_ "github.com/carbocation/interpose/middleware"
 	"github.com/unrolled/secure"

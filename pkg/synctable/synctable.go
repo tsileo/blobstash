@@ -12,7 +12,7 @@ This first implementation only keep 256 (16**2) buckets (the first 2 hex of the 
 Blake2B (the same hashing algorithm used by the Blob Store) is used to compute the tree.
 
 */
-package synctable
+package synctable // import "a4.io/blobstash/pkg/synctable"
 
 import (
 	"encoding/json"
@@ -22,11 +22,11 @@ import (
 	"net/http"
 	"sync"
 
-	_ "github.com/tsileo/blobstash/pkg/blob"
-	"github.com/tsileo/blobstash/pkg/blobstore"
-	"github.com/tsileo/blobstash/pkg/config"
-	"github.com/tsileo/blobstash/pkg/httputil"
-	"github.com/tsileo/blobstash/pkg/nsdb"
+	_ "a4.io/blobstash/pkg/blob"
+	"a4.io/blobstash/pkg/blobstore"
+	"a4.io/blobstash/pkg/config"
+	"a4.io/blobstash/pkg/httputil"
+	"a4.io/blobstash/pkg/nsdb"
 
 	"github.com/dchest/blake2b"
 	"github.com/gorilla/mux"

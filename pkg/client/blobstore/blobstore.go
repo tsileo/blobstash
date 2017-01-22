@@ -1,4 +1,4 @@
-package blobstore
+package blobstore // import "a4.io/blobstash/pkg/client/blobstore"
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/tsileo/blobstash/pkg/client/clientutil"
+	"a4.io/blobstash/pkg/client/clientutil"
 )
 
 var defaultServerAddr = "http://localhost:8050"

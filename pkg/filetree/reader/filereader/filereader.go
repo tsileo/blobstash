@@ -1,4 +1,4 @@
-package filereader
+package filereader // import "a4.io/blobstash/pkg/filetree/reader/filereader"
 
 import (
 	"bytes"
@@ -11,7 +11,7 @@ import (
 	"github.com/hashicorp/golang-lru"
 	"golang.org/x/net/context"
 
-	"github.com/tsileo/blobstash/pkg/filetree/filetreeutil/meta"
+	"a4.io/blobstash/pkg/filetree/filetreeutil/meta"
 )
 
 // FIXME(tsileo): implements os.FileInfo

@@ -1,4 +1,4 @@
-package kvstore
+package kvstore // import "a4.io/blobstash/pkg/clinet/kvstore"
 
 import (
 	"bytes"
@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tsileo/blobstash/pkg/client/clientutil"
-	"github.com/tsileo/blobstash/pkg/client/response"
+	"a4.io/blobstash/pkg/client/clientutil"
+	"a4.io/blobstash/pkg/client/response"
 )
 
 var defaultServerAddr = "http://localhost:8050"

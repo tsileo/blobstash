@@ -17,7 +17,7 @@ Blobs are indexed by a BlobPos entry (value stored as string):
 	Blob Hash => n (BlobFile index) + (space) + offset + (space) + Blob size
 
 */
-package blobsfile
+package blobsfile // import "a4.io/blobstash/pkg/backend/blobsfile"
 
 import (
 	"bytes"
@@ -39,12 +39,12 @@ import (
 	"github.com/golang/snappy"
 	log2 "gopkg.in/inconshreveable/log15.v2"
 
-	_ "github.com/tsileo/blobstash/pkg/backend"
-	"github.com/tsileo/blobstash/pkg/blob"
-	"github.com/tsileo/blobstash/pkg/client/clientutil"
-	"github.com/tsileo/blobstash/pkg/config/pathutil"
-	_ "github.com/tsileo/blobstash/pkg/hashutil"
-	"github.com/tsileo/blobstash/pkg/logger"
+	_ "a4.io/blobstash/pkg/backend"
+	"a4.io/blobstash/pkg/blob"
+	"a4.io/blobstash/pkg/client/clientutil"
+	"a4.io/blobstash/pkg/config/pathutil"
+	_ "a4.io/blobstash/pkg/hashutil"
+	"a4.io/blobstash/pkg/logger"
 )
 
 const (

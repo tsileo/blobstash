@@ -33,7 +33,7 @@ Everything is private by default, but can support public and semi-private sharin
 ## Getting started
 
 ```console
-$ go get github.com/tsileo/blobstash/cmd/blobstash
+$ go get a4.io/blobstash
 $ $GOPATH/bin/blobstash
 DBUG[06-26|12:41:07] init                                     app=hub
 DBUG[06-26|12:41:07] init                                     app=blobstore

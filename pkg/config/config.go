@@ -1,4 +1,4 @@
-package config
+package config // import "a4.io/blobstash/pkg/config"
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 	"github.com/inconshreveable/log15"
 	"gopkg.in/yaml.v2"
 
-	"github.com/tsileo/blobstash/pkg/config/pathutil"
+	"a4.io/blobstash/pkg/config/pathutil"
 )
 
 var (

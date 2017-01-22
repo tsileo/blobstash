@@ -1,4 +1,4 @@
-package app
+package app // import "a4.io/blobstash/pkg/apps/app"
 
 import (
 	"crypto/md5"
@@ -16,9 +16,9 @@ import (
 	"github.com/yuin/gopher-lua"
 	"golang.org/x/net/context"
 
-	luamod "github.com/tsileo/blobstash/pkg/apps/lua"
-	"github.com/tsileo/blobstash/pkg/apps/luautil"
-	"github.com/tsileo/blobstash/pkg/httputil"
+	luamod "a4.io/blobstash/pkg/apps/lua"
+	luautil "a4.io/blobstash/pkg/apps/luatuil"
+	"a4.io/blobstash/pkg/httputil"
 )
 
 func handle404(w http.ResponseWriter) {

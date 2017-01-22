@@ -1,4 +1,4 @@
-package filetree
+package filetree // import "a4.io/blobstash/pkg/filetree"
 
 import (
 	"archive/zip"
@@ -20,19 +20,19 @@ import (
 	log "github.com/inconshreveable/log15"
 	"golang.org/x/net/context"
 
-	"github.com/tsileo/blobstash/pkg/blob"
-	"github.com/tsileo/blobstash/pkg/blobstore"
-	"github.com/tsileo/blobstash/pkg/client/clientutil"
-	"github.com/tsileo/blobstash/pkg/config"
-	"github.com/tsileo/blobstash/pkg/filetree/filetreeutil/meta"
-	"github.com/tsileo/blobstash/pkg/filetree/reader/filereader"
-	"github.com/tsileo/blobstash/pkg/filetree/writer"
-	"github.com/tsileo/blobstash/pkg/httputil"
-	"github.com/tsileo/blobstash/pkg/httputil/bewit"
-	"github.com/tsileo/blobstash/pkg/httputil/resize"
-	"github.com/tsileo/blobstash/pkg/hub"
-	"github.com/tsileo/blobstash/pkg/kvstore"
-	"github.com/tsileo/blobstash/pkg/vkv"
+	"a4.io/blobstash/pkg/blob"
+	"a4.io/blobstash/pkg/blobstore"
+	"a4.io/blobstash/pkg/client/clientutil"
+	"a4.io/blobstash/pkg/config"
+	"a4.io/blobstash/pkg/filetree/filetreeutil/meta"
+	"a4.io/blobstash/pkg/filetree/reader/filereader"
+	"a4.io/blobstash/pkg/filetree/writer"
+	"a4.io/blobstash/pkg/httputil"
+	"a4.io/blobstash/pkg/httputil/bewit"
+	"a4.io/blobstash/pkg/httputil/resize"
+	"a4.io/blobstash/pkg/hub"
+	"a4.io/blobstash/pkg/kvstore"
+	"a4.io/blobstash/pkg/vkv"
 )
 
 // XXX(tsileo): handle the fetching of meta from the FS name and reconstruct the vkv key

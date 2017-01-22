@@ -1,4 +1,4 @@
-package client
+package client // import "a4.io/blobstash/pkg/client"
 
 import (
 	"bytes"
@@ -14,7 +14,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tsileo/blobstash/pkg/client/response"
+	"a4.io/blobstash/pkg/client/response"
 )
 
 // TODO(tsileo): RESHAPE this! with doReq and simpler API (especially for the blob upload).

@@ -1,4 +1,4 @@
-package apps
+package apps // import "a4.io/blobstash/pkg/apps"
 
 import (
 	"crypto/md5"
@@ -22,15 +22,15 @@ import (
 	"github.com/yuin/gopher-lua"
 	"golang.org/x/net/context"
 
-	_ "github.com/tsileo/blobstash/pkg/apps/app"
-	luamod "github.com/tsileo/blobstash/pkg/apps/lua"
-	"github.com/tsileo/blobstash/pkg/apps/luautil"
-	"github.com/tsileo/blobstash/pkg/blob"
-	"github.com/tsileo/blobstash/pkg/config"
-	_ "github.com/tsileo/blobstash/pkg/ctxutil"
-	"github.com/tsileo/blobstash/pkg/filetree"
-	"github.com/tsileo/blobstash/pkg/httputil"
-	"github.com/tsileo/blobstash/pkg/hub"
+	_ "a4.io/blobstash/pkg/apps/app"
+	luamod "a4.io/blobstash/pkg/apps/lua"
+	luautil "a4.io/blobstash/pkg/apps/luatuil"
+	"a4.io/blobstash/pkg/blob"
+	"a4.io/blobstash/pkg/config"
+	_ "a4.io/blobstash/pkg/ctxutil"
+	"a4.io/blobstash/pkg/filetree"
+	"a4.io/blobstash/pkg/httputil"
+	"a4.io/blobstash/pkg/hub"
 )
 
 // TODO(tsileo): at startup, scan all filetree FS and looks for app.yaml for registering

@@ -3,17 +3,16 @@
 package router implements a router to forward blob to the right backend.
 
 */
-
-package router
+package router // import "a4.io/blobstash/pkg/router"
 
 import (
 	"fmt"
 	"strings"
 
-	"github.com/tsileo/blobstash/pkg/ctxutil"
+	"a4.io/blobstash/pkg/ctxutil"
 	"golang.org/x/net/context"
 
-	"github.com/tsileo/blobstash/pkg/backend"
+	"a4.io/blobstash/pkg/backend"
 )
 
 type Rule struct {

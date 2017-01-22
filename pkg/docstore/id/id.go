@@ -8,7 +8,7 @@ Cursor stored the timestamp and a hash.
 
 	24 bytes hex-encoded
 */
-package id
+package id // import "a4.io/blobstash/pkg/docstore/id"
 
 import (
 	"crypto/rand"

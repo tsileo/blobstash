@@ -1,12 +1,12 @@
-package hub
+package hub // import "a4.io/blobstash/pkg/hub"
 
 import (
 	"golang.org/x/net/context"
 
 	log "github.com/inconshreveable/log15"
 
-	"github.com/tsileo/blobstash/pkg/blob"
-	_ "github.com/tsileo/blobstash/pkg/ctxutil"
+	"a4.io/blobstash/pkg/blob"
+	_ "a4.io/blobstash/pkg/ctxutil"
 )
 
 type EventType int

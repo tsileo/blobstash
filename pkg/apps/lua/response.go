@@ -6,11 +6,10 @@ Package response implements a Lua module to interact with an HTTP response.
 package lua
 
 import (
+	luautil "a4.io/blobstash/pkg/apps/luatuil"
 	"bytes"
-	"net/http"
-
-	"github.com/tsileo/blobstash/pkg/apps/luautil"
 	"github.com/yuin/gopher-lua"
+	"net/http"
 )
 
 type ResponseModule struct {
