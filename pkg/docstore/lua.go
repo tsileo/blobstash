@@ -5,7 +5,7 @@ package docstore
 // TODO(tsileo): use   -tags 'prod' for building binary
 
 import (
-	luautil "a4.io/blobstash/pkg/apps/luatuil"
+	luautil "a4.io/blobstash/pkg/apps/luautil"
 	"bytes"
 	"fmt"
 	"github.com/blevesearch/segment"

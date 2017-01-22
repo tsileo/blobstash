@@ -6,7 +6,7 @@ import (
 
 	"github.com/yuin/gopher-lua"
 
-	luautil "a4.io/blobstash/pkg/apps/luatuil"
+	luautil "a4.io/blobstash/pkg/apps/luautil"
 	"a4.io/blobstash/pkg/httputil"
 )
 

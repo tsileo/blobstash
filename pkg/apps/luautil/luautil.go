@@ -3,7 +3,7 @@
 Package luautil implements utility for gopher-lua.
 
 */
-package luautil // import "a4.io/blobstash/pkg/apps/luatuil"
+package luautil // import "a4.io/blobstash/pkg/apps/luautil"
 
 import (
 	"encoding/json"

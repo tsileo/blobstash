@@ -6,7 +6,7 @@ Package response implements a Lua module to interact with an HTTP response.
 package lua
 
 import (
-	luautil "a4.io/blobstash/pkg/apps/luatuil"
+	luautil "a4.io/blobstash/pkg/apps/luautil"
 	"bytes"
 	"github.com/yuin/gopher-lua"
 	"net/http"

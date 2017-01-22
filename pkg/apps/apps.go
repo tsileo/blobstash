@@ -22,12 +22,10 @@ import (
 	"github.com/yuin/gopher-lua"
 	"golang.org/x/net/context"
 
-	_ "a4.io/blobstash/pkg/apps/app"
 	luamod "a4.io/blobstash/pkg/apps/lua"
-	luautil "a4.io/blobstash/pkg/apps/luatuil"
+	luautil "a4.io/blobstash/pkg/apps/luautil"
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/config"
-	_ "a4.io/blobstash/pkg/ctxutil"
 	"a4.io/blobstash/pkg/filetree"
 	"a4.io/blobstash/pkg/httputil"
 	"a4.io/blobstash/pkg/hub"

@@ -9,7 +9,7 @@ import (
 	"io/ioutil"
 	"path/filepath"
 
-	_ "a4.io/blobstash/pkg/apps/luatuil"
+	_ "a4.io/blobstash/pkg/apps/luautil"
 	"github.com/yuin/gopher-lua"
 )
 

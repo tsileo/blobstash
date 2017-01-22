@@ -1,7 +1,7 @@
 package lua
 
 import (
-	luautil "a4.io/blobstash/pkg/apps/luatuil"
+	luautil "a4.io/blobstash/pkg/apps/luautil"
 	"github.com/hoisie/mustache"
 	"github.com/yuin/gopher-lua"
 )
