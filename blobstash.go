@@ -10,12 +10,14 @@ import (
 
 var (
 	scan     bool
+	s3scan   bool
 	loglevel string
 	err      error
 )
 
 func main() {
 	flag.BoolVar(&scan, "scan", false, "Trigger a BlobStore rescan.")
+	flag.BoolVar(&s3scan, "s3-scan", false, "Trigger a BlobStore rescan of the S3 backend.")
 	flag.StringVar(&loglevel, "loglevel", "", "logging level (debug|info|warn|crit)")
 	flag.Parse()
 	conf := &config.Config{}
@@ -28,6 +30,7 @@ func main() {
 
 	// Set the ScanMode in the config
 	conf.ScanMode = scan
+	conf.S3ScanMode = s3scan
 	if loglevel != "" {
 		conf.LogLevel = loglevel
 	}

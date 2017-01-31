@@ -25,7 +25,7 @@ import (
 	"a4.io/blobstash/pkg/kvstore"
 	"a4.io/blobstash/pkg/meta"
 	"a4.io/blobstash/pkg/middleware"
-	"a4.io/blobstash/pkg/nsdb"
+	_ "a4.io/blobstash/pkg/nsdb"
 	"a4.io/blobstash/pkg/synctable"
 
 	"github.com/gorilla/mux"
@@ -84,12 +84,12 @@ func New(conf *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to initialize kvstore app: %v", err)
 	}
 	kvstore.Register(s.router.PathPrefix("/api/kvstore").Subrouter(), basicAuth)
-	nsDB, err := nsdb.New(logger.New("app", "nsdb"), conf, blobstore, metaHandler, hub)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize nsdb: %v", err)
-	}
+	// nsDB, err := nsdb.New(logger.New("app", "nsdb"), conf, blobstore, metaHandler, hub)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to initialize nsdb: %v", err)
+	// }
 	// Load the synctable
-	synctable := synctable.New(logger.New("app", "sync"), conf, blobstore, nsDB)
+	synctable := synctable.New(logger.New("app", "sync"), conf, blobstore, nil)
 	synctable.Register(s.router.PathPrefix("/api/sync").Subrouter(), basicAuth)
 
 	filetree, err := filetree.New(logger.New("app", "filetree"), conf, authFunc, kvstore, blobstore, hub)
@@ -122,9 +122,9 @@ func New(conf *config.Config) (*Server, error) {
 		if err := kvstore.Close(); err != nil {
 			return err
 		}
-		if err := nsDB.Close(); err != nil {
-			return err
-		}
+		// if err := nsDB.Close(); err != nil {
+		// 	return err
+		// }
 		if err := filetree.Close(); err != nil {
 			return err
 		}
@@ -141,6 +141,7 @@ func New(conf *config.Config) (*Server, error) {
 
 func (s *Server) Shutdown() {
 	s.shutdown <- struct{}{}
+	// TODO(tsileo) shotdown sync repl too
 }
 
 func (s *Server) Bootstrap() error {

@@ -26,7 +26,7 @@ type ID struct {
 }
 
 // New initializes an ID for the given timestamp
-func New(ts int) (*ID, error) {
+func New(ts int64) (*ID, error) {
 	b := make([]byte, 12)
 	binary.BigEndian.PutUint32(b[:], uint32(ts))
 	randomCompoment := make([]byte, 8)

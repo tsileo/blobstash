@@ -30,6 +30,25 @@ type AppConfig struct {
 	Config map[string]interface{} `yaml:"config"`
 }
 
+type S3Repl struct {
+	Bucket  string `yaml:"bucket"`
+	Region  string `yaml:"region"`
+	KeyFile string `yaml:"key_file"`
+}
+
+func (s3 *S3Repl) Key() (*[32]byte, error) {
+	if s3.KeyFile == "" {
+		return nil, nil
+	}
+	var out [32]byte
+	data, err := ioutil.ReadFile(s3.KeyFile)
+	if err != nil {
+		return nil, err
+	}
+	copy(out[:], data)
+	return &out, nil
+}
+
 // Config holds the configuration items
 type Config struct {
 	init     bool
@@ -39,15 +58,17 @@ type Config struct {
 	AutoTLS bool     `yaml:"tls_auto"`
 	Domains []string `yaml:"tls_domains"`
 
-	APIKey     string `yaml:"api_key"`
-	SharingKey string `yaml:"sharing_key"`
-	DataDir    string `yaml:"data_dir"`
+	APIKey     string  `yaml:"api_key"`
+	SharingKey string  `yaml:"sharing_key"`
+	DataDir    string  `yaml:"data_dir"`
+	S3Repl     *S3Repl `yaml:"s3_replication"`
 
 	Apps     []*AppConfig    `yaml:"apps"`
 	Docstore *DocstoreConfig `yaml:"docstore"`
 
 	// Items defined with the CLI flags
-	ScanMode bool `yaml:"-"`
+	ScanMode   bool `yaml:"-"`
+	S3ScanMode bool `yaml:"-"`
 }
 
 func (c *Config) LogLvl() log15.Lvl {
@@ -121,6 +142,12 @@ func (c *Config) Init() error {
 	}
 	if c.SharingKey == "" {
 		return fmt.Errorf("missing `sharing_key` config item")
+	}
+	if c.S3Repl != nil {
+		// Set default region
+		if c.S3Repl.Region == "" {
+			c.S3Repl.Region = "us-east-1"
+		}
 	}
 	c.init = true
 	return nil

@@ -18,8 +18,8 @@ type SizedBlobRef struct {
 }
 
 type Blob struct {
-	Hash string
-	Data []byte
+	Hash string `json:"h"`
+	Data []byte `json":"-"`
 }
 
 // String implements the Stringer interface
