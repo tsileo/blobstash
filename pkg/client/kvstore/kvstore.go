@@ -132,8 +132,8 @@ func nextKey(key string) string {
 	return string(bkey)
 }
 
-func (kvs *KvStore) Keys(start, end string, limit int) ([]*response.KeyValue, error) {
-	resp, err := kvs.client.DoReq("GET", fmt.Sprintf("/api/kvstore/keys?start=%v&end=%v&limit=%d", start, end, limit), nil, nil)
+func (kvs *KvStore) Keys(prefix, start, end string, limit int) ([]*response.KeyValue, error) {
+	resp, err := kvs.client.DoReq("GET", fmt.Sprintf("/api/kvstore/keys?prefix=%s&start=%s&end=%s&limit=%d", prefix, start, end, limit), nil, nil)
 	if err != nil {
 		return nil, err
 	}

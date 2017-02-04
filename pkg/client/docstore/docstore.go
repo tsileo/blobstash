@@ -233,19 +233,13 @@ func (iter *Iter) Next(res interface{}) bool {
 	if iter.closed {
 		return false
 	}
-	u := fmt.Sprintf("/api/docstore/%s", iter.col.col)
-	qcnt := 0
+	u := fmt.Sprintf("/api/docstore/%s?limit=%d", iter.col.col, iter.Opts.Limit)
 	if iter.cursor != "" {
-		u = u + "?cursor=" + iter.cursor
-		qcnt = 1
+		u = u + "&cursor=" + iter.cursor
 	}
 	qqs := iter.query.ToQueryString()
 	if qqs != "" {
-		if qcnt == 0 {
-			u = u + "?" + qqs
-		} else {
-			u = u + "&" + qqs
-		}
+		u = u + "&" + qqs
 	}
 	resp, err := iter.col.docstore.client.DoReq("GET", u, nil, nil)
 	if err != nil {

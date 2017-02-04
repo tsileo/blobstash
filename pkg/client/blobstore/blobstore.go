@@ -6,7 +6,7 @@ import (
 	"io/ioutil"
 	"mime/multipart"
 
-	"golang.org/x/net/context"
+	//"golang.org/x/net/context"
 
 	"a4.io/blobstash/pkg/client/clientutil"
 )
@@ -42,7 +42,7 @@ func (bs *BlobStore) Client() *clientutil.Client {
 }
 
 // Get fetch the given blob from the remote BlobStash instance.
-func (bs *BlobStore) Get(_ context.Context, hash string) ([]byte, error) {
+func (bs *BlobStore) Get(hash string) ([]byte, error) {
 	resp, err := bs.client.DoReq("GET", fmt.Sprintf("/api/blobstore/blob/%s", hash), nil, nil)
 	if err != nil {
 		return nil, err
@@ -79,7 +79,7 @@ func (bs *BlobStore) Stat(hash string) (bool, error) {
 	case resp.StatusCode == 404:
 		return false, nil
 	default:
-		return false, fmt.Errorf("failed to get blob %v: %v", hash, string(body))
+		return false, fmt.Errorf("failed to get blob %v status %d: %v", hash, resp.StatusCode, string(body))
 	}
 }
 
