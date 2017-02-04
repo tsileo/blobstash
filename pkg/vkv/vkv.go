@@ -371,7 +371,7 @@ func (db *DB) Get(key string, version int) (*KeyValue, error) {
 	bkey := []byte(key)
 	exists, err := db.db.Get(nil, encodeMeta(KvKeyIndex, bkey))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("index key lookup failed: %v", err)
 	}
 	if len(exists) == 0 {
 		return nil, ErrNotFound
@@ -379,17 +379,17 @@ func (db *DB) Get(key string, version int) (*KeyValue, error) {
 	if version == -1 {
 		max, err := db.getUint64(encodeMeta(KvVersionMax, bkey))
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to get max version: %v", err)
 		}
 		version = int(max)
 	}
 	val, err := db.db.Get(nil, encodeKey(bkey, version))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get key \"%s\": %v", encodeKey(bkey, version), err)
 	}
 	kv, err := Unserialize(key, val)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to unserialize key: %v", err)
 	}
 	kv.Version = version
 	return kv, nil
@@ -492,7 +492,7 @@ func (db *DB) Keys(start, end string, limit int) ([]*KeyValue, error) {
 	res := []*KeyValue{}
 	enum, _, err := db.db.Seek(encodeMeta(KvKeyIndex, []byte(start)))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("initial seek error: %v", err)
 	}
 	endBytes := encodeMeta(KvKeyIndex, []byte(end))
 	i := 0
@@ -506,7 +506,7 @@ func (db *DB) Keys(start, end string, limit int) ([]*KeyValue, error) {
 		}
 		kv, err := db.Get(string(k[1:]), -1)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to get key %s: %v", k, err)
 		}
 		res = append(res, kv)
 		i++
@@ -770,6 +770,7 @@ func UnserializeBlob(data []byte) (*KeyValue, error) {
 }
 
 func Unserialize(key string, data []byte) (*KeyValue, error) {
+	// FIXME(tsileo): there's a bug when only the hash is set with no data
 	r := bytes.NewReader(data)
 	tmp := make([]byte, 4)
 	tmp2 := make([]byte, 8)

@@ -138,6 +138,31 @@ func (kv *KvStore) Put(ctx context.Context, key, ref string, data []byte, versio
 	return res, nil
 }
 
+func (kv *KvStore) keysHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case "GET":
+			// ctx := ctxutil.WithRequest(context.Background(), r)
+			// TODO(tsileo): handle limit
+			q := r.URL.Query()
+			end := q.Get("end")
+			if end == "" {
+				end = "\xff"
+			}
+			keys, err := kv.ReversePrefixKeys(q.Get("prefix"), q.Get("start"), end, 0)
+			if err != nil {
+				panic(err)
+			}
+			srw := httputil.NewSnappyResponseWriter(w, r)
+			httputil.WriteJSON(srw, map[string]interface{}{"keys": keys})
+			srw.Close()
+
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}
+}
+
 func (kv *KvStore) versionsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key := mux.Vars(r)["key"]
@@ -293,6 +318,7 @@ func (kv *KvStore) getHandler() func(http.ResponseWriter, *http.Request) {
 // }
 
 func (kv *KvStore) Register(r *mux.Router, basicAuth func(http.Handler) http.Handler) {
+	r.Handle("/keys", basicAuth(http.HandlerFunc(kv.keysHandler())))
 	r.Handle("/key/{key}", basicAuth(http.HandlerFunc(kv.getHandler())))
 	r.Handle("/key/{key}/_versions", basicAuth(http.HandlerFunc(kv.versionsHandler())))
 }
