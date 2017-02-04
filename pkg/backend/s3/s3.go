@@ -274,6 +274,7 @@ type S3Backend struct {
 }
 
 func New(logger log.Logger, back backend.BlobHandler, conf *config.Config) (*S3Backend, error) {
+	// Parse config
 	bucket := conf.S3Repl.Bucket
 	region := conf.S3Repl.Region
 	scanMode := conf.S3ScanMode
@@ -282,11 +283,16 @@ func New(logger log.Logger, back backend.BlobHandler, conf *config.Config) (*S3B
 		return nil, err
 	}
 
+	// Create a S3 Session
 	sess := session.New(&aws.Config{Region: aws.String(region)})
+
+	// Init the disk-backed queue
 	q, err := queue.New(filepath.Join(pathutil.VarDir(), "s3-repl.queue"))
 	if err != nil {
 		return nil, err
 	}
+
+	// Init the disk-backed index
 	indexPath := filepath.Join(pathutil.VarDir(), "s3-backend.index")
 	if scanMode {
 		logger.Debug("trying to remove old index file")
@@ -296,6 +302,7 @@ func New(logger log.Logger, back backend.BlobHandler, conf *config.Config) (*S3B
 	if err != nil {
 		return nil, err
 	}
+
 	s3backend := &S3Backend{
 		log:     logger,
 		backend: back,
@@ -306,27 +313,39 @@ func New(logger log.Logger, back backend.BlobHandler, conf *config.Config) (*S3B
 		queue:   q,
 		index:   i,
 	}
+
+	// FIXME(tsileo): should encypption be optional?
 	if key != nil {
 		s3backend.encrypted = true
 	}
+
 	logger.Info("Initializing S3 replication", "bucket", bucket, "encrypted", s3backend.encrypted, "scan_mode", scanMode)
+
+	// Ensure the bucket exist
 	obucket := NewBucket(s3backend.s3, bucket)
 	ok, err := obucket.Exists()
 	if err != nil {
 		return nil, err
 	}
+
+	// Create it if it does not
 	if !ok {
 		logger.Info("creating bucket", "bucket", bucket)
 		if err := obucket.Create(); err != nil {
 			return nil, err
 		}
 	}
+
+	// Trigger a re-indexing if requested
 	if scanMode {
 		if err := s3backend.reindex(obucket); err != nil {
 			return nil, err
 		}
 	}
+
+	// Initialize the worker (queue consumer)
 	go s3backend.worker()
+
 	return s3backend, nil
 }
 
