@@ -57,14 +57,7 @@ func (up *Uploader) writeReader(f io.Reader, meta *meta.Meta) error { // (*Write
 		}
 	}
 	meta.Size = int(size)
-	blake2bHash := fmt.Sprintf("%x", fullHash.Sum(nil))
-	if meta.Data == nil {
-		meta.Data = map[string]interface{}{
-			"blake2b-hash": blake2bHash,
-		}
-	} else {
-		meta.Data["blake2b-hash"] = blake2bHash
-	}
+	meta.AddData("blake2b-hash", fmt.Sprintf("%x", fullHash.Sum(nil)))
 	return nil
 	// writeResult.Hash = fmt.Sprintf("%x", fullHash.Sum(nil))
 	// if writeResult.BlobsUploaded > 0 {

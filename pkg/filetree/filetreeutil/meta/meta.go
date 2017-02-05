@@ -43,7 +43,6 @@ type Meta struct {
 	ModTime string                 `json:"mtime"`
 	Refs    []interface{}          `json:"refs"`
 	Version string                 `json:"version"`
-	Extra   map[string]interface{} `json:"extra,omitempty"` // TODO(tsileo): remove the `Extra` attr from BlobFS and filetree ext
 	Data    map[string]interface{} `json:"data,omitempty"`
 	XAttrs  map[string]string      `json:"xattrs,omitempty"`
 	Hash    string                 `json:"-"`
@@ -52,7 +51,6 @@ type Meta struct {
 func (m *Meta) free() {
 	m.Refs = m.Refs[:0]
 	m.Name = ""
-	m.Extra = nil
 	m.Data = nil
 	m.Type = ""
 	m.Size = 0
@@ -63,12 +61,12 @@ func (m *Meta) free() {
 	metaPool.Put(m)
 }
 
-// AddExtraData insert a new meta data in the Extra field
-func (m *Meta) AddExtraData(key string, val interface{}) {
-	if m.Extra == nil {
-		m.Extra = map[string]interface{}{}
+// AddData insert a new meta data in the Data field
+func (m *Meta) AddData(key string, val interface{}) {
+	if m.Data == nil {
+		m.Data = map[string]interface{}{}
 	}
-	m.Extra[key] = val
+	m.Data[key] = val
 }
 
 // JSON returns the `Meta` JSON encoded as (hash, js)
