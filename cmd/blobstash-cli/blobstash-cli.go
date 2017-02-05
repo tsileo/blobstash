@@ -1,16 +1,22 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
+	_ "path/filepath"
+	"strings"
+	"time"
 
 	"a4.io/blobstash/pkg/client/blobstore"
 	"a4.io/blobstash/pkg/client/kvstore"
 	"a4.io/blobstash/pkg/filetree/filetreeutil/meta"
 	"a4.io/blobstash/pkg/filetree/writer"
 
-	"context"
+	"github.com/dustin/go-humanize"
 	"github.com/google/subcommands"
 	_ "github.com/mitchellh/go-homedir"
 	_ "gopkg.in/yaml.v2"
@@ -27,8 +33,9 @@ func rsuccess(msg string, a ...interface{}) subcommands.ExitStatus {
 }
 
 type filetreeLsCmd struct {
-	bs  *blobstore.BlobStore
-	kvs *kvstore.KvStore
+	bs      *blobstore.BlobStore
+	kvs     *kvstore.KvStore
+	showRef bool
 }
 
 func (*filetreeLsCmd) Name() string     { return "filetree-ls" }
@@ -39,18 +46,92 @@ func (*filetreeLsCmd) Usage() string {
 `
 }
 
-func (*filetreeLsCmd) SetFlags(_ *flag.FlagSet) {}
+func (l *filetreeLsCmd) SetFlags(f *flag.FlagSet) {
+	f.BoolVar(&l.showRef, "show-ref", false, "Output references")
+}
 
-func (r *filetreeLsCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
-	keys, err := r.kvs.Keys("_filetree:root:", "", "", -1)
-	if err != nil {
-		return rerr("failed to list keys: %v", err)
+type Node struct {
+	Name     string  `json:"name"`
+	Type     string  `json:"type"`
+	Size     int     `json:"size"`
+	Mode     uint32  `json:"mode"`
+	ModTime  string  `json:"mtime"`
+	Hash     string  `json:"ref"`
+	Children []*Node `json:"children,omitempty"`
+
+	Data   map[string]interface{} `json:"data,omitempty"`
+	XAttrs map[string]string      `json:"xattrs,omitempty"`
+}
+
+func (l *filetreeLsCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
+	if f.NArg() == 0 {
+		keys, err := l.kvs.Keys("_filetree:root:", "", "", -1)
+		if err != nil {
+			return rerr("failed to list keys: %v", err)
+		}
+		// TODO(tsileo): implements keysHandler
+		for _, k := range keys {
+			// fmt.Printf("k=%+v\n", k)
+			// TODO(tsileo): switch kv.Version to int64
+			t := time.Unix(0, int64(k.Version))
+			data := strings.Split(k.Key, ":")
+			// TODO(tsileo): use tabwriter and short hash expand func like the blobs-cli one?
+			var ref string
+			if l.showRef {
+				ref = fmt.Sprintf("%s\t", k.Hash)
+			}
+			name := data[3]
+			if data[2] == "dir" {
+				name = name + "/"
+			}
+			fmt.Printf("%s\t%s%s\n", t.Format("2006-01-02  15:04"), ref, name)
+		}
 	}
-	// TODO(tsileo): implements keysHandler
-	for _, k := range keys {
-		fmt.Printf("k=%+v\n", k)
+	if f.NArg() == 1 {
+		data := strings.Split(f.Arg(0), "/")
+		path := strings.Join(data[1:], "/")
+		// FIXME(tsileo): not store the type in the key anymore
+		key, err := l.kvs.Get(fmt.Sprintf("_filetree:root:dir:%s", data[0]), -1)
+		if err != nil {
+			return rerr("failed to fetch root key \"%s\": %v", data[0], err)
+		}
+		resp, err := l.kvs.Client().DoReq("GET", fmt.Sprintf("/api/filetree/fs/ref/%s/%s", key.Hash, path), nil, nil)
+		defer resp.Body.Close()
+		if err != nil {
+			return rerr("API call failed: %v", err)
+		}
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return rerr("failed to read request body: %v", err)
+		}
+		if resp.StatusCode != 200 {
+			return rerr("API call failed: %s", body)
+		}
+		n := &Node{}
+		if err := json.Unmarshal(body, n); err != nil {
+			return rerr("failed to unmarshal: %v", err)
+		}
+		for _, c := range n.Children {
+			var ref string
+			if l.showRef {
+				ref = fmt.Sprintf("%s\t", c.Hash)
+			}
+			if c.Type == "file" {
+				ref = fmt.Sprintf("%s%s\t", ref, humanize.Bytes(uint64(c.Size)))
+			}
+			t, err := time.Parse(time.RFC3339, c.ModTime)
+			if err != nil {
+				return rerr("failed to parse date: %s", err)
+			}
+			name := c.Name
+			if c.Type == "dir" {
+				name = name + "/"
+			}
+			fmt.Printf("%s\t%s%s\n", t.Format("2006-01-02  15:04"), ref, name)
+			// fmt.Printf("%+v\n", c)
+		}
 	}
-	// TODO(tsileo): support filetree-ls rootname/subdir
+	// TODO(tsileo): support filetree-ls rootname/subdir using fs/path API
 	return subcommands.ExitSuccess
 }
 

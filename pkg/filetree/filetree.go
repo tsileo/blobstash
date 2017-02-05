@@ -124,6 +124,7 @@ func (ft *FileTreeExt) Register(r *mux.Router, root *mux.Router, basicAuth func(
 	dirHandler := http.HandlerFunc(ft.dirHandler())
 	fileHandler := http.HandlerFunc(ft.fileHandler())
 
+	// TODO(tsileo) "/fs" handler that return alls the FS as Node
 	r.Handle("/fs/{type}/{name}/", basicAuth(http.HandlerFunc(ft.fsHandler())))
 	r.Handle("/fs/{type}/{name}/_app", basicAuth(http.HandlerFunc(ft.fsAppHandler())))
 	r.Handle("/fs/{type}/{name}/{path:.+}", basicAuth(http.HandlerFunc(ft.fsHandler())))

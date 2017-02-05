@@ -42,6 +42,10 @@ func New(opts *clientutil.Opts) *KvStore {
 	}
 }
 
+func (kvs *KvStore) Client() *clientutil.Client {
+	return kvs.client
+}
+
 func (kvs *KvStore) Put(key, ref string, pdata []byte, version int) (*response.KeyValue, error) {
 	data := url.Values{}
 	data.Set("data", string(pdata))
