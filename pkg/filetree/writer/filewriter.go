@@ -1,7 +1,6 @@
 package writer // import "a4.io/blobstash/pkg/filetree/writer"
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -9,74 +8,55 @@ import (
 	"time"
 
 	"github.com/dchest/blake2b"
+	"github.com/restic/chunker"
 
-	"a4.io/blobstash/pkg/filetree/filetreeutil/chunker"
 	"a4.io/blobstash/pkg/filetree/filetreeutil/meta"
+	"a4.io/blobstash/pkg/hashutil"
 )
 
 var (
-	MinBlobSize = 64 << 10 // 64Kb
-	MaxBlobSize = 1 << 20  // 1MB
+	pol = chunker.Pol(0x3c657535c4d6f5)
 )
 
 func (up *Uploader) writeReader(f io.Reader, meta *meta.Meta) error { // (*WriteResult, error) {
 	// writeResult := NewWriteResult()
 	// Init the rolling checksum
-	rs := chunker.New()
+
+	// reuse this buffer
+	buf := make([]byte, 8*1024*1024)
 	// Prepare the reader to compute the hash on the fly
 	fullHash := blake2b.New256()
 	freader := io.TeeReader(f, fullHash)
-	eof := false
-	i := 0
+	chunkSplitter := chunker.New(freader, pol)
 	// TODO don't read one byte at a time if meta.Size < chunker.ChunkMinSize
 	// Prepare the blob writer
-	var buf bytes.Buffer
-	blobHash := blake2b.New256()
-	blobWriter := io.MultiWriter(&buf, blobHash, rs)
-	var size int
+	var size uint
 	for {
-		b := make([]byte, 1)
-		_, err := freader.Read(b)
+		chunk, err := chunkSplitter.Next(buf)
 		if err == io.EOF {
-			eof = true
-		} else {
-			blobWriter.Write(b)
-			i++
-		}
-		onSplit := rs.OnSplit()
-		//if (onSplit && (buf.Len() > MinBlobSize)) || buf.Len() >= MaxBlobSize || eof {
-		if onSplit || eof {
-			nsha := fmt.Sprintf("%x", blobHash.Sum(nil))
-			// Check if the blob exists
-			exists, err := up.bs.Stat(nsha)
-			if err != nil {
-				panic(fmt.Sprintf("DB error: %v", err))
-			}
-			if !exists {
-				if err := up.bs.Put(nsha, buf.Bytes()); err != nil {
-					panic(fmt.Errorf("failed to PUT blob %v", err))
-				}
-				// writeResult.BlobsUploaded++
-				// writeResult.SizeUploaded += buf.Len()
-			} // else {
-			// writeResult.SizeSkipped += buf.Len()
-			// writeResult.BlobsSkipped++
-			// }
-			// writeResult.Size += buf.Len()
-			size += buf.Len()
-			buf.Reset()
-			blobHash.Reset()
-			// writeResult.BlobsCount++
-			// Save the location and the blob hash into a sorted list (with the offset as index)
-			meta.AddIndexedRef(size, nsha)
-			//tx.Ladd(key, writeResult.Size, nsha)
-			rs.Reset()
-		}
-		if eof {
 			break
 		}
+		chunkHash := hashutil.Compute(chunk.Data)
+		size += chunk.Length
+
+		exists, err := up.bs.Stat(chunkHash)
+		if err != nil {
+			panic(fmt.Sprintf("DB error: %v", err))
+		}
+		if !exists {
+			if err := up.bs.Put(chunkHash, chunk.Data); err != nil {
+				panic(fmt.Errorf("failed to PUT blob %v", err))
+			}
+		}
+
+		// Save the location and the blob hash into a sorted list (with the offset as index)
+		meta.AddIndexedRef(int(size), chunkHash)
+
+		if err != nil {
+			return err
+		}
 	}
-	meta.Size = size
+	meta.Size = int(size)
 	return nil
 	// writeResult.Hash = fmt.Sprintf("%x", fullHash.Sum(nil))
 	// if writeResult.BlobsUploaded > 0 {
