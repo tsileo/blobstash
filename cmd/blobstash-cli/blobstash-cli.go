@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	_ "encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	_ "io/ioutil"
 	"os"
 	_ "path/filepath"
 	"strings"
@@ -63,28 +63,36 @@ type Node struct {
 	XAttrs map[string]string      `json:"xattrs,omitempty"`
 }
 
+func displayNode(c *Node, showRef bool) {
+	var ref string
+	if showRef {
+		ref = fmt.Sprintf("%s\t", c.Hash)
+	}
+	if c.Type == "file" {
+		ref = fmt.Sprintf("%s%s\t", ref, humanize.Bytes(uint64(c.Size)))
+	} else {
+		ref = fmt.Sprintf("%s0 B\t", ref)
+	}
+
+	t, err := time.Parse(time.RFC3339, c.ModTime)
+	if err != nil {
+		panic(err)
+	}
+	name := c.Name
+	if c.Type == "dir" {
+		name = name + "/"
+	}
+	fmt.Printf("%s\t%s%s\n", t.Format("2006-01-02  15:04"), ref, name)
+}
+
 func (l *filetreeLsCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
 	if f.NArg() == 0 {
-		keys, err := l.kvs.Keys("_filetree:root:", "", "", -1)
-		if err != nil {
-			return rerr("failed to list keys: %v", err)
+		nodes := []*Node{}
+		if err := l.kvs.Client().GetJSON("/api/filetree/fs/root?prefix=_filetree:root", nil, &nodes); err != nil {
+			return rerr("failed to fetch root: %v", err)
 		}
-		// TODO(tsileo): implements keysHandler
-		for _, k := range keys {
-			// fmt.Printf("k=%+v\n", k)
-			// TODO(tsileo): switch kv.Version to int64
-			t := time.Unix(0, int64(k.Version))
-			data := strings.Split(k.Key, ":")
-			// TODO(tsileo): use tabwriter and short hash expand func like the blobs-cli one?
-			var ref string
-			if l.showRef {
-				ref = fmt.Sprintf("%s\t", k.Hash)
-			}
-			name := data[3]
-			if data[2] == "dir" {
-				name = name + "/"
-			}
-			fmt.Printf("%s\t%s%s\n", t.Format("2006-01-02  15:04"), ref, name)
+		for _, node := range nodes {
+			displayNode(node, l.showRef)
 		}
 	}
 	if f.NArg() == 1 {
@@ -92,43 +100,15 @@ func (l *filetreeLsCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interfa
 		path := strings.Join(data[1:], "/")
 		// FIXME(tsileo): not store the type in the key anymore
 		key, err := l.kvs.Get(fmt.Sprintf("_filetree:root:dir:%s", data[0]), -1)
+		n := &Node{}
 		if err != nil {
 			return rerr("failed to fetch root key \"%s\": %v", data[0], err)
 		}
-		resp, err := l.kvs.Client().DoReq("GET", fmt.Sprintf("/api/filetree/fs/ref/%s/%s", key.Hash, path), nil, nil)
-		defer resp.Body.Close()
-		if err != nil {
-			return rerr("API call failed: %v", err)
-		}
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return rerr("failed to read request body: %v", err)
-		}
-		if resp.StatusCode != 200 {
-			return rerr("API call failed: %s", body)
-		}
-		n := &Node{}
-		if err := json.Unmarshal(body, n); err != nil {
-			return rerr("failed to unmarshal: %v", err)
+		if err := l.kvs.Client().GetJSON(fmt.Sprintf("/api/filetree/fs/ref/%s/%s", key.Hash, path), nil, n); err != nil {
+			return rerr("failed to fetch node: %v", err)
 		}
 		for _, c := range n.Children {
-			var ref string
-			if l.showRef {
-				ref = fmt.Sprintf("%s\t", c.Hash)
-			}
-			if c.Type == "file" {
-				ref = fmt.Sprintf("%s%s\t", ref, humanize.Bytes(uint64(c.Size)))
-			}
-			t, err := time.Parse(time.RFC3339, c.ModTime)
-			if err != nil {
-				return rerr("failed to parse date: %s", err)
-			}
-			name := c.Name
-			if c.Type == "dir" {
-				name = name + "/"
-			}
-			fmt.Printf("%s\t%s%s\n", t.Format("2006-01-02  15:04"), ref, name)
-			// fmt.Printf("%+v\n", c)
+			displayNode(c, l.showRef)
 		}
 	}
 	// TODO(tsileo): support filetree-ls rootname/subdir using fs/path API
@@ -140,7 +120,7 @@ type filetreeDownloadCmd struct {
 	kvs *kvstore.KvStore
 }
 
-func (*filetreeDownloadCmd) Name() string     { return "filetree-download" }
+func (*filetreeDownloadCmd) Name() string     { return "filetree-get" }
 func (*filetreeDownloadCmd) Synopsis() string { return "Display recent blobs" }
 func (*filetreeDownloadCmd) Usage() string {
 	return `recent :
