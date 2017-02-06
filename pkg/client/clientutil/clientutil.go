@@ -1,9 +1,11 @@
 package clientutil // import "a4.io/blobstash/pkg/client/clientutil"
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"strings"
@@ -124,4 +126,23 @@ func (client *Client) DoReq(method, path string, headers map[string]string, body
 		request.Header.Set(header, val)
 	}
 	return client.client.Do(request)
+}
+
+func (client *Client) GetJSON(path string, headers map[string]string, out interface{}) error {
+	resp, err := client.DoReq("GET", path, headers, nil)
+	defer resp.Body.Close()
+	if err != nil {
+		return err
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("API call failed with status %d: %s", resp.StatusCode, body)
+	}
+	if err := json.Unmarshal(body, out); err != nil {
+		return fmt.Errorf("failed to unmarshal: %v", err)
+	}
+	return nil
 }
