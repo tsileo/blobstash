@@ -124,7 +124,7 @@ func (ft *FileTreeExt) Register(r *mux.Router, root *mux.Router, basicAuth func(
 	dirHandler := http.HandlerFunc(ft.dirHandler())
 	fileHandler := http.HandlerFunc(ft.fileHandler())
 
-	// TODO(tsileo) "/fs" handler that return alls the FS as Node
+	r.Handle("/fs/root", basicAuth(http.HandlerFunc(ft.fsRootHandler())))
 	r.Handle("/fs/{type}/{name}/", basicAuth(http.HandlerFunc(ft.fsHandler())))
 	r.Handle("/fs/{type}/{name}/_app", basicAuth(http.HandlerFunc(ft.fsAppHandler())))
 	r.Handle("/fs/{type}/{name}/{path:.+}", basicAuth(http.HandlerFunc(ft.fsHandler())))
@@ -602,6 +602,38 @@ func (ft *FileTreeExt) fsAppHandler() func(http.ResponseWriter, *http.Request) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+	}
+}
+
+func (ft *FileTreeExt) fsRootHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+		nodes := []*Node{}
+
+		prefix := r.URL.Query().Get("prefix")
+		if prefix == "" {
+			prefix = FSKeyFmt
+		}
+		keys, err := ft.kvStore.Keys(context.TODO(), prefix, prefix+"\xff", 0)
+		if err != nil {
+			panic(err)
+		}
+		// Put(context.TODO(), fmt.Sprintf(FSKeyFmt, n.fs.Name), "", js, -1); err != nil {
+
+		for _, kv := range keys {
+			data := strings.Split(kv.Key, ":")
+			fs := &FS{Name: data[len(data)-1], Ref: kv.Hash, ft: ft}
+			node, _, err := fs.Path("/", false)
+			if err != nil {
+				panic(err)
+			}
+			nodes = append(nodes, node)
+		}
+		httputil.WriteJSON(w, nodes)
 	}
 }
 
