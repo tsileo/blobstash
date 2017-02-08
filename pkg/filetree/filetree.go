@@ -198,7 +198,7 @@ func (ft *FileTreeExt) Update(n *Node, m *meta.Meta) (*Node, error) {
 		}
 	}
 
-	newNode.parent.meta.Refs = newRefs
+	newNode.parent.Meta.Refs = newRefs
 	newNode.parent.Children = newChildren
 
 	// parentMeta := n.parent.meta
@@ -206,18 +206,18 @@ func (ft *FileTreeExt) Update(n *Node, m *meta.Meta) (*Node, error) {
 	// n.parent.Children = newChildren
 
 	// Update the node  modtime
-	newNode.parent.meta.ModTime = time.Now().Format(meta.ModTimeFmt)
+	newNode.parent.Meta.ModTime = time.Now().Format(meta.ModTimeFmt)
 	// fmt.Printf("saving parent meta: %+v\n", newNode.parent.meta)
-	newRef, data := newNode.parent.meta.Json()
+	newRef, data := newNode.parent.Meta.Json()
 	newNode.parent.Hash = newRef
-	newNode.parent.meta.Hash = newRef
+	newNode.parent.Meta.Hash = newRef
 	if err := ft.blobStore.Put(context.TODO(), &blob.Blob{Hash: newRef, Data: data}); err != nil {
 		return nil, err
 	}
 	// n.parent.Hash = newRef
 	// parentMeta.Hash = newRef
 	// Propagate the change to the parents
-	if _, err := ft.Update(newNode.parent, newNode.parent.meta); err != nil {
+	if _, err := ft.Update(newNode.parent, newNode.parent.Meta); err != nil {
 		return nil, err
 	}
 	return newNode, nil
@@ -225,7 +225,7 @@ func (ft *FileTreeExt) Update(n *Node, m *meta.Meta) (*Node, error) {
 
 func (n *Node) Close() error {
 	// FIXME(tsileo): no nore Meta pool
-	n.meta.Close()
+	n.Meta.Close()
 	return nil
 }
 
@@ -256,7 +256,7 @@ func (ft *FileTreeExt) fetchDir(n *Node, depth, maxDepth int) error {
 	}
 	if n.Type == "dir" {
 		n.Children = []*Node{}
-		for _, ref := range n.meta.Refs {
+		for _, ref := range n.Meta.Refs {
 			cn, err := ft.nodeByRef(ref.(string))
 			if err != nil {
 				return err
@@ -911,7 +911,7 @@ func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 		// Output some headers about ACLs
 		u := &url.URL{Path: fmt.Sprintf("/%s/%s", n.Type[0:1], n.Hash)}
 		pubHeader := "0"
-		if n.meta.IsPublic() {
+		if n.Meta.IsPublic() {
 			pubHeader = "1"
 			w.Header().Add("BlobStash-FileTree-Public-Path", u.String())
 		}
@@ -995,7 +995,7 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 			panic(err)
 		}
 
-		if !authorized && n.meta.IsPublic() {
+		if !authorized && n.Meta.IsPublic() {
 			ft.log.Debug("XAttrs public=1")
 			authorized = true
 		}
@@ -1035,7 +1035,7 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 			u := &url.URL{Path: fmt.Sprintf("/%s/%s", cn.Type[0:1], cn.Hash)}
 
 			// Only compute the Bewit if the node is not public
-			if !cn.meta.IsPublic() {
+			if !cn.Meta.IsPublic() {
 				if err := bewit.Bewit(ft.sharingCred, u, ft.shareTTL); err != nil {
 					panic(err)
 				}
