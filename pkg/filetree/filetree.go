@@ -158,7 +158,7 @@ type Node struct {
 	Data   map[string]interface{} `json:"data,omitempty"`
 	XAttrs map[string]string      `json:"xattrs,omitempty"`
 
-	meta   *meta.Meta `json:"-"`
+	Meta   *meta.Meta `json:"meta,omitempty"`
 	parent *Node      `json:"-"`
 	fs     *FS        `json:"-"`
 }
@@ -245,7 +245,7 @@ func metaToNode(m *meta.Meta) (*Node, error) {
 		Data:    m.Data,
 		XAttrs:  m.XAttrs,
 		Hash:    m.Hash,
-		meta:    m,
+		Meta:    m,
 	}, nil
 }
 

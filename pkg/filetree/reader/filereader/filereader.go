@@ -2,6 +2,7 @@ package filereader // import "a4.io/blobstash/pkg/filetree/reader/filereader"
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -9,7 +10,6 @@ import (
 	"github.com/Workiva/go-datastructures/trie/yfast"
 	"github.com/dchest/blake2b"
 	"github.com/hashicorp/golang-lru"
-	"golang.org/x/net/context"
 
 	"a4.io/blobstash/pkg/filetree/filetreeutil/meta"
 )
@@ -58,6 +58,7 @@ func GetFile(bs BlobStore, hash, path string) error {
 	if int(fstat.Size()) != meta.Size {
 		return fmt.Errorf("file %+v not successfully restored, size:%d/expected size:%d", fstat.Size, meta.Size)
 	}
+	// TODO(tsileo): check against the full hash
 	return nil
 	// readResult.Size = int(fstat.Size())
 	// readResult.SizeDownloaded = readResult.Size
