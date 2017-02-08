@@ -1,10 +1,11 @@
 package blobstore // import "a4.io/blobstash/pkg/blobstore"
 
 import (
-	log "github.com/inconshreveable/log15"
-	"golang.org/x/net/context"
+	"context"
 	"path/filepath"
 	"sync"
+
+	log "github.com/inconshreveable/log15"
 
 	"a4.io/blobstash/pkg/backend/blobsfile"
 	"a4.io/blobstash/pkg/backend/s3"
