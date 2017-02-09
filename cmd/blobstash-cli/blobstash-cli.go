@@ -14,6 +14,7 @@ import (
 	"a4.io/blobstash/pkg/client/blobstore"
 	"a4.io/blobstash/pkg/client/kvstore"
 	"a4.io/blobstash/pkg/filetree/filetreeutil/meta"
+	"a4.io/blobstash/pkg/filetree/reader"
 	"a4.io/blobstash/pkg/filetree/writer"
 
 	"github.com/dustin/go-humanize"
@@ -58,6 +59,8 @@ type Node struct {
 	ModTime  string  `json:"mtime"`
 	Hash     string  `json:"ref"`
 	Children []*Node `json:"children,omitempty"`
+
+	Meta *meta.Meta `json:"meta"`
 
 	Data   map[string]interface{} `json:"data,omitempty"`
 	XAttrs map[string]string      `json:"xattrs,omitempty"`
@@ -131,6 +134,39 @@ func (*filetreeDownloadCmd) Usage() string {
 func (*filetreeDownloadCmd) SetFlags(_ *flag.FlagSet) {}
 
 func (r *filetreeDownloadCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
+	data := strings.Split(f.Arg(0), "/")
+	path := strings.Join(data[1:], "/")
+	// FIXME(tsileo): not store the type in the key anymore
+	// FIXME(tsileo): move this into a filetree client
+	key, err := r.kvs.Get(fmt.Sprintf("_filetree:root:dir:%s", data[0]), -1)
+	n := &Node{}
+	if err != nil {
+		return rerr("failed to fetch root key \"%s\": %v", data[0], err)
+	}
+	if err := r.kvs.Client().GetJSON(fmt.Sprintf("/api/filetree/fs/ref/%s/%s", key.Hash, path), nil, n); err != nil {
+		return rerr("failed to fetch node: %v", err)
+	}
+
+	// since the `Meta` type is used internally, and the `Hash` fields is the blake2b hash of the JSON encoded struct,
+	// the Hash is omitted when converted to JSON
+	if n.Meta != nil {
+		n.Meta.Hash = n.Hash
+	}
+
+	downloader := reader.NewDownloader(r.bs)
+	fmt.Printf("%+v\n", n)
+	fmt.Printf("%+v\n", n.Meta)
+
+	// If no target path is provided, use the filename
+	tpath := f.Arg(1)
+	if tpath == "" {
+		tpath = n.Name
+	}
+
+	if err := downloader.Download(n.Meta, tpath); err != nil {
+		return rerr("failed to download: %v", err)
+	}
+
 	return subcommands.ExitSuccess
 }
 
@@ -190,9 +226,14 @@ func (r *filetreePutCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interf
 func main() {
 	// TODO(tsileo) config file with server address and collection name
 	opts := blobstore.DefaultOpts().SetHost(os.Getenv("BLOBSTASH_API_HOST"), os.Getenv("BLOBSTASH_API_KEY"))
+	opts.SnappyCompression = false
 	bs := blobstore.New(opts)
 	// col := ds.Col("notes23")
 	kvopts := kvstore.DefaultOpts().SetHost(os.Getenv("BLOBSTASH_API_HOST"), os.Getenv("BLOBSTASH_API_KEY"))
+
+	// FIXME(tsileo): have GetJSON support snappy?
+	kvopts.SnappyCompression = false
+
 	kvs := kvstore.New(kvopts)
 
 	subcommands.Register(subcommands.HelpCommand(), "")
