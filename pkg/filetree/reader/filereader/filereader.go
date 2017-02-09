@@ -28,6 +28,7 @@ type BlobStore interface {
 
 // Download a file by its hash to path
 func GetFile(bs BlobStore, hash, path string) error {
+	// FIXME(tsileo): take a `*meta.Meta` as argument instead of the hash
 	// readResult := &ReadResult{}
 	buf, err := os.Create(path)
 	defer buf.Close()
@@ -41,7 +42,7 @@ func GetFile(bs BlobStore, hash, path string) error {
 	}
 	meta, err := meta.NewMetaFromBlob(hash, js)
 	if err != nil {
-		return fmt.Errorf("failed to get meta %v: %v", hash, err)
+		return fmt.Errorf("failed to get meta %v \"%s\": %v", hash, js, err)
 	}
 	meta.Hash = hash
 	ffile := NewFile(bs, meta)

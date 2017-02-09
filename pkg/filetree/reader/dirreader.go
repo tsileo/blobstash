@@ -15,6 +15,8 @@ import (
 
 // GetDir restore the directory to path
 func GetDir(bs *blobstore.BlobStore, hash, path string) error { // (rr *ReadResult, err error) {
+	// FIXME(tsileo): take a `*meta.Meta` as argument instead of the hash
+
 	// fullHash := blake2b.New256()
 	// rr = &ReadResult{}
 	if err := os.Mkdir(path, 0700); err != nil {
@@ -27,7 +29,7 @@ func GetDir(bs *blobstore.BlobStore, hash, path string) error { // (rr *ReadResu
 	}
 	cmeta, err := meta.NewMetaFromBlob(hash, js)
 	if err != nil {
-		return fmt.Errorf("failed to fetch meta %s: %v", hash, err)
+		return fmt.Errorf("failed to fetch meta %s \"%s\": %v", hash, js, err)
 	}
 	cmeta.Hash = hash
 	// var crr *ReadResult
