@@ -1,9 +1,9 @@
 package apps // import "a4.io/blobstash/pkg/apps"
 
 import (
+	"context"
 	"crypto/md5"
 	"fmt"
-	_ "io"
 	"io/ioutil"
 	"net/http"
 	rhttputil "net/http/httputil"
@@ -20,7 +20,6 @@ import (
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
 	"github.com/yuin/gopher-lua"
-	"golang.org/x/net/context"
 
 	luamod "a4.io/blobstash/pkg/apps/lua"
 	luautil "a4.io/blobstash/pkg/apps/luautil"

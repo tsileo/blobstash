@@ -2,11 +2,11 @@ package meta // import "a4.io/blobstash/pkg/meta"
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 
 	log "github.com/inconshreveable/log15"
-	"golang.org/x/net/context"
 
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/hub"

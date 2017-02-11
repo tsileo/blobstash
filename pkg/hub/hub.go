@@ -1,7 +1,7 @@
 package hub // import "a4.io/blobstash/pkg/hub"
 
 import (
-	"golang.org/x/net/context"
+	"context"
 
 	log "github.com/inconshreveable/log15"
 

@@ -2,6 +2,7 @@ package nsdb // import "a4.io/blobstash/pkg/nsdb"
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -12,7 +13,6 @@ import (
 
 	"github.com/cznic/kv"
 	log "github.com/inconshreveable/log15"
-	"golang.org/x/net/context"
 
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/blobstore"

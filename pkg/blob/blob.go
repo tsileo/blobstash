@@ -6,6 +6,7 @@ import (
 	"a4.io/blobstash/pkg/hashutil"
 )
 
+// FIXME(tsileo): remove this
 type NamespacedBlobRef struct {
 	Hash      string
 	Size      int
