@@ -29,11 +29,11 @@ import (
 
 	"a4.io/blobstash/pkg/backend"
 	"a4.io/blobstash/pkg/backend/s3/index"
-	"a4.io/blobstash/pkg/backend/s3/queue"
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/config/pathutil"
 	"a4.io/blobstash/pkg/hashutil"
+	"a4.io/blobstash/pkg/queue"
 )
 
 var ErrWriteOnly = errors.New("backend is in read-only mode")
