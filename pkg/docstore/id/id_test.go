@@ -3,6 +3,7 @@ package id
 import (
 	"encoding/json"
 	"testing"
+	"time"
 )
 
 func check(err error) {
@@ -11,12 +12,9 @@ func check(err error) {
 	}
 }
 
-var (
-	testTs = 1429882340
-)
-
 func TestID(t *testing.T) {
 	t.Log("Testing encoding...")
+	testTs := time.Now().UnixNano()
 	id, err := New(testTs)
 	check(err)
 	t.Logf("cursor: %+v", id)

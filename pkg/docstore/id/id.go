@@ -4,7 +4,7 @@ Package id implements a MongoDB ObjectId like object.
 
 Cursor stored the timestamp and a hash.
 
-	(<timestamp encoded in big endian uint32> 4 bytes) + (5 random bytes / 3 bytes counter starting with random value) = 12 bytes
+	(<timestamp encoded in big endian uint64> 8 bytes) + (4 random bytes) = 12 bytes
 
 	24 bytes hex-encoded
 */
@@ -28,12 +28,12 @@ type ID struct {
 // New initializes an ID for the given timestamp
 func New(ts int64) (*ID, error) {
 	b := make([]byte, 12)
-	binary.BigEndian.PutUint32(b[:], uint32(ts))
-	randomCompoment := make([]byte, 8)
+	binary.BigEndian.PutUint64(b[:], uint64(ts))
+	randomCompoment := make([]byte, 4)
 	if _, err := rand.Read(randomCompoment); err != nil {
 		return nil, err
 	}
-	copy(b[4:], randomCompoment[:])
+	copy(b[8:], randomCompoment[:])
 	return &ID{data: b}, nil
 }
 
@@ -76,8 +76,8 @@ func (id *ID) String() string {
 }
 
 // Ts returns the timestamp component
-func (id *ID) Ts() int {
-	return int(binary.BigEndian.Uint32(id.data[0:4]))
+func (id *ID) Ts() int64 {
+	return int64(binary.BigEndian.Uint64(id.data[0:8]))
 }
 
 // MarshalJSON implements the necessary interface to allow an `ID` object to be encoded
