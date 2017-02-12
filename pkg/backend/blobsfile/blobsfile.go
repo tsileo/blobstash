@@ -813,11 +813,9 @@ func (backend *BlobsFileBackend) Enumerate2(blobs chan<- *blob.SizedBlobRef, sta
 		if err == io.EOF {
 			break
 		}
-		// FIXME(tsileo): fix this mess
 		hash := hex.EncodeToString(k[1:])
-		// fmt.Printf("%+v/%+v/%+v\n", k, endBytes, bytes.Compare(k, endBytes))
-		// fmt.Printf("%+v/%+v/%+v\n", strings.Compare(hash, string(endBytes[1:])), hash, endBytes[1:])
-		if bytes.Compare(k, endBytes) > 0 || (limit != 0 && i > limit) {
+		// fmt.Printf("\n\n\nhash=%s\nend=%s\ncmp=%v\n\n\n", hash, endBytes, bytes.Compare([]byte(hash), endBytes))
+		if bytes.Compare([]byte(hash), endBytes) > 0 || (limit != 0 && i > limit) {
 			return nil
 		}
 		blobPos, err := backend.BlobPos(hash)
