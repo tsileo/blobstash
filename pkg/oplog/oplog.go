@@ -1,3 +1,8 @@
+/*
+
+Package oplog provides an HTTP Server-Sent Events (SSE) endpoint for real-time replication of the BlobStore.
+
+*/
 package oplog // import "a4.io/blobstash/pkg/oplog"
 
 import (
@@ -31,20 +36,25 @@ func New(logger log.Logger, conf *config.Config, h *hub.Hub) (*Oplog, error) {
 		},
 		hub: h,
 	}
+	oplog.init()
 	return oplog, nil
 }
 
 func (o *Oplog) newBlobCallback(ctx context.Context, blob *blob.Blob, _ interface{}) error {
+	// Send the blob hash to the broker
 	o.broker.messages <- blob.Hash
 	return nil
 }
 
 func (o *Oplog) Register(r *mux.Router, basicAuth func(http.Handler) http.Handler) {
+	// Register the SSE HTTP endpoint
 	r.Handle("/", basicAuth(o.broker))
 }
 
 func (o *Oplog) init() {
+	// Start the SSE broker worker
 	o.broker.start()
+	// Register to the new blob event
 	o.hub.Subscribe(hub.NewBlob, "oplog", o.newBlobCallback)
 }
 
