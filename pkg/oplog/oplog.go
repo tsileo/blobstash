@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"a4.io/blobstash/pkg/blob"
@@ -31,6 +32,7 @@ type Op struct {
 }
 
 func New(logger log.Logger, conf *config.Config, h *hub.Hub) (*Oplog, error) {
+	logger.Debug("init")
 	oplog := &Oplog{
 		log:       logger,
 		heartbeat: time.NewTicker(30 * time.Second),
@@ -67,14 +69,23 @@ func (o *Oplog) init() {
 	go func() {
 		for {
 			<-o.heartbeat.C
-			o.broker.ops <- &Op{Event: "heartbeat", Data: ""}
+			// Only send the heartbeat if there is any client
+			o.broker.mu.Lock()
+			clientsCnt := len(o.broker.clients)
+			o.broker.mu.Unlock()
+			if clientsCnt > 0 {
+				o.broker.ops <- &Op{Event: "heartbeat", Data: ""}
+			}
 		}
 	}()
 }
 
 type Broker struct {
-	log            log.Logger
-	clients        map[chan *Op]bool
+	log log.Logger
+
+	clients map[chan *Op]bool
+	mu      sync.Mutex // for guarding clients
+
 	newClients     chan chan *Op
 	defunctClients chan chan *Op
 	ops            chan *Op
@@ -87,13 +98,17 @@ func (b *Broker) start() {
 			case s := <-b.newClients:
 				// There is a new client attached and we
 				// want to start sending them messages.
+				b.mu.Lock()
 				b.clients[s] = true
+				b.mu.Unlock()
 				b.log.Debug("added new client")
 
 			case s := <-b.defunctClients:
 				// A client has dettached and we want to
 				// stop sending them messages.
+				b.mu.Lock()
 				delete(b.clients, s)
+				b.mu.Unlock()
 				close(s)
 				b.log.Debug("removed client")
 
@@ -101,9 +116,11 @@ func (b *Broker) start() {
 				// There is a new message to send.  For each
 				// attached client, push the new message
 				// into the client's message channel.
+				b.mu.Lock()
 				for s, _ := range b.clients {
 					s <- op
 				}
+				b.mu.Unlock()
 				b.log.Info("message sent", "op", op, "clients_count", len(b.clients))
 			}
 		}
