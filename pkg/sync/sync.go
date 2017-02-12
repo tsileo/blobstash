@@ -45,38 +45,38 @@ func NewHash() (h hash.Hash) {
 	return
 }
 
-type SyncTable struct {
+type Sync struct {
 	blobstore *blobstore.BlobStore
 	conf      *config.Config
 
 	log log2.Logger
 }
 
-func New(logger log2.Logger, conf *config.Config, blobstore *blobstore.BlobStore) *SyncTable {
+func New(logger log2.Logger, conf *config.Config, blobstore *blobstore.BlobStore) *Sync {
 	logger.Debug("init")
-	return &SyncTable{
+	return &Sync{
 		blobstore: blobstore,
 		conf:      conf,
 		log:       logger,
 	}
 }
 
-func (st *SyncTable) Register(r *mux.Router, basicAuth func(http.Handler) http.Handler) {
+func (st *Sync) Register(r *mux.Router, basicAuth func(http.Handler) http.Handler) {
 	r.Handle("/state", basicAuth(http.HandlerFunc(st.stateHandler())))
 	r.Handle("/state/leaf/{prefix}", basicAuth(http.HandlerFunc(st.stateLeafHandler())))
 	r.Handle("/_trigger", basicAuth(http.HandlerFunc(st.triggerHandler())))
 }
 
-func (st *SyncTable) Sync(url, apiKey string) (*SyncStats, error) {
+func (st *Sync) Sync(url, apiKey string) (*SyncStats, error) {
 	log := st.log.New("trigger_id", logext.RandId(6))
 	log.Info("Starting sync...", "url", url)
 	rawState := st.generateTree()
 	defer rawState.Close()
-	client := NewSyncTableClient(st.log.New("submodule", "synctable-client"), st, rawState, st.blobstore, url, apiKey)
+	client := NewSyncClient(st.log.New("submodule", "synctable-client"), st, rawState, st.blobstore, url, apiKey)
 	return client.Sync()
 }
 
-func (st *SyncTable) triggerHandler() func(http.ResponseWriter, *http.Request) {
+func (st *Sync) triggerHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		url := q.Get("url")
@@ -89,7 +89,7 @@ func (st *SyncTable) triggerHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-func (st *SyncTable) generateTree() *StateTree {
+func (st *Sync) generateTree() *StateTree {
 	state := NewStateTree()
 	blobs, err := st.blobstore.Enumerate(context.Background(), "", "\xff", 0)
 	if err != nil {
@@ -102,7 +102,7 @@ func (st *SyncTable) generateTree() *StateTree {
 	return state
 }
 
-func (st *SyncTable) stateHandler() func(http.ResponseWriter, *http.Request) {
+func (st *Sync) stateHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		state := st.generateTree()
 		defer state.Close()
@@ -120,7 +120,7 @@ func (st *State) String() string {
 	return fmt.Sprintf("[State root=%s, hashes_cnt=%v, leaves_cnt=%v]", st.Root, st.Count, len(st.Leaves))
 }
 
-func (st *SyncTable) LeafState(prefix string) (*LeafState, error) {
+func (st *Sync) LeafState(prefix string) (*LeafState, error) {
 	blobs, err := st.blobstore.Enumerate(context.Background(), prefix, prefix+"\xff", 0)
 	if err != nil {
 		panic(err)
@@ -138,7 +138,7 @@ func (st *SyncTable) LeafState(prefix string) (*LeafState, error) {
 	}, nil
 }
 
-func (st *SyncTable) stateLeafHandler() func(http.ResponseWriter, *http.Request) {
+func (st *Sync) stateLeafHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		prefix := vars["prefix"]

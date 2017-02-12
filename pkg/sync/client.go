@@ -15,7 +15,7 @@ import (
 	log "github.com/inconshreveable/log15"
 )
 
-type SyncTableClient struct {
+type SyncClient struct {
 	client *clientutil.Client
 
 	url    string
@@ -23,20 +23,20 @@ type SyncTableClient struct {
 
 	blobstore *blobstore.BlobStore
 
-	st    *SyncTable
+	st    *Sync
 	state *StateTree
 
 	log log.Logger
 }
 
-func NewSyncTableClient(logger log.Logger, st *SyncTable, state *StateTree, blobstore *blobstore.BlobStore, url, apiKey string) *SyncTableClient {
+func NewSyncClient(logger log.Logger, st *Sync, state *StateTree, blobstore *blobstore.BlobStore, url, apiKey string) *SyncClient {
 	clientOpts := &clientutil.Opts{
 		APIKey:            apiKey,
 		Host:              url,
 		EnableHTTP2:       true,
 		SnappyCompression: false, // FIXME(tsileo): Activate this once snappy response reader is imported
 	}
-	return &SyncTableClient{
+	return &SyncClient{
 		client:    clientutil.New(clientOpts),
 		url:       url,
 		apiKey:    apiKey,
@@ -46,7 +46,7 @@ func NewSyncTableClient(logger log.Logger, st *SyncTable, state *StateTree, blob
 	}
 }
 
-func (stc *SyncTableClient) RemoteState() (*State, error) {
+func (stc *SyncClient) RemoteState() (*State, error) {
 	s := &State{}
 	if err := stc.client.GetJSON("/api/sync/state", nil, s); err != nil {
 		return nil, err
@@ -54,7 +54,7 @@ func (stc *SyncTableClient) RemoteState() (*State, error) {
 	return s, nil
 }
 
-func (stc *SyncTableClient) RemoteLeaf(prefix string) (*LeafState, error) {
+func (stc *SyncClient) RemoteLeaf(prefix string) (*LeafState, error) {
 	ls := &LeafState{}
 	if err := stc.client.GetJSON(fmt.Sprintf("/api/sync/state/leaf/%s", prefix), nil, ls); err != nil {
 		return nil, err
@@ -72,7 +72,7 @@ type SyncStats struct {
 }
 
 // Get fetch the given blob from the remote BlobStash instance.
-func (stc *SyncTableClient) remotePutBlob(hash string, blob []byte) error {
+func (stc *SyncClient) remotePutBlob(hash string, blob []byte) error {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 	part, err := writer.CreateFormFile(hash, hash)
@@ -100,7 +100,7 @@ func (stc *SyncTableClient) remotePutBlob(hash string, blob []byte) error {
 }
 
 // Get fetch the given blob from the remote BlobStash instance.
-func (stc *SyncTableClient) remoteGetBlob(hash string) ([]byte, error) {
+func (stc *SyncClient) remoteGetBlob(hash string) ([]byte, error) {
 	resp, err := stc.client.DoReq("GET", fmt.Sprintf("/api/blobstore/blob/%s", hash), nil, nil)
 	if err != nil {
 		return nil, err
@@ -122,7 +122,7 @@ func (stc *SyncTableClient) remoteGetBlob(hash string) ([]byte, error) {
 	}
 }
 
-func (stc *SyncTableClient) putBlob(hash string, data []byte) error {
+func (stc *SyncClient) putBlob(hash string, data []byte) error {
 	blob := &blob.Blob{Hash: hash, Data: data}
 	if err := blob.Check(); err != nil {
 		return err
@@ -130,11 +130,11 @@ func (stc *SyncTableClient) putBlob(hash string, data []byte) error {
 	return stc.blobstore.Put(context.Background(), blob)
 }
 
-func (stc *SyncTableClient) getBlob(hash string) ([]byte, error) {
+func (stc *SyncClient) getBlob(hash string) ([]byte, error) {
 	return stc.blobstore.Get(context.Background(), hash)
 }
 
-func (stc *SyncTableClient) Sync() (*SyncStats, error) {
+func (stc *SyncClient) Sync() (*SyncStats, error) {
 	start := time.Now()
 	stats := &SyncStats{}
 

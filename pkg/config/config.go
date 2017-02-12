@@ -40,6 +40,11 @@ type Replication struct {
 	EnableOplog bool `yaml:"enable_oplog"`
 }
 
+type ReplicateTo struct {
+	URL    string `yaml:"url"`
+	APIKey string `yaml:"api_key"`
+}
+
 func (s3 *S3Repl) Key() (*[32]byte, error) {
 	if s3.KeyFile == "" {
 		return nil, nil
@@ -70,6 +75,7 @@ type Config struct {
 	Apps        []*AppConfig    `yaml:"apps"`
 	Docstore    *DocstoreConfig `yaml:"docstore"`
 	Replication *Replication    `yaml:"replication"`
+	ReplicateTo *ReplicateTo    `yaml:"replicate_to"`
 
 	// Items defined with the CLI flags
 	ScanMode   bool `yaml:"-"`

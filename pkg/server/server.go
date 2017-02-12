@@ -26,6 +26,7 @@ import (
 	"a4.io/blobstash/pkg/meta"
 	"a4.io/blobstash/pkg/middleware"
 	"a4.io/blobstash/pkg/oplog"
+	"a4.io/blobstash/pkg/replication"
 	synctable "a4.io/blobstash/pkg/sync"
 
 	"github.com/gorilla/mux"
@@ -99,6 +100,12 @@ func New(conf *config.Config) (*Server, error) {
 	// Load the synctable
 	synctable := synctable.New(logger.New("app", "sync"), conf, blobstore)
 	synctable.Register(s.router.PathPrefix("/api/sync").Subrouter(), basicAuth)
+
+	if conf.ReplicateTo != nil {
+		if _, err := replication.New(logger.New("app", "replication"), conf, synctable); err != nil {
+			return nil, fmt.Errorf("failed to initialize replication app: %v", err)
+		}
+	}
 
 	filetree, err := filetree.New(logger.New("app", "filetree"), conf, authFunc, kvstore, blobstore, hub)
 	if err != nil {
