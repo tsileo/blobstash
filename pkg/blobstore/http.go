@@ -15,6 +15,12 @@ import (
 	"a4.io/blobstash/pkg/httputil"
 )
 
+func (bs *BlobStore) Register(r *mux.Router, basicAuth func(http.Handler) http.Handler) {
+	r.Handle("/blobs", basicAuth(http.HandlerFunc(bs.enumerateHandler())))
+	r.Handle("/upload", basicAuth(http.HandlerFunc(bs.uploadHandler())))
+	r.Handle("/blob/{hash}", basicAuth(http.HandlerFunc(bs.blobHandler())))
+}
+
 func (bs *BlobStore) uploadHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -142,10 +148,4 @@ func (bs *BlobStore) enumerateHandler() func(http.ResponseWriter, *http.Request)
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
 	}
-}
-
-func (bs *BlobStore) Register(r *mux.Router, basicAuth func(http.Handler) http.Handler) {
-	r.Handle("/blobs", basicAuth(http.HandlerFunc(bs.enumerateHandler())))
-	r.Handle("/upload", basicAuth(http.HandlerFunc(bs.uploadHandler())))
-	r.Handle("/blob/{hash}", basicAuth(http.HandlerFunc(bs.blobHandler())))
 }

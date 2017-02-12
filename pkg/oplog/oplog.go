@@ -35,7 +35,7 @@ func New(logger log.Logger, conf *config.Config, h *hub.Hub) (*Oplog, error) {
 	logger.Debug("init")
 	oplog := &Oplog{
 		log:       logger,
-		heartbeat: time.NewTicker(30 * time.Second),
+		heartbeat: time.NewTicker(20 * time.Second),
 		broker: &Broker{
 			log:            logger.New("submodule", "broker"),
 			clients:        make(map[chan *Op]bool),

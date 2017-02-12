@@ -68,6 +68,7 @@ type HashIndexes struct {
 }
 
 func New() (*HashIndexes, error) {
+	// FIXME(tsileo): should use `config.VarDir()`
 	path := filepath.Join(pathutil.VarDir(), "docstore.index")
 	createOpen := kv.Open
 	if _, err := os.Stat(path); os.IsNotExist(err) {

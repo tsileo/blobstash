@@ -31,7 +31,6 @@ import (
 	"a4.io/blobstash/pkg/backend/s3/index"
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/config"
-	"a4.io/blobstash/pkg/config/pathutil"
 	"a4.io/blobstash/pkg/hashutil"
 	"a4.io/blobstash/pkg/queue"
 )
@@ -287,13 +286,13 @@ func New(logger log.Logger, back backend.BlobHandler, conf *config.Config) (*S3B
 	sess := session.New(&aws.Config{Region: aws.String(region)})
 
 	// Init the disk-backed queue
-	q, err := queue.New(filepath.Join(pathutil.VarDir(), "s3-repl.queue"))
+	q, err := queue.New(filepath.Join(conf.VarDir(), "s3-repl.queue"))
 	if err != nil {
 		return nil, err
 	}
 
 	// Init the disk-backed index
-	indexPath := filepath.Join(pathutil.VarDir(), "s3-backend.index")
+	indexPath := filepath.Join(conf.VarDir(), "s3-backend.index")
 	if scanMode {
 		logger.Debug("trying to remove old index file")
 		os.Remove(indexPath)
