@@ -64,7 +64,7 @@ func New(logger log2.Logger, conf *config.Config, blobstore *blobstore.BlobStore
 
 func (st *SyncTable) Register(r *mux.Router, basicAuth func(http.Handler) http.Handler) {
 	r.Handle("/state", basicAuth(http.HandlerFunc(st.stateHandler())))
-	r.Handle("/state/leaves/{prefix}", basicAuth(http.HandlerFunc(st.stateLeavesHandler())))
+	r.Handle("/state/leaf/{prefix}", basicAuth(http.HandlerFunc(st.stateLeafHandler())))
 	r.Handle("/", basicAuth(http.HandlerFunc(st.syncHandler())))
 	r.Handle("/_trigger", basicAuth(http.HandlerFunc(st.triggerHandler())))
 }
@@ -78,12 +78,7 @@ func (st *SyncTable) triggerHandler() func(http.ResponseWriter, *http.Request) {
 		apiKey := q.Get("api_key")
 		rawState := st.generateTree()
 		defer rawState.Close()
-		state := &State{
-			Root:   rawState.Root(),
-			Count:  rawState.Count(),
-			Leaves: rawState.Level1(),
-		}
-		client := NewSyncTableClient(st.log.New("submodule", "synctable-client"), state, st.blobstore, nil, "", url, apiKey)
+		client := NewSyncTableClient(st.log.New("submodule", "synctable-client"), st, rawState, st.blobstore, url, apiKey)
 		stats, err := client.Sync()
 		if err != nil {
 			panic(err)
@@ -109,11 +104,7 @@ func (st *SyncTable) stateHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		state := st.generateTree()
 		defer state.Close()
-		httputil.WriteJSON(w, map[string]interface{}{
-			"root":   state.Root(),
-			"count":  state.Count(),
-			"leaves": state.Level1(),
-		})
+		httputil.WriteJSON(w, state.State())
 	}
 }
 
@@ -127,26 +118,33 @@ func (st *State) String() string {
 	return fmt.Sprintf("[State root=%s, hashes_cnt=%v, leaves_cnt=%v]", st.Root, st.Count, len(st.Leaves))
 }
 
-func (st *SyncTable) stateLeavesHandler() func(http.ResponseWriter, *http.Request) {
+func (st *SyncTable) LeafState(prefix string) (*LeafState, error) {
+	blobs, err := st.blobstore.Enumerate(context.Background(), prefix, prefix+"\xff", 0)
+	if err != nil {
+		panic(err)
+	}
+	var hashes []string
+	for _, blob := range blobs {
+		// st.log.Debug("_state loop", "ns", ns, "hash", h)
+		hashes = append(hashes, blob.Hash)
+	}
+
+	return &LeafState{
+		Prefix: prefix,
+		Count:  len(hashes),
+		Hashes: hashes,
+	}, nil
+}
+
+func (st *SyncTable) stateLeafHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		prefix := vars["prefix"]
-		blobs, err := st.blobstore.Enumerate(context.Background(), prefix, prefix+"\xff", 0)
+		leafState, err := st.LeafState(prefix)
 		if err != nil {
 			panic(err)
 		}
-		var hashes []string
-		for _, blob := range blobs {
-			// st.log.Debug("_state loop", "ns", ns, "hash", h)
-			hashes = append(hashes, blob.Hash)
-		}
-
-		st.log.Info("_state/leaves called", "prefix", prefix, "hashes", len(hashes))
-		httputil.WriteJSON(w, map[string]interface{}{
-			"prefix": prefix,
-			"count":  len(hashes),
-			"hashes": hashes,
-		})
+		httputil.WriteJSON(w, leafState)
 	}
 }
 
@@ -296,6 +294,14 @@ func (st *StateTree) Add(h string) {
 
 func (st *StateTree) Count() int {
 	return st.count
+}
+
+func (st *StateTree) State() *State {
+	return &State{
+		Root:   st.Root(),
+		Count:  st.Count(),
+		Leaves: st.Level1(),
+	}
 }
 
 // TODO(tsileo): import the scheduler from blobsnap to run sync periodically
