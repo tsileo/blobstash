@@ -454,7 +454,7 @@ func (docstore *DocStore) Insert(collection string, idoc interface{}) (*id.ID, e
 
 		// Build the ID and add some meta data
 		now := time.Now().UTC()
-		_id, err := id.New(now.Unix())
+		_id, err := id.New(now.UnixNano())
 		if err != nil {
 			return nil, err
 		}
