@@ -788,7 +788,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			// Output some headers
 			w.Header().Set("BlobStash-DocStore-Doc-Id", _id.String())
 			w.Header().Set("BlobStash-DocStore-Doc-Hash", _id.Hash())
-			w.Header().Set("BlobStash-DocStore-Doc-CreatedAt", strconv.Itoa(_id.Ts()))
+			w.Header().Set("BlobStash-DocStore-Doc-CreatedAt", strconv.FormatInt(_id.Ts(), 10))
 			w.WriteHeader(http.StatusCreated)
 			srw := httputil.NewSnappyResponseWriter(w, r)
 			httputil.WriteJSON(srw, map[string]interface{}{
@@ -1095,6 +1095,6 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 
 		w.Header().Set("BlobStash-DocStore-Doc-Id", sid)
 		w.Header().Set("BlobStash-DocStore-Doc-Hash", _id.Hash())
-		w.Header().Set("BlobStash-DocStore-Doc-CreatedAt", strconv.Itoa(_id.Ts()))
+		w.Header().Set("BlobStash-DocStore-Doc-CreatedAt", strconv.FormatInt(_id.Ts(), 10))
 	}
 }
