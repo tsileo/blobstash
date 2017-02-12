@@ -26,6 +26,7 @@ import (
 	"a4.io/blobstash/pkg/meta"
 	"a4.io/blobstash/pkg/middleware"
 	_ "a4.io/blobstash/pkg/nsdb"
+	"a4.io/blobstash/pkg/oplog"
 	"a4.io/blobstash/pkg/synctable"
 
 	"github.com/gorilla/mux"
@@ -77,6 +78,14 @@ func New(conf *config.Config) (*Server, error) {
 	metaHandler, err := meta.New(logger.New("app", "meta"), hub)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize blobstore meta: %v", err)
+	}
+
+	if conf.Replication != nil && conf.Replication.EnableOplog {
+		oplg, err := oplog.New(logger.New("app", "oplog"), conf, hub)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize oplog: %v", err)
+		}
+		oplg.Register(s.router.PathPrefix("/_oplog").Subrouter(), basicAuth)
 	}
 	// Load the kvstore
 	kvstore, err := kvstore.New(logger.New("app", "kvstore"), conf, blobstore, metaHandler)

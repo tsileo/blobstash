@@ -36,6 +36,10 @@ type S3Repl struct {
 	KeyFile string `yaml:"key_file"`
 }
 
+type Replication struct {
+	EnableOplog bool `yaml:"enable_oplog"`
+}
+
 func (s3 *S3Repl) Key() (*[32]byte, error) {
 	if s3.KeyFile == "" {
 		return nil, nil
@@ -63,8 +67,9 @@ type Config struct {
 	DataDir    string  `yaml:"data_dir"`
 	S3Repl     *S3Repl `yaml:"s3_replication"`
 
-	Apps     []*AppConfig    `yaml:"apps"`
-	Docstore *DocstoreConfig `yaml:"docstore"`
+	Apps        []*AppConfig    `yaml:"apps"`
+	Docstore    *DocstoreConfig `yaml:"docstore"`
+	Replication *Replication    `yaml:"replication"`
 
 	// Items defined with the CLI flags
 	ScanMode   bool `yaml:"-"`
