@@ -98,7 +98,7 @@ func New(conf *config.Config) (*Server, error) {
 	// 	return nil, fmt.Errorf("failed to initialize nsdb: %v", err)
 	// }
 	// Load the synctable
-	synctable := synctable.New(logger.New("app", "sync"), conf, blobstore, nil)
+	synctable := synctable.New(logger.New("app", "sync"), conf, blobstore)
 	synctable.Register(s.router.PathPrefix("/api/sync").Subrouter(), basicAuth)
 
 	filetree, err := filetree.New(logger.New("app", "filetree"), conf, authFunc, kvstore, blobstore, hub)

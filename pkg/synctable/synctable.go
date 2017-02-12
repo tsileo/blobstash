@@ -1,11 +1,10 @@
 /*
 
-Package synctable implements a sync mechanism using Merkle trees (tree of hahes) for partial sync of blobs namespaces.
+Package synctable implements a sync mechanism using Merkle trees (tree of hahes) for a two-way sync between two BlobStash instances.
 
 The algorithm is inspired by Dynamo or Cassandra uses of Merkle trees (as an anti-entropy mechanism).
 
-Each node maintains its own Merkle tree, when doing a sync, the hashes of the tree are checked against each other starting
-from the root hash to the leafs.
+Each node maintains its own Merkle tree, when doing a sync, the hashes of the tree are checked against each other starting from the root hash to the leaves.
 
 This first implementation only keep 256 (16**2) buckets (the first 2 hex of the hashes).
 
@@ -15,9 +14,9 @@ Blake2B (the same hashing algorithm used by the Blob Store) is used to compute t
 package synctable // import "a4.io/blobstash/pkg/synctable"
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	_ "golang.org/x/net/context"
 	"hash"
 	"net/http"
 	"sync"
@@ -25,7 +24,6 @@ import (
 	"a4.io/blobstash/pkg/blobstore"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/httputil"
-	"a4.io/blobstash/pkg/nsdb"
 
 	"github.com/dchest/blake2b"
 	"github.com/gorilla/mux"
@@ -49,48 +47,43 @@ func NewHash() (h hash.Hash) {
 }
 
 type SyncTable struct {
-	nsdb      *nsdb.DB
 	blobstore *blobstore.BlobStore
 	conf      *config.Config
 
 	log log2.Logger
 }
 
-func New(logger log2.Logger, conf *config.Config, blobstore *blobstore.BlobStore, ns *nsdb.DB) *SyncTable {
+func New(logger log2.Logger, conf *config.Config, blobstore *blobstore.BlobStore) *SyncTable {
 	logger.Debug("init")
 	return &SyncTable{
 		blobstore: blobstore,
-		nsdb:      ns,
 		conf:      conf,
 		log:       logger,
 	}
 }
 
 func (st *SyncTable) Register(r *mux.Router, basicAuth func(http.Handler) http.Handler) {
-	r.Handle("/_state/{ns}", basicAuth(http.HandlerFunc(st.stateHandler())))
-	r.Handle("/_state/{ns}/leafs/{prefix}", basicAuth(http.HandlerFunc(st.stateLeafsHandler())))
-	r.Handle("/{ns}", basicAuth(http.HandlerFunc(st.syncHandler())))
-	r.Handle("/_trigger/{ns}", basicAuth(http.HandlerFunc(st.triggerHandler())))
+	r.Handle("/state", basicAuth(http.HandlerFunc(st.stateHandler())))
+	r.Handle("/state/leaves/{prefix}", basicAuth(http.HandlerFunc(st.stateLeavesHandler())))
+	r.Handle("/", basicAuth(http.HandlerFunc(st.syncHandler())))
+	r.Handle("/_trigger", basicAuth(http.HandlerFunc(st.triggerHandler())))
 }
 
 func (st *SyncTable) triggerHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
-		vars := mux.Vars(r)
-		ns := vars["ns"]
-		log := st.log.New("trigger_id", logext.RandId(6), "ns", ns)
+		log := st.log.New("trigger_id", logext.RandId(6))
 		url := q.Get("url")
 		log.Info("Starting sync...", "url", url)
 		apiKey := q.Get("api_key")
-		rawState := st.generateTree(ns)
+		rawState := st.generateTree()
 		defer rawState.Close()
 		state := &State{
-			Namespace: ns,
-			Root:      rawState.Root(),
-			Count:     rawState.Count(),
-			Leafs:     rawState.Level1(),
+			Root:   rawState.Root(),
+			Count:  rawState.Count(),
+			Leaves: rawState.Level1(),
 		}
-		client := NewSyncTableClient(st.log.New("submodule", "synctable-client"), state, st.blobstore, st.nsdb, ns, url, apiKey)
+		client := NewSyncTableClient(st.log.New("submodule", "synctable-client"), state, st.blobstore, nil, "", url, apiKey)
 		stats, err := client.Sync()
 		if err != nil {
 			panic(err)
@@ -99,70 +92,68 @@ func (st *SyncTable) triggerHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-func (st *SyncTable) generateTree(ns string) *StateTree {
+func (st *SyncTable) generateTree() *StateTree {
 	state := NewStateTree()
-	hashes, err := st.nsdb.Namespace(ns, "")
+	blobs, err := st.blobstore.Enumerate(context.Background(), "", "\xff", 0)
 	if err != nil {
 		panic(err)
 	}
-	for _, h := range hashes {
+	for _, blob := range blobs {
 		// st.log.Debug("_state loop", "ns", ns, "hash", h)
-		state.Add(h)
+		state.Add(blob.Hash)
 	}
 	return state
 }
 
 func (st *SyncTable) stateHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		vars := mux.Vars(r)
-		ns := vars["ns"]
-		st.log.Info("_state called", "ns", ns)
-		state := st.generateTree(ns)
+		state := st.generateTree()
 		defer state.Close()
 		httputil.WriteJSON(w, map[string]interface{}{
-			"namespace": ns,
-			"root":      state.Root(),
-			"count":     state.Count(),
-			"leafs":     state.Level1(),
+			"root":   state.Root(),
+			"count":  state.Count(),
+			"leaves": state.Level1(),
 		})
 	}
 }
 
 type State struct {
-	Namespace string            `json:"namespace"`
-	Root      string            `json:"root"`
-	Count     int               `json:"count"`
-	Leafs     map[string]string `json:"leafs"`
+	Root   string            `json:"root"`
+	Count  int               `json:"count"`
+	Leaves map[string]string `json:"leaves"`
 }
 
 func (st *State) String() string {
-	return fmt.Sprintf("[State root=%s, hashes_cnt=%v, leafs_cnt=%v]", st.Root, st.Count, len(st.Leafs))
+	return fmt.Sprintf("[State root=%s, hashes_cnt=%v, leaves_cnt=%v]", st.Root, st.Count, len(st.Leaves))
 }
 
-func (st *SyncTable) stateLeafsHandler() func(http.ResponseWriter, *http.Request) {
+func (st *SyncTable) stateLeavesHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
-		ns := vars["ns"]
 		prefix := vars["prefix"]
-		hashes, err := st.nsdb.Namespace(ns, prefix)
+		blobs, err := st.blobstore.Enumerate(context.Background(), prefix, prefix+"\xff", 0)
 		if err != nil {
 			panic(err)
 		}
-		st.log.Info("_state/leafs called", "ns", ns, "prefix", prefix, "hashes", len(hashes))
+		var hashes []string
+		for _, blob := range blobs {
+			// st.log.Debug("_state loop", "ns", ns, "hash", h)
+			hashes = append(hashes, blob.Hash)
+		}
+
+		st.log.Info("_state/leaves called", "prefix", prefix, "hashes", len(hashes))
 		httputil.WriteJSON(w, map[string]interface{}{
-			"namespace": ns,
-			"prefix":    prefix,
-			"count":     len(hashes),
-			"hashes":    hashes,
+			"prefix": prefix,
+			"count":  len(hashes),
+			"hashes": hashes,
 		})
 	}
 }
 
 type LeafState struct {
-	Namespace string   `json:"namespace"`
-	Prefix    string   `json:"prefix"`
-	Count     int      `json:"count"`
-	Hashes    []string `json:"hashes"`
+	Prefix string   `json:"prefix"`
+	Count  int      `json:"count"`
+	Hashes []string `json:"hashes"`
 }
 
 // FIXME(tsileo): config only works in one way
@@ -173,17 +164,14 @@ func (st *SyncTable) syncHandler() func(http.ResponseWriter, *http.Request) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		vars := mux.Vars(r)
-		ns := vars["ns"]
-		log := st.log.New("sync_id", logext.RandId(6), "ns", ns)
+		log := st.log.New("sync_id", logext.RandId(6))
 		log.Info("sync triggered")
-		state := st.generateTree(ns)
+		state := st.generateTree()
 		defer state.Close()
 		local_state := &State{
-			Namespace: ns,
-			Root:      state.Root(),
-			Leafs:     state.Level1(),
-			Count:     state.Count(),
+			Root:   state.Root(),
+			Leaves: state.Level1(),
+			Count:  state.Count(),
 		}
 		log.Debug("local state computed", "local_state", local_state.String())
 		remote_state := &State{}
@@ -199,33 +187,33 @@ func (st *SyncTable) syncHandler() func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
-		// The root differs, found out the leafs we need to inspect
-		leafsNeeded := []string{}
-		leafsToSend := []string{}
-		leafsConflict := []string{}
+		// The root differs, found out the leaves we need to inspect
+		leavesNeeded := []string{}
+		leavesToSend := []string{}
+		leavesConflict := []string{}
 
-		for lleaf, lh := range local_state.Leafs {
-			if rh, ok := remote_state.Leafs[lleaf]; ok {
+		for lleaf, lh := range local_state.Leaves {
+			if rh, ok := remote_state.Leaves[lleaf]; ok {
 				if lh != rh {
-					leafsConflict = append(leafsConflict, lleaf)
+					leavesConflict = append(leavesConflict, lleaf)
 				}
 			} else {
 				// This leaf is only present locally, we can send blindly all the blobs belonging to this leaf
-				leafsToSend = append(leafsToSend, lleaf)
+				leavesToSend = append(leavesToSend, lleaf)
 				// If an entire leaf is missing, this means we can send/receive the entire hashes for the missing leaf
 			}
 		}
-		// Find out the leafs present only on the remote-side
-		for rleaf, _ := range remote_state.Leafs {
-			if _, ok := local_state.Leafs[rleaf]; !ok {
-				leafsNeeded = append(leafsNeeded, rleaf)
+		// Find out the leaves present only on the remote-side
+		for rleaf, _ := range remote_state.Leaves {
+			if _, ok := local_state.Leaves[rleaf]; !ok {
+				leavesNeeded = append(leavesNeeded, rleaf)
 			}
 		}
 
 		httputil.WriteJSON(w, map[string]interface{}{
-			"conflicted": leafsConflict,
-			"needed":     leafsNeeded,
-			"missing":    leafsToSend,
+			"conflicted": leavesConflict,
+			"needed":     leavesNeeded,
+			"missing":    leavesToSend,
 		})
 	}
 }
@@ -253,7 +241,7 @@ func NewStateTree() *StateTree {
 }
 
 func (st *StateTree) String() string {
-	return fmt.Sprintf("[StateTree root=%s, hashes_cnt=%v, leafs_cnt=%v]", st.Root(), st.Count(), len(st.level1))
+	return fmt.Sprintf("[StateTree root=%s, hashes_cnt=%v, leaves_cnt=%v]", st.Root(), st.Count(), len(st.level1))
 }
 
 func (st *StateTree) Close() error {
