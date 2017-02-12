@@ -25,9 +25,8 @@ import (
 	"a4.io/blobstash/pkg/kvstore"
 	"a4.io/blobstash/pkg/meta"
 	"a4.io/blobstash/pkg/middleware"
-	_ "a4.io/blobstash/pkg/nsdb"
 	"a4.io/blobstash/pkg/oplog"
-	"a4.io/blobstash/pkg/synctable"
+	synctable "a4.io/blobstash/pkg/sync"
 
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"

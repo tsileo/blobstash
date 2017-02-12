@@ -1,4 +1,4 @@
-package synctable
+package sync
 
 import (
 	"bytes"

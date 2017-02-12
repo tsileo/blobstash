@@ -1,6 +1,6 @@
 /*
 
-Package synctable implements a sync mechanism using Merkle trees (tree of hahes) for a two-way sync between two BlobStash instances.
+Package sync implements a sync mechanism using Merkle trees (tree of hahes) for a two-way sync between two BlobStash instances.
 
 The algorithm is inspired by Dynamo or Cassandra uses of Merkle trees (as an anti-entropy mechanism).
 
@@ -11,11 +11,10 @@ This first implementation only keep 256 (16**2) buckets (the first 2 hex of the 
 Blake2B (the same hashing algorithm used by the Blob Store) is used to compute the tree.
 
 */
-package synctable // import "a4.io/blobstash/pkg/synctable"
+package sync // import "a4.io/blobstash/pkg/sync"
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"hash"
 	"net/http"
@@ -65,21 +64,24 @@ func New(logger log2.Logger, conf *config.Config, blobstore *blobstore.BlobStore
 func (st *SyncTable) Register(r *mux.Router, basicAuth func(http.Handler) http.Handler) {
 	r.Handle("/state", basicAuth(http.HandlerFunc(st.stateHandler())))
 	r.Handle("/state/leaf/{prefix}", basicAuth(http.HandlerFunc(st.stateLeafHandler())))
-	r.Handle("/", basicAuth(http.HandlerFunc(st.syncHandler())))
 	r.Handle("/_trigger", basicAuth(http.HandlerFunc(st.triggerHandler())))
+}
+
+func (st *SyncTable) Sync(url, apiKey string) (*SyncStats, error) {
+	log := st.log.New("trigger_id", logext.RandId(6))
+	log.Info("Starting sync...", "url", url)
+	rawState := st.generateTree()
+	defer rawState.Close()
+	client := NewSyncTableClient(st.log.New("submodule", "synctable-client"), st, rawState, st.blobstore, url, apiKey)
+	return client.Sync()
 }
 
 func (st *SyncTable) triggerHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
-		log := st.log.New("trigger_id", logext.RandId(6))
 		url := q.Get("url")
-		log.Info("Starting sync...", "url", url)
 		apiKey := q.Get("api_key")
-		rawState := st.generateTree()
-		defer rawState.Close()
-		client := NewSyncTableClient(st.log.New("submodule", "synctable-client"), st, rawState, st.blobstore, url, apiKey)
-		stats, err := client.Sync()
+		stats, err := st.Sync(url, apiKey)
 		if err != nil {
 			panic(err)
 		}
@@ -152,74 +154,6 @@ type LeafState struct {
 	Prefix string   `json:"prefix"`
 	Count  int      `json:"count"`
 	Hashes []string `json:"hashes"`
-}
-
-// FIXME(tsileo): config only works in one way
-
-func (st *SyncTable) syncHandler() func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		log := st.log.New("sync_id", logext.RandId(6))
-		log.Info("sync triggered")
-		state := st.generateTree()
-		defer state.Close()
-		local_state := &State{
-			Root:   state.Root(),
-			Leaves: state.Level1(),
-			Count:  state.Count(),
-		}
-		log.Debug("local state computed", "local_state", local_state.String())
-		remote_state := &State{}
-		if err := json.NewDecoder(r.Body).Decode(remote_state); err != nil {
-			panic(err)
-		}
-		log.Debug("remote state decoded", "remote_state", remote_state.String())
-
-		// First check the root, if the root hash is the same, then we can't stop here, we are in sync.
-		if local_state.Root == remote_state.Root {
-			log.Debug("No sync needed")
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-
-		// The root differs, found out the leaves we need to inspect
-		leavesNeeded := []string{}
-		leavesToSend := []string{}
-		leavesConflict := []string{}
-
-		for lleaf, lh := range local_state.Leaves {
-			if rh, ok := remote_state.Leaves[lleaf]; ok {
-				if lh != rh {
-					leavesConflict = append(leavesConflict, lleaf)
-				}
-			} else {
-				// This leaf is only present locally, we can send blindly all the blobs belonging to this leaf
-				leavesToSend = append(leavesToSend, lleaf)
-				// If an entire leaf is missing, this means we can send/receive the entire hashes for the missing leaf
-			}
-		}
-		// Find out the leaves present only on the remote-side
-		for rleaf, _ := range remote_state.Leaves {
-			if _, ok := local_state.Leaves[rleaf]; !ok {
-				leavesNeeded = append(leavesNeeded, rleaf)
-			}
-		}
-
-		httputil.WriteJSON(w, map[string]interface{}{
-			"conflicted": leavesConflict,
-			"needed":     leavesNeeded,
-			"missing":    leavesToSend,
-		})
-	}
-}
-
-type SyncResp struct {
-	Conflicted []string `json:"conflicted"`
-	Needed     []string `json:"nedeed"`
-	Missing    []string `json:"missing"`
 }
 
 type StateTree struct {
