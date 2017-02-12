@@ -1,11 +1,14 @@
-// Package queue implements a basic FIFO queues, the data are ordered at second precision.
-package queue // import "a4.io/blobstash/pkg/backend/s3/queue"
+/*
+
+Package queue implements a basic FIFO queues.
+
+*/
+package queue // import "a4.io/blobstash/pkg/queue"
 
 import (
 	"encoding/json"
 	"io"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/cznic/kv"
@@ -17,7 +20,6 @@ import (
 type Queue struct {
 	db   *kv.DB
 	path string
-	sync.Mutex
 }
 
 // New creates a new database.
@@ -50,9 +52,6 @@ func (q *Queue) Remove() error {
 
 // Enqueue the given `item`. Must be JSON serializable.
 func (q *Queue) Enqueue(item interface{}) error {
-	q.Lock()
-	defer q.Unlock()
-
 	id, err := id.New(time.Now().Unix())
 	if err != nil {
 		return err
@@ -71,9 +70,6 @@ func (q *Queue) Enqueue(item interface{}) error {
 // Dequeue the older item, unserialize the given item.
 // Returns false if the queue is empty.
 func (q *Queue) Dequeue(item interface{}) (bool, func(bool), error) {
-	q.Lock()
-	defer q.Unlock()
-
 	enum, err := q.db.SeekFirst()
 	if err != nil {
 		if err == io.EOF {
