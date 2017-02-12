@@ -46,6 +46,7 @@ func New(opts *clientutil.Opts) *Oplog {
 	}
 }
 
+// FIXME(tsileo): use a ctx and support cancelation
 func (o *Oplog) Notify(ops chan *Op) error {
 	resp, err := o.client.DoReq("GET", "/_oplog/", nil, nil)
 	if err != nil {
@@ -59,7 +60,7 @@ func (o *Oplog) Notify(ops chan *Op) error {
 	reader := bufio.NewReader(resp.Body)
 
 	defer resp.Body.Close()
-	// TODO(tsileo): a close channel?
+	// TODO(tsileo): a select with ctx cancel?
 	var op *Op
 	for {
 		// Read each new line and process the type of event
@@ -74,17 +75,20 @@ func (o *Oplog) Notify(ops chan *Op) error {
 			}
 			// Remove header
 			event := bytes.Replace(line, headerEvent, []byte(""), 1)
-			op.Event = string(event[0 : len(event)-1]) // Remove newline
+			op.Event = string(event[1 : len(event)-1]) // Remove initial space and newline
 		case bytes.HasPrefix(line, headerData):
 			if op == nil {
 				op = &Op{}
 			}
 			// Remove header
 			data := bytes.Replace(line, headerData, []byte(""), 1)
-			op.Data = string(data[0 : len(data)-1]) // Remove newline
+			op.Data = string(data[1 : len(data)-1]) // Remove initial space and newline
 		default:
 			if op != nil {
-				ops <- op
+				// Skip the heartbeat
+				if op.Event != "heartbeat" {
+					ops <- op
+				}
 				op = nil
 			}
 		}

@@ -67,7 +67,7 @@ func (o *Oplog) init() {
 	go func() {
 		for {
 			<-o.heartbeat.C
-			o.broker.ops <- &Op{Event: "heatbeat", Data: ""}
+			o.broker.ops <- &Op{Event: "heartbeat", Data: ""}
 		}
 	}()
 }
@@ -140,8 +140,8 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	// Send an initial heatbeat
-	fmt.Fprintf(w, "event: heatbeat\ndata: \n\n")
+	// Send an initial heartbeat
+	fmt.Fprintf(w, "event: heartbeat\ndata: \n\n")
 	f.Flush()
 
 	for {
