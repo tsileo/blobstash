@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"io/ioutil"
 
 	"a4.io/blobstash/pkg/client/clientutil"
 )
@@ -43,6 +44,29 @@ func New(opts *clientutil.Opts) *Oplog {
 	}
 	return &Oplog{
 		client: clientutil.New(opts),
+	}
+}
+
+// Get fetch the given blob from the remote BlobStash instance.
+func (o *Oplog) GetBlob(hash string) ([]byte, error) {
+	resp, err := o.client.DoReq("GET", fmt.Sprintf("/api/blobstore/blob/%s", hash), nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	switch {
+	case resp.StatusCode == 200:
+		sr := clientutil.NewSnappyResponseReader(resp)
+		defer sr.Close()
+		return ioutil.ReadAll(sr)
+	case resp.StatusCode == 404:
+		return nil, fmt.Errorf("Blob %s not found", hash)
+	default:
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("failed to get blob %v: %v", hash, string(body))
 	}
 }
 

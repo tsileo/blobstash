@@ -23,7 +23,8 @@ type SyncClient struct {
 
 	blobstore *blobstore.BlobStore
 
-	st    *Sync
+	st *Sync
+	// FIXME(tsileo): close the state
 	state *StateTree
 
 	log log.Logger
@@ -132,6 +133,29 @@ func (stc *SyncClient) putBlob(hash string, data []byte) error {
 
 func (stc *SyncClient) getBlob(hash string) ([]byte, error) {
 	return stc.blobstore.Get(context.Background(), hash)
+}
+
+func (stc *SyncClient) Send(h string) error {
+	blob, err := stc.getBlob(h)
+	if err != nil {
+		return err
+	}
+
+	if err := stc.remotePutBlob(h, blob); err != nil {
+		return err
+	}
+	return nil
+}
+func (stc *SyncClient) Receive(h string) error {
+	blob, err := stc.remoteGetBlob(h)
+	if err != nil {
+		return err
+	}
+
+	if err := stc.putBlob(h, blob); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (stc *SyncClient) Sync() (*SyncStats, error) {

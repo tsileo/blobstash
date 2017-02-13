@@ -1,8 +1,11 @@
 package replication // import "a4.io/blobstash/pkg/replication"
 
 import (
+	"context"
 	"time"
 
+	"a4.io/blobstash/pkg/blob"
+	"a4.io/blobstash/pkg/blobstore"
 	"a4.io/blobstash/pkg/client/oplog"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/sync"
@@ -11,18 +14,21 @@ import (
 )
 
 type Replication struct {
-	conf        *config.Config
-	log         log.Logger
-	synctable   *sync.Sync
+	log       log.Logger
+	synctable *sync.Sync
+	blobstore *blobstore.BlobStore
+
 	remoteOplog *oplog.Oplog
+
+	conf *config.ReplicateFrom
 }
 
 func New(logger log.Logger, conf *config.Config, s *sync.Sync) (*Replication, error) {
 	logger.Debug("init")
 	rep := &Replication{
-		conf:        conf,
+		conf:        conf.ReplicateFrom,
 		log:         logger,
-		remoteOplog: oplog.New(oplog.DefaultOpts().SetHost(conf.ReplicateTo.URL, conf.ReplicateTo.APIKey)),
+		remoteOplog: oplog.New(oplog.DefaultOpts().SetHost(conf.ReplicateFrom.URL, conf.ReplicateFrom.APIKey)),
 		synctable:   s,
 	}
 	if err := rep.init(); err != nil {
@@ -33,7 +39,7 @@ func New(logger log.Logger, conf *config.Config, s *sync.Sync) (*Replication, er
 }
 
 func (r *Replication) sync() error {
-	stats, err := r.synctable.Sync(r.conf.ReplicateTo.URL, r.conf.ReplicateTo.APIKey)
+	stats, err := r.synctable.Sync(r.conf.URL, r.conf.APIKey)
 	if err != nil {
 		return err
 	}
@@ -74,8 +80,25 @@ func (r *Replication) init() error {
 	go func() {
 		for op := range ops {
 			if op.Event == "blob" {
-				r.log.Info("new blob from replication", "hash", op.Data)
-				// TODO(tsileo): save the blob locally from remote
+				hash := op.Data
+				r.log.Info("new blob from replication", "hash", hash)
+
+				// Fetch the blob from the remote BlobStash instance
+				data, err := r.remoteOplog.GetBlob(hash)
+				if err != nil {
+					panic(err)
+				}
+
+				// Ensure the blob is not corrupted
+				blob := &blob.Blob{Hash: op.Data, Data: data}
+				if err := blob.Check(); err != nil {
+					panic(err)
+				}
+
+				// Save it locally
+				if r.blobstore.Put(context.Background(), blob); err != nil {
+					panic(err)
+				}
 			}
 		}
 	}()

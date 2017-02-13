@@ -40,7 +40,7 @@ type Replication struct {
 	EnableOplog bool `yaml:"enable_oplog"`
 }
 
-type ReplicateTo struct {
+type ReplicateFrom struct {
 	URL    string `yaml:"url"`
 	APIKey string `yaml:"api_key"`
 }
@@ -72,10 +72,10 @@ type Config struct {
 	DataDir    string  `yaml:"data_dir"`
 	S3Repl     *S3Repl `yaml:"s3_replication"`
 
-	Apps        []*AppConfig    `yaml:"apps"`
-	Docstore    *DocstoreConfig `yaml:"docstore"`
-	Replication *Replication    `yaml:"replication"`
-	ReplicateTo *ReplicateTo    `yaml:"replicate_to"`
+	Apps          []*AppConfig    `yaml:"apps"`
+	Docstore      *DocstoreConfig `yaml:"docstore"`
+	Replication   *Replication    `yaml:"replication"`
+	ReplicateFrom *ReplicateFrom  `yaml:"replicate_from"`
 
 	// Items defined with the CLI flags
 	ScanMode   bool `yaml:"-"`

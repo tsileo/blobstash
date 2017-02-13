@@ -67,6 +67,11 @@ func (st *Sync) Register(r *mux.Router, basicAuth func(http.Handler) http.Handle
 	r.Handle("/_trigger", basicAuth(http.HandlerFunc(st.triggerHandler())))
 }
 
+func (st *Sync) Client(url, apiKey string) *SyncClient {
+	rawState := st.generateTree()
+	return NewSyncClient(st.log.New("submodule", "synctable-client"), st, rawState, st.blobstore, url, apiKey)
+}
+
 func (st *Sync) Sync(url, apiKey string) (*SyncStats, error) {
 	log := st.log.New("trigger_id", logext.RandId(6))
 	log.Info("Starting sync...", "url", url)
