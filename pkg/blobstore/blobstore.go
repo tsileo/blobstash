@@ -61,8 +61,8 @@ func (bs *BlobStore) Close() error {
 }
 
 func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
-	_, fromHttp := ctxutil.Request(ctx)
-	bs.log.Info("OP Put", "from_http", fromHttp, "hash", blob.Hash, "len", len(blob.Data))
+	// _, fromHttp := ctxutil.Request(ctx)
+	// bs.log.Info("OP Put", "from_http", fromHttp, "hash", blob.Hash, "len", len(blob.Data))
 	// Check if the blob already exists
 	exists, err := bs.back.Exists(blob.Hash)
 	if err != nil {

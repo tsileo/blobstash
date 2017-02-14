@@ -2,6 +2,7 @@ package replication // import "a4.io/blobstash/pkg/replication"
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"a4.io/blobstash/pkg/blob"
@@ -13,23 +14,51 @@ import (
 	log "github.com/inconshreveable/log15"
 )
 
+type Backoff struct {
+	delay    time.Duration
+	factor   float64
+	maxDelay time.Duration
+	attempt  int
+}
+
+func (b *Backoff) Reset() {
+	b.attempt = 1
+}
+
+func (b *Backoff) Delay() time.Duration {
+	d := float64(b.delay) * math.Pow(b.factor, float64(b.attempt))
+	maxD := float64(b.maxDelay)
+	b.attempt++
+	if d > maxD {
+		return time.Duration(maxD)
+	}
+	return time.Duration(d)
+}
+
 type Replication struct {
 	log       log.Logger
 	synctable *sync.Sync
 	blobstore *blobstore.BlobStore
+	backoff   *Backoff
 
 	remoteOplog *oplog.Oplog
 
 	conf *config.ReplicateFrom
 }
 
-func New(logger log.Logger, conf *config.Config, s *sync.Sync) (*Replication, error) {
+func New(logger log.Logger, conf *config.Config, bs *blobstore.BlobStore, s *sync.Sync) (*Replication, error) {
 	logger.Debug("init")
 	rep := &Replication{
 		conf:        conf.ReplicateFrom,
+		blobstore:   bs,
 		log:         logger,
 		remoteOplog: oplog.New(oplog.DefaultOpts().SetHost(conf.ReplicateFrom.URL, conf.ReplicateFrom.APIKey)),
 		synctable:   s,
+		backoff: &Backoff{
+			delay:    1 * time.Second,
+			maxDelay: 120 * time.Second,
+			factor:   1.6,
+		},
 	}
 	if err := rep.init(); err != nil {
 		return nil, err
@@ -49,6 +78,7 @@ func (r *Replication) sync() error {
 
 func (r *Replication) init() error {
 	r.log.Debug("initial sync")
+	r.backoff.Reset()
 	if err := r.sync(); err != nil {
 		return err
 	}
@@ -61,19 +91,22 @@ func (r *Replication) init() error {
 			if resync {
 				r.log.Debug("trying to resync")
 				if err := r.sync(); err != nil {
-					r.log.Error("failed to sync", "err", err)
+					r.log.Error("failed to sync", "err", err, "attempt", r.backoff.attempt)
+					time.Sleep(r.backoff.Delay())
 					continue
 				}
+				r.backoff.Reset()
 				r.log.Debug("sync successful")
 				resync = false
 			}
 
 			r.log.Debug("listen to remote oplog")
 			if err := r.remoteOplog.Notify(ops); err != nil {
-				r.log.Error("remote oplog SSE error", "err", err)
+				r.log.Error("remote oplog SSE error", "err", err, "attempt", r.backoff.attempt)
 				resync = true
-				time.Sleep(5 * time.Second)
+				time.Sleep(r.backoff.Delay())
 			}
+			r.backoff.Reset()
 		}
 	}()
 
@@ -90,7 +123,8 @@ func (r *Replication) init() error {
 				}
 
 				// Ensure the blob is not corrupted
-				blob := &blob.Blob{Hash: op.Data, Data: data}
+				blob := &blob.Blob{Hash: hash, Data: data}
+				r.log.Debug("fetched blob", "blob", blob)
 				if err := blob.Check(); err != nil {
 					panic(err)
 				}

@@ -103,7 +103,7 @@ func New(conf *config.Config) (*Server, error) {
 
 	// Enable replication if set in the config
 	if conf.ReplicateFrom != nil {
-		if _, err := replication.New(logger.New("app", "replication"), conf, synctable); err != nil {
+		if _, err := replication.New(logger.New("app", "replication"), conf, blobstore, synctable); err != nil {
 			return nil, fmt.Errorf("failed to initialize replication app: %v", err)
 		}
 	}
