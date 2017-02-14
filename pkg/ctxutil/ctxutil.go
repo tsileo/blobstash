@@ -1,7 +1,7 @@
 package ctxutil // import "a4.io/blobstash/pkg/ctxutil"
 
 import (
-	"golang.org/x/net/context"
+	"context"
 	"net/http"
 )
 
@@ -26,6 +26,9 @@ func WithRequest(ctx context.Context, req *http.Request) context.Context {
 }
 
 func Request(ctx context.Context) (*http.Request, bool) {
-	req, ok := ctx.Value(requestKey).(*http.Request)
-	return req, ok
+	req := ctx.Value(requestKey)
+	if req != nil {
+		return req.(*http.Request), true
+	}
+	return nil, false
 }
