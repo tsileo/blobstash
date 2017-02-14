@@ -130,10 +130,10 @@ func (client *Client) DoReq(method, path string, headers map[string]string, body
 
 func (client *Client) GetJSON(path string, headers map[string]string, out interface{}) error {
 	resp, err := client.DoReq("GET", path, headers, nil)
-	defer resp.Body.Close()
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return err
