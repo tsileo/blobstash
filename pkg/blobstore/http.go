@@ -125,17 +125,18 @@ func (bs *BlobStore) enumerateHandler() func(http.ResponseWriter, *http.Request)
 		}
 		switch r.Method {
 		case "GET":
-			// end := r.URL.Query().Get("end")
-			// if end == "" {
-			// 	end = "\xff"
-			// }
+			q := httputil.NewQuery(r.URL.Query())
+			end := q.GetDefault("end", "\xff")
+			limit, err := q.GetInt("limit", 50, 1000)
+			if err != nil {
+				httputil.Error(w, err)
+				return
+			}
 			// var scan bool
 			// if sscan := r.URL.Query().Get("scan"); sscan != "" {
 			// 	scan = true
 			// }
-			end := "\xff"
-			// TODO(tsileo): parse limit and set default to 0
-			refs, err := bs.Enumerate(ctx, r.URL.Query().Get("start"), end, 0)
+			refs, err := bs.Enumerate(ctx, q.Get("start"), end, limit)
 			if err != nil {
 				httputil.Error(w, err)
 				return

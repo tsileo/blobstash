@@ -16,6 +16,7 @@ import (
 )
 
 // FIXME(tsileo): take a ctx as first arg for each method
+// FIXME(tsileo): use the waitgroup to be sure we're not shutting down in the middle of a blob write
 
 type BlobStore struct {
 	back   *blobsfile.BlobsFileBackend
@@ -61,8 +62,10 @@ func (bs *BlobStore) Close() error {
 }
 
 func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
-	// _, fromHttp := ctxutil.Request(ctx)
-	// bs.log.Info("OP Put", "from_http", fromHttp, "hash", blob.Hash, "len", len(blob.Data))
+	bs.wg.Add(1)
+	defer bs.wg.Done()
+	_, fromHttp := ctxutil.Request(ctx)
+	bs.log.Info("OP Put", "from_http", fromHttp, "hash", blob.Hash, "len", len(blob.Data))
 	// Check if the blob already exists
 	exists, err := bs.back.Exists(blob.Hash)
 	if err != nil {
@@ -85,7 +88,7 @@ func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
 			return err
 		}
 	}
-	// TODO(tsileo): make this async with the put blob
+	// TODO(tsileo): make this **optionally** async with the put blob
 	if err := bs.hub.NewBlobEvent(ctx, blob, nil); err != nil {
 		return err
 	}
