@@ -1,14 +1,16 @@
 package httputil // import "a4.io/blobstash/pkg/httputil"
 
 import (
-	"a4.io/blobstash/pkg/logger"
-	// "github.com/tsileo/blobstash/permissions"
-
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"reflect"
+	"strconv"
 	"strings"
+
+	"a4.io/blobstash/pkg/logger"
+	// "github.com/tsileo/blobstash/permissions"
 )
 
 // WriteJSON marshal and output the data as JSON with the right content-type
@@ -134,4 +136,42 @@ func SetAttachment(fname string, r *http.Request, w http.ResponseWriter) {
 	if r.URL.Query().Get("dl") != "" {
 		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fname))
 	}
+}
+
+type Query struct {
+	values url.Values
+}
+
+func NewQuery(q url.Values) *Query {
+	return &Query{q}
+}
+
+func (q *Query) Get(key string) string {
+	return q.Get(key)
+}
+
+func (q *Query) GetDefault(key, defaultval string) string {
+	if v := q.values.Get(key); v != "" {
+		return v
+	}
+	return defaultval
+}
+
+func (q *Query) GetInt(key string, defaultval, maxval int) (int, error) {
+	if sv := q.values.Get(key); sv != "" {
+		val, err := strconv.Atoi(sv)
+		if err != nil {
+			return 0, fmt.Errorf("failed to parse %s: %v", key, err)
+		}
+
+		// Check the boundaries
+		if val > maxval {
+			val = maxval
+		}
+
+		return val, nil
+	}
+
+	// Return the default value
+	return defaultval, nil
 }
