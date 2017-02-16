@@ -668,7 +668,7 @@ QUERY:
 // HTTP handler for the collection (handle listing+query+insert)
 func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
+		q := httputil.NewQuery(r.URL.Query())
 		vars := mux.Vars(r)
 		collection := vars["collection"]
 		if collection == "" {
@@ -692,15 +692,12 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				}
 			}
 
-			// Parse the limit
-			limit := 50
-			if q.Get("limit") != "" {
-				ilimit, err := strconv.Atoi(q.Get("limit"))
-				if err != nil {
-					http.Error(w, "bad limit", 500)
-				}
-				limit = ilimit
+			limit, err := q.GetInt("limit", 50, 1000)
+			if err != nil {
+				httputil.Error(w, err)
+				return
 			}
+
 			docs, stats, err := docstore.query(collection, &query{
 				storedQueryArgs: queryArgs,
 				storedQuery:     q.Get("stored_query"),
@@ -708,7 +705,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				basicQuery:      q.Get("query"),
 			}, cursor, limit)
 			if err != nil {
-				panic(err)
+				httputil.Error(w, err)
 			}
 
 			// Set some meta headers to help the client build subsequent query

@@ -3,13 +3,14 @@ package replication // import "a4.io/blobstash/pkg/replication"
 import (
 	"context"
 	"math"
+	"sync"
 	"time"
 
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/blobstore"
 	"a4.io/blobstash/pkg/client/oplog"
 	"a4.io/blobstash/pkg/config"
-	"a4.io/blobstash/pkg/sync"
+	bsync "a4.io/blobstash/pkg/sync"
 
 	log "github.com/inconshreveable/log15"
 )
@@ -37,16 +38,18 @@ func (b *Backoff) Delay() time.Duration {
 
 type Replication struct {
 	log       log.Logger
-	synctable *sync.Sync
+	synctable *bsync.Sync
 	blobstore *blobstore.BlobStore
 	backoff   *Backoff
 
 	remoteOplog *oplog.Oplog
 
 	conf *config.ReplicateFrom
+
+	wg sync.WaitGroup
 }
 
-func New(logger log.Logger, conf *config.Config, bs *blobstore.BlobStore, s *sync.Sync) (*Replication, error) {
+func New(logger log.Logger, conf *config.Config, bs *blobstore.BlobStore, s *bsync.Sync, wg sync.WaitGroup) (*Replication, error) {
 	logger.Debug("init")
 	rep := &Replication{
 		conf:        conf.ReplicateFrom,
@@ -59,6 +62,7 @@ func New(logger log.Logger, conf *config.Config, bs *blobstore.BlobStore, s *syn
 			maxDelay: 120 * time.Second,
 			factor:   1.6,
 		},
+		wg: wg,
 	}
 	if err := rep.init(); err != nil {
 		return nil, err
@@ -86,6 +90,7 @@ func (r *Replication) init() error {
 
 	ops := make(chan *oplog.Op)
 
+	// This should run forever (can't disable replication while BlobStash is already running)
 	go func() {
 		for {
 			if resync {
@@ -125,9 +130,6 @@ func (r *Replication) init() error {
 				// Ensure the blob is not corrupted
 				blob := &blob.Blob{Hash: hash, Data: data}
 				r.log.Debug("fetched blob", "blob", blob)
-				if err := blob.Check(); err != nil {
-					panic(err)
-				}
 
 				// Save it locally
 				if r.blobstore.Put(context.Background(), blob); err != nil {
@@ -135,6 +137,7 @@ func (r *Replication) init() error {
 				}
 			}
 		}
+		r.log.Debug("done listening the remote oplog")
 	}()
 
 	return nil

@@ -71,7 +71,7 @@ func (o *Oplog) GetBlob(hash string) ([]byte, error) {
 }
 
 // FIXME(tsileo): use a ctx and support cancelation
-func (o *Oplog) Notify(ops chan *Op) error {
+func (o *Oplog) Notify(ops chan<- *Op) error {
 	resp, err := o.client.DoReq("GET", "/_oplog/", nil, nil)
 	if err != nil {
 		return err
