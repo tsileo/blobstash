@@ -66,7 +66,7 @@ func New(conf *config.Config) (*Server, error) {
 	authFunc, basicAuth := middleware.NewBasicAuth(conf)
 	hub := hub.New(logger.New("app", "hub"))
 	// Load the blobstore
-	blobstore, err := blobstore.New(logger.New("app", "blobstore"), conf, hub, wg)
+	blobstore, err := blobstore.New(logger.New("app", "blobstore"), conf, hub)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize blobstore app: %v", err)
 	}

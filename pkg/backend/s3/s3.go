@@ -27,7 +27,8 @@ import (
 
 	"golang.org/x/crypto/nacl/secretbox"
 
-	"a4.io/blobstash/pkg/backend"
+	"a4.io/blobsfile"
+
 	"a4.io/blobstash/pkg/backend/s3/index"
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/config"
@@ -262,7 +263,7 @@ type S3Backend struct {
 	encrypted bool
 	key       *[32]byte
 
-	backend backend.BlobHandler
+	backend *blobsfile.BlobsFiles
 
 	wg sync.WaitGroup
 
@@ -272,7 +273,7 @@ type S3Backend struct {
 	bucket string
 }
 
-func New(logger log.Logger, back backend.BlobHandler, conf *config.Config) (*S3Backend, error) {
+func New(logger log.Logger, back *blobsfile.BlobsFiles, conf *config.Config) (*S3Backend, error) {
 	// Parse config
 	bucket := conf.S3Repl.Bucket
 	region := conf.S3Repl.Region
