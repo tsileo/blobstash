@@ -2,12 +2,14 @@ package blobstore // import "a4.io/blobstash/pkg/blobstore"
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
-	"sync"
 
 	log "github.com/inconshreveable/log15"
 
-	"a4.io/blobstash/pkg/backend/blobsfile"
+	"a4.io/blobsfile"
+
+	// "a4.io/blobstash/pkg/backend/blobsfile"
 	"a4.io/blobstash/pkg/backend/s3"
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/config"
@@ -15,23 +17,22 @@ import (
 	"a4.io/blobstash/pkg/hub"
 )
 
-// FIXME(tsileo): take a ctx as first arg for each method
-// FIXME(tsileo): use the waitgroup to be sure we're not shutting down in the middle of a blob write
-
 type BlobStore struct {
-	back   *blobsfile.BlobsFileBackend
+	back   *blobsfile.BlobsFiles
 	s3back *s3.S3Backend
 	hub    *hub.Hub
 	conf   *config.Config
 
-	wg  sync.WaitGroup
 	log log.Logger
 }
 
-func New(logger log.Logger, conf2 *config.Config, hub *hub.Hub, wg sync.WaitGroup) (*BlobStore, error) {
+func New(logger log.Logger, conf2 *config.Config, hub *hub.Hub) (*BlobStore, error) {
 	logger.Debug("init")
 
-	back := blobsfile.New(filepath.Join(conf2.VarDir(), "blobs"), 0, false, wg)
+	back, err := blobsfile.New(&blobsfile.Opts{Directory: filepath.Join(conf2.VarDir(), "blobs")})
+	if err != nil {
+		return nil, fmt.Errorf("failed to init BlobsFile: %v", err)
+	}
 	var s3back *s3.S3Backend
 	if s3repl := conf2.S3Repl; s3repl != nil && s3repl.Bucket != "" {
 		logger.Debug("init s3 replication")
@@ -47,51 +48,48 @@ func New(logger log.Logger, conf2 *config.Config, hub *hub.Hub, wg sync.WaitGrou
 		s3back: s3back,
 		hub:    hub,
 		conf:   conf2,
-		wg:     wg,
 		log:    logger,
 	}, nil
 }
 
 func (bs *BlobStore) Close() error {
 	// TODO(tsileo): improve this
-	bs.back.Close()
 	if bs.s3back != nil {
 		bs.s3back.Close()
+	}
+
+	if err := bs.back.Close(); err != nil {
+		return err
 	}
 	return nil
 }
 
 func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
-	bs.wg.Add(1)
-	defer bs.wg.Done()
 	_, fromHttp := ctxutil.Request(ctx)
 	bs.log.Info("OP Put", "from_http", fromHttp, "hash", blob.Hash, "len", len(blob.Data))
-	// Check if the blob already exists
-	exists, err := bs.back.Exists(blob.Hash)
-	if err != nil {
-		return err
-	}
-	if exists {
-		bs.log.Debug("blob already exists", "hash", blob.Hash)
-		return nil
-	}
-	// Recompute the blob to ensure it's not corrupted
+
+	// Ensure the blob hash match the blob content
 	if err := blob.Check(); err != nil {
 		return err
 	}
-	// Save the blob if needed
+
+	// Save the blob
 	if err := bs.back.Put(blob.Hash, blob.Data); err != nil {
 		return err
 	}
+
+	// Wait for adding the blob to the S3 replication queue if enabled
 	if bs.s3back != nil {
 		if err := bs.s3back.Put(blob.Hash); err != nil {
 			return err
 		}
 	}
-	// TODO(tsileo): make this **optionally** async with the put blob
+
+	// Wait for subscribed event completion
 	if err := bs.hub.NewBlobEvent(ctx, blob, nil); err != nil {
 		return err
 	}
+
 	bs.log.Debug("blob saved", "hash", blob.Hash)
 	return nil
 }
@@ -121,12 +119,11 @@ func (bs *BlobStore) Scan(ctx context.Context) error {
 func (bs *BlobStore) enumerate(ctx context.Context, start, end string, limit int, scan bool) ([]*blob.SizedBlobRef, error) {
 	_, fromHttp := ctxutil.Request(ctx)
 	bs.log.Info("OP Enumerate", "from_http", fromHttp, "start", start, "end", end, "limit", limit)
-	out := make(chan *blob.SizedBlobRef)
+	out := make(chan *blobsfile.Blob)
 	refs := []*blob.SizedBlobRef{}
 	errc := make(chan error, 1)
-	// TODO(tsileo): implements `Enumerate2`
 	go func() {
-		errc <- bs.back.Enumerate2(out, start, end, limit)
+		errc <- bs.back.Enumerate(out, start, end, limit)
 	}()
 	for cblob := range out {
 		if scan {
@@ -138,11 +135,10 @@ func (bs *BlobStore) enumerate(ctx context.Context, start, end string, limit int
 				return nil, err
 			}
 		}
-		refs = append(refs, cblob)
+		refs = append(refs, &blob.SizedBlobRef{Hash: cblob.Hash, Size: cblob.Size})
 	}
 	if err := <-errc; err != nil {
 		return nil, err
 	}
-	// FIXME(tsileo): handle enumerate
 	return refs, nil
 }

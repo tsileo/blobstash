@@ -105,11 +105,6 @@ func (bs *BlobStore) blobHandler() func(http.ResponseWriter, *http.Request) {
 			}
 			httputil.WriteJSONError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
 			return
-		// case "DELETE":
-		// 	if err := backend.Delete(vars["hash"]); err != nil {
-		// 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		// 	}
-		// 	return
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -119,10 +114,6 @@ func (bs *BlobStore) blobHandler() func(http.ResponseWriter, *http.Request) {
 func (bs *BlobStore) enumerateHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := ctxutil.WithRequest(context.Background(), r)
-
-		if ns := r.Header.Get("BlobStash-Namespace"); ns != "" {
-			ctx = ctxutil.WithNamespace(ctx, ns)
-		}
 		switch r.Method {
 		case "GET":
 			q := httputil.NewQuery(r.URL.Query())
