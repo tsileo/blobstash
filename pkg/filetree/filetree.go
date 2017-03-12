@@ -874,8 +874,11 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 	// Check if the file is requested for download (?dl=1)
 	httputil.SetAttachment(m.Name, r, w)
 
+	fmt.Printf("fname=%v\n\n", m.Name)
 	// Support for resizing image on the fly
-	if err := resize.Resize(m.Name, f, r); err != nil {
+	// var resized bool
+	f, _, err = resize.Resize(m.Name, f, r)
+	if err != nil {
 		panic(err)
 	}
 
