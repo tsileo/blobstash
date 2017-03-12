@@ -2,7 +2,6 @@ package resize // import "a4.io/blobstash/pkg/httputil/resize"
 
 import (
 	"bytes"
-	"fmt"
 	"image"
 	"image/gif"
 	"image/jpeg"
@@ -23,7 +22,6 @@ func Resize(name string, f io.ReadSeeker, r *http.Request) (io.ReadSeeker, bool,
 		if err != nil {
 			return nil, false, err
 		}
-		fmt.Printf("will resize %d\n", wi)
 		img, format, err := image.Decode(f)
 		if err != nil {
 			return nil, false, err
@@ -50,7 +48,6 @@ func Resize(name string, f io.ReadSeeker, r *http.Request) (io.ReadSeeker, bool,
 			}
 
 		}
-		fmt.Printf("len %d\n\n", len(b.Bytes()))
 		return bytes.NewReader(b.Bytes()), true, nil
 	}
 	return f, false, nil
