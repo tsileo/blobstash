@@ -624,12 +624,6 @@ func (ve *KeyValue) Serialize(withKey bool) ([]byte, error) {
 		}
 	}
 
-	// Serialize format:
-	// Flag + vint len(key) + key + version (4bytes uint32) + custom Flag + Hash (fixed size/optional) + vint len(data) + data
-
-	// Docstore serialize:
-	// HashOnly + (Indexed|Deleted|NoFlag) + Hash of the JSON body
-
 	// XXX(tsileo): find a way to do the GC using data via another ExtractFunc interface that returns a list of []Ref?
 	// e.g. parse the filetreemeta recursively until we discover all the blobs?
 
@@ -685,10 +679,11 @@ func (ve *KeyValue) Serialize(withKey bool) ([]byte, error) {
 		// Execute DataOnly too since the flag in HashAndData
 		fallthrough
 	case DataOnly:
-		binary.BigEndian.PutUint32(tmp[:], uint32(len(ve.Data)))
-		if _, err := buf.Write(tmp); err != nil {
-			return nil, err
-		}
+		// FIXME(tsileo): remove the data size as we can deduce it since we know the total size
+		// binary.BigEndian.PutUint32(tmp[:], uint32(len(ve.Data)))
+		// if _, err := buf.Write(tmp); err != nil {
+		// 	return nil, err
+		// }
 		if _, err := buf.Write(ve.Data); err != nil {
 			return nil, err
 		}
@@ -755,10 +750,14 @@ func UnserializeBlob(data []byte) (*KeyValue, error) {
 		}
 		fallthrough
 	case DataOnly:
-		if _, err := r.Read(tmp); err != nil {
-			return nil, err
+		// if _, err := r.Read(tmp); err != nil {
+		// 	return nil, err
+		// }
+		// size := int(binary.BigEndian.Uint32(tmp[:]))
+		size := len(data) - (13 + keySize)
+		if ve.Flag == HashAndData {
+			size -= 32
 		}
-		size := int(binary.BigEndian.Uint32(tmp[:]))
 		fmt.Printf("data size=%d\n", size)
 		data := make([]byte, size)
 		if _, err := r.Read(data); err != nil {
@@ -772,7 +771,6 @@ func UnserializeBlob(data []byte) (*KeyValue, error) {
 func Unserialize(key string, data []byte) (*KeyValue, error) {
 	// FIXME(tsileo): there's a bug when only the hash is set with no data
 	r := bytes.NewReader(data)
-	tmp := make([]byte, 4)
 	tmp2 := make([]byte, 8)
 
 	// Read the first flag
@@ -811,10 +809,14 @@ func Unserialize(key string, data []byte) (*KeyValue, error) {
 		}
 		fallthrough
 	case DataOnly:
-		if _, err := r.Read(tmp); err != nil {
-			return nil, err
+		// if _, err := r.Read(tmp); err != nil {
+		// 	return nil, err
+		// }
+		// size := int(binary.BigEndian.Uint32(tmp[:]))
+		size := len(data) - 9
+		if ve.Flag == HashAndData {
+			size -= 32
 		}
-		size := int(binary.BigEndian.Uint32(tmp[:]))
 		data := make([]byte, size)
 		if _, err := r.Read(data); err != nil {
 			return nil, err
