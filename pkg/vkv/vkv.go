@@ -627,8 +627,13 @@ func (ve *KeyValue) Serialize(withKey bool) ([]byte, error) {
 	// XXX(tsileo): find a way to do the GC using data via another ExtractFunc interface that returns a list of []Ref?
 	// e.g. parse the filetreemeta recursively until we discover all the blobs?
 
-	// Store the 1 byte flag
 	var buf bytes.Buffer
+	// Store the version byte
+	if err := buf.WriteByte(0); err != nil {
+		return nil, err
+	}
+
+	// Store the 1 byte flag
 	if err := buf.WriteByte(byte(ve.Flag)); err != nil {
 		return nil, err
 	}
@@ -698,6 +703,11 @@ func UnserializeBlob(data []byte) (*KeyValue, error) {
 	tmp := make([]byte, 4)
 	tmp2 := make([]byte, 8)
 
+	// TODO(tsileo): assert the version flag is 0
+	if _, err := r.ReadByte(); err != nil {
+		return nil, err
+	}
+
 	// Read the first flag
 	flag, err := r.ReadByte()
 	if err != nil {
@@ -754,7 +764,7 @@ func UnserializeBlob(data []byte) (*KeyValue, error) {
 		// 	return nil, err
 		// }
 		// size := int(binary.BigEndian.Uint32(tmp[:]))
-		size := len(data) - (13 + keySize)
+		size := len(data) - (14 + keySize)
 		if ve.Flag == HashAndData {
 			size -= 32
 		}
@@ -772,6 +782,11 @@ func Unserialize(key string, data []byte) (*KeyValue, error) {
 	// FIXME(tsileo): there's a bug when only the hash is set with no data
 	r := bytes.NewReader(data)
 	tmp2 := make([]byte, 8)
+
+	// TODO(tsileo): assert the version flag is 0
+	if _, err := r.ReadByte(); err != nil {
+		return nil, err
+	}
 
 	// Read the first flag
 	flag, err := r.ReadByte()
@@ -813,7 +828,7 @@ func Unserialize(key string, data []byte) (*KeyValue, error) {
 		// 	return nil, err
 		// }
 		// size := int(binary.BigEndian.Uint32(tmp[:]))
-		size := len(data) - 9
+		size := len(data) - 10
 		if ve.Flag == HashAndData {
 			size -= 32
 		}
