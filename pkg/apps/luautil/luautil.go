@@ -28,11 +28,27 @@ func tomap(table *lua.LTable, visited map[*lua.LTable]bool) (map[string]interfac
 			nkey = true
 		}
 		switch converted := value.(type) {
-		case lua.LBool, lua.LNumber, lua.LString:
+		case lua.LBool:
+			val := false
+			if converted == lua.LTrue {
+				val = true
+			}
 			if nkey {
-				arrres = append(arrres, converted)
+				arrres = append(arrres, val)
 			} else {
-				res[key.String()] = converted
+				res[key.String()] = val
+			}
+		case lua.LString:
+			if nkey {
+				arrres = append(arrres, string(converted))
+			} else {
+				res[key.String()] = string(converted)
+			}
+		case lua.LNumber:
+			if nkey {
+				arrres = append(arrres, float64(converted))
+			} else {
+				res[key.String()] = float64(converted)
 			}
 		case lua.LChannel:
 			panic("no channel")
@@ -168,6 +184,8 @@ func fromJSON(L *lua.LState, value interface{}) lua.LValue {
 			tbl.RawSetH(lua.LString(key), fromJSON(L, item))
 		}
 		return tbl
+	default:
+		panic("unsupported type")
 	}
 	return lua.LNil
 }
