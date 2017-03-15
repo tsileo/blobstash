@@ -27,6 +27,7 @@ import (
 	"golang.org/x/net/context"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -45,7 +46,9 @@ import (
 	"a4.io/blobstash/pkg/ctxutil"
 	"a4.io/blobstash/pkg/docstore/id"
 	_ "a4.io/blobstash/pkg/docstore/index"
+	"a4.io/blobstash/pkg/filetree"
 	"a4.io/blobstash/pkg/httputil"
+	"a4.io/blobstash/pkg/httputil/bewit"
 	"a4.io/blobstash/pkg/kvstore"
 	"a4.io/blobstash/pkg/vkv"
 	_ "github.com/tsileo/blobstash/pkg/docstore/optimizer"
@@ -54,8 +57,6 @@ import (
 // FIXME(tsileo): create a "meta" hook for handling indexing
 // will need to solve few issues before:
 // - do we need to check if the doc is already indexed?
-
-// TODO(tsileo): add a <hexID>/_versions handler
 
 var (
 	PrefixKey    = "docstore:"
@@ -80,6 +81,7 @@ var reservedKeys = map[string]struct{}{
 func idFromKey(col, key string) (*id.ID, error) {
 	hexID := strings.Replace(key, fmt.Sprintf("docstore:%s:", col), "", 1)
 	_id, err := id.FromHex(hexID)
+
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +94,15 @@ const (
 )
 
 const (
-	ExpandJson = "#blobstash/json:" // FIXME(tsileo): document the Expand feature
+	PointerBlobJSON = "@blobs/json:" // FIXME(tsileo): document the Pointer feature
+	// PointerBlobRef     = "@blobs/ref:"  // FIXME(tsileo): implements this like a @filetree/ref
+	PointerFiletreeRef = "@filetree/ref:"
+	// TODO(tsileo): implements PointerKvRef
+	// PointerKvRef = "@kv/ref:"
+	// XXX(tsileo): allow custom Lua-defined pointer, this could be useful for implement cross-note linking in Blobs
+
+	// Sharing TTL for the bewit link of Filetree references
+	shareDuration = 1 * time.Hour
 )
 
 type executionStats struct {
@@ -107,6 +117,7 @@ type executionStats struct {
 type DocStore struct {
 	kvStore   *kvstore.KvStore
 	blobStore *blobstore.BlobStore
+	filetree  *filetree.FileTreeExt
 
 	conf *config.Config
 	// docIndex *index.HashIndexes
@@ -125,7 +136,7 @@ type storedQuery struct {
 }
 
 // New initializes the `DocStoreExt`
-func New(logger log.Logger, conf *config.Config, kvStore *kvstore.KvStore, blobStore *blobstore.BlobStore) (*DocStore, error) {
+func New(logger log.Logger, conf *config.Config, kvStore *kvstore.KvStore, blobStore *blobstore.BlobStore, ft *filetree.FileTreeExt) (*DocStore, error) {
 	logger.Debug("init")
 	// Try to load the docstore index (powered by a kv file)
 	// docIndex, err := index.New()
@@ -168,6 +179,7 @@ func New(logger log.Logger, conf *config.Config, kvStore *kvstore.KvStore, blobS
 	return &DocStore{
 		kvStore:       kvStore,
 		blobStore:     blobStore,
+		filetree:      ft,
 		storedQueries: storedQueries,
 		conf:          conf,
 		locker:        newLocker(),
@@ -191,6 +203,7 @@ func (docstore *DocStore) Register(r *mux.Router, basicAuth func(http.Handler) h
 
 	r.Handle("/{collection}", basicAuth(http.HandlerFunc(docstore.docsHandler())))
 	// r.Handle("/{collection}/_indexes", middlewares.Auth(http.HandlerFunc(docstore.indexesHandler())))
+	// TODO(tsileo): a /{collection}/{_id}/_versions handler that use `docstore.FetchVerions`
 	r.Handle("/{collection}/{_id}", basicAuth(http.HandlerFunc(docstore.docHandler())))
 }
 
@@ -198,34 +211,71 @@ func (docstore *DocStore) Register(r *mux.Router, basicAuth func(http.Handler) h
 // e.g: {"ref": "@blobstash/json:<hash>"}
 //      => {"ref": {"blob": "json decoded"}}
 // XXX(tsileo): expanded ref must also works for marking a blob during GC
-func (docstore *DocStore) expandKeys(doc map[string]interface{}) error {
+// FIXME(tsileo): rename this to "pointers" and return {"data":{[...]}, "pointers": {}}
+func (docstore *DocStore) fetchPointers(doc map[string]interface{}) (map[string]interface{}, error) {
+	pointers := map[string]interface{}{}
 	// docstore.logger.Info("expandKeys")
-	for k, v := range doc {
+
+	for _, v := range doc {
 		switch vv := v.(type) {
 		case map[string]interface{}:
-			if err := docstore.expandKeys(vv); err != nil {
-				return err
+			docPointers, err := docstore.fetchPointers(vv)
+			if err != nil {
+				return nil, err
+			}
+			for k, v := range docPointers {
+				pointers[k] = v
 			}
 			continue
 		case string:
 			switch {
-			case strings.HasPrefix(vv, ExpandJson):
+			case strings.HasPrefix(vv, PointerBlobJSON):
+				if _, ok := pointers[vv]; ok {
+					// The reference has already been fetched
+					continue
+				}
 				// XXX(tsileo): here and at other place, add a util func in hashutil to detect invalid string length at least
-				blob, err := docstore.blobStore.Get(context.TODO(), vv[len(ExpandJson):])
+				blob, err := docstore.blobStore.Get(context.TODO(), vv[len(PointerBlobJSON):])
 				if err != nil {
-					return fmt.Errorf("failed to expend JSON ref: \"%v => %v\": %v", ExpandJson, v, err)
+					return nil, fmt.Errorf("failed to fetch JSON ref: \"%v => %v\": %v", PointerBlobJSON, v, err)
 				}
-				expanded := map[string]interface{}{}
-				if err := json.Unmarshal(blob, &expanded); err != nil {
-					return fmt.Errorf("failed to unmarshal expanded blob  \"%v => %v\": %v", ExpandJson, v, err)
+				p := map[string]interface{}{}
+				if err := json.Unmarshal(blob, &p); err != nil {
+					return nil, fmt.Errorf("failed to unmarshal blob  \"%v => %v\": %v", PointerBlobJSON, v, err)
 				}
-				// docstore.logger.Info("expandKeys key expanded", "key", k, "val", expanded)
-				expanded["hash"] = vv[len(ExpandJson):]
-				doc[k] = expanded
+				pointers[vv] = p
+			case strings.HasPrefix(vv, PointerFiletreeRef):
+				if _, ok := pointers[vv]; ok {
+					// The reference has already been fetched
+					continue
+				}
+				// XXX(tsileo): here and at other place, add a util func in hashutil to detect invalid string length at least
+				hash := vv[len(PointerFiletreeRef):]
+				blob, err := docstore.blobStore.Get(context.TODO(), hash)
+				if err != nil {
+					return nil, fmt.Errorf("failed to fetch JSON ref: \"%v => %v\": %v", PointerFiletreeRef, v, err)
+				}
+
+				// Reconstruct the Meta
+				var p map[string]interface{}
+				if err := json.Unmarshal(blob, &p); err != nil {
+					return nil, fmt.Errorf("failed to unmarshal meta  \"%v => %v\": %v", PointerBlobJSON, v, err)
+				}
+
+				// Create a temporary authorization for the file (with a bewit)
+				u := &url.URL{Path: fmt.Sprintf("/%s/%s", p["type"].(string)[0:1], hash)}
+				if err := bewit.Bewit(docstore.filetree.SharingCred(), u, shareDuration); err != nil {
+					return nil, fmt.Errorf("failed to generate bewit: %v")
+				}
+				p["url"] = u.String()
+
+				pointers[vv] = p
 			}
+
 		}
 	}
-	return nil
+
+	return pointers, nil
 }
 
 // nextKey returns the next key for lexigraphical ordering (key = nextKey(lastkey))
@@ -502,13 +552,24 @@ func (q *query) isMatchAll() bool {
 	return false
 }
 
-func (docstore *DocStore) Query(collection string, query *query, cursor string, limit int) ([]map[string]interface{}, *executionStats, error) {
-	docs, stats, err := docstore.query(collection, query, cursor, limit)
+func addSpecialFields(doc map[string]interface{}, _id *id.ID) {
+	doc["_id"] = _id
+	doc["_hash"] = _id.Hash()
+
+	doc["_created"] = time.Unix(_id.Ts(), 0).Format(time.RFC3339)
+	updated := _id.Version() / 1e9
+	if updated != doc["_created"] {
+		doc["_updated"] = time.Unix(int64(updated), 0).Format(time.RFC3339)
+	}
+}
+
+func (docstore *DocStore) Query(collection string, query *query, cursor string, limit int) ([]map[string]interface{}, map[string]interface{}, *executionStats, error) {
+	docs, pointers, stats, err := docstore.query(collection, query, cursor, limit, true)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	// TODO(tsileo): fix this
-	return docs, stats, nil
+	return docs, pointers, stats, nil
 }
 
 func addID(js []byte, _id string) []byte {
@@ -520,12 +581,14 @@ func addID(js []byte, _id string) []byte {
 
 // query returns a JSON list as []byte for the given query
 // docs are unmarhsalled to JSON only when needed.
-func (docstore *DocStore) query(collection string, query *query, cursor string, limit int) ([]map[string]interface{}, *executionStats, error) {
+func (docstore *DocStore) query(collection string, query *query, cursor string, limit int, fetchPointers bool) ([]map[string]interface{}, map[string]interface{}, *executionStats, error) {
 	// js := []byte("[")
 	tstart := time.Now()
 	stats := &executionStats{
 		Engine: "lua",
 	}
+
+	pointers := map[string]interface{}{}
 
 	// Check if the query can be optimized thanks to an already present index
 	// indexes, err := docstore.Indexes(collection)
@@ -580,7 +643,7 @@ QUERY:
 		for _, kv := range res {
 			_id, err := idFromKey(collection, kv.Key)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 			_ids = append(_ids, _id)
 			lastKey = kv.Key
@@ -602,12 +665,13 @@ QUERY:
 			// FIXME(tsileo): handle stored queries
 			qmatcher, err = docstore.newLuaQueryEngine(query)
 			if err != nil {
-				return nil, stats, err
+				return nil, nil, stats, err
 			}
 		default:
 			panic("shouldn't happen")
 		}
 		defer qmatcher.Close()
+		var docPointers map[string]interface{}
 
 		// FIXME(tsileo): remake `_ids` a list of string
 		for _, _id := range _ids {
@@ -616,7 +680,7 @@ QUERY:
 			doc := map[string]interface{}{}
 			qLogger.Debug("fetch doc", "_id", _id)
 			var err error
-			if _id, err = docstore.Fetch(collection, _id.String(), &doc); err != nil {
+			if _id, docPointers, err = docstore.Fetch(collection, _id.String(), &doc, fetchPointers); err != nil {
 				if err == vkv.ErrNotFound {
 					break
 				}
@@ -625,16 +689,14 @@ QUERY:
 			stats.TotalDocsExamined++
 			ok, err := qmatcher.Match(doc)
 			if err != nil {
-				return nil, stats, err
+				return nil, nil, stats, err
 			}
 			if ok {
-				doc["_id"] = _id
-				doc["_hash"] = _id.Hash()
-
-				doc["_created"] = _id.Ts()
-				updated := _id.Version() / 1e9
-				if updated != doc["_created"] {
-					doc["_updated"] = updated
+				addSpecialFields(doc, _id)
+				if fetchPointers {
+					for k, v := range docPointers {
+						pointers[k] = v
+					}
 				}
 				docs = append(docs, doc)
 				stats.NReturned++
@@ -662,7 +724,7 @@ QUERY:
 	qLogger.Debug("scan done", "duration", duration, "nReturned", stats.NReturned, "scanned", stats.TotalDocsExamined)
 	// XXX(tsileo): display duration in string format or nanosecond precision??
 	stats.ExecutionTimeMillis = int(duration.Nanoseconds() / 1e6)
-	return docs, stats, nil
+	return docs, pointers, stats, nil
 }
 
 // HTTP handler for the collection (handle listing+query+insert)
@@ -698,12 +760,12 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				return
 			}
 
-			docs, stats, err := docstore.query(collection, &query{
+			docs, pointers, stats, err := docstore.query(collection, &query{
 				storedQueryArgs: queryArgs,
 				storedQuery:     q.Get("stored_query"),
 				script:          q.Get("script"),
 				basicQuery:      q.Get("query"),
-			}, cursor, limit)
+			}, cursor, limit, true)
 			if err != nil {
 				httputil.Error(w, err)
 			}
@@ -739,7 +801,8 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			}
 
 			js, err := json.Marshal(&map[string]interface{}{
-				"data": docs,
+				"pointers": pointers,
+				"data":     docs,
 				"pagination": map[string]interface{}{
 					"cursor":   nextKey(stats.LastID),
 					"has_more": hasMore,
@@ -801,19 +864,21 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 	}
 }
 
+// FIXME(ts): A way to make pointers optional?
+
 // Fetch a single document into `res` and returns the `id.ID`
 // Start acts like a cursor.
-func (docstore *DocStore) FetchVersions(collection, sid string, start, limit int) ([]map[string]interface{}, error) {
+func (docstore *DocStore) FetchVersions(collection, sid string, start, limit int, fetchPointers bool) ([]map[string]interface{}, map[string]interface{}, error) {
 	// TODO(tsileo): better output than a slice of `map[string]interface{}`
 	if collection == "" {
-		return nil, errors.New("missing collection query arg")
+		return nil, nil, errors.New("missing collection query arg")
 	}
 
 	// Fetch the KV versions entry for this _id
 	// XXX(tsileo): use int64 for start/end
 	kvv, err := docstore.kvStore.Versions(context.TODO(), fmt.Sprintf(KeyFmt, collection, sid), int(time.Now().UnixNano()), 0, limit)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Parse the ID
@@ -822,6 +887,7 @@ func (docstore *DocStore) FetchVersions(collection, sid string, start, limit int
 	// 	return nil, nil, fmt.Errorf("invalid _id: %v", err)
 	// }
 	docs := []map[string]interface{}{}
+	pointers := map[string]interface{}{}
 
 	for _, kv := range kvv.Versions {
 		var doc map[string]interface{}
@@ -833,16 +899,23 @@ func (docstore *DocStore) FetchVersions(collection, sid string, start, limit int
 		// Fetch the blob
 		blob, err := docstore.blobStore.Get(context.TODO(), hash)
 		if err != nil {
-			return nil, fmt.Errorf("failed to fetch blob %v", hash)
+			return nil, nil, fmt.Errorf("failed to fetch blob %v", hash)
 		}
 
 		// Build the doc
 		if err := json.Unmarshal(blob, &doc); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal blob: %s", blob)
+			return nil, nil, fmt.Errorf("failed to unmarshal blob: %s", blob)
 		}
 		// TODO(tsileo): set the special fields _created/_updated/_hash
-		if err := docstore.expandKeys(doc); err != nil {
-			return nil, err
+
+		if fetchPointers {
+			docPointers, err := docstore.fetchPointers(doc)
+			if err != nil {
+				return nil, nil, err
+			}
+			for k, v := range docPointers {
+				pointers[k] = v
+			}
 		}
 
 		docs = append(docs, doc)
@@ -851,25 +924,25 @@ func (docstore *DocStore) FetchVersions(collection, sid string, start, limit int
 		// _id.SetVersion(kv.Version)
 
 	}
-	return docs, nil
+	return docs, pointers, nil
 }
 
 // Fetch a single document into `res` and returns the `id.ID`
-func (docstore *DocStore) Fetch(collection, sid string, res interface{}) (*id.ID, error) {
+func (docstore *DocStore) Fetch(collection, sid string, res interface{}, fetchPointers bool) (*id.ID, map[string]interface{}, error) {
 	if collection == "" {
-		return nil, errors.New("missing collection query arg")
+		return nil, nil, errors.New("missing collection query arg")
 	}
 
 	// Fetch the VKV entry for this _id
 	kv, err := docstore.kvStore.Get(context.TODO(), fmt.Sprintf(KeyFmt, collection, sid), -1)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Parse the ID
 	_id, err := id.FromHex(sid)
 	if err != nil {
-		return nil, fmt.Errorf("invalid _id: %v", err)
+		return nil, nil, fmt.Errorf("invalid _id: %v", err)
 	}
 
 	// Extract the hash (first byte is the Flag)
@@ -880,18 +953,23 @@ func (docstore *DocStore) Fetch(collection, sid string, res interface{}) (*id.ID
 	// Fetch the blob
 	blob, err := docstore.blobStore.Get(context.TODO(), hash)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch blob %v", hash)
+		return nil, nil, fmt.Errorf("failed to fetch blob %v", hash)
 	}
+
+	var pointers map[string]interface{}
 
 	// Build the doc
 	switch idoc := res.(type) {
 	case *map[string]interface{}:
 		if err := json.Unmarshal(blob, idoc); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal blob: %s", blob)
+			return nil, nil, fmt.Errorf("failed to unmarshal blob: %s", blob)
 		}
 		// TODO(tsileo): set the special fields _created/_updated/_hash
-		if err := docstore.expandKeys(*idoc); err != nil {
-			return nil, err
+		if fetchPointers {
+			pointers, err = docstore.fetchPointers(*idoc)
+			if err != nil {
+				return nil, nil, err
+			}
 		}
 	case *[]byte:
 		// Just the copy if JSON if a []byte is provided
@@ -900,7 +978,7 @@ func (docstore *DocStore) Fetch(collection, sid string, res interface{}) (*id.ID
 	_id.SetHash(hash)
 	_id.SetFlag(byte(kv.Data[0]))
 	_id.SetVersion(kv.Version)
-	return _id, nil
+	return _id, pointers, nil
 }
 
 // HTTP handler for serving/updating a single doc
@@ -926,16 +1004,14 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			// Serve the document JSON encoded
 			// permissions.CheckPerms(r, PermCollectionName, collection, PermRead)
 			// js := []byte{}
-			var doc map[string]interface{}
-			if _id, err = docstore.Fetch(collection, sid, &doc); err != nil {
+			var doc, pointers map[string]interface{}
+
+			if _id, pointers, err = docstore.Fetch(collection, sid, &doc, true); err != nil {
 				if err == vkv.ErrNotFound {
 					// Document doesn't exist, returns a status 404
 					w.WriteHeader(http.StatusNotFound)
 					return
 				}
-				panic(err)
-			}
-			if err := docstore.expandKeys(doc); err != nil {
 				panic(err)
 			}
 
@@ -947,15 +1023,19 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			}
 
 			w.Header().Set("Etag", _id.Hash())
+			addSpecialFields(doc, _id)
 
-			js, err := json.Marshal(doc)
+			js, err := json.Marshal(map[string]interface{}{
+				"data":     doc,
+				"pointers": pointers,
+			})
 			if err != nil {
 				panic(err)
 			}
 
 			if r.Method == "GET" {
 				w.Header().Set("Content-Type", "application/json")
-				srw.Write(addID(js, sid))
+				srw.Write(js)
 			}
 		case "PATCH":
 			// Patch the document (JSON-Patch/RFC6902)
@@ -969,7 +1049,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 
 			// Fetch the current doc
 			js := []byte{}
-			if _id, err = docstore.Fetch(collection, sid, &js); err != nil {
+			if _id, _, err = docstore.Fetch(collection, sid, &js, false); err != nil {
 				if err == vkv.ErrNotFound {
 					// Document doesn't exist, returns a status 404
 					w.WriteHeader(http.StatusNotFound)
@@ -1028,7 +1108,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			ctx := ctxutil.WithNamespace(context.Background(), ns)
 			// Fetch the actual doc
 			doc := map[string]interface{}{}
-			_id, err = docstore.Fetch(collection, sid, &doc)
+			_id, _, err = docstore.Fetch(collection, sid, &doc, false)
 			if err != nil {
 				if err == vkv.ErrNotFound {
 					// Document doesn't exist, returns a status 404

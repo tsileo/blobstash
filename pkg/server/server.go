@@ -120,7 +120,7 @@ func New(conf *config.Config) (*Server, error) {
 	}
 	apps.Register(s.router.PathPrefix("/api/apps").Subrouter(), s.router, basicAuth)
 
-	docstore, err := docstore.New(logger.New("app", "docstore"), conf, kvstore, blobstore)
+	docstore, err := docstore.New(logger.New("app", "docstore"), conf, kvstore, blobstore, filetree)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize docstore app: %v", err)
 	}

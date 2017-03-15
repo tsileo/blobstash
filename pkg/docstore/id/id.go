@@ -51,6 +51,7 @@ func (id *ID) SetVersion(v int) {
 	id.version = v
 }
 
+// TODO(tsileo): make version an int64
 func (id *ID) Version() int {
 	return id.version
 }

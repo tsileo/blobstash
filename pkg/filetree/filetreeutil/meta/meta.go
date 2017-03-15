@@ -46,6 +46,8 @@ type Meta struct {
 	Data    map[string]interface{} `json:"data,omitempty"`
 	XAttrs  map[string]string      `json:"xattrs,omitempty"`
 	Hash    string                 `json:"-"`
+
+	URL string `json:"url,omitempty"` // Only used by the docstore extension
 }
 
 func (m *Meta) free() {

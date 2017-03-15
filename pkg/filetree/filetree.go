@@ -56,6 +56,7 @@ var (
 	MaxUploadSize int64 = 32 << 20
 )
 
+// TODO(tsileo): rename to FileTree
 type FileTreeExt struct {
 	kvStore     *kvstore.KvStore
 	blobStore   *blobstore.BlobStore
@@ -66,6 +67,14 @@ type FileTreeExt struct {
 	shareTTL    time.Duration
 
 	log log.Logger
+}
+
+func (ft *FileTreeExt) SharingCred() *bewit.Cred {
+	return ft.sharingCred
+}
+
+func (ft *FileTreeExt) ShareTTL() time.Duration {
+	return ft.shareTTL
 }
 
 // BlobStore is the interface to be compatible with both the server and the BlobStore client
