@@ -252,6 +252,7 @@ func (docstore *DocStore) fetchPointers(doc map[string]interface{}) (map[string]
 					return nil, fmt.Errorf("failed to generate bewit: %v")
 				}
 				p["url"] = u.String()
+				p["hash"] = hash
 
 				pointers[vv] = p
 			}
@@ -540,10 +541,10 @@ func addSpecialFields(doc map[string]interface{}, _id *id.ID) {
 	doc["_id"] = _id
 	doc["_hash"] = _id.Hash()
 
-	doc["_created"] = time.Unix(_id.Ts(), 0).Format(time.RFC3339)
-	updated := _id.Version() / 1e9
+	doc["_created"] = time.Unix(0, _id.Ts()).Format(time.RFC3339)
+	updated := _id.Version()
 	if updated != doc["_created"] {
-		doc["_updated"] = time.Unix(int64(updated), 0).Format(time.RFC3339)
+		doc["_updated"] = time.Unix(0, int64(updated)).Format(time.RFC3339)
 	}
 }
 

@@ -48,6 +48,7 @@ func (lqe *LuaQueryEngine) Close() error {
 }
 
 func setGlobals(L *lua.LState) {
+	// FIXME(tsileo): a `use_index(index_field, value)` and have the optimizer use it
 	L.SetGlobal("porterstemmer", L.NewFunction(ltokenize))
 	L.SetGlobal("porterstemmer_stem", L.NewFunction(stem))
 }

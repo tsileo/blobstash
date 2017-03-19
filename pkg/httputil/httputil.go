@@ -147,7 +147,7 @@ func NewQuery(q url.Values) *Query {
 }
 
 func (q *Query) Get(key string) string {
-	return q.Get(key)
+	return q.values.Get(key)
 }
 
 func (q *Query) GetDefault(key, defaultval string) string {
