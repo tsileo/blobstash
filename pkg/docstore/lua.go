@@ -5,14 +5,17 @@ package docstore
 // TODO(tsileo): use   -tags 'prod' for building binary
 
 import (
-	luautil "a4.io/blobstash/pkg/apps/luautil"
 	"bytes"
 	"fmt"
+	"path/filepath"
+	"time"
+
 	"github.com/blevesearch/segment"
 	log "github.com/inconshreveable/log15"
 	"github.com/reiver/go-porterstemmer"
 	"github.com/yuin/gopher-lua"
-	"time"
+
+	luautil "a4.io/blobstash/pkg/apps/luautil"
 )
 
 type QueryMatcher interface {
@@ -63,6 +66,7 @@ func (docstore *DocStore) newLuaQueryEngine(query *query) (*LuaQueryEngine, erro
 		q:               lua.LNil,
 		logger:          docstore.logger.New("submodule", "lua_query_engine"),
 	}
+	setGlobals(engine.L)
 	engine.logger.Debug("init", "query", engine.query)
 	if engine.query != nil {
 		if engine.storedQueryName != "" {
@@ -71,6 +75,7 @@ func (docstore *DocStore) newLuaQueryEngine(query *query) (*LuaQueryEngine, erro
 			if !ok {
 				return nil, fmt.Errorf("Unknown stored query name")
 			}
+			luautil.AddToPath(engine.L, filepath.Dir(squery.Main))
 			engine.L.SetGlobal("query", luautil.InterfaceToLValue(engine.L, engine.query))
 			if err := engine.L.DoFile(squery.Main); err != nil {
 				panic(err)
@@ -101,7 +106,6 @@ func (lqe *LuaQueryEngine) Match(doc map[string]interface{}) (bool, error) {
 	start := time.Now()
 	var out bool
 	L := lqe.L
-	setGlobals(L)
 
 	if lqe.matchFunc != nil {
 		return lqe.matchFunc(doc)

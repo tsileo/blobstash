@@ -8,9 +8,16 @@ package luautil // import "a4.io/blobstash/pkg/apps/luautil"
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/yuin/gopher-lua"
 )
+
+func AddToPath(L *lua.LState, npath string) {
+	path := L.GetField(L.GetField(L.Get(lua.EnvironIndex), "package"), "path").(lua.LString)
+	path = lua.LString(npath + "/?.lua;" + string(path))
+	L.SetField(L.GetField(L.Get(lua.EnvironIndex), "package"), "path", lua.LString(path))
+}
 
 // TableToMap convert a `*lua.LTable` to a `map[string]interface{}`
 func TableToMap(table *lua.LTable) map[string]interface{} {
@@ -189,8 +196,10 @@ func fromJSON(L *lua.LState, value interface{}) lua.LValue {
 			tbl.RawSetH(lua.LString(key), fromJSON(L, item))
 		}
 		return tbl
+	case nil:
+		return lua.LNil
 	default:
-		panic("unsupported type")
+		panic(fmt.Errorf("unsupported type %+v", converted))
 	}
 	return lua.LNil
 }
