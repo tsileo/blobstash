@@ -130,9 +130,8 @@ type DocStore struct {
 }
 
 type storedQuery struct {
-	Name         string `json:"-"`
-	MatchCode    string `json:"match_code"`
-	PreQueryCode string `json:"pre_query_code"`
+	Name string
+	Main string
 }
 
 // New initializes the `DocStoreExt`
@@ -149,28 +148,13 @@ func New(logger log.Logger, conf *config.Config, kvStore *kvstore.KvStore, blobS
 	if conf.Docstore != nil && conf.Docstore.StoredQueries != nil {
 		for _, squery := range conf.Docstore.StoredQueries {
 			// First ensure the required match.lua is present
-			if _, err := os.Stat(filepath.Join(squery.Path, "match.lua")); os.IsNotExist(err) {
-				return nil, fmt.Errorf("missing `match.lua` for stored query %s", squery.Name)
-			}
-			code, err := ioutil.ReadFile(filepath.Join(squery.Path, "match.lua"))
-			if err != nil {
-				return nil, fmt.Errorf("failed to open match.lua: %s", err)
-			}
-
-			var preQueryCode string
-			// Then, check for the optional prequery.lua
-			if _, err := os.Stat(filepath.Join(squery.Path, "prequery.lua")); !os.IsNotExist(err) {
-				preQuery, err := ioutil.ReadFile(filepath.Join(squery.Path, "prequery.lua"))
-				if err != nil {
-					return nil, fmt.Errorf("failed to open match.lua: %s", err)
-				}
-				preQueryCode = string(preQuery)
+			if _, err := os.Stat(filepath.Join(squery.Path, "main.lua")); os.IsNotExist(err) {
+				return nil, fmt.Errorf("missing `main.lua` for stored query %s", squery.Name)
 			}
 
 			storedQuery := &storedQuery{
-				Name:         squery.Name,
-				MatchCode:    string(code),
-				PreQueryCode: preQueryCode,
+				Name: squery.Name,
+				Main: filepath.Join(squery.Path, "main.lua"),
 			}
 			storedQueries[squery.Name] = storedQuery
 		}

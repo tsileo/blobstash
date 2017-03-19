@@ -32,11 +32,12 @@ type LuaQueryEngine struct {
 	storedQueries   map[string]*storedQuery // Stored query store
 	storedQueryName string                  // Requested stored query name if any
 
+	code  string
 	query interface{} // Raw query
-	q     lua.LValue  // Raw query converted in Lua value
-	L     *lua.LState // Lua state that will live the whole query
+	q     lua.LValue
 
-	code string // Query code
+	matchFunc func(map[string]interface{}) (bool, error)
+	L         *lua.LState // Lua state that will live the whole query
 
 	logger log.Logger
 }
@@ -51,32 +52,14 @@ func setGlobals(L *lua.LState) {
 	L.SetGlobal("porterstemmer_stem", L.NewFunction(stem))
 }
 
-func (lqe *LuaQueryEngine) preQuery(name string) (lua.LValue, error) {
-	lqe.logger.Debug("computing pre query")
-	iq := lqe.query
-	start := time.Now()
-
-	// Initalize Lua state (the preQuery is only computed once at the start)
-	L := lua.NewState()
-	defer L.Close()
-	L.SetGlobal("query", luautil.InterfaceToLValue(L, iq))
-	setGlobals(L)
-	if err := L.DoString(lqe.storedQueries[name].PreQueryCode); err != nil {
-		return nil, err
-	}
-	ret := L.Get(-1)
-	lqe.logger.Debug("done", "duration", time.Since(start), "computed_query", ret)
-	return ret, nil
-}
-
 func (docstore *DocStore) newLuaQueryEngine(query *query) (*LuaQueryEngine, error) {
 	engine := &LuaQueryEngine{
 		storedQueries:   docstore.storedQueries,
-		code:            queryToScript(query),
 		query:           query.storedQueryArgs,
+		code:            queryToScript(query),
 		storedQueryName: query.storedQuery,
-		q:               lua.LNil,
 		L:               lua.NewState(),
+		q:               lua.LNil,
 		logger:          docstore.logger.New("submodule", "lua_query_engine"),
 	}
 	engine.logger.Debug("init", "query", engine.query)
@@ -87,14 +70,27 @@ func (docstore *DocStore) newLuaQueryEngine(query *query) (*LuaQueryEngine, erro
 			if !ok {
 				return nil, fmt.Errorf("Unknown stored query name")
 			}
-			qvalue, err := engine.preQuery(engine.storedQueryName)
-			if err != nil {
-				return engine, err
+			engine.L.SetGlobal("query", luautil.InterfaceToLValue(engine.L, engine.query))
+			if err := engine.L.DoFile(squery.Main); err != nil {
+				panic(err)
 			}
-			engine.q = qvalue
-			engine.code = squery.MatchCode
-		} else {
-			engine.q = luautil.InterfaceToLValue(engine.L, query)
+			ret := engine.L.Get(-1).(*lua.LFunction)
+
+			matchDoc := func(doc map[string]interface{}) (bool, error) {
+				if err := engine.L.CallByParam(lua.P{
+					Fn:      ret,
+					NRet:    1,
+					Protect: true,
+				}, luautil.InterfaceToLValue(engine.L, doc)); err != nil {
+					return false, err
+				}
+				if engine.L.Get(-1) == lua.LTrue {
+					return true, nil
+				}
+				return false, nil
+			}
+
+			engine.matchFunc = matchDoc
 		}
 	}
 	return engine, nil
@@ -104,9 +100,13 @@ func (lqe *LuaQueryEngine) Match(doc map[string]interface{}) (bool, error) {
 	start := time.Now()
 	var out bool
 	L := lqe.L
-	L.SetGlobal("query", lqe.q)
-	L.SetGlobal("doc", luautil.InterfaceToLValue(lqe.L, doc))
 	setGlobals(L)
+
+	if lqe.matchFunc != nil {
+		return lqe.matchFunc(doc)
+	}
+
+	L.SetGlobal("doc", luautil.InterfaceToLValue(L, doc))
 	// TODO(tsileo): a debug mode for debug print
 	// TODO(tsileo): harvesine function for geoquery
 	// TODO(tsileo): handle near:<place>, is:archived, contains:<link|todo|...>, tag:mytag

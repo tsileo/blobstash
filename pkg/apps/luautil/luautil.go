@@ -18,6 +18,11 @@ func TableToMap(table *lua.LTable) map[string]interface{} {
 	return res
 }
 
+func TableToSlice(table *lua.LTable) []interface{} {
+	_, res := tomap(table, map[*lua.LTable]bool{})
+	return res
+}
+
 func tomap(table *lua.LTable, visited map[*lua.LTable]bool) (map[string]interface{}, []interface{}) {
 	res := map[string]interface{}{}
 	var arrres []interface{}
