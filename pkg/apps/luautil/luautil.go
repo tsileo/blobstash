@@ -4,6 +4,7 @@ Package luautil implements utility for gopher-lua.
 
 */
 package luautil // import "a4.io/blobstash/pkg/apps/luautil"
+// TODO(tsileo): move it to pkg/luautil
 
 import (
 	"encoding/json"
@@ -13,18 +14,20 @@ import (
 	"github.com/yuin/gopher-lua"
 )
 
+// AddToPath append the given path the the Lua package.path
 func AddToPath(L *lua.LState, npath string) {
 	path := L.GetField(L.GetField(L.Get(lua.EnvironIndex), "package"), "path").(lua.LString)
 	path = lua.LString(npath + "/?.lua;" + string(path))
 	L.SetField(L.GetField(L.Get(lua.EnvironIndex), "package"), "path", lua.LString(path))
 }
 
-// TableToMap convert a `*lua.LTable` to a `map[string]interface{}`
+// TableToMap converts a `*lua.LTable` to a `map[string]interface{}`
 func TableToMap(table *lua.LTable) map[string]interface{} {
 	res, _ := tomap(table, map[*lua.LTable]bool{})
 	return res
 }
 
+// TableToSlice converts a `*lua.LTable` to a `[]interface{}`
 func TableToSlice(table *lua.LTable) []interface{} {
 	_, res := tomap(table, map[*lua.LTable]bool{})
 	return res
@@ -168,6 +171,7 @@ func FromJSON(L *lua.LState, js []byte) lua.LValue {
 	return fromJSON(L, res)
 }
 
+// InterfaceToLValue converts the given value to its `lua.LValue` counterpart
 func InterfaceToLValue(L *lua.LState, value interface{}) lua.LValue {
 	return fromJSON(L, value)
 }

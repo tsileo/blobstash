@@ -521,7 +521,10 @@ type query struct {
 
 func queryToScript(q *query) string {
 	if q.basicQuery != "" {
-		return "if " + q.basicQuery + " then return true else return false end"
+		return `return function(doc)
+  if ` + q.basicQuery + ` then return true else return false end
+end
+`
 	}
 	if q.script != "" {
 		return q.script

@@ -58,18 +58,29 @@ func setGlobals(L *lua.LState) {
 
 func (docstore *DocStore) newLuaQueryEngine(query *query) (*LuaQueryEngine, error) {
 	engine := &LuaQueryEngine{
-		storedQueries:   docstore.storedQueries,
-		query:           query.storedQueryArgs,
-		code:            queryToScript(query),
+		storedQueries: docstore.storedQueries,
+		query:         query.storedQueryArgs,
+
+		// XXX(tsileo): code expects a Lua script that returns a function(doc) for matching docs
+		code: queryToScript(query), // FIXME(tsileo): query.script seems not to work
+
 		storedQueryName: query.storedQuery,
 		L:               lua.NewState(),
 		q:               lua.LNil,
 		logger:          docstore.logger.New("submodule", "lua_query_engine"),
 	}
+	fmt.Printf("code=\n\n%s\n\n", engine.code)
 	setGlobals(engine.L)
 	engine.logger.Debug("init", "query", engine.query)
+	// Parse the Lua query, which should be defined as a `function(doc) -> bool`, we parse it only once, then we got
+	// a "Lua func" Go object which we can call repeatedly for each document.
+	// XXX(tsileo): keep the function (along with the Lua context `L` for a few minutes) in a cache, so if a client is paginating
+	// through results, it will reuse the func/Lua context. (Cache[hash(script)] = FuncWithContextReadyToCall)
+	var ret *lua.LFunction
 	if engine.query != nil {
 		if engine.storedQueryName != "" {
+			// XXX(tsileo): concerns: the script should be checked at startup because right now,
+			// a user have to actually try a query before we can see if it's valud Lua.
 			engine.logger.Debug("loading stored query", "name", engine.storedQueryName)
 			squery, ok := engine.storedQueries[engine.storedQueryName]
 			if !ok {
@@ -80,24 +91,32 @@ func (docstore *DocStore) newLuaQueryEngine(query *query) (*LuaQueryEngine, erro
 			if err := engine.L.DoFile(squery.Main); err != nil {
 				panic(err)
 			}
-			ret := engine.L.Get(-1).(*lua.LFunction)
-
-			matchDoc := func(doc map[string]interface{}) (bool, error) {
-				if err := engine.L.CallByParam(lua.P{
-					Fn:      ret,
-					NRet:    1,
-					Protect: true,
-				}, luautil.InterfaceToLValue(engine.L, doc)); err != nil {
-					return false, err
-				}
-				if engine.L.Get(-1) == lua.LTrue {
-					return true, nil
-				}
-				return false, nil
-			}
-
-			engine.matchFunc = matchDoc
+			ret = engine.L.Get(-1).(*lua.LFunction)
 		}
+	} else {
+		// XXX(tsileo): queryToString converted the basic function to a script retunring a function
+		if err := engine.L.DoString(engine.code); err != nil {
+			return nil, err
+		}
+		ret = engine.L.Get(-1).(*lua.LFunction)
+		fmt.Printf("extracted fun %v\n", ret)
+	}
+	if ret != nil {
+		matchDoc := func(doc map[string]interface{}) (bool, error) {
+			if err := engine.L.CallByParam(lua.P{
+				Fn:      ret,
+				NRet:    1,
+				Protect: true,
+			}, luautil.InterfaceToLValue(engine.L, doc)); err != nil {
+				return false, err
+			}
+			if engine.L.Get(-1) == lua.LTrue {
+				return true, nil
+			}
+			return false, nil
+		}
+
+		engine.matchFunc = matchDoc
 	}
 	return engine, nil
 }
@@ -111,6 +130,7 @@ func (lqe *LuaQueryEngine) Match(doc map[string]interface{}) (bool, error) {
 		return lqe.matchFunc(doc)
 	}
 
+	// FIXME(tsileo): REMOVE ME, DEAD CODE (ensure it is)
 	L.SetGlobal("doc", luautil.InterfaceToLValue(L, doc))
 	// TODO(tsileo): a debug mode for debug print
 	// TODO(tsileo): harvesine function for geoquery
