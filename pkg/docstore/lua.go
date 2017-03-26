@@ -52,18 +52,17 @@ func (lqe *LuaQueryEngine) Close() error {
 
 func setGlobals(L *lua.LState) {
 	// FIXME(tsileo): a `use_index(index_field, value)` and have the optimizer use it
+	// TODO(tsileo): harvesine function for geoquery
+	// TODO(tsileo): current time helper
 	L.SetGlobal("porterstemmer", L.NewFunction(ltokenize))
 	L.SetGlobal("porterstemmer_stem", L.NewFunction(stem))
 }
 
 func (docstore *DocStore) newLuaQueryEngine(query *query) (*LuaQueryEngine, error) {
 	engine := &LuaQueryEngine{
-		storedQueries: docstore.storedQueries,
-		query:         query.storedQueryArgs,
-
-		// XXX(tsileo): code expects a Lua script that returns a function(doc) for matching docs
-		code: queryToScript(query), // FIXME(tsileo): query.script seems not to work
-
+		storedQueries:   docstore.storedQueries,
+		query:           query.storedQueryArgs,
+		code:            queryToScript(query),
 		storedQueryName: query.storedQuery,
 		L:               lua.NewState(),
 		q:               lua.LNil,
@@ -110,7 +109,9 @@ func (docstore *DocStore) newLuaQueryEngine(query *query) (*LuaQueryEngine, erro
 			}, luautil.InterfaceToLValue(engine.L, doc)); err != nil {
 				return false, err
 			}
-			if engine.L.Get(-1) == lua.LTrue {
+			ret := engine.L.Get(-1)
+			engine.L.Pop(1)
+			if ret == lua.LTrue {
 				return true, nil
 			}
 			return false, nil
@@ -124,28 +125,17 @@ func (docstore *DocStore) newLuaQueryEngine(query *query) (*LuaQueryEngine, erro
 func (lqe *LuaQueryEngine) Match(doc map[string]interface{}) (bool, error) {
 	start := time.Now()
 	var out bool
-	L := lqe.L
+	var err error
 
-	if lqe.matchFunc != nil {
-		return lqe.matchFunc(doc)
+	if lqe.matchFunc == nil {
+		return false, fmt.Errorf("missing matchFunc")
 	}
 
-	// FIXME(tsileo): REMOVE ME, DEAD CODE (ensure it is)
-	L.SetGlobal("doc", luautil.InterfaceToLValue(L, doc))
-	// TODO(tsileo): a debug mode for debug print
-	// TODO(tsileo): harvesine function for geoquery
-	// TODO(tsileo): handle near:<place>, is:archived, contains:<link|todo|...>, tag:mytag
+	if out, err = lqe.matchFunc(doc); err != nil {
+		return false, err
+	}
 
-	// XXX(tsileo): be able to fetch a blob and parse it??
-	if err := lqe.L.DoString(lqe.code); err != nil {
-		return out, err
-	}
-	ret := lqe.L.Get(-1)
-	if ret == lua.LTrue {
-		out = true
-	}
 	lqe.logger.Debug("match code ran", "duration", time.Since(start))
-	lqe.L.Pop(1)
 	return out, nil
 }
 
