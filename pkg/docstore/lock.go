@@ -4,6 +4,8 @@ import (
 	"sync"
 )
 
+// XXX(tsileo): should the locks map be bounded? or it will never cause any issue?
+
 type locker struct {
 	locks map[string]chan struct{} // Map of lock for each doc ID
 

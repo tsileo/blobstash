@@ -7,6 +7,7 @@ The index is built in a similar way that vkv (prefix handling).
 For each indexed doc:
 
 	IndexRow + "index:{collection}:{hash index}:{_id} => ""
+	IndexRow + {hash index} + {12 random bytes} => _id
 
 {hash index} is the FNV 64a Hash of the index key-value.
 
@@ -17,14 +18,13 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	_ "hash"
 	"hash/fnv"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
+	"sort"
 
-	"a4.io/blobstash/pkg/config/pathutil"
+	"a4.io/blobstash/pkg/config"
 
 	"github.com/cznic/kv"
 )
@@ -33,7 +33,6 @@ import (
 
 // TODO(tsileo):
 // - Add way to remove an index
-// - Store the index in the kvk store: index:{collection}:{index_id} => {Index Entry (json encoded)}
 
 var DuplicateKeyError = errors.New("Duplicate key error")
 
@@ -45,8 +44,6 @@ const (
 	IndexRow
 	IndexPrefixMeta // Not in use yet but reserved for future usage
 	IndexPrefixCnt  // Same here
-	IndexPrefixStart
-	IndexPrefixEnd
 )
 
 // FIXME(tsileo): remove the useless "index:" prefix on the IndexPrefixFmt
@@ -57,19 +54,54 @@ var (
 )
 
 type Index struct {
-	ID     string   `json:"id,omitempty"`
 	Fields []string `json:"fields"`
-	Unique bool     `json:"unique,omitempty"`
+	// Unique bool     `json:"unique,omitempty"`  // FIXME(tsileo): support unique?
+	Sort []string `json:"sort"`
+}
+
+func idFromFields(fields []string) string {
+	id := ""
+	for _, f := range fields {
+		id += fmt.Sprintf("%v-", f)
+	}
+	return id[:len(id)-1]
+}
+
+func (i *Index) ID() string {
+	return idFromFields(i.Fields)
+}
+
+type IndexValues []interface{}
+
+func (v IndexValues) Hash(index *Index) string {
+	h := fnv.New64a()
+	for i, val := range v {
+		h.Write([]byte("key:"))
+		h.Write([]byte(index.Fields[i]))
+		h.Write([]byte("value:"))
+		h.Write([]byte(fmt.Sprintf("%v", val)))
+	}
+	return fmt.Sprintf("%x", h.Sum(nil))
+
 }
 
 // HashIndex will act as a basic indexing for basic queries like `{"key": "value"}`
-type HashIndexes struct {
-	db *kv.DB
+type HashIndex struct {
+	db     *kv.DB
+	config *config.Config
+	Path   string
+	index  *Index
 }
 
-func New() (*HashIndexes, error) {
+func New(conf *config.Config, index *Index) (*HashIndex, error) {
 	// FIXME(tsileo): should use `config.VarDir()`
-	path := filepath.Join(pathutil.VarDir(), "docstore.index")
+	sort.Strings(index.Fields)
+	if index.Sort == nil || len(index.Sort) == 0 {
+		index.Sort = append(index.Sort, "_id")
+	}
+	sort.Strings(index.Sort)
+	indexName := fmt.Sprintf("docstore.%s.%s.index", idFromFields(index.Fields), idFromFields(index.Sort))
+	path := filepath.Join(conf.VarDir(), indexName)
 	createOpen := kv.Open
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		createOpen = kv.Create
@@ -78,17 +110,12 @@ func New() (*HashIndexes, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &HashIndexes{
-		db: db,
+	return &HashIndex{
+		db:     db,
+		index:  index,
+		Path:   path,
+		config: conf,
 	}, nil
-}
-
-func IndexKey(value interface{}) string {
-	h := fnv.New64a()
-	// h.Write(key)
-	h.Write([]byte(fmt.Sprintf("%v", value)))
-
-	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
 func encodeMeta(keyByte byte, key []byte) []byte {
@@ -98,111 +125,45 @@ func encodeMeta(keyByte byte, key []byte) []byte {
 	return cardkey
 }
 
-func (hi *HashIndexes) Close() error {
+func (hi *HashIndex) Close() error {
 	return hi.db.Close()
 }
 
-func (hi *HashIndexes) Index(collection string, index *Index, indexHash, _id string) error {
-	prefixedKey := fmt.Sprintf(IndexPrefixFmt, collection, index.ID, indexHash)
-	bprefix := []byte(prefixedKey)
-	bkey := []byte(fmt.Sprintf(IndexFmt, collection, index.ID, indexHash, _id))
-	bid := []byte(_id)
-
-	// Check for "unique"ness if the index has an unique constraint
-	if index.Unique {
-		// exists, err := hi.db.Get(nil, encodeMeta(IndexRow, bkey))
-		prefix := encodeMeta(IndexRow, []byte(fmt.Sprintf(IndexFmt, collection, index.ID, indexHash, "")))
-		enum, _, err := hi.db.Seek(prefix)
-		if err != nil {
-			return err
-		}
-		k, _, err := enum.Next()
-		switch err {
-		case io.EOF:
-		case nil:
-			if strings.HasPrefix(string(k), string(prefix)) {
-				return DuplicateKeyError
-			}
-		default:
-			return err
-		}
-	}
-
-	// Track the boundaries for later iteration
-	prefixStart, err := hi.db.Get(nil, encodeMeta(IndexPrefixStart, bprefix))
-	if err != nil {
+// TODO(tsileo): support alternative sort key!
+func (hi *HashIndex) Index(idxValues IndexValues, _id string) error {
+	// TODO(tsileo): the _id could be hex decoded to save a few bytes
+	k := make([]byte, 16+24)
+	copy(k[:], idxValues.Hash(hi.index))
+	copy(k[16:], []byte(_id))
+	if err := hi.db.Set(encodeMeta(IndexRow, k), []byte(_id)); err != nil {
 		return err
 	}
-	if (prefixStart == nil || len(prefixStart) == 0) || bytes.Compare(bid, prefixStart) < 0 {
-		if err := hi.db.Set(encodeMeta(IndexPrefixStart, bprefix), bid); err != nil {
-			return err
-		}
-	}
-	prefixEnd, err := hi.db.Get(nil, encodeMeta(IndexPrefixEnd, bprefix))
-	if err != nil {
-		return err
-	}
-	if (prefixEnd == nil || len(prefixEnd) == 0) || bytes.Compare(bid, prefixEnd) > 0 {
-		if err := hi.db.Set(encodeMeta(IndexPrefixEnd, bprefix), bid); err != nil {
-			return err
-		}
-	}
 
-	// Set the actual index row
-	// FIXME(tsileo): set value to nil instead of 1 and check if the boundaries are really needed
-	return hi.db.Set(encodeMeta(IndexRow, bkey), []byte{1})
+	return nil
 }
 
-func (hi *HashIndexes) Iter(collection string, index *Index, indexHash, start, end string, limit int) ([]string, error) {
-	prefixedKey := fmt.Sprintf(IndexPrefixFmt, collection, index.ID, indexHash)
-	bprefix := []byte(prefixedKey)
-
-	res := []string{}
-	if start == "" {
-		prefixStart, err := hi.db.Get(nil, encodeMeta(IndexPrefixStart, bprefix))
-		if err != nil {
-			return nil, err
-		}
-		// If there's no boundary, there's no index for this key/value pair
-		if prefixStart == nil || len(prefixStart) == 0 {
-			return res, nil
-		}
-		start = string(prefixStart)
-	}
-	// FIXME(tsileo): a better way to tell we want the end? or \xff is good enough?
-	if end == "\xff" {
-		prefixEnd, err := hi.db.Get(nil, encodeMeta(IndexPrefixEnd, bprefix))
-		if err != nil {
-			return nil, err
-		}
-		// If there's no boundary, there's no index for this key/value pair
-		if prefixEnd == nil || len(prefixEnd) == 0 {
-			return res, nil
-		}
-		end = string(prefixEnd)
-	}
-	enum, _, err := hi.db.Seek(encodeMeta(IndexRow, []byte(fmt.Sprintf(IndexFmt, collection, index.ID, indexHash, end))))
+func (hi *HashIndex) IterReverse(idxValues IndexValues, start, end string, limit int) ([]string, error) {
+	// TODO(tsileo): be able to switch between Iter/IterReverse (i.e. the sort order)
+	h := []byte(idxValues.Hash(hi.index))
+	enum, err := hi.db.SeekLast() // (encodeMeta(IndexRow, bend))
 	if err != nil {
 		return nil, err
 	}
-	endBytes := encodeMeta(IndexRow, []byte(fmt.Sprintf(IndexFmt, collection, index.ID, indexHash, start)))
+	var res []string
+	bstart := append(h, []byte(start)...)
+	endBytes := encodeMeta(IndexRow, bstart)
 	i := 0
 	for {
-		k, _, err := enum.Prev()
+		k, _id, err := enum.Prev()
 		if err == io.EOF {
 			break
 		}
 		if bytes.Compare(k, endBytes) < 0 || (limit != 0 && i > limit) {
 			return res, nil
 		}
-		// XXX(tsileo): is the extra check really necessary?
-		if !strings.HasPrefix(string(k[1:]), fmt.Sprintf(IndexFmt, collection, index.ID, indexHash, "")) {
-			break
-		}
-		// fmt.Printf("\n\n%s\n%s\n\n\n", k[1:], fmt.Sprintf(IndexFmt, collection, index.ID, indexHash, ""))
-		_id := strings.Replace(string(k[1:]), fmt.Sprintf(IndexFmt, collection, index.ID, indexHash, ""), "", 1)
-		res = append(res, _id)
+		res = append(res, string(_id))
 		i++
 	}
+
 	return res, nil
 }

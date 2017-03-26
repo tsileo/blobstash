@@ -102,7 +102,7 @@ const (
 	// XXX(tsileo): allow custom Lua-defined pointer, this could be useful for implement cross-note linking in Blobs
 
 	// Sharing TTL for the bewit link of Filetree references
-	shareDuration = 1 * time.Hour
+	shareDuration = 30 * time.Minute
 )
 
 type executionStats struct {
@@ -464,52 +464,50 @@ func isQueryAll(q string) bool {
 // }
 
 // Insert the given doc (`*map[string]interface{}` for now) in the given collection
-func (docstore *DocStore) Insert(collection string, idoc interface{}) (*id.ID, error) {
-	switch doc := idoc.(type) {
-	case *map[string]interface{}:
-		docFlag := FlagNoop
-		data, err := json.Marshal(doc)
-		if err != nil {
-			return nil, err
-		}
-		// If there's already an "_id" field in the doc, remove it
-		if _, ok := (*doc)["_id"]; ok {
-			delete(*doc, "_id")
-		}
-
-		// Store the payload (JSON data) in a blob
-		hash := fmt.Sprintf("%x", blake2b.Sum256(data))
-
-		ctx := context.Background()
-
-		blob := &blob.Blob{Hash: hash, Data: data}
-		if err := docstore.blobStore.Put(ctx, blob); err != nil {
-			return nil, err
-		}
-
-		// Build the ID and add some meta data
-		now := time.Now().UTC()
-		_id, err := id.New(now.UnixNano())
-		if err != nil {
-			return nil, err
-		}
-		_id.SetHash(hash)
-		_id.SetFlag(docFlag)
-
-		// Create a pointer in the key-value store
-		if _, err := docstore.kvStore.PutPrefix(ctx, fmt.Sprintf(PrefixKeyFmt, collection), _id.String(), hash, []byte{docFlag}, int(now.UnixNano())); err != nil {
-			return nil, err
-		}
-
-		// Index the doc if needed
-		// if err := docstore.IndexDoc(collection, _id, doc); err != nil {
-		// 	docstore.logger.Error("Failed to index document", "_id", _id.String(), "err", err)
-		// 	return _id, httputil.NewPublicErrorFmt("Failed to index document")
-		// }
-
-		return _id, nil
+func (docstore *DocStore) Insert(collection string, doc *map[string]interface{}) (*id.ID, error) {
+	docFlag := FlagNoop
+	data, err := json.Marshal(doc)
+	if err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf("doc must be a *map[string]interface{}")
+	// If there's already an "_id" field in the doc, remove it
+	if _, ok := (*doc)["_id"]; ok {
+		delete(*doc, "_id")
+	}
+
+	// Store the payload (JSON data) in a blob
+	hash := fmt.Sprintf("%x", blake2b.Sum256(data))
+
+	ctx := context.Background()
+
+	blob := &blob.Blob{Hash: hash, Data: data}
+	if err := docstore.blobStore.Put(ctx, blob); err != nil {
+		return nil, err
+	}
+
+	// Build the ID and add some meta data
+	now := time.Now().UTC()
+	_id, err := id.New(now.UnixNano())
+	if err != nil {
+		return nil, err
+	}
+	_id.SetHash(hash)
+	_id.SetFlag(docFlag)
+
+	// Create a pointer in the key-value store
+	if _, err := docstore.kvStore.PutPrefix(
+		ctx, fmt.Sprintf(PrefixKeyFmt, collection), _id.String(), hash, []byte{docFlag}, int(now.UnixNano()),
+	); err != nil {
+		return nil, err
+	}
+
+	// Index the doc if needed
+	// if err := docstore.IndexDoc(collection, _id, doc); err != nil {
+	// 	docstore.logger.Error("Failed to index document", "_id", _id.String(), "err", err)
+	// 	return _id, httputil.NewPublicErrorFmt("Failed to index document")
+	// }
+
+	return _id, nil
 }
 
 type query struct {
@@ -661,7 +659,6 @@ QUERY:
 		defer qmatcher.Close()
 		var docPointers map[string]interface{}
 
-		// FIXME(tsileo): remake `_ids` a list of string
 		for _, _id := range _ids {
 			// Check if the doc match the query
 			// jsPart := []byte{}
