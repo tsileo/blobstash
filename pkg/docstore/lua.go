@@ -1,9 +1,5 @@
 package docstore
 
-// package docstore
-
-// TODO(tsileo): use   -tags 'prod' for building binary
-
 import (
 	"bytes"
 	"fmt"
