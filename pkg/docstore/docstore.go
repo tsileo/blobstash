@@ -66,6 +66,7 @@ var (
 	PrefixIndexKeyFmt = "docstore-index:%s"
 	IndexKeyFmt       = PrefixIndexKeyFmt + ":%s"
 
+	// XXX(tsileo): remove or re-implement fine-grained permission
 	PermName           = "docstore"
 	PermCollectionName = "docstore:collection"
 	PermWrite          = "write"
@@ -76,6 +77,7 @@ var reservedKeys = map[string]struct{}{
 	"_id":      struct{}{},
 	"_updated": struct{}{},
 	"_created": struct{}{},
+	"_hash":    struct{}{},
 }
 
 func idFromKey(col, key string) (*id.ID, error) {
@@ -106,12 +108,12 @@ const (
 )
 
 type executionStats struct {
-	NReturned           int    `json:"nReturned"`
-	TotalDocsExamined   int    `json:"totalDocsExamined"`
-	ExecutionTimeMillis int    `json:"executionTimeMillis"`
-	LastID              string `json:"-"`
-	Engine              string `json:"query_engine"`
-	Index               string `json:"index"`
+	NReturned         int    `json:"nReturned"`
+	TotalDocsExamined int    `json:"totalDocsExamined"`
+	ExecutionTimeNano int64  `json:"executionTimeNano"`
+	LastID            string `json:"-"`
+	Engine            string `json:"query_engine"`
+	Index             string `json:"index"`
 }
 
 type DocStore struct {
@@ -558,20 +560,13 @@ func (docstore *DocStore) Query(collection string, query *query, cursor string, 
 	return docs, pointers, stats, nil
 }
 
-func addID(js []byte, _id string) []byte {
-	// TODO(tsileo): add _updated/_created
-	js2 := []byte(fmt.Sprintf("{\"_id\":\"%s\",", _id))
-	js2 = append(js2, js[1:len(js)]...)
-	return js2
-}
-
 // query returns a JSON list as []byte for the given query
 // docs are unmarhsalled to JSON only when needed.
 func (docstore *DocStore) query(collection string, query *query, cursor string, limit int, fetchPointers bool) ([]map[string]interface{}, map[string]interface{}, *executionStats, error) {
 	// js := []byte("[")
 	tstart := time.Now()
 	stats := &executionStats{
-		Engine: "lua",
+		Engine: "lua", // XXX(ts): should not be a string
 	}
 
 	pointers := map[string]interface{}{}
@@ -666,6 +661,12 @@ QUERY:
 			qLogger.Debug("fetch doc", "_id", _id)
 			var err error
 			if _id, docPointers, err = docstore.Fetch(collection, _id.String(), &doc, fetchPointers); err != nil {
+
+				// The document is deleted skip it
+				if _id.Flag() == FlagDeleted {
+					continue
+				}
+				// TODO(tsileo): why catch ErrNotFound? should panic?
 				if err == vkv.ErrNotFound {
 					break
 				}
@@ -708,7 +709,7 @@ QUERY:
 	duration := time.Since(tstart)
 	qLogger.Debug("scan done", "duration", duration, "nReturned", stats.NReturned, "scanned", stats.TotalDocsExamined)
 	// XXX(tsileo): display duration in string format or nanosecond precision??
-	stats.ExecutionTimeMillis = int(duration.Nanoseconds() / 1e6)
+	stats.ExecutionTimeNano = duration.Nanoseconds()
 	return docs, pointers, stats, nil
 }
 
@@ -776,7 +777,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			w.Header().Set("BlobStash-DocStore-Query-Engine", stats.Engine)
 			w.Header().Set("BlobStash-DocStore-Query-Returned", strconv.Itoa(stats.NReturned))
 			w.Header().Set("BlobStash-DocStore-Query-Examined", strconv.Itoa(stats.TotalDocsExamined))
-			w.Header().Set("BlobStash-DocStore-Query-Exec-Time-Ms", strconv.Itoa(stats.ExecutionTimeMillis))
+			w.Header().Set("BlobStash-DocStore-Query-Exec-Time-Nano", strconv.FormatInt(stats.ExecutionTimeNano, 10))
 
 			w.Header().Set("BlobStash-DocStore-Results-Count", strconv.Itoa(stats.NReturned))
 
@@ -791,6 +792,8 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				"pagination": map[string]interface{}{
 					"cursor":   nextKey(stats.LastID),
 					"has_more": hasMore,
+					"count":    stats.NReturned,
+					"per_page": limit,
 				},
 			})
 
@@ -820,6 +823,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			// Check for reserved keys
 			for k, _ := range doc {
 				if _, ok := reservedKeys[k]; ok {
+					// XXX(tsileo): delete them or raises an exception?
 					delete(doc, k)
 				}
 			}
@@ -945,6 +949,8 @@ func (docstore *DocStore) Fetch(collection, sid string, res interface{}, fetchPo
 
 	// Build the doc
 	switch idoc := res.(type) {
+	case nil:
+		// Do nothing
 	case *map[string]interface{}:
 		if err := json.Unmarshal(blob, idoc); err != nil {
 			return nil, nil, fmt.Errorf("failed to unmarshal blob: %s", blob)
@@ -961,7 +967,7 @@ func (docstore *DocStore) Fetch(collection, sid string, res interface{}, fetchPo
 		*idoc = append(*idoc, blob...)
 	}
 	_id.SetHash(hash)
-	_id.SetFlag(byte(kv.Data[0]))
+	_id.SetFlag(kv.Data[0])
 	_id.SetVersion(kv.Version)
 	return _id, pointers, nil
 }
@@ -992,7 +998,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			var doc, pointers map[string]interface{}
 
 			if _id, pointers, err = docstore.Fetch(collection, sid, &doc, true); err != nil {
-				if err == vkv.ErrNotFound {
+				if err == vkv.ErrNotFound || _id.Flag() == FlagDeleted {
 					// Document doesn't exist, returns a status 404
 					w.WriteHeader(http.StatusNotFound)
 					return
@@ -1000,6 +1006,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 				panic(err)
 			}
 
+			// FIXME(tsileo): fix-precondition, suport If-Match
 			if hash := r.Header.Get("If-None-Match"); hash != "" {
 				if hash == _id.Hash() {
 					w.WriteHeader(http.StatusNotModified)
@@ -1043,6 +1050,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 				panic(err)
 			}
 
+			// FIXME(tsileo): handle other conditionl header
 			if hash := r.Header.Get("If-Match"); hash != "" {
 				if _id.Hash() != hash {
 					w.WriteHeader(http.StatusPreconditionFailed)
@@ -1090,12 +1098,13 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 
 			// permissions.CheckPerms(r, PermCollectionName, collection, PermWrite)
 			ns := r.Header.Get("BlobStash-Namespace")
+			// FIXME(tsileo): remove namespace support
 			ctx := ctxutil.WithNamespace(context.Background(), ns)
 			// Fetch the actual doc
 			doc := map[string]interface{}{}
 			_id, _, err = docstore.Fetch(collection, sid, &doc, false)
 			if err != nil {
-				if err == vkv.ErrNotFound {
+				if err == vkv.ErrNotFound || _id.Flag() == FlagDeleted {
 					// Document doesn't exist, returns a status 404
 					w.WriteHeader(http.StatusNotFound)
 					return
@@ -1103,6 +1112,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 				panic(err)
 			}
 
+			// FIXME(tsileo): handle other conditionl header
 			if hash := r.Header.Get("If-Match"); hash != "" {
 				if _id.Hash() != hash {
 					w.WriteHeader(http.StatusPreconditionFailed)
@@ -1152,7 +1162,24 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			docstore.locker.Lock(sid)
 			defer docstore.locker.Unlock(sid)
 
+			_id, _, err := docstore.Fetch(collection, sid, nil, false)
+			if err != nil {
+				if err == vkv.ErrNotFound || _id.Flag() == FlagDeleted {
+					// Document doesn't exist, returns a status 404
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				panic(err)
+			}
+
 			// FIXME(tsileo): empty the key, and hanlde it in the get/query
+			if _, err := docstore.kvStore.Put(context.TODO(), fmt.Sprintf(KeyFmt, collection, sid), "", []byte{FlagDeleted}, -1); err != nil {
+				panic(err)
+			}
+
+			// TODO(tsileo): handle index deletion for the given document
+			return
+
 		}
 
 		w.Header().Set("BlobStash-DocStore-Doc-Id", sid)
