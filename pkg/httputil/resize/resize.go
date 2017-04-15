@@ -14,6 +14,8 @@ import (
 	resizer "github.com/nfnt/resize"
 )
 
+// FIXME(tsileo): cache with thumbnails to speed-up, and ensure the browser can cache it? ETags aand Cache-Control
+
 func Resize(name string, f io.ReadSeeker, r *http.Request) (io.ReadSeeker, bool, error) {
 	swi := r.URL.Query().Get("w")
 	lname := strings.ToLower(name)

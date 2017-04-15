@@ -7,6 +7,10 @@ import (
 	_ "encoding/json"
 	_ "encoding/xml"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -519,6 +523,15 @@ func (ft *FileTreeExt) zipHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
+func getImageDimension(f io.Reader) (int, int) {
+	image, _, err := image.DecodeConfig(f)
+	if err != nil {
+		fmt.Printf("failed to read img: %v\n", err)
+		return 0, 0
+	}
+	return image.Width, image.Height
+}
+
 // Handle multipart form upload to create a new Node (outside of any FS)
 func (ft *FileTreeExt) uploadHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -537,6 +550,7 @@ func (ft *FileTreeExt) uploadHandler() func(http.ResponseWriter, *http.Request) 
 				panic(err)
 			}
 		}
+		fmt.Printf("parsed data=%+v\n", data)
 
 		r.ParseMultipartForm(MaxUploadSize)
 		file, handler, err := r.FormFile("file")
@@ -545,7 +559,27 @@ func (ft *FileTreeExt) uploadHandler() func(http.ResponseWriter, *http.Request) 
 		}
 		defer file.Close()
 		uploader := writer.NewUploader(&BlobStore{ft.blobStore})
-		meta, err := uploader.PutReader(handler.Filename, file, data)
+		var iw, ih int
+		fdata, err := ioutil.ReadAll(file)
+		if err != nil {
+			panic(err)
+		}
+		lname := strings.ToLower(handler.Filename)
+		// FIXME(tsileo): parse EXIF data
+		// TODO(tsileo): parse PDF text
+		// XXX(tsileo): generate video thumbnail?
+		if strings.HasSuffix(lname, ".jpg") || strings.HasSuffix(lname, ".png") || strings.HasSuffix(lname, ".gif") {
+			iw, ih = getImageDimension(bytes.NewReader(fdata))
+			fmt.Printf("iw=%d ih=%d\n\n\n", iw, ih)
+		}
+		if iw != 0 {
+			if data == nil {
+				data = map[string]interface{}{}
+			}
+			data["image_width"] = iw
+			data["image_height"] = ih
+		}
+		meta, err := uploader.PutReader(handler.Filename, bytes.NewReader(fdata), data)
 		if err != nil {
 			panic(err)
 		}

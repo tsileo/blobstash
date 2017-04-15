@@ -166,16 +166,20 @@ func (up *Uploader) RenameMeta(meta *meta.Meta, name string) error {
 }
 
 // fmt.Sprintf("%x", blake2b.Sum256(js))
-func (up *Uploader) PutReader(name string, reader io.ReadCloser, data map[string]interface{}) (*meta.Meta, error) { // *WriteResult, error) {
+func (up *Uploader) PutReader(name string, reader io.Reader, data map[string]interface{}) (*meta.Meta, error) { // *WriteResult, error) {
 	up.StartUpload()
 	defer up.UploadDone()
 
 	meta := meta.NewMeta()
 	meta.Name = filepath.Base(name)
-	meta.Data = data
 	meta.Type = "file"
 	meta.ModTime = time.Now().Format(time.RFC3339)
 	meta.Mode = uint32(0666)
+	if data != nil {
+		for k, v := range data {
+			meta.AddData(k, v)
+		}
+	}
 	// wr := NewWriteResult()
 	if err := up.writeReader(reader, meta); err != nil {
 		return nil, err
