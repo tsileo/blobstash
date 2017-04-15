@@ -1,11 +1,11 @@
 package server // import "a4.io/blobstash/pkg/server"
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"golang.org/x/crypto/acme/autocert"
-	"golang.org/x/net/context"
 	_ "io"
 	_ "log"
 	"net/http"
