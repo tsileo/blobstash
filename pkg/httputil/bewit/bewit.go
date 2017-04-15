@@ -116,6 +116,15 @@ func Validate(req *http.Request, creds *Cred) error {
 		return ErrEmptyBewit
 	}
 	q := req.URL.Query()
+
+	// TODO(tsileo): document these (w is for image resizing, and dl for the content disposition header)
+	safeKeys := []string{"w", "dl"}
+
+	safeKeysValues := map[string]string{}
+	for _, key := range safeKeys {
+		safeKeysValues[key] = q.Get(key)
+		q.Del(key)
+	}
 	q.Del("bewit")
 	req.URL.RawQuery = q.Encode()
 
@@ -158,6 +167,13 @@ func Validate(req *http.Request, creds *Cred) error {
 	if !hmac.Equal(mac, bewitMac) {
 		return ErrBadMac
 	}
+	for _, k := range safeKeys {
+		val := safeKeysValues[k]
+		if val != "" {
+			q.Set(k, val)
+		}
+	}
+	req.URL.RawQuery = q.Encode()
 
 	// Authentication successful
 	return nil

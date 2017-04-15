@@ -61,10 +61,13 @@ type Index struct {
 
 func idFromFields(fields []string) string {
 	id := ""
+	// XXX(ts): use a forbidden character which is not . ("dot")
 	for _, f := range fields {
-		id += fmt.Sprintf("%v-", f)
+		id += fmt.Sprintf("%v:", f)
 	}
-	return id[:len(id)-1]
+	// XXX(ts): remove the hard-coded sort order
+	// FIXME(ts): a better file name format
+	return fmt.Sprintf("fields::%s:::sort::-_id", id[:len(id)-1])
 }
 
 func (i *Index) ID() string {
@@ -83,6 +86,11 @@ func (v IndexValues) Hash(index *Index) string {
 	}
 	return fmt.Sprintf("%x", h.Sum(nil))
 
+}
+
+type Indexes struct {
+	indexes map[string]map[string]*HashIndex
+	conf    *config.Config
 }
 
 // HashIndex will act as a basic indexing for basic queries like `{"key": "value"}`

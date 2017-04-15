@@ -643,7 +643,6 @@ QUERY:
 		case "match_all":
 			qmatcher = &MatchAllEngine{}
 		case "lua":
-			// FIXME(tsileo): handle stored queries
 			qmatcher, err = docstore.newLuaQueryEngine(query)
 			if err != nil {
 				return nil, nil, stats, err
@@ -697,18 +696,9 @@ QUERY:
 		}
 		start = nextKey(lastKey)
 	}
-	// Remove the last comma fron the JSON string
-	// if stats.NReturned > 0 {
-	// js = js[0 : len(js)-1]
-	// }
-	// js, err := json.Marshal(docs)
-	// if err != nil {
-	// 	return nil, nil, err
-	// }
 
 	duration := time.Since(tstart)
 	qLogger.Debug("scan done", "duration", duration, "nReturned", stats.NReturned, "scanned", stats.TotalDocsExamined)
-	// XXX(tsileo): display duration in string format or nanosecond precision??
 	stats.ExecutionTimeNano = duration.Nanoseconds()
 	return docs, pointers, stats, nil
 }
@@ -1036,8 +1026,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			docstore.locker.Lock(sid)
 			defer docstore.locker.Unlock(sid)
 
-			ns := r.Header.Get("BlobStash-Namespace")
-			ctx := ctxutil.WithNamespace(context.Background(), ns)
+			ctx := context.Background()
 
 			// Fetch the current doc
 			js := []byte{}
@@ -1050,7 +1039,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 				panic(err)
 			}
 
-			// FIXME(tsileo): handle other conditionl header
+			// FIXME(tsileo): make it required?
 			if hash := r.Header.Get("If-Match"); hash != "" {
 				if _id.Hash() != hash {
 					w.WriteHeader(http.StatusPreconditionFailed)
@@ -1112,7 +1101,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 				panic(err)
 			}
 
-			// FIXME(tsileo): handle other conditionl header
+			// If-Match is optional for POST request
 			if hash := r.Header.Get("If-Match"); hash != "" {
 				if _id.Hash() != hash {
 					w.WriteHeader(http.StatusPreconditionFailed)
@@ -1151,8 +1140,6 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			if err := docstore.blobStore.Put(ctx, blob); err != nil {
 				panic(err)
 			}
-
-			// XXX(tsileo): allow to update the flag?
 
 			if _, err := docstore.kvStore.Put(ctx, fmt.Sprintf(KeyFmt, collection, _id.String()), hash, []byte{_id.Flag()}, -1); err != nil {
 				panic(err)
