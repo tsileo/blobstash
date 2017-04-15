@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/hashicorp/golang-lru"
 	log "github.com/inconshreveable/log15"
 	"golang.org/x/net/context"
 
@@ -69,6 +70,7 @@ type FileTreeExt struct {
 	sharingCred *bewit.Cred
 	authFunc    func(*http.Request) bool
 	shareTTL    time.Duration
+	thumbCache  *lru.Cache
 
 	log log.Logger
 }
@@ -108,6 +110,11 @@ type FS struct {
 // New initializes the `DocStoreExt`
 func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bool, kvStore *kvstore.KvStore, blobStore *blobstore.BlobStore, chub *hub.Hub) (*FileTreeExt, error) {
 	logger.Debug("init")
+	// FIXME(tsileo): make the number of thumbnails to keep in memory a config item
+	cache, err := lru.New(128)
+	if err != nil {
+		return nil, err
+	}
 	return &FileTreeExt{
 		conf:      conf,
 		kvStore:   kvStore,
@@ -116,10 +123,11 @@ func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bo
 			Key: []byte(conf.SharingKey),
 			ID:  "filetree",
 		},
-		authFunc: authFunc,
-		shareTTL: 1 * time.Hour,
-		hub:      chub,
-		log:      logger,
+		thumbCache: cache,
+		authFunc:   authFunc,
+		shareTTL:   1 * time.Hour,
+		hub:        chub,
+		log:        logger,
 	}, nil
 }
 
@@ -919,7 +927,7 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 
 	// Support for resizing image on the fly
 	// var resized bool
-	f, _, err = resize.Resize(m.Name, f, r)
+	f, _, err = resize.Resize(ft.thumbCache, m.Hash, m.Name, f, r)
 	if err != nil {
 		panic(err)
 	}

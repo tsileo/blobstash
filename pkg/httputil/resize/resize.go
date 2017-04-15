@@ -11,18 +11,24 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hashicorp/golang-lru"
 	resizer "github.com/nfnt/resize"
 )
 
 // FIXME(tsileo): cache with thumbnails to speed-up, and ensure the browser can cache it? ETags aand Cache-Control
 
-func Resize(name string, f io.ReadSeeker, r *http.Request) (io.ReadSeeker, bool, error) {
+func Resize(cache *lru.Cache, hash, name string, f io.ReadSeeker, r *http.Request) (io.ReadSeeker, bool, error) {
 	swi := r.URL.Query().Get("w")
 	lname := strings.ToLower(name)
 	if (strings.HasSuffix(lname, ".jpg") || strings.HasSuffix(lname, ".png") || strings.HasSuffix(lname, ".gif")) && swi != "" {
 		wi, err := strconv.Atoi(swi)
 		if err != nil {
 			return nil, false, err
+		}
+		if cache != nil {
+			if res, ok := cache.Get(hash + swi); ok {
+				return bytes.NewReader(res.([]byte)), true, nil
+			}
 		}
 		img, format, err := image.Decode(f)
 		if err != nil {
@@ -49,6 +55,9 @@ func Resize(name string, f io.ReadSeeker, r *http.Request) (io.ReadSeeker, bool,
 				return nil, false, err
 			}
 
+		}
+		if cache != nil {
+			cache.Add(hash+swi, b.Bytes())
 		}
 		return bytes.NewReader(b.Bytes()), true, nil
 	}
