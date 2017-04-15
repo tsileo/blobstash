@@ -142,4 +142,4 @@ Feel free to open an issue if you have any ideas/suggestions!
 
 ## License
 
-Copyright (c) 2014-2016 Thomas Sileo and contributors. Released under the MIT license.
+Copyright (c) 2014-2017 Thomas Sileo and contributors. Released under the MIT license.
