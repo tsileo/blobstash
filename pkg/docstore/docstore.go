@@ -237,26 +237,30 @@ func (docstore *DocStore) fetchPointers(doc map[string]interface{}) (map[string]
 				}
 				// XXX(tsileo): here and at other place, add a util func in hashutil to detect invalid string length at least
 				hash := vv[len(PointerFiletreeRef):]
-				blob, err := docstore.blobStore.Get(context.TODO(), hash)
-				if err != nil {
-					return nil, fmt.Errorf("failed to fetch JSON ref: \"%v => %v\": %v", PointerFiletreeRef, v, err)
-				}
+				// TODO(tsileo): call filetree to get a node
+				// blob, err := docstore.blobStore.Get(context.TODO(), hash)
+				// if err != nil {
+				// 	return nil, fmt.Errorf("failed to fetch JSON ref: \"%v => %v\": %v", PointerFiletreeRef, v, err)
+				// }
 
-				// Reconstruct the Meta
-				var p map[string]interface{}
-				if err := json.Unmarshal(blob, &p); err != nil {
-					return nil, fmt.Errorf("failed to unmarshal meta  \"%v => %v\": %v", PointerBlobJSON, v, err)
+				// // Reconstruct the Meta
+				// var p map[string]interface{}
+				// if err := json.Unmarshal(blob, &p); err != nil {
+				// 	return nil, fmt.Errorf("failed to unmarshal meta  \"%v => %v\": %v", PointerBlobJSON, v, err)
+				// }
+				node, err := docstore.filetree.Node(hash)
+				if err != nil {
+					return nil, err
 				}
 
 				// Create a temporary authorization for the file (with a bewit)
-				u := &url.URL{Path: fmt.Sprintf("/%s/%s", p["type"].(string)[0:1], hash)}
+				u := &url.URL{Path: fmt.Sprintf("/%s/%s", node.Type[0:1], hash)}
 				if err := bewit.Bewit(docstore.filetree.SharingCred(), u, shareDuration); err != nil {
 					return nil, fmt.Errorf("failed to generate bewit: %v")
 				}
-				p["url"] = u.String()
-				p["hash"] = hash
+				node.URL = u.String()
 
-				pointers[vv] = p
+				pointers[vv] = node
 			}
 
 		}

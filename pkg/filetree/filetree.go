@@ -7,14 +7,11 @@ import (
 	_ "encoding/json"
 	_ "encoding/xml"
 	"fmt"
-	"image"
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -30,6 +27,7 @@ import (
 	"a4.io/blobstash/pkg/client/clientutil"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/filetree/filetreeutil/meta"
+	"a4.io/blobstash/pkg/filetree/imginfo"
 	"a4.io/blobstash/pkg/filetree/reader/filereader"
 	"a4.io/blobstash/pkg/filetree/writer"
 	"a4.io/blobstash/pkg/httputil"
@@ -43,7 +41,7 @@ import (
 // XXX(tsileo): handle the fetching of meta from the FS name and reconstruct the vkv key
 // to the root in children link
 // XXX(tsileo): bind a folder to the root path, e.g. {hostname}/ => dirHandler?
-// XXX(tsileo): a multi-part upload endpoint (but without dir capabilities, at least for now)
+// FIXME(tsileo): use `FileTreeExt.fetchInfo` where needed, and add a way to diable it (in the docstore too)
 
 var (
 	indexFile = "index.html"
@@ -63,14 +61,15 @@ var (
 
 // TODO(tsileo): rename to FileTree
 type FileTreeExt struct {
-	kvStore     *kvstore.KvStore
-	blobStore   *blobstore.BlobStore
-	conf        *config.Config
-	hub         *hub.Hub
-	sharingCred *bewit.Cred
-	authFunc    func(*http.Request) bool
-	shareTTL    time.Duration
-	thumbCache  *lru.Cache
+	kvStore       *kvstore.KvStore
+	blobStore     *blobstore.BlobStore
+	conf          *config.Config
+	hub           *hub.Hub
+	sharingCred   *bewit.Cred
+	authFunc      func(*http.Request) bool
+	shareTTL      time.Duration
+	thumbCache    *lru.Cache
+	metadataCache *lru.Cache
 
 	log log.Logger
 }
@@ -115,6 +114,10 @@ func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bo
 	if err != nil {
 		return nil, err
 	}
+	metacache, err := lru.New(1024)
+	if err != nil {
+		return nil, err
+	}
 	return &FileTreeExt{
 		conf:      conf,
 		kvStore:   kvStore,
@@ -123,11 +126,12 @@ func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bo
 			Key: []byte(conf.SharingKey),
 			ID:  "filetree",
 		},
-		thumbCache: cache,
-		authFunc:   authFunc,
-		shareTTL:   1 * time.Hour,
-		hub:        chub,
-		log:        logger,
+		thumbCache:    cache,
+		metadataCache: metacache,
+		authFunc:      authFunc,
+		shareTTL:      1 * time.Hour,
+		hub:           chub,
+		log:           logger,
 	}, nil
 }
 
@@ -177,11 +181,14 @@ type Node struct {
 	Children []*Node `json:"children,omitempty"`
 
 	Data   map[string]interface{} `json:"data,omitempty"`
+	Info   *Info                  `json:"info,omitempty"`
 	XAttrs map[string]string      `json:"xattrs,omitempty"`
 
-	Meta   *meta.Meta `json:"meta,omitempty"`
+	Meta   *meta.Meta `json:"-"`
 	parent *Node      `json:"-"`
 	fs     *FS        `json:"-"`
+
+	URL string `json:"url",omitempty`
 }
 
 // Update the given node with the given meta
@@ -257,7 +264,7 @@ func (s byName) Less(i, j int) bool { return s[i].Name < s[j].Name }
 func (s byName) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 func metaToNode(m *meta.Meta) (*Node, error) {
-	return &Node{
+	n := &Node{
 		Name:    m.Name,
 		Type:    m.Type,
 		Size:    m.Size,
@@ -267,7 +274,8 @@ func metaToNode(m *meta.Meta) (*Node, error) {
 		XAttrs:  m.XAttrs,
 		Hash:    m.Hash,
 		Meta:    m,
-	}, nil
+	}
+	return n, nil
 }
 
 // fetchDir recursively fetch dir children
@@ -531,15 +539,6 @@ func (ft *FileTreeExt) zipHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-func getImageDimension(f io.Reader) (int, int) {
-	image, _, err := image.DecodeConfig(f)
-	if err != nil {
-		fmt.Printf("failed to read img: %v\n", err)
-		return 0, 0
-	}
-	return image.Width, image.Height
-}
-
 // Handle multipart form upload to create a new Node (outside of any FS)
 func (ft *FileTreeExt) uploadHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -567,27 +566,17 @@ func (ft *FileTreeExt) uploadHandler() func(http.ResponseWriter, *http.Request) 
 		}
 		defer file.Close()
 		uploader := writer.NewUploader(&BlobStore{ft.blobStore})
-		var iw, ih int
 		fdata, err := ioutil.ReadAll(file)
 		if err != nil {
 			panic(err)
 		}
-		lname := strings.ToLower(handler.Filename)
-		// FIXME(tsileo): parse EXIF data
-		// TODO(tsileo): parse PDF text
-		// XXX(tsileo): generate video thumbnail?
-		if strings.HasSuffix(lname, ".jpg") || strings.HasSuffix(lname, ".png") || strings.HasSuffix(lname, ".gif") {
-			iw, ih = getImageDimension(bytes.NewReader(fdata))
-			fmt.Printf("iw=%d ih=%d\n\n\n", iw, ih)
+		reader := bytes.NewReader(fdata)
+		meta, err := uploader.PutReader(handler.Filename, reader, data)
+		if err != nil {
+			panic(err)
 		}
-		if iw != 0 {
-			if data == nil {
-				data = map[string]interface{}{}
-			}
-			data["image_width"] = iw
-			data["image_height"] = ih
-		}
-		meta, err := uploader.PutReader(handler.Filename, bytes.NewReader(fdata), data)
+		reader.Seek(0, os.SEEK_SET)
+		info, err := ft.fetchInfo(reader, handler.Filename, meta.Hash)
 		if err != nil {
 			panic(err)
 		}
@@ -595,8 +584,45 @@ func (ft *FileTreeExt) uploadHandler() func(http.ResponseWriter, *http.Request) 
 		if err != nil {
 			panic(err)
 		}
+		node.Info = info
 		httputil.WriteJSON(w, node)
 	}
+}
+
+type Info struct {
+	Image *imginfo.Image `json:"image",omitempty`
+}
+
+func (ft *FileTreeExt) fetchInfo(reader io.ReadSeeker, filename, hash string) (*Info, error) {
+	if ft.metadataCache != nil {
+		if cached, ok := ft.metadataCache.Get(hash); ok {
+			fmt.Printf("metadata from cache")
+			return cached.(*Info), nil
+		}
+
+	}
+
+	info := &Info{}
+	lname := strings.ToLower(filename)
+	// FIXME(tsileo): parse EXIF data
+	// TODO(tsileo): parse PDF text
+	// XXX(tsileo): generate video thumbnail?
+	if strings.HasSuffix(lname, ".jpg") || strings.HasSuffix(lname, ".png") || strings.HasSuffix(lname, ".gif") {
+		var parseExif bool
+		if strings.HasSuffix(lname, ".jpg") {
+			parseExif = true
+		}
+		imageInfo, err := imginfo.Parse(reader, parseExif)
+		if err == nil {
+			info.Image = imageInfo
+		}
+	}
+
+	if ft.metadataCache != nil {
+		ft.metadataCache.Add(hash, info)
+	}
+
+	return info, nil
 }
 
 func (ft *FileTreeExt) fsAppHandler() func(http.ResponseWriter, *http.Request) {
@@ -1010,6 +1036,23 @@ func (ft *FileTreeExt) nodeByRef(hash string) (*Node, error) {
 	}
 
 	return n, nil
+}
+
+func (ft *FileTreeExt) Node(hash string) (*Node, error) {
+	node, err := ft.nodeByRef(hash)
+	if err != nil {
+		return nil, err
+	}
+	f := filereader.NewFile(ft.blobStore, node.Meta)
+	defer f.Close()
+
+	info, err := ft.fetchInfo(f, node.Meta.Name, node.Meta.Hash)
+	if err != nil {
+		return nil, err
+	}
+	node.Info = info
+
+	return node, nil
 }
 
 // Dummy hanler for 404 responses
