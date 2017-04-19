@@ -1,15 +1,19 @@
-package cache
+package cache // import "a4.io/blobstash/pkg/cache"
 
 import (
 	"bytes"
 	"container/list"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"os"
-	_ "path/filepath"
+	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/cznic/kv"
+
+	"a4.io/blobstash/pkg/config"
 )
 
 type Cache struct {
@@ -43,10 +47,11 @@ type element struct {
 	lastAccess int64
 }
 
-func New(maxSize int) (*Cache, error) {
-	// TODO ensue maxSize > 0
-	// path := filepath.Join(conf.VarDir(), indexName)
-	path := "ok"
+func New(conf *config.Config, name string, maxSize int) (*Cache, error) {
+	if !(maxSize > 0) {
+		return nil, fmt.Errorf("maxSize should be greater than 0")
+	}
+	path := filepath.Join(conf.VarDir(), name)
 	createOpen := kv.Open
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		createOpen = kv.Create
@@ -56,12 +61,47 @@ func New(maxSize int) (*Cache, error) {
 		return nil, err
 	}
 
-	return &Cache{
+	cache := &Cache{
 		maxSize: maxSize,
 		evict:   list.New(),
 		items:   map[string]*list.Element{},
 		db:      db,
-	}, nil
+	}
+
+	prefix := []byte("_key:")
+	enum, _, err := db.Seek(prefix)
+	if err != nil {
+		return nil, err
+	}
+	elements := []*element{}
+	for {
+		k, v, err := enum.Next()
+		if err == io.EOF || !bytes.HasPrefix(k, prefix) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		e := &element{
+			key:        string(k)[5:len(k)],
+			lastAccess: int64(binary.BigEndian.Uint64(v[0:8])),
+			size:       int(binary.BigEndian.Uint64(v[8:])),
+		}
+
+		elements = append(elements, e)
+	}
+	sort.Slice(elements, func(i, j int) bool { return elements[i].lastAccess < elements[j].lastAccess })
+	for _, e := range elements {
+		entry := cache.evict.PushFront(e)
+		cache.items[e.key] = entry
+		cache.currentSize += e.size
+	}
+
+	return cache, nil
+}
+
+func (c *Cache) Close() error {
+	return c.db.Close()
 }
 
 func (c *Cache) Get(key string) ([]byte, bool, error) {
@@ -89,13 +129,11 @@ func (c *Cache) dbDelete(key string) error {
 	for {
 		k, _, err := enum.Next()
 		if err == io.EOF || !bytes.Equal(k, buildKey(bkey, i)) {
-			// fmt.Printf("eof\n")
 			break
 		}
 		if err != nil {
 			return err
 		}
-		// fmt.Printf("\n\n%+v\n%s\n%+v\n%s\n%v\n%d / %d\n====\n", k, k, bkey, bkey, bytes.HasPrefix(k, bkey), len(v), buf.Len())
 		if !bytes.HasPrefix(k, bkey) {
 			break
 		}
@@ -120,19 +158,16 @@ func (c *Cache) dbGet(key string) ([]byte, error) {
 	for {
 		k, v, err := enum.Next()
 		if err == io.EOF {
-			// fmt.Printf("eof\n")
 			break
 		}
 		if err != nil {
 			return nil, err
 		}
-		// fmt.Printf("\n\n%+v\n%s\n%+v\n%s\n%v\n%d / %d\n====\n", k, k, bkey, bkey, bytes.HasPrefix(k, bkey), len(v), buf.Len())
 		if !bytes.HasPrefix(k, bkey) {
 			break
 		}
 		buf.Write(v)
 	}
-	// fmt.Printf("freturn=%d", buf.Len())
 	return buf.Bytes(), nil
 }
 
@@ -146,9 +181,7 @@ func buildKey(bkey []byte, i int) []byte {
 func (c *Cache) dbSet(key string, value []byte) error {
 	bkey := append([]byte(key), []byte(":")...)
 	chunks := split(value)
-	// fmt.Printf("len value=%d\n", len(value))
 	for i, chunk := range chunks {
-		// fmt.Printf("chunk %d (len=%d)\n", i, len(chunk))
 		k := buildKey(bkey, i)
 		if err := c.db.Set(k, chunk); err != nil {
 			return err
@@ -159,14 +192,14 @@ func (c *Cache) dbSet(key string, value []byte) error {
 
 func (c *Cache) Add(key string, value []byte) error {
 	lastAccess := time.Now().UnixNano()
-	ts := make([]byte, 8)
+	ts := make([]byte, 16)
 	binary.BigEndian.PutUint64(ts[:], uint64(lastAccess))
+	binary.BigEndian.PutUint64(ts[8:], uint64(len(value)))
 	// Check for existing item
 	size := len(value)
 	if elm, ok := c.items[key]; ok {
 		c.evict.MoveToFront(elm)
-		c.currentSize -= elm.Value.(*element).size
-		c.currentSize += len(value)
+		c.currentSize += len(value) - elm.Value.(*element).size
 		elm.Value.(*element).size = size
 		elm.Value.(*element).lastAccess = lastAccess
 		if err := c.dbSet(key, value); err != nil {

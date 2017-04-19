@@ -7,6 +7,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"a4.io/blobstash/pkg/config"
 )
 
 func check(e error) {
@@ -15,12 +17,14 @@ func check(e error) {
 	}
 }
 
+var c = &config.Config{DataDir: "."}
+
 func TestCacheFileStorage(t *testing.T) {
-	cache, err := New(1000000)
+	cache, err := New(c, "test.cache", 1000000)
 	check(err)
 	defer func() {
 		cache.db.Close()
-		os.RemoveAll("ok")
+		os.RemoveAll("test.cache")
 	}()
 
 	t.Logf("cache=%v", cache)
@@ -43,11 +47,11 @@ func TestCacheFileStorage(t *testing.T) {
 }
 
 func TestCacheBasic(t *testing.T) {
-	cache, err := New(1000000)
+	cache, err := New(c, "test.cache", 1000000)
 	check(err)
 	defer func() {
 		cache.db.Close()
-		os.RemoveAll("ok")
+		os.RemoveAll("test.cache")
 	}()
 
 	t.Logf("cache=%v", cache)
@@ -73,11 +77,11 @@ func TestCacheBasic(t *testing.T) {
 
 func TestCacheLRU(t *testing.T) {
 	maxSize := 1000000
-	cache, err := New(maxSize)
+	cache, err := New(c, "test.cache", maxSize)
 	check(err)
 	defer func() {
 		cache.db.Close()
-		os.RemoveAll("ok")
+		os.RemoveAll("test.cache")
 	}()
 
 	t.Logf("cache=%v", cache)
@@ -119,5 +123,25 @@ func TestCacheLRU(t *testing.T) {
 		if !bytes.Equal(v, v2) {
 			t.Errorf("key \"%s\" should be present", k)
 		}
+	}
+
+	size := cache.currentSize
+
+	cache.Close()
+	cache, err = New(c, "test.cache", maxSize)
+	check(err)
+
+	for k, v := range kvs {
+		start := time.Now()
+		v2, _, err := cache.Get(k)
+		t.Logf("cache.Get %s", time.Since(start))
+		check(err)
+		if !bytes.Equal(v, v2) {
+			t.Errorf("key \"%s\" should be present", k)
+		}
+	}
+
+	if cache.currentSize != size {
+		t.Errorf("size reloaded should be the same")
 	}
 }
