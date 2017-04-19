@@ -11,13 +11,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/hashicorp/golang-lru"
 	resizer "github.com/nfnt/resize"
+
+	"a4.io/blobstash/pkg/cache"
 )
 
-// FIXME(tsileo): cache with thumbnails to speed-up, and ensure the browser can cache it? ETags aand Cache-Control
-
-func Resize(cache *lru.Cache, hash, name string, f io.ReadSeeker, r *http.Request) (io.ReadSeeker, bool, error) {
+func Resize(cache *cache.Cache, hash, name string, f io.ReadSeeker, r *http.Request) (io.ReadSeeker, bool, error) {
 	swi := r.URL.Query().Get("w")
 	lname := strings.ToLower(name)
 	if (strings.HasSuffix(lname, ".jpg") || strings.HasSuffix(lname, ".png") || strings.HasSuffix(lname, ".gif")) && swi != "" {
@@ -26,8 +25,12 @@ func Resize(cache *lru.Cache, hash, name string, f io.ReadSeeker, r *http.Reques
 			return nil, false, err
 		}
 		if cache != nil {
-			if res, ok := cache.Get(hash + swi); ok {
-				return bytes.NewReader(res.([]byte)), true, nil
+			data, ok, err := cache.Get(hash + swi)
+			if err != nil {
+				return nil, false, err
+			}
+			if ok {
+				return bytes.NewReader(data), true, nil
 			}
 		}
 		img, format, err := image.Decode(f)
@@ -57,7 +60,9 @@ func Resize(cache *lru.Cache, hash, name string, f io.ReadSeeker, r *http.Reques
 
 		}
 		if cache != nil {
-			cache.Add(hash+swi, b.Bytes())
+			if err := cache.Add(hash+swi, b.Bytes()); err != nil {
+				return nil, false, err
+			}
 		}
 		return bytes.NewReader(b.Bytes()), true, nil
 	}

@@ -4,8 +4,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
-	_ "encoding/json"
-	_ "encoding/xml"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -18,12 +16,12 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/hashicorp/golang-lru"
 	log "github.com/inconshreveable/log15"
 	"golang.org/x/net/context"
 
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/blobstore"
+	"a4.io/blobstash/pkg/cache"
 	"a4.io/blobstash/pkg/client/clientutil"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/filetree/filetreeutil/meta"
@@ -56,7 +54,7 @@ var (
 	// PermWrite    = "write"
 	// PermRead     = "read"
 
-	MaxUploadSize int64 = 32 << 20
+	MaxUploadSize int64 = 256 << 20
 )
 
 // TODO(tsileo): rename to FileTree
@@ -68,8 +66,8 @@ type FileTreeExt struct {
 	sharingCred   *bewit.Cred
 	authFunc      func(*http.Request) bool
 	shareTTL      time.Duration
-	thumbCache    *lru.Cache
-	metadataCache *lru.Cache
+	thumbCache    *cache.Cache
+	metadataCache *cache.Cache
 
 	log log.Logger
 }
@@ -110,11 +108,11 @@ type FS struct {
 func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bool, kvStore *kvstore.KvStore, blobStore *blobstore.BlobStore, chub *hub.Hub) (*FileTreeExt, error) {
 	logger.Debug("init")
 	// FIXME(tsileo): make the number of thumbnails to keep in memory a config item
-	cache, err := lru.New(128)
+	thumbscache, err := cache.New(conf, "filetree_thumbs.cache", 512<<20)
 	if err != nil {
 		return nil, err
 	}
-	metacache, err := lru.New(1024)
+	metacache, err := cache.New(conf, "filetree_info.cache", 256<<20)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +124,7 @@ func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bo
 			Key: []byte(conf.SharingKey),
 			ID:  "filetree",
 		},
-		thumbCache:    cache,
+		thumbCache:    thumbscache,
 		metadataCache: metacache,
 		authFunc:      authFunc,
 		shareTTL:      1 * time.Hour,
@@ -137,6 +135,8 @@ func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bo
 
 // Close closes all the open DB files.
 func (ft *FileTreeExt) Close() error {
+	ft.thumbCache.Close()
+	ft.metadataCache.Close()
 	return nil
 }
 
@@ -595,9 +595,17 @@ type Info struct {
 
 func (ft *FileTreeExt) fetchInfo(reader io.ReadSeeker, filename, hash string) (*Info, error) {
 	if ft.metadataCache != nil {
-		if cached, ok := ft.metadataCache.Get(hash); ok {
+		cached, ok, err := ft.metadataCache.Get(hash)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
 			fmt.Printf("metadata from cache")
-			return cached.(*Info), nil
+			info := &Info{}
+			if err := json.Unmarshal(cached, info); err != nil {
+				return nil, err
+			}
+			return info, nil
 		}
 
 	}
@@ -619,7 +627,13 @@ func (ft *FileTreeExt) fetchInfo(reader io.ReadSeeker, filename, hash string) (*
 	}
 
 	if ft.metadataCache != nil {
-		ft.metadataCache.Add(hash, info)
+		js, err := json.Marshal(info)
+		if err != nil {
+			return nil, err
+		}
+		if err := ft.metadataCache.Add(hash, js); err != nil {
+			return nil, err
+		}
 	}
 
 	return info, nil

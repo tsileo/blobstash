@@ -99,6 +99,7 @@ const (
 	PointerBlobJSON = "@blobs/json:" // FIXME(tsileo): document the Pointer feature
 	// PointerBlobRef     = "@blobs/ref:"  // FIXME(tsileo): implements this like a @filetree/ref
 	PointerFiletreeRef = "@filetree/ref:"
+	PointerURLInfo     = "@url/info:" // FIXME(tsileo): fetch OG meta data or at least title, optionally screenshot?
 	// TODO(tsileo): implements PointerKvRef
 	// PointerKvRef = "@kv/ref:"
 	// XXX(tsileo): allow custom Lua-defined pointer, this could be useful for implement cross-note linking in Blobs
