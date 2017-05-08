@@ -1,10 +1,10 @@
 package kvstore // import "a4.io/blobstash/pkg/kvstore"
 
 import (
+	"context"
 	"fmt"
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
-	"golang.org/x/net/context"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -53,21 +53,21 @@ func New(logger log.Logger, conf *config.Config, blobStore *blobstore.BlobStore,
 
 func (kv *KvStore) applyMetaFunc(hash string, data []byte) error {
 	kv.log.Debug("Apply meta init", "hash", hash)
-	applied, err := kv.vkv.MetaBlobApplied(hash)
+	// applied, err := kv.vkv.MetaBlobApplied(hash)
+	// if err != nil {
+	// return err
+	// }
+	// if !applied {
+	// kv.log.Debug("meta not yet applied")
+	rkv, err := vkv.UnserializeBlob(data)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to unserialize blob: %v", err)
 	}
-	if !applied {
-		kv.log.Debug("meta not yet applied")
-		rkv, err := vkv.UnserializeBlob(data)
-		if err != nil {
-			return fmt.Errorf("failed to unserialize blob: %v", err)
-		}
-		if _, err := kv.Put(context.Background(), rkv.Key, rkv.Hash, rkv.Data, rkv.Version); err != nil {
-			return fmt.Errorf("failed to put: %v", err)
-		}
-		kv.log.Debug("Applied meta", "kv", rkv)
+	if _, err := kv.Put(context.Background(), rkv.Key, rkv.Hash, rkv.Data, rkv.Version); err != nil {
+		return fmt.Errorf("failed to put: %v", err)
 	}
+	kv.log.Debug("Applied meta", "kv", rkv)
+	// }
 	return nil
 }
 
@@ -78,44 +78,32 @@ func (kv *KvStore) Close() error {
 func (kv *KvStore) Get(ctx context.Context, key string, version int) (*vkv.KeyValue, error) {
 	_, fromHttp := ctxutil.Request(ctx)
 	kv.log.Info("OP Get", "from_http", fromHttp, "key", key, "version", version)
-	return kv.vkv.Get(key, -1)
+	return kv.vkv.Get(key, version)
 }
 
-func (kv *KvStore) Keys(ctx context.Context, start, end string, limit int) ([]*vkv.KeyValue, error) {
+func (kv *KvStore) Keys(ctx context.Context, start, end string, limit int) ([]*vkv.KeyValue, string, error) {
 	_, fromHttp := ctxutil.Request(ctx)
-	kv.log.Info("OP Keys", "from_http", fromHttp)
+	kv.log.Info("OP Keys", "from_http", fromHttp, "start", "", "end", end)
 	return kv.vkv.Keys(start, end, limit)
 }
 
-func (kv *KvStore) Versions(ctx context.Context, key string, start, end, limit int) (*vkv.KeyValueVersions, error) {
+func (kv *KvStore) Versions(ctx context.Context, key string, start, limit int) (*vkv.KeyValueVersions, int, error) {
 	_, fromHttp := ctxutil.Request(ctx)
-	kv.log.Info("OP Versions", "from_http", fromHttp, "key", key, "start", start, "end", end)
+	kv.log.Info("OP Versions", "from_http", fromHttp, "key", key, "start", start)
 	// FIXME(tsileo): decide between -1/0 for default, or introduce a constant Max/Min?? and the end only make sense for the reverse Versions?
-	if end == -1 {
-		end = int(time.Now().UTC().UnixNano())
+	if start == -1 {
+		start = int(time.Now().UTC().UnixNano())
 	}
-	return kv.vkv.Versions(key, start, end, 0)
-}
-
-func (kv *KvStore) ReversePrefixKeys(prefix, start, end string, limit int) ([]*vkv.KeyValue, error) {
-	return kv.vkv.ReversePrefixKeys(prefix, start, end, limit)
-}
-
-func (kv *KvStore) PutPrefix(ctx context.Context, prefix, key, ref string, data []byte, version int) (*vkv.KeyValue, error) {
-	res, err := kv.vkv.PutPrefix(prefix, key, ref, data, version)
-	// TODO(tsileo): cleanup/DRY the Put/PutPrefix
-	metaBlob, err := kv.meta.Build(res)
+	res, cursor, err := kv.vkv.Versions(key, start, 0, 0)
 	if err != nil {
-		return nil, err
+		return nil, cursor, err
 	}
-	if err := res.SetMetaBlob(metaBlob.Hash); err != nil {
-		return nil, err
-	}
-	if err := kv.blobStore.Put(ctx, metaBlob); err != nil {
-		return nil, err
-	}
-	return res, nil
 
+	return res, cursor, nil
+}
+
+func (kv *KvStore) ReverseKeys(start, end string, limit int) ([]*vkv.KeyValue, string, error) {
+	return kv.vkv.ReverseKeys(start, end, limit)
 }
 
 func (kv *KvStore) Put(ctx context.Context, key, ref string, data []byte, version int) (*vkv.KeyValue, error) {
@@ -127,9 +115,6 @@ func (kv *KvStore) Put(ctx context.Context, key, ref string, data []byte, versio
 	}
 	metaBlob, err := kv.meta.Build(res)
 	if err != nil {
-		return nil, err
-	}
-	if err := res.SetMetaBlob(metaBlob.Hash); err != nil {
 		return nil, err
 	}
 	if err := kv.blobStore.Put(ctx, metaBlob); err != nil {
@@ -144,15 +129,17 @@ func (kv *KvStore) keysHandler() func(http.ResponseWriter, *http.Request) {
 		case "GET":
 			// ctx := ctxutil.WithRequest(context.Background(), r)
 			// TODO(tsileo): handle limit
-			q := r.URL.Query()
-			end := q.Get("end")
-			if end == "" {
-				end = "\xff"
-			}
-			keys, err := kv.ReversePrefixKeys(q.Get("prefix"), q.Get("start"), end, 0)
+			q := httputil.NewQuery(r.URL.Query())
+			start := q.GetDefault("start", "")
+			limit, err := q.GetIntDefault("limit", -1)
 			if err != nil {
 				panic(err)
 			}
+			keys, cursor, err := kv.vkv.Keys(start, "\xff", limit)
+			if err != nil {
+				panic(err)
+			}
+			w.Header().Set("KvStore-Cusrsor", cursor)
 			srw := httputil.NewSnappyResponseWriter(w, r)
 			httputil.WriteJSON(srw, map[string]interface{}{"keys": keys})
 			srw.Close()
@@ -166,37 +153,20 @@ func (kv *KvStore) keysHandler() func(http.ResponseWriter, *http.Request) {
 func (kv *KvStore) versionsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key := mux.Vars(r)["key"]
+		q := httputil.NewQuery(r.URL.Query())
 		switch r.Method {
 		//POST takes the uploaded file(s) and saves it to disk.
 		case "GET", "HEAD":
 			ctx := ctxutil.WithRequest(context.Background(), r)
-
-			if ns := r.Header.Get("BlobStash-Namespace"); ns != "" {
-				ctx = ctxutil.WithNamespace(ctx, ns)
+			limit, err := q.GetIntDefault("limit", 0)
+			if err != nil {
+				panic(err)
 			}
-			limit := 0
-			start := 0
-			end := -1
-			for _, q := range []struct {
-				v    *int
-				def  int
-				name string
-			}{
-				{&limit, 0, "limit"},
-				{&start, 0, "start"},
-				{&end, -1, "end"},
-			} {
-				var err error
-				val := q.def
-				if svalue := r.URL.Query().Get(q.name); svalue != "" {
-					val, err = strconv.Atoi(svalue)
-					if err != nil {
-						panic(err)
-					}
-				}
-				*q.v = val
+			start, err := q.GetIntDefault("cursor", -1)
+			if err != nil {
+				panic(err)
 			}
-			resp, err := kv.Versions(ctx, key, start, end, 0)
+			resp, cursor, err := kv.Versions(ctx, key, start, limit)
 			if err != nil {
 				if err == vkv.ErrNotFound {
 					w.WriteHeader(http.StatusNotFound)
@@ -206,6 +176,7 @@ func (kv *KvStore) versionsHandler() func(http.ResponseWriter, *http.Request) {
 				panic(err)
 			}
 			// TODO(tsileo): handle HEAD
+			w.Header().Set("KvStore-Cusrsor", strconv.Itoa(cursor))
 			srw := httputil.NewSnappyResponseWriter(w, r)
 			httputil.WriteJSON(srw, resp)
 			srw.Close()

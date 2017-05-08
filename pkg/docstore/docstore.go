@@ -287,10 +287,12 @@ func nextKey(key string) string {
 // Collections returns all the existing collections
 func (docstore *DocStore) Collections() ([]string, error) {
 	collections := []string{}
-	lastKey := ""
+	index := map[string]struct{}{}
+	var lastKey string
+	ksearch := fmt.Sprintf("docstore:%v", lastKey)
 	for {
-		ksearch := fmt.Sprintf("docstore:%v", lastKey)
-		res, err := docstore.kvStore.Keys(context.TODO(), ksearch, "\xff", 50)
+		res, cursor, err := docstore.kvStore.Keys(context.TODO(), ksearch, "docstore:\xff", 0)
+		ksearch = cursor
 		// docstore.logger.Debug("loop", "ksearch", ksearch, "len_res", len(res))
 		if err != nil {
 			return nil, err
@@ -302,9 +304,11 @@ func (docstore *DocStore) Collections() ([]string, error) {
 		for _, kv := range res {
 			// Key = <docstore:{collection}:{_id}>
 			col = strings.Split(kv.Key, ":")[1]
-			collections = append(collections, col)
+			index[col] = struct{}{}
 		}
-		lastKey = nextKey(col)
+	}
+	for col, _ := range index {
+		collections = append(collections, col)
 	}
 	return collections, nil
 }
@@ -502,8 +506,8 @@ func (docstore *DocStore) Insert(collection string, doc *map[string]interface{})
 	_id.SetFlag(docFlag)
 
 	// Create a pointer in the key-value store
-	if _, err := docstore.kvStore.PutPrefix(
-		ctx, fmt.Sprintf(PrefixKeyFmt, collection), _id.String(), hash, []byte{docFlag}, int(now.UnixNano()),
+	if _, err := docstore.kvStore.Put(
+		ctx, fmt.Sprintf(KeyFmt, collection, _id.String()), hash, []byte{docFlag}, int(now.UnixNano()),
 	); err != nil {
 		return nil, err
 	}
@@ -584,11 +588,11 @@ func (docstore *DocStore) query(collection string, query *query, cursor string, 
 	// optz := optimizer.New(docstore.logger.New("module", "query optimizer"), indexes)
 
 	// Handle the cursor
-	start := ""
+	start := fmt.Sprintf(KeyFmt, collection, "\xff")
 	if cursor != "" {
 		start = fmt.Sprintf(KeyFmt, collection, cursor)
 	}
-	end := "\xff"
+	end := fmt.Sprintf(KeyFmt, collection, "")
 
 	// Tweak the query limit
 	fetchLimit := limit
@@ -612,7 +616,6 @@ func (docstore *DocStore) query(collection string, query *query, cursor string, 
 	// stats.Index = optzIndex.ID
 	// }
 
-	var lastKey string
 QUERY:
 	for {
 		// Loop until we have the number of requested documents, or if we scanned everything
@@ -622,7 +625,8 @@ QUERY:
 		// switch optzType {
 		// case optimizer.Linear:
 		// Performs a unoptimized linear scan
-		res, err := docstore.kvStore.ReversePrefixKeys(fmt.Sprintf(PrefixKeyFmt, collection), start, end, fetchLimit)
+		res, cursor, err := docstore.kvStore.ReverseKeys(start, end, fetchLimit)
+		// res, err := docstore.kvStore.ReverseKeys(end, start, fetchLimit)
 		if err != nil {
 			panic(err)
 		}
@@ -632,7 +636,6 @@ QUERY:
 				return nil, nil, nil, err
 			}
 			_ids = append(_ids, _id)
-			lastKey = kv.Key
 		}
 		// case optimizer.Index:
 		// 	// Use the index to answer the query
@@ -699,7 +702,7 @@ QUERY:
 		if len(_ids) == 0 || len(_ids) < limit {
 			break
 		}
-		start = nextKey(lastKey)
+		start = cursor
 	}
 
 	duration := time.Since(tstart)
@@ -761,7 +764,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				hasMore = true
 			}
 			w.Header().Set("BlobStash-DocStore-Iter-Has-More", strconv.FormatBool(hasMore))
-			w.Header().Set("BlobStash-DocStore-Iter-Cursor", nextKey(stats.LastID))
+			w.Header().Set("BlobStash-DocStore-Iter-Cursor", vkv.PrevKey(stats.LastID))
 
 			// w.Header().Set("BlobStash-DocStore-Query-Optimizer", stats.Optimizer)
 			// if stats.Optimizer != optimizer.Linear {
@@ -785,7 +788,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				"pointers": pointers,
 				"data":     docs,
 				"pagination": map[string]interface{}{
-					"cursor":   nextKey(stats.LastID),
+					"cursor":   vkv.PrevKey(stats.LastID),
 					"has_more": hasMore,
 					"count":    stats.NReturned,
 					"per_page": limit,
@@ -860,7 +863,8 @@ func (docstore *DocStore) FetchVersions(collection, sid string, start, limit int
 
 	// Fetch the KV versions entry for this _id
 	// XXX(tsileo): use int64 for start/end
-	kvv, err := docstore.kvStore.Versions(context.TODO(), fmt.Sprintf(KeyFmt, collection, sid), int(time.Now().UnixNano()), 0, limit)
+	kvv, _, err := docstore.kvStore.Versions(context.TODO(), fmt.Sprintf(KeyFmt, collection, sid), start, limit)
+	// FIXME(tsileo): return the cursor from Versions
 	if err != nil {
 		return nil, nil, err
 	}

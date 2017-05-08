@@ -2,10 +2,11 @@ package vkv
 
 import (
 	"bytes"
+	"fmt"
+	"math"
 	"reflect"
-	"sync"
+	"sort"
 	"testing"
-	"time"
 )
 
 func check(e error) {
@@ -13,106 +14,238 @@ func check(e error) {
 		panic(e)
 	}
 }
+
+func checkKv(t *testing.T, kv, kv2 *KeyValue) {
+	if kv.Flag != kv2.Flag || kv.Version != kv2.Version || kv.Hash != kv2.Hash || !bytes.Equal(kv.Data, kv2.Data) {
+		t.Errorf("failed to fetch kv %+v != %+v", kv, kv2)
+	}
+}
+
+func TestDBEncoding(t *testing.T) {
+	db, err := New("db_base")
+	defer db.Destroy()
+	if err != nil {
+		t.Fatalf("Error creating db %v", err)
+	}
+	h := "e3c8102868d28b5ff85fc35dda07329970d1a01e273c37481326fe0c861c8142"
+	kv, err := db.Put("ok", h, []byte("hello"), -1)
+	check(err)
+	t.Logf("kv=%+v", kv)
+	kv2, err := db.Get("ok", -1)
+	check(err)
+	t.Logf("kv2=%+v", kv2)
+	checkKv(t, kv, kv2)
+
+	kv, err = db.Put("ok", "", []byte("hello2"), -1)
+	check(err)
+	t.Logf("kv=%+v", kv)
+	kv2, err = db.Get("ok", -1)
+	check(err)
+	t.Logf("kv2=%+v", kv2)
+	checkKv(t, kv, kv2)
+
+	kv, err = db.Put("ok", h, nil, -1)
+	check(err)
+	t.Logf("kv=%+v", kv)
+	kv2, err = db.Get("ok", -1)
+	check(err)
+	t.Logf("kv2=%+v", kv2)
+	checkKv(t, kv, kv2)
+}
+
 func TestDB(t *testing.T) {
 	db, err := New("db_base")
 	defer db.Destroy()
 	if err != nil {
 		t.Fatalf("Error creating db %v", err)
 	}
-	// testing low level binary encoded uint64
-	valUint, err := db.getUint64([]byte("foo2"))
+	kv, err := db.Put("ok", "", []byte("hello"), -1)
+	kv.db = nil
 	check(err)
-	if valUint != uint64(0) {
-		t.Errorf("Uninitialized uint64 key should return 0")
-	}
-	err = db.putUint64([]byte("foo2"), uint64(5))
+	t.Logf("kv=%+v", kv)
+	kv2, err := db.Get("ok", -1)
 	check(err)
-	valUint, err = db.getUint64([]byte("foo2"))
+	t.Logf("kv2=%+v", kv2)
+	checkKv(t, kv, kv2)
+	kv3, err := db.Put("ok", "", []byte("hello2"), -1)
 	check(err)
-	if valUint != uint64(5) {
-		t.Error("Key should be set to 5")
-	}
-	err = db.incrUint64([]byte("foo2"), 2)
+	t.Logf("kv3=%+v", kv3)
+	kv4, err := db.Get("ok", -1)
 	check(err)
-	valUint, err = db.getUint64([]byte("foo2"))
-	check(err)
-	if valUint != uint64(7) {
-		t.Error("Key should be set to 7")
-	}
-	var wg sync.WaitGroup
-	// Test the mutex
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			err = db.incrUint64([]byte("foo3"), 1)
-			check(err)
-		}()
-	}
-	wg.Wait()
-	valUint, err = db.getUint64([]byte("foo3"))
-	check(err)
-	if valUint != uint64(10) {
-		t.Errorf("Key foo3 should be set to 10, got %v", valUint)
-	}
-	rnotfound, err := db.Get("test_key_1", -1)
-	if err != ErrNotFound {
-		t.Errorf("key %v shouldn't exists got %v/%v", rnotfound, err)
-	}
+	t.Logf("kv4=%+v", kv4)
+	checkKv(t, kv3, kv4)
 
-	keys, err := db.Keys("", "\xff", 0)
-	check(err)
-	if len(keys) != 0 {
-		t.Errorf("Keys() should be empty: %q", keys)
-	}
-	res, err := db.Put("test_key_1", "", []byte("test_value_1"), -1)
-	check(err)
-	v1 := res.Version
-	res.db = nil
-	res2, err := db.Get("test_key_1", -1)
-	if !reflect.DeepEqual(res, res2) {
-		t.Errorf("bad KeyValue result got %+v, expected %+v", res2, res)
-	}
-	// FIXME(tsileo): also thest the Hash (by setting a real Blake2B hash)!
-	res, err = db.Put("test_key_1", "", []byte("test_value_1.1"), -1)
-	check(err)
-	check(res.SetMetaBlob("fakeblobhash"))
-	h, err := db.MetaBlob(res.Key, res.Version)
-	check(err)
-	if h != "fakeblobhash" {
-		t.Errorf("failed to get meta blob, got %v, exepected \"fakeblobhash\"", h)
-	}
-	res.db = nil
-	res2, err = db.Get("test_key_1", -1)
-	if !reflect.DeepEqual(res, res2) {
-		t.Errorf("bad KeyValue result got %+v, expected %+v", res2, res)
-	}
-	versions, err := db.Versions("test_key_1", 0, int(time.Now().UTC().UnixNano()), 0)
+	versions, _, err := db.Versions("ok", -1, 0, -1)
 	check(err)
 	if len(versions.Versions) != 2 {
-		t.Errorf("key test_key_1 should have 2 versions, got %d", len(versions.Versions))
+		t.Errorf("failed to fetch versions: %+v", versions)
 	}
-	if versions.Versions[0].Hash != res2.Hash {
-		t.Errorf("bad KeyValue (Hash) result got %+v, expected %+v", versions.Versions[0].Hash, res2.Hash)
-	}
-	if !bytes.Equal(versions.Versions[0].Data, res2.Data) {
-		t.Errorf("bad KeyValue (Data) result got %s, expected %s", versions.Versions[0].Data, res2.Data)
-	}
-	keys, err = db.Keys("", "\xff", 0)
+	t.Logf("versions=%+v", versions)
+	checkKv(t, versions.Versions[0], kv3)
+	// checkKv(t, versions.Versions[1], kv)
+
+	kv5, err := db.Put("ok2", "", []byte("hello"), -1)
 	check(err)
-	if len(keys) != 1 || keys[0].Key != res2.Key {
-		t.Errorf("bad Keys() result, expected [%v], got %q", res2.Key, keys)
-	}
-	check(db.DeleteVersion(res2.Key, res2.Version))
-	cnt, err := db.VersionCnt(res2.Key)
+	t.Logf("kv5=%+v", kv5)
+
+	versions, _, err = db.Versions("ok", -1, 0, -1)
 	check(err)
-	if cnt != 1 {
-		t.Errorf("key test_key_1 should have 1 version, got %d", cnt)
+	if len(versions.Versions) != 2 {
+		t.Errorf("failed to fetch versions: %+v", versions)
 	}
-	check(db.DeleteVersion(res2.Key, v1))
-	exists, err := db.Check(res2.Key)
+	t.Logf("versions=%+v", versions)
+	checkKv(t, versions.Versions[0], kv3)
+	// checkKv(t, versions.Versions[1], kv)
+
+	if _, err := db.Put("lol", "", []byte("lol"), -1); err != nil {
+		panic(err)
+	}
+
+	keys, _, err := db.Keys("", "\xff", -1)
 	check(err)
-	if exists {
-		t.Errorf("key test_key_1 shouldn't exists")
+	t.Logf("keys=%+v\n", keys)
+	if len(keys) != 3 {
+		t.Errorf("failed to fetch keys (%d keys)", len(keys))
+	}
+	keys, _, err = db.ReverseKeys("\xff", "", -1)
+	check(err)
+	t.Logf("reverse keys=%+v\n", keys)
+	if len(keys) != 3 {
+		t.Errorf("failed to fetch keys (%d keys)", len(keys))
+	}
+}
+
+func TestDBIter(t *testing.T) {
+	db, err := New("db_base")
+	defer db.Destroy()
+	if err != nil {
+		t.Fatalf("Error creating db %v", err)
+	}
+	ekeys := []string{}
+	for i := 0; i < 10; i++ {
+		k := fmt.Sprintf("ok%d", i)
+		ekeys = append(ekeys, k)
+		kv, err := db.Put(k, "", []byte("hello"), -1)
+		check(err)
+		t.Logf("kv%d=%+v", i, kv)
+	}
+	sort.Sort(sort.StringSlice(ekeys))
+	t.Logf("ekeys=%+v", ekeys)
+	keys, _, err := db.Keys("", "\xff", -1)
+	check(err)
+	t.Logf("keys=%+v\n", keys)
+	if len(keys) != 10 {
+		t.Errorf("failed to fetch keys (%d keys)", len(keys))
+	}
+	skeys := []string{}
+	for _, kv := range keys {
+		skeys = append(skeys, kv.Key)
+	}
+	sort.Sort(sort.StringSlice(ekeys))
+	if !reflect.DeepEqual(ekeys, skeys) {
+		t.Errorf("bad sort order")
+	}
+
+	res := []string{}
+	start := ""
+	for i := 0; i < 6; i++ {
+		keys, nstart, err := db.Keys(start, "\xff", 2)
+		check(err)
+		t.Logf("sub=%+v, start=%+v", keys, start)
+		for _, k := range keys {
+			res = append(res, k.Key)
+		}
+		start = nstart
+	}
+	t.Logf("res=%+v", res)
+	if !reflect.DeepEqual(ekeys, res) {
+		t.Errorf("key iter error")
+	}
+
+	keys, _, err = db.ReverseKeys("\xff", "", -1)
+	check(err)
+	t.Logf("reverse keys=%+v\n", keys)
+	if len(keys) != 10 {
+		t.Errorf("failed to fetch keys (%d keys)", len(keys))
+	}
+	skeys = []string{}
+	for _, kv := range keys {
+		skeys = append(skeys, kv.Key)
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(ekeys)))
+	if !reflect.DeepEqual(ekeys, skeys) {
+		t.Errorf("bad reverse sort order")
+	}
+
+	res = []string{}
+	start = "\xff"
+	for i := 0; i < 6; i++ {
+		keys, nstart, err := db.ReverseKeys(start, "", 2)
+		check(err)
+		t.Logf("sub=%+v, start=%+v, nstart=%+v", keys, start, nstart)
+		for _, k := range keys {
+			res = append(res, k.Key)
+		}
+		start = nstart
+	}
+	t.Logf("res=%+v", res)
+	if !reflect.DeepEqual(ekeys, res) {
+		t.Errorf("bad reverse sort order")
+	}
+}
+
+func TestDBIVersions(t *testing.T) {
+	db, err := New("db_base")
+	defer db.Destroy()
+	if err != nil {
+		t.Fatalf("Error creating db %v", err)
+	}
+	eversions := map[string]map[int]*KeyValue{}
+	ekeys := []string{}
+	vcount := 100
+	for i := 0; i < 50; i++ {
+		k := fmt.Sprintf("ok%d", i)
+		eversions[k] = map[int]*KeyValue{}
+		ekeys = append(ekeys, k)
+		for v := 0; v < vcount; v++ {
+			kv, err := db.Put(k, "", []byte(fmt.Sprintf("hello-%d-%d", i, v)), -1)
+			check(err)
+			// t.Logf("kv%d(v%d)=%+v", v, i, kv)
+			eversions[k][v] = kv
+		}
+	}
+	t.Logf("ekeys=%+v", ekeys)
+
+	for _, k := range ekeys {
+		allversions, _, err := db.Versions(k, -1, 0, -1)
+		check(err)
+		if len(allversions.Versions) != vcount {
+			t.Errorf("failed to fetch versions: %+v", allversions)
+		}
+		t.Logf("versions=%+v", allversions)
+		for v := 0; v < vcount; v++ {
+			checkKv(t, eversions[k][int(math.Abs(float64(v-(vcount-1))))], allversions.Versions[v])
+		}
+		start := -1
+		// j := 0
+		eversions2 := []*KeyValue{}
+		for i := 0; i < vcount/10; i++ {
+			versions, nstart, err := db.Versions(k, start, 0, 10)
+			check(err)
+			if len(versions.Versions) != vcount/10 {
+				t.Errorf("failed to fetch versions: %+v", versions)
+			}
+			for _, v := range versions.Versions {
+				eversions2 = append(eversions2, v)
+			}
+			start = nstart
+		}
+		t.Logf("count=%d\n", len(eversions2))
+		if len(eversions2) != vcount {
+			t.Errorf("iteration failed")
+		}
+		for v, kv := range eversions2 {
+			checkKv(t, eversions[k][int(math.Abs(float64(v-(vcount-1))))], kv)
+		}
 	}
 }

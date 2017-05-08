@@ -709,7 +709,7 @@ func (ft *FileTreeExt) fsRootHandler() func(http.ResponseWriter, *http.Request) 
 		if prefix == "" {
 			prefix = FSKeyFmt
 		}
-		keys, err := ft.kvStore.Keys(context.TODO(), prefix, prefix+"\xff", 0)
+		keys, _, err := ft.kvStore.Keys(context.TODO(), prefix, prefix+"\xff", 0)
 		if err != nil {
 			panic(err)
 		}

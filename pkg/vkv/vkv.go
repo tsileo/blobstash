@@ -48,19 +48,9 @@ import (
 
 // Define namespaces for raw key sorted in db.
 const (
-	Empty byte = iota
-	Meta
+	_ byte = iota
 	KvKeyIndex
-	KvMetaIndex
 	KvItem
-	KvItemMeta
-	KvVersionCnt
-	KvVersionMin
-	KvVersionMax
-	KvPrefixMeta // Not in use yet but reserved for future usage
-	KvPrefixCnt  // Same here
-	KvPrefixStart
-	KvPrefixEnd
 )
 
 // KvType for meta serialization
@@ -84,6 +74,34 @@ type KeyValueVersions struct {
 
 	// FIXME(tsileo): turn this into a []*VkvEntry
 	Versions []*KeyValue `json:"versions"`
+}
+
+// NextKey returns the next key for lexigraphical (key = NextKey(lastkey))
+func NextKey(key string) string {
+	bkey := []byte(key)
+	i := len(bkey)
+	for i > 0 {
+		i--
+		bkey[i]++
+		if bkey[i] != 0 {
+			break
+		}
+	}
+	return string(bkey)
+}
+
+// PextKey returns the next key for lexigraphical (key = PextKey(lastkey))
+func PrevKey(key string) string {
+	bkey := []byte(key)
+	i := len(bkey)
+	for i > 0 {
+		i--
+		bkey[i]--
+		if bkey[i] != 255 {
+			break
+		}
+	}
+	return string(bkey)
 }
 
 type DB struct {
@@ -121,45 +139,6 @@ func (db *DB) Destroy() error {
 	return nil
 }
 
-// Store a uint64 as binary data.
-func (db *DB) putUint64(key []byte, value uint64) error {
-	db.mu.Lock()
-	defer db.mu.Unlock()
-	val := make([]byte, 8)
-	binary.LittleEndian.PutUint64(val[:], value)
-	err := db.db.Set(key, val)
-	return err
-}
-
-// Retrieve a binary stored uint64.
-func (db *DB) getUint64(key []byte) (uint64, error) {
-	data, err := db.db.Get(nil, key)
-	if err != nil || data == nil {
-		return 0, err
-	}
-	return binary.LittleEndian.Uint64(data), nil
-}
-
-// Increment a binary stored uint64.
-func (db *DB) incrUint64(key []byte, step int) error {
-	db.mu.Lock()
-	defer db.mu.Unlock()
-	data, err := db.db.Get(nil, key)
-	var value uint64
-	if err != nil {
-		return err
-	}
-	if data == nil {
-		value = 0
-	} else {
-		value = binary.LittleEndian.Uint64(data)
-	}
-	val := make([]byte, 8)
-	binary.LittleEndian.PutUint64(val[:], uint64(int(value)+step))
-	err = db.db.Set(key, val)
-	return err
-}
-
 func encodeKey(key []byte, version int) []byte {
 	versionbyte := make([]byte, 8)
 	binary.BigEndian.PutUint64(versionbyte, uint64(version))
@@ -187,121 +166,14 @@ func encodeMeta(keyByte byte, key []byte) []byte {
 	return cardkey
 }
 
-// Get the length of the list
-func (db *DB) VersionCnt(key string) (int, error) {
-	bkey := []byte(key)
-	cardkey := encodeMeta(KvVersionCnt, bkey)
-	card, err := db.getUint64(encodeMeta(Meta, cardkey))
-	return int(card), err
-}
-
-func (db *DB) DeleteVersion(key string, version int) error {
-	bkey := []byte(key)
-	kmember := encodeKey(bkey, version)
-	if err := db.db.Delete(kmember); err != nil {
-		return err
-	}
-	cardkey := encodeMeta(KvVersionCnt, bkey)
-	if err := db.incrUint64(encodeMeta(Meta, cardkey), -1); err != nil {
-		return err
-	}
-	card, err := db.getUint64(encodeMeta(Meta, cardkey))
-	if err != nil {
-		return err
-	}
-	if card == 0 {
-		if err := db.db.Delete(encodeMeta(KvKeyIndex, bkey)); err != nil {
-			return err
-		}
-		if err := db.db.Delete(encodeMeta(KvItemMeta, encodeKey(bkey, version))); err != nil {
-			return err
-		}
-		if err := db.db.Delete(encodeMeta(KvVersionMin, bkey)); err != nil {
-			return err
-		}
-		if err := db.db.Delete(encodeMeta(KvVersionMax, bkey)); err != nil {
-			return err
-		}
-		if err := db.db.Delete(encodeMeta(Meta, cardkey)); err != nil {
-			return err
-		}
-	}
-	// TODO delete encodeMeta(KvMetaIndex, []byte(hash)
-	return nil
-}
-
-// MetaBlobApplied returns true if the meta blob is already applied
-func (db *DB) MetaBlobApplied(hash string) (bool, error) {
-	res, err := db.db.Get(nil, encodeMeta(KvMetaIndex, []byte(hash)))
-	if err != nil {
-		return false, err
-	}
-	if len(res) == 0 {
-		return false, nil
-	}
-	return true, nil
-}
-
-// MetaBlob retrns the meta blob where this key/version is stored
-func (db *DB) MetaBlob(key string, version int) (string, error) {
-	bhash, err := db.db.Get(nil, encodeMeta(KvItemMeta, encodeKey([]byte(key), version)))
-	if err != nil {
-		return "", err
-	}
-	return string(bhash), nil
-}
-
-func (db *DB) setmetablob(key string, version int, hash string) error {
-	if err := db.db.Set(encodeMeta(KvMetaIndex, []byte(hash)), []byte{1}); err != nil {
-		return err
-	}
-	return db.db.Set(encodeMeta(KvItemMeta, encodeKey([]byte(key), version)), []byte(hash))
-}
-
 // Put updates the value for the given version associated with key,
 // if version == -1, version will be set to time.Now().UTC().UnixNano().
 func (db *DB) Put(key, ref string, data []byte, version int) (*KeyValue, error) {
-	if version == -1 {
+	if version < 1 {
 		version = int(time.Now().UTC().UnixNano())
 	}
 	bkey := []byte(key)
-	cmin, err := db.getUint64(encodeMeta(KvVersionMin, bkey))
-	if err != nil {
-		return nil, err
-	}
-	cmax, err := db.getUint64(encodeMeta(KvVersionMax, bkey))
-	if err != nil {
-		return nil, err
-	}
-	llen := -1
-	if cmin == 0 && cmax == 0 {
-		llen, err = db.VersionCnt(key)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if llen == 0 || int(cmin) > version {
-		if err := db.putUint64(encodeMeta(KvVersionMin, bkey), uint64(version)); err != nil {
-			return nil, err
-		}
-	}
-	if cmax == 0 || int(cmax) < version {
-		if err := db.putUint64(encodeMeta(KvVersionMax, bkey), uint64(version)); err != nil {
-			return nil, err
-		}
-	}
 	kmember := encodeKey(bkey, version)
-	cval, err := db.db.Get(nil, kmember)
-	if err != nil {
-		return nil, err
-	}
-	// TODO prevent overwriting an existing version
-	if cval == nil {
-		cardkey := encodeMeta(KvVersionCnt, bkey)
-		if err := db.incrUint64(encodeMeta(Meta, cardkey), 1); err != nil {
-			return nil, err
-		}
-	}
 	kv := &KeyValue{
 		Hash:    ref,
 		Data:    data,
@@ -316,41 +188,10 @@ func (db *DB) Put(key, ref string, data []byte, version int) (*KeyValue, error) 
 	if err := db.db.Set(kmember, []byte(value)); err != nil {
 		return nil, err
 	}
-	if err := db.db.Set(encodeMeta(KvKeyIndex, bkey), []byte{1}); err != nil {
+	if err := db.db.Set(encodeMeta(KvKeyIndex, bkey), kmember); err != nil {
 		return nil, err
 	}
 	return kv, nil
-}
-
-func (db *DB) PutPrefix(prefix, key, ref string, data []byte, version int) (*KeyValue, error) {
-	// FIXME(tsileo): in meta, check if strings.Contains(s, ":") and PutPrefix instead of Put
-	prefixedKey := fmt.Sprintf("%s:%s", prefix, key)
-	bkey := []byte(prefixedKey)
-	bprefix := []byte(prefix)
-
-	// Track the boundaries for later iteration
-	prefixStart, err := db.db.Get(nil, encodeMeta(KvPrefixStart, bprefix))
-	if err != nil {
-		return nil, err
-	}
-	if (prefixStart == nil || len(prefixStart) == 0) || bytes.Compare(bkey, prefixStart) < 0 {
-		if err := db.db.Set(encodeMeta(KvPrefixStart, bprefix), bkey); err != nil {
-			return nil, err
-		}
-	}
-	prefixEnd, err := db.db.Get(nil, encodeMeta(KvPrefixEnd, bprefix))
-	if err != nil {
-		return nil, err
-	}
-	// XXX(tsileo): more efficient to save only the key (full key = prefix + key)
-	// and rebuilt the keys while iterating a given prefix on the fly.
-	if (prefixEnd == nil || len(prefixEnd) == 0) || bytes.Compare(bkey, prefixEnd) > 0 {
-		if err := db.db.Set(encodeMeta(KvPrefixEnd, bprefix), bkey); err != nil {
-			return nil, err
-		}
-	}
-	// Save the key prefix:key
-	return db.Put(prefixedKey, ref, data, version)
 }
 
 func (db *DB) Check(key string) (bool, error) {
@@ -366,7 +207,7 @@ func (db *DB) Check(key string) (bool, error) {
 }
 
 // Get returns the latest value for the given key,
-// if version == -1, the latest version will be returned.
+// if version < 1, the latest version will be returned.
 func (db *DB) Get(key string, version int) (*KeyValue, error) {
 	bkey := []byte(key)
 	exists, err := db.db.Get(nil, encodeMeta(KvKeyIndex, bkey))
@@ -376,14 +217,17 @@ func (db *DB) Get(key string, version int) (*KeyValue, error) {
 	if len(exists) == 0 {
 		return nil, ErrNotFound
 	}
-	if version == -1 {
-		max, err := db.getUint64(encodeMeta(KvVersionMax, bkey))
+	var k []byte
+	if version < 1 {
+		k, err = db.db.Get(nil, encodeMeta(KvKeyIndex, bkey))
 		if err != nil {
 			return nil, fmt.Errorf("failed to get max version: %v", err)
 		}
-		version = int(max)
+		version = int(binary.BigEndian.Uint64(k[len(k)-8:]))
+	} else {
+		k = encodeKey(bkey, version)
 	}
-	val, err := db.db.Get(nil, encodeKey(bkey, version))
+	val, err := db.db.Get(nil, k)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get key \"%s\": %v", encodeKey(bkey, version), err)
 	}
@@ -392,11 +236,13 @@ func (db *DB) Get(key string, version int) (*KeyValue, error) {
 		return nil, fmt.Errorf("failed to unserialize key: %v", err)
 	}
 	kv.Version = version
+
 	return kv, nil
 }
 
-// Return a lexicographical range
-func (db *DB) Versions(key string, start, end, limit int) (*KeyValueVersions, error) {
+// Return the versions in reverse lexicographical order
+func (db *DB) Versions(key string, start, end, limit int) (*KeyValueVersions, int, error) { // TODO(tsileo): return a "new start" int like in Keys
+	var nstart int
 	res := &KeyValueVersions{
 		Key:      key,
 		Versions: []*KeyValue{},
@@ -404,186 +250,132 @@ func (db *DB) Versions(key string, start, end, limit int) (*KeyValueVersions, er
 	bkey := []byte(key)
 	exists, err := db.db.Get(nil, encodeMeta(KvKeyIndex, bkey))
 	if err != nil {
-		return nil, err
+		return nil, nstart, err
 	}
 	if len(exists) == 0 {
-		return nil, ErrNotFound
+		return nil, nstart, ErrNotFound
 	}
-	max, err := db.getUint64(encodeMeta(KvVersionMax, bkey))
-	if err != nil {
-		return nil, err
+	if start < 1 {
+		start = int(time.Now().UTC().UnixNano())
 	}
-	version := int(max)
-	min, err := db.getUint64(encodeMeta(KvVersionMin, bkey))
+	enum, _, err := db.db.Seek(encodeKey(bkey, start))
 	if err != nil {
-		return nil, err
-	}
-	end = int(min)
-	enum, _, err := db.db.Seek(encodeKey(bkey, version))
-	if err != nil {
-		return nil, err
+		return nil, nstart, err
 	}
 	endBytes := encodeKey(bkey, end)
-	i := 0
+	i := 1
+	skipOnce := true
+	eofOnce := true
+	for {
+		k, v, err := enum.Prev()
+		if err == io.EOF {
+			if eofOnce {
+				enum, err = db.db.SeekLast()
+				if err != nil {
+					return nil, nstart, err
+				}
+				eofOnce = false
+				continue
+			}
+			break
+		}
+		if bytes.Equal(k, encodeKey(bkey, start)) {
+			continue
+		}
+		if bytes.Compare(k, endBytes) < 1 || len(endBytes) < 8 || !bytes.HasPrefix(k, endBytes[0:len(endBytes)-8]) || (limit > 0 && i > limit) {
+			if skipOnce {
+				skipOnce = false
+				continue
+			}
+			return res, nstart, nil
+		}
+		_, index := decodeKey(k)
+		kv, err := Unserialize(key, v)
+		if err != nil {
+			return nil, nstart, fmt.Errorf("failed to unserialize: %v", err)
+		}
+		kv.Version = index
+		res.Versions = append(res.Versions, kv)
+		nstart = index
+		i++
+	}
+	return res, nstart, nil
+}
+
+// Return a lexicographical range
+func (db *DB) Keys(start, end string, limit int) ([]*KeyValue, string, error) {
+	var next string
+	res := []*KeyValue{}
+	enum, _, err := db.db.Seek(encodeMeta(KvKeyIndex, []byte(start)))
+	if err != nil {
+		return nil, next, fmt.Errorf("initial seek error: %v", err)
+	}
+	endBytes := encodeMeta(KvKeyIndex, []byte(end))
+	i := 1
+	for {
+		k, k2, err := enum.Next()
+		if err == io.EOF {
+			break
+		}
+		if k[0] != KvKeyIndex || bytes.Compare(k, endBytes) > 0 || (limit > 0 && i > limit) {
+			return res, next, nil
+		}
+		version := int(binary.BigEndian.Uint64(k2[len(k2)-8:]))
+		val, err := db.db.Get(nil, k2)
+		if err != nil {
+			return nil, next, err
+		}
+		kv, err := Unserialize(string(k[1:]), val)
+		if err != nil {
+			return nil, next, err
+		}
+		kv.Version = version
+		res = append(res, kv)
+		next = NextKey(kv.Key)
+		i++
+	}
+	return res, next, nil
+}
+
+// Return a lexicographical range
+func (db *DB) ReverseKeys(start, end string, limit int) ([]*KeyValue, string, error) {
+	var prev string
+	res := []*KeyValue{}
+	startBytes := encodeMeta(KvKeyIndex, []byte(start))
+	enum, _, err := db.db.Seek(startBytes)
+	if err != nil {
+		return nil, prev, err
+	}
+	endBytes := encodeMeta(KvKeyIndex, []byte(end))
+	i := 1
+	skipOnce := true
 	for {
 		k, v, err := enum.Prev()
 		if err == io.EOF {
 			break
 		}
-		if bytes.Compare(k, endBytes) < 0 || (limit != 0 && i > limit) {
-			return res, nil
+		if k[0] != KvKeyIndex || bytes.Compare(k, startBytes) > 0 || bytes.Compare(k, endBytes) < 0 || (limit > 0 && i > limit) {
+			if skipOnce {
+				skipOnce = false
+				continue
+			}
+			return res, prev, nil
 		}
-		_, index := decodeKey(k)
-		kv, err := Unserialize(key, v)
+		version := int(binary.BigEndian.Uint64(v[len(v)-8:]))
+		val, err := db.db.Get(nil, v)
 		if err != nil {
-			return nil, err
+			return nil, prev, err
 		}
-		kv.Version = index
-		res.Versions = append(res.Versions, kv)
-		i++
-	}
-	return res, nil
-}
-
-// Return a lexicographical range
-func (db *DB) VersionsOld(key string, start, end, limit int) (*KeyValueVersions, error) {
-	// FIXME(tsileo): returns versions in desc by default
-	res := &KeyValueVersions{
-		Key:      key,
-		Versions: []*KeyValue{},
-	}
-	bkey := []byte(key)
-	exists, err := db.db.Get(nil, encodeMeta(KvKeyIndex, bkey))
-	if err != nil {
-		return nil, err
-	}
-	if len(exists) == 0 {
-		return nil, ErrNotFound
-	}
-	enum, _, err := db.db.Seek(encodeKey(bkey, start))
-	if err != nil {
-		return nil, err
-	}
-	endBytes := encodeKey(bkey, end)
-	i := 0
-	for {
-		k, v, err := enum.Next()
-		if err == io.EOF {
-			break
-		}
-		if bytes.Compare(k, endBytes) > 0 || (limit != 0 && i > limit) {
-			return res, nil
-		}
-		_, index := decodeKey(k)
-		kv, err := Unserialize(key, v)
+		kv, err := Unserialize(string(k[1:]), val)
 		if err != nil {
-			return nil, err
+			return nil, prev, err
 		}
-		kv.Version = index
-
-		res.Versions = append(res.Versions, kv)
-		i++
-	}
-	return res, nil
-}
-
-// Return a lexicographical range
-func (db *DB) Keys(start, end string, limit int) ([]*KeyValue, error) {
-	res := []*KeyValue{}
-	enum, _, err := db.db.Seek(encodeMeta(KvKeyIndex, []byte(start)))
-	if err != nil {
-		return nil, fmt.Errorf("initial seek error: %v", err)
-	}
-	endBytes := encodeMeta(KvKeyIndex, []byte(end))
-	i := 0
-	for {
-		k, _, err := enum.Next()
-		if err == io.EOF {
-			break
-		}
-		if bytes.Compare(k, endBytes) > 0 || (limit != 0 && i > limit) {
-			return res, nil
-		}
-		kv, err := db.Get(string(k[1:]), -1)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get key %s: %v", k, err)
-		}
+		kv.Version = version
 		res = append(res, kv)
+		prev = PrevKey(kv.Key)
 		i++
 	}
-	return res, nil
-}
-
-// Return a lexicographical range
-func (db *DB) ReverseKeys(start, end string, limit int) ([]*KeyValue, error) {
-	res := []*KeyValue{}
-	enum, _, err := db.db.Seek(encodeMeta(KvKeyIndex, []byte(end)))
-	if err != nil {
-		return nil, err
-	}
-	endBytes := encodeMeta(KvKeyIndex, []byte(start))
-	i := 0
-	for {
-		k, _, err := enum.Prev()
-		// if i == 0 && bytes.HasPrefix(k, []byte(
-		if err == io.EOF {
-			break
-		}
-		if bytes.Compare(k, endBytes) < 0 || (limit != 0 && i > limit) {
-			return res, nil
-		}
-		kv, err := db.Get(string(k[1:]), -1)
-		if err != nil {
-			return nil, err
-		}
-		res = append(res, kv)
-		i++
-	}
-	return res, nil
-}
-
-// Return a lexicographical range
-func (db *DB) ReversePrefixKeys(prefix, start, end string, limit int) ([]*KeyValue, error) {
-	res := []*KeyValue{}
-	if start == "" {
-		// XXX(tsileo): Ensure it works
-		prefixStart, err := db.db.Get(nil, encodeMeta(KvPrefixStart, []byte(prefix)))
-		// prefixStart, err := db.db.Get(nil, encodeMeta(KvPrefixStart, []byte{}))
-		if err != nil {
-			return nil, err
-		}
-		start = string(prefixStart)
-	}
-	// FIXME(tsileo): a better way to tell we want the end? or \xff is good enough?
-	if end == "\xff" {
-		prefixEnd, err := db.db.Get(nil, encodeMeta(KvPrefixEnd, []byte(prefix)))
-		if err != nil {
-			return nil, err
-		}
-		end = string(prefixEnd)
-	}
-	enum, _, err := db.db.Seek(encodeMeta(KvKeyIndex, []byte(end)))
-	if err != nil {
-		return nil, err
-	}
-	endBytes := encodeMeta(KvKeyIndex, []byte(start))
-	i := 0
-	for {
-		k, _, err := enum.Prev()
-		if err == io.EOF {
-			break
-		}
-		if bytes.Compare(k, endBytes) < 0 || (limit != 0 && i > limit) {
-			return res, nil
-		}
-		kv, err := db.Get(string(k[1:]), -1)
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch key \"%s\": %v", k[1:], err)
-		}
-		res = append(res, kv)
-		i++
-	}
-	return res, nil
+	return res, prev, nil
 }
 
 type KeyValue struct {
@@ -596,10 +388,6 @@ type KeyValue struct {
 
 	Hash string `json:"hash,omitempty"`
 	Data []byte `json:"data,omitempty"`
-}
-
-func (kvi *KeyValue) SetMetaBlob(hash string) error {
-	return kvi.db.setmetablob(kvi.Key, kvi.Version, hash)
 }
 
 func (ve *KeyValue) Type() string {
@@ -662,11 +450,6 @@ func (ve *KeyValue) Serialize(withKey bool) ([]byte, error) {
 		return nil, err
 	}
 
-	// Store the custom flag
-	// if err := buf.WriteByte(byte(ve.CustomFlag)); err != nil {
-	// 	return nil, err
-	// }
-
 	// Store the Hash/Data
 	switch ve.Flag {
 	case HashOnly, HashAndData:
@@ -684,11 +467,6 @@ func (ve *KeyValue) Serialize(withKey bool) ([]byte, error) {
 		// Execute DataOnly too since the flag in HashAndData
 		fallthrough
 	case DataOnly:
-		// FIXME(tsileo): remove the data size as we can deduce it since we know the total size
-		// binary.BigEndian.PutUint32(tmp[:], uint32(len(ve.Data)))
-		// if _, err := buf.Write(tmp); err != nil {
-		// 	return nil, err
-		// }
 		if _, err := buf.Write(ve.Data); err != nil {
 			return nil, err
 		}
@@ -698,7 +476,6 @@ func (ve *KeyValue) Serialize(withKey bool) ([]byte, error) {
 }
 
 func UnserializeBlob(data []byte) (*KeyValue, error) {
-	fmt.Printf("unser %d / %v\n", len(data), string(data))
 	r := bytes.NewReader(data)
 	tmp := make([]byte, 4)
 	tmp2 := make([]byte, 8)
@@ -719,14 +496,12 @@ func UnserializeBlob(data []byte) (*KeyValue, error) {
 		return nil, err
 	}
 	keySize := int(binary.BigEndian.Uint32(tmp[:]))
-	fmt.Printf("ksize=%d\n", keySize)
 
 	// Read the key (now that we know the size)
 	bkey := make([]byte, keySize)
 	if _, err := r.Read(bkey); err != nil {
 		return nil, err
 	}
-	fmt.Printf("key read = %v\n", string(bkey))
 
 	// Read the version
 	if _, err := r.Read(tmp2); err != nil {
@@ -734,19 +509,12 @@ func UnserializeBlob(data []byte) (*KeyValue, error) {
 	}
 	version := int(binary.BigEndian.Uint64(tmp2[:]))
 
-	// Custom flag
-	// cflag, err := r.ReadByte()
-	// if err != nil {
-	// 	return nil, err
-	// }
-
 	ve := &KeyValue{
 		Key:     string(bkey),
 		Version: version,
 		Flag:    Flag(flag),
-		// CustomFlag: cflag,
 	}
-	fmt.Printf("ve=%+v", ve)
+
 	// Read the Hash/Data according to the set Flag
 	switch ve.Flag {
 	case HashOnly, HashAndData:
@@ -768,18 +536,17 @@ func UnserializeBlob(data []byte) (*KeyValue, error) {
 		if ve.Flag == HashAndData {
 			size -= 32
 		}
-		fmt.Printf("data size=%d\n", size)
 		data := make([]byte, size)
 		if _, err := r.Read(data); err != nil {
 			return nil, err
 		}
 		ve.Data = data
 	}
+
 	return ve, nil
 }
 
 func Unserialize(key string, data []byte) (*KeyValue, error) {
-	// FIXME(tsileo): there's a bug when only the hash is set with no data
 	r := bytes.NewReader(data)
 	tmp2 := make([]byte, 8)
 
@@ -800,17 +567,12 @@ func Unserialize(key string, data []byte) (*KeyValue, error) {
 	}
 	version := int(binary.BigEndian.Uint64(tmp2[:]))
 
-	// Custom flag
-	// cflag, err := r.ReadByte()
-	// if err != nil {
-	// 	return nil, err
-	// }
 	ve := &KeyValue{
 		Key:     key,
 		Version: version,
 		Flag:    Flag(flag),
-		// CustomFlag: cflag,
 	}
+
 	// Read the Hash/Data according to the set Flag
 	switch ve.Flag {
 	case HashOnly, HashAndData:
@@ -824,19 +586,18 @@ func Unserialize(key string, data []byte) (*KeyValue, error) {
 		}
 		fallthrough
 	case DataOnly:
-		// if _, err := r.Read(tmp); err != nil {
-		// 	return nil, err
-		// }
-		// size := int(binary.BigEndian.Uint32(tmp[:]))
 		size := len(data) - 10
 		if ve.Flag == HashAndData {
 			size -= 32
 		}
-		data := make([]byte, size)
-		if _, err := r.Read(data); err != nil {
-			return nil, err
+		if size > 0 {
+			data := make([]byte, size)
+			if _, err := r.Read(data); err != nil {
+				return nil, err
+			}
+			ve.Data = data
 		}
-		ve.Data = data
 	}
+
 	return ve, nil
 }

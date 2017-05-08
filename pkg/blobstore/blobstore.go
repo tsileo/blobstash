@@ -17,6 +17,8 @@ import (
 	"a4.io/blobstash/pkg/hub"
 )
 
+var ErrBlobExists = fmt.Errorf("blob exist")
+
 type BlobStore struct {
 	back   *blobsfile.BlobsFiles
 	s3back *s3.S3Backend
@@ -71,6 +73,16 @@ func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
 	// Ensure the blob hash match the blob content
 	if err := blob.Check(); err != nil {
 		return err
+	}
+
+	exists, err := bs.back.Exists(blob.Hash)
+	if err != nil {
+		return err
+	}
+
+	if exists {
+		bs.log.Debug("blob already saved", "hash", blob.Hash)
+		return nil
 	}
 
 	// Save the blob
