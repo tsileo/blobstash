@@ -42,4 +42,4 @@ class Client:
         if not to_blob:
             return r
         r.raise_for_status()
-        return Blob(hash, r.text)
+        return Blob(hash, r.text.encode('utf-8'))
