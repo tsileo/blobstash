@@ -19,7 +19,7 @@ class Blob:
         return cls(h.hexdigest(), data)
 
     @classmethod
-    def from_random(cls, size=256):
+    def from_random(cls, size=512):
         return cls.from_data(os.urandom(size))
 
 
@@ -42,4 +42,4 @@ class Client:
         if not to_blob:
             return r
         r.raise_for_status()
-        return Blob(hash, r.text.encode('utf-8'))
+        return Blob(hash, r.content)
