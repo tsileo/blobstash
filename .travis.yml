@@ -11,7 +11,7 @@ script:
 addons:
   apt:
     packages:
-      - python3
+      - python36
 deploy:
   provider: releases
   api_key:
