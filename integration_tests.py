@@ -4,7 +4,7 @@ from tests.client import Blob
 from tests.client import Client
 from tests.server import BlobStash
 
-MORE_BLOBS = 1000
+MORE_BLOBS = 999
 
 logging.basicConfig(level=logging.DEBUG)
 logging.info('Running integration tests...')
@@ -47,18 +47,16 @@ logging.info('Restart BlobStash, and enumerate all %d the blobs', len(more_blobs
 b.shutdown()
 b.run()
 
-blobs_resp = c._get('/api/blobstore/blobs').json()
-print(blobs_resp)
+blobs_resp = c._get('/api/blobstore/blobs?limit=1000').json()
+assert len(blobs_resp['refs']) == len(more_blobs), 'failed to enumate blobs, expected {} got {}'.format(
+    len(more_blobs),
+    len(blobs_resp['refs']),
+)
 
-# assert len(blobs_resp['refs']) == len(more_blobs), 'failed to enumate blobs, expected {} got {}'.format(
-#     len(more_blobs),
-#     len(blobs_resp['refs']),
-# )
-
-# logging.info('Ensures we can read them all')
-# for blob in more_blobs:
-#     blob2 = c.get_blob(blob.hash, to_blob=True)
-#     assert blob2.data == blob.data, 'failed to fetch blob {} != {}'.format(blob.data, blob2.data)
+logging.info('Ensures we can read them all')
+for blob in more_blobs:
+    blob2 = c.get_blob(blob.hash, to_blob=True)
+    assert blob2.data == blob.data, 'failed to fetch blob {} != {}'.format(blob.data, blob2.data)
 
 
 # Shutdown BlobStash
