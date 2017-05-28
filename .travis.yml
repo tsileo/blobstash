@@ -4,12 +4,15 @@ go:
 install: true
 script:
 - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
-- bash Miniconda3-latest-Linux-x86_64.sh
+- bash Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/miniconda
+- export PATH="$HOME/miniconda/bin:$PATH"
+- conda config --set always_yes yes --set changeps1 no
+- python3 --version
+# - conda update -q conda
 - go get -v a4.io/blobstash/...
 - go test $(go list ./... | grep pkg)
 - go build blobstash.go
 - ./extras/cross_compile.sh
-- python3 --version
 deploy:
   provider: releases
   api_key:
