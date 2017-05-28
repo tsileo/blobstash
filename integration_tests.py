@@ -4,7 +4,7 @@ from tests.client import Blob
 from tests.client import Client
 from tests.server import BlobStash
 
-MORE_BLOBS = 500
+MORE_BLOBS = 1000
 
 logging.basicConfig(level=logging.DEBUG)
 logging.info('Running integration tests...')
