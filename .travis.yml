@@ -5,7 +5,13 @@ install: true
 script:
 - go get -v a4.io/blobstash/...
 - go test $(go list ./... | grep pkg)
+- go build blobstash.go
 - ./extras/cross_compile.sh
+- python3 --version
+addons:
+  apt:
+    packages:
+      - python3
 deploy:
   provider: releases
   api_key:
