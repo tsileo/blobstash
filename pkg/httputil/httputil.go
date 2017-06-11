@@ -130,7 +130,7 @@ func RecoverHandler(h http.Handler) http.Handler {
 	})
 }
 
-// SetAttachment will set the "Content-Dispostion" header if the "dl" query paramter is set
+// SetAttachment will set the "Content-Disposition" header if the "dl" query parameter is set
 func SetAttachment(fname string, r *http.Request, w http.ResponseWriter) {
 	// Check if the file is requested for download
 	if r.URL.Query().Get("dl") != "" {

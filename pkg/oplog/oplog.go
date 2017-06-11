@@ -177,7 +177,7 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "data: %s\n\n", op.Data)
 
 		// Flush the response.  This is only possible if
-		// the repsonse supports streaming.
+		// the response supports streaming.
 		f.Flush()
 	}
 }

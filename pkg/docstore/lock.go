@@ -36,7 +36,7 @@ func (l *locker) Lock(id string) {
 			// (i.e. the lock has been released)
 			<-lchan
 		} else {
-			// The lock was acquired sucessfully, we can return
+			// The lock was acquired successfully, we can return
 			break
 		}
 	}
