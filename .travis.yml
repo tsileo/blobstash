@@ -15,7 +15,6 @@ script:
 # Cross compile script
 - ./extras/cross_compile.sh
 # Run the integrations tests
-- go build blobstash.go
 - python3 integration_tests.py
 deploy:
   provider: releases

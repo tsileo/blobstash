@@ -16,7 +16,8 @@ c = Client()
 logging.info('Start BlobStash')
 b.run()
 
-logging.info('[STEP 1] Test the blob store')
+logging.info('[STEP 1] Testing the blob store...')
+# FIXME(tsileo): only GET/POST at / and GET /{hash}
 
 logging.info('Insert test blob')
 blob = Blob.from_data(b'hello')
@@ -26,6 +27,8 @@ assert resp.status_code == 200, 'failed to put blob {}'.format(blob.hash)
 logging.info('Fetch test blob back')
 blob2 = c.get_blob(blob.hash, to_blob=True)
 assert blob2.data == blob.data, 'failed to fetch blob {} != {}'.format(blob.data, blob2.data)
+
+# TODO(tsileo): test 404 and malformed hash
 
 logging.info('Enumerating blobs')
 blobs_resp = c._get('/api/blobstore/blobs').json()
@@ -47,6 +50,8 @@ logging.info('Restart BlobStash, and enumerate all %d the blobs', len(more_blobs
 b.shutdown()
 b.run()
 
+# TODO(tsileo):
+# - test pagination (cursor), bad int, > 1000 error
 blobs_resp = c._get('/api/blobstore/blobs?limit=1000').json()
 assert len(blobs_resp['refs']) == len(more_blobs), 'failed to enumate blobs, expected {} got {}'.format(
     len(more_blobs),

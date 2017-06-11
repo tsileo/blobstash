@@ -2,9 +2,7 @@ package apps // import "a4.io/blobstash/pkg/apps"
 
 import (
 	"context"
-	"crypto/md5"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	rhttputil "net/http/httputil"
 	"net/url"
@@ -13,21 +11,17 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
-	"github.com/cjoudrey/gluahttp"
 	"github.com/fsnotify/fsnotify"
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
-	"github.com/yuin/gopher-lua"
 
-	luamod "a4.io/blobstash/pkg/apps/lua"
-	luautil "a4.io/blobstash/pkg/apps/luautil"
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/filetree"
 	"a4.io/blobstash/pkg/httputil"
 	"a4.io/blobstash/pkg/hub"
+	"a4.io/gluapp"
 )
 
 // TODO(tsileo): at startup, scan all filetree FS and looks for app.yaml for registering
@@ -113,6 +107,8 @@ type App struct {
 	proxyTarget *url.URL
 	proxy       *rhttputil.ReverseProxy
 
+	app *gluapp.App
+
 	index map[string]os.FileInfo
 	log   log.Logger
 	mu    sync.Mutex
@@ -142,6 +138,14 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 		}
 		app.proxy = rhttputil.NewSingleHostReverseProxy(url)
 		app.log.Info("proxy registered", "url", url)
+	}
+
+	if app.path != "" {
+		var err error
+		app.app, err = gluapp.NewApp(&gluapp.Config{Path: app.path, Entrypoint: app.entrypoint})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// TODO(tsileo): check that `path` exists, create it if it doesn't exist?
@@ -186,141 +190,14 @@ func (app *App) serve(ctx context.Context, p string, w http.ResponseWriter, req 
 		return
 	}
 
-	// Determine the default entry point if the path is the root
-	if p == "/" {
-		if app.entrypoint != "" {
-			if !strings.HasPrefix(app.entrypoint, "/") {
-				w.WriteHeader(500)
-				w.Write([]byte("Invalid app entrypoint, must start with a /"))
-				return
-			}
-			p = app.entrypoint
-		} else {
-			// XXX(tsileo): find a way to do directory listing?
-			p = "/index.html"
-		}
-	}
-
-	// FIXME(tsileo): enable this if config.AppMode == true
-	// f, err := os.Open(filepath.Join(app.path, "app.lua"))
-	// defer f.Close()
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// script, err := ioutil.ReadAll(f)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// app.doLua(string(script), req, w)
-	// return
-
-	// Inspect the file
-	app.log.Info("serve", "path", p)
-	if fi, ok := app.index[p[1:]]; ok {
-		// Open the file
-		f, err := os.Open(filepath.Join(app.path, p))
-		defer f.Close()
-		if err != nil {
-			panic(err)
-		}
-
-		// The node is a Lua script, execute it
-		if strings.HasSuffix(p, ".lua") {
-			// TODO(tsileo): handle caching
-			script, err := ioutil.ReadAll(f)
-			if err != nil {
-				panic(err)
-			}
-			app.doLua(string(script), req, w)
-			return
-		}
-
-		// The node is a dir, display the file content in a really basic HTML page
-		if fi.IsDir() {
-			fis, err := f.Readdir(-1)
-			if err != nil {
-				panic(err)
-			}
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			fmt.Fprintf(w, "<!doctype html><title>BlobStash - %s</title><pre>\n", fi.Name())
-
-			// TODO(tsileo) better root check
-			if p != "index.html" {
-				p := filepath.Dir(fi.Name())
-				fmt.Fprintf(w, "<a href=\"%s\">%s</a>\n", p, "..")
-			}
-			for _, cfi := range fis {
-				p := filepath.Join(fi.Name(), cfi.Name())
-				fmt.Fprintf(w, "<a href=\"%s\">%s</a>\n", p, cfi.Name())
-			}
-			fmt.Fprintf(w, "</pre>\n")
-			return
-		}
-
-		// The node is a file
-		fmt.Printf("fi=%+v\n", fi)
-		httputil.SetAttachment(fi.Name(), req, w)
-		// TODO(tsileo): support resizing
-		http.ServeContent(w, req, fi.Name(), fi.ModTime(), f)
+	if app.app != nil {
+		// FIXME(tsileo): support app not serving from a domain (like blobstashdomain/app/path)
+		app.log.Info("Serve gluapp", "path", p)
+		app.app.ServeHTTP(w, req)
 		return
 	}
+
 	handle404(w)
-}
-
-// Execute the Lua script contained in the script
-func (app *App) doLua(script string, r *http.Request, w http.ResponseWriter) error {
-	start := time.Now()
-	L := lua.NewState()
-	defer L.Close()
-
-	L.SetGlobal("unix", L.NewFunction(func(L *lua.LState) int {
-		L.Push(lua.LNumber(time.Now().Unix()))
-		return 1
-	}))
-
-	L.SetGlobal("print", L.NewFunction(func(L *lua.LState) int {
-		// TODO(tsileo): get the number of items in L, put them in a slice, and call fmt.Sprintf
-		app.log.Info(L.ToString(1))
-		return 0
-	}))
-	L.SetGlobal("md5", L.NewFunction(func(L *lua.LState) int {
-		L.Push(lua.LString(fmt.Sprintf("%x", md5.Sum([]byte(L.ToString(1))))))
-		return 1
-	}))
-	// Make the config map defined in the config available from the script
-	L.SetGlobal("config", luautil.InterfaceToLValue(L, app.config))
-
-	// XXX(tsileo): css preprocessing? gocss/less/saas?
-
-	// TODO(tsileo): handle basic auth/api key via config and implement it as a middleware
-	// TODO(tsileo): blobstore, kvstore, docstore, filetree module
-	// TODO(tsileo): bewit module
-	// TODO(tsileo): build a tiny kv wrapper for temp data, e.g. link shortener
-	// TODO(tsileo): build a tiny "json" module using luautil
-	L.PreloadModule("http", gluahttp.NewHttpModule(&http.Client{}).Loader)
-
-	// Load the blobstash module
-	response := luamod.NewResponseModule()
-	L.PreloadModule("response", response.Loader)
-
-	request := luamod.NewRequestModule(r)
-	L.PreloadModule("request", request.Loader)
-
-	fs := luamod.NewFSModule(app.path)
-	L.PreloadModule("fs", fs.Loader)
-
-	mustache := luamod.NewMustacheModule()
-	L.PreloadModule("mustache", mustache.Loader)
-
-	// Execute the script
-	if err := L.DoString(script); err != nil {
-		// TODO(tsileo): enable caching with TTL
-		// FIXME(tsileo): better error, with debug mode?
-		panic(err)
-	}
-	response.WriteTo(w)
-	app.log.Info("script executed", "time", time.Since(start), "script", script)
-	return nil
 }
 
 // New initializes the Apps manager
