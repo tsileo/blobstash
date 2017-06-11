@@ -12,6 +12,7 @@ import (
 	"github.com/yuin/gopher-lua"
 
 	luautil "a4.io/blobstash/pkg/apps/luautil"
+	"a4.io/gluarequire2"
 )
 
 type QueryMatcher interface {
@@ -65,6 +66,7 @@ func (docstore *DocStore) newLuaQueryEngine(query *query) (*LuaQueryEngine, erro
 		logger:          docstore.logger.New("submodule", "lua_query_engine"),
 	}
 	fmt.Printf("code=\n\n%s\n\n", engine.code)
+	gluarequire2.NewRequire2Module(gluarequire2.NewRequireFromGitHub(nil)).SetGlobal(engine.L)
 	setGlobals(engine.L)
 	engine.logger.Debug("init", "query", engine.query)
 	// Parse the Lua query, which should be defined as a `function(doc) -> bool`, we parse it only once, then we got
