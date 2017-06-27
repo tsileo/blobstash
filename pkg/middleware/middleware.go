@@ -19,11 +19,10 @@ func Secure(h http.Handler) http.Handler {
 	// 	s.Log.Info("Server started in development mode")
 	// }
 	secureOptions := secure.Options{
-		FrameDeny:             true,
-		ContentTypeNosniff:    true,
-		BrowserXssFilter:      true,
-		ContentSecurityPolicy: "default-src 'self'",
-		IsDevelopment:         isDevelopment,
+		FrameDeny:          true,
+		ContentTypeNosniff: true,
+		BrowserXssFilter:   true,
+		IsDevelopment:      isDevelopment,
 	}
 	// var tlsHostname string
 	// if tlsHost, ok := s.conf["tls-hostname"]; ok {
