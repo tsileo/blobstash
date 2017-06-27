@@ -47,6 +47,7 @@ var (
 	// FIXME(tsile): check forbidden
 	forbidden = map[string]bool{"app.yaml": true}
 
+	// FIXME(tsileo): add a way to set a custom fmt key life for Blobs CLI as we don't care about the FS?
 	FSKeyFmt = "blobfs:root:%s"
 	// FSKeyFmt = "_:filetree:fs:%s"
 	// PermName     = "filetree"
@@ -54,7 +55,7 @@ var (
 	// PermWrite    = "write"
 	// PermRead     = "read"
 
-	MaxUploadSize int64 = 256 << 20
+	MaxUploadSize int64 = 512 << 20
 )
 
 // TODO(tsileo): rename to FileTree
@@ -1057,6 +1058,10 @@ func (ft *FileTreeExt) Node(hash string) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := ft.fetchDir(node, 1, 1); err != nil {
+		panic(err)
+	}
+
 	f := filereader.NewFile(ft.blobStore, node.Meta)
 	defer f.Close()
 
