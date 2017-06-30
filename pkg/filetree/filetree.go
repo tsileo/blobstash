@@ -1003,6 +1003,10 @@ func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 		}
 
 		// Output some headers about ACLs
+		dlMode := "0"
+		if d := r.URL.Query().Get("dl"); d != "" {
+			dlMode = d
+		}
 		u := &url.URL{Path: fmt.Sprintf("/%s/%s", n.Type[0:1], n.Hash)}
 		pubHeader := "0"
 		if n.Meta.IsPublic() {
@@ -1015,9 +1019,9 @@ func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 			if err := bewit.Bewit(ft.sharingCred, u, ft.shareTTL); err != nil {
 				panic(err)
 			}
-			w.Header().Add("BlobStash-FileTree-SemiPrivate-Path", u.String())
+			w.Header().Add("BlobStash-FileTree-SemiPrivate-Path", u.String()+"&dl="+dlMode)
 			w.Header().Add("BlobStash-FileTree-Bewit", u.Query().Get("bewit"))
-			n.URL = u.String()
+			n.URL = u.String() + "?dl=" + dlMode
 		}
 
 		if r.Method == "HEAD" {
@@ -1034,7 +1038,8 @@ func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 				if err := bewit.Bewit(ft.sharingCred, u, ft.shareTTL); err != nil {
 					panic(err)
 				}
-				child.URL = u.String()
+				child.URL = u.String() + "&dl=" + dlMode
+
 			}
 		}
 
