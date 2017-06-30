@@ -1017,6 +1017,7 @@ func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 			}
 			w.Header().Add("BlobStash-FileTree-SemiPrivate-Path", u.String())
 			w.Header().Add("BlobStash-FileTree-Bewit", u.Query().Get("bewit"))
+			n.URL = u.String()
 		}
 
 		if r.Method == "HEAD" {
@@ -1025,6 +1026,16 @@ func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 
 		if err := ft.fetchDir(n, 1, 1); err != nil {
 			panic(err)
+		}
+
+		if r.URL.Query().Get("bewit") == "1" {
+			for _, child := range n.Children {
+				u := &url.URL{Path: fmt.Sprintf("/%s/%s", child.Type[0:1], child.Hash)}
+				if err := bewit.Bewit(ft.sharingCred, u, ft.shareTTL); err != nil {
+					panic(err)
+				}
+				child.URL = u.String()
+			}
 		}
 
 		httputil.WriteJSON(w, map[string]interface{}{
@@ -1057,9 +1068,6 @@ func (ft *FileTreeExt) Node(hash string) (*Node, error) {
 	node, err := ft.nodeByRef(hash)
 	if err != nil {
 		return nil, err
-	}
-	if err := ft.fetchDir(node, 1, 1); err != nil {
-		panic(err)
 	}
 
 	f := filereader.NewFile(ft.blobStore, node.Meta)

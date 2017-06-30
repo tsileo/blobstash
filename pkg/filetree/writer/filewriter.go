@@ -88,10 +88,10 @@ func (up *Uploader) PutFile(path string) (*meta.Meta, error) { // , *WriteResult
 	// wr := NewWriteResult()
 	if fstat.Size() > 0 {
 		f, err := os.Open(path)
-		defer f.Close()
 		if err != nil {
 			return nil, err
 		}
+		defer f.Close()
 		if err := up.writeReader(f, meta); err != nil {
 			return nil, err
 		}

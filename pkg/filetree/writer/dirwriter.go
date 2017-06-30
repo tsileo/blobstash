@@ -94,16 +94,22 @@ func (up *Uploader) DirWriterNode(node *node) {
 			cnode.cond.Wait()
 		}
 		if cnode.err != nil {
-			panic(cnode.err)
-			node.err = cnode.err
-			return
+			if !os.IsPermission(cnode.err) {
+				return
+			}
 		}
 		node.skipped = node.skipped && cnode.skipped
 		// node.wr.Add(cnode.wr)
 		// cnode.wr.free()
 		// cnode.wr = nil
-		hashes = append(hashes, cnode.meta.Hash)
-		cnode.meta.Close()
+
+		// If a permission error prevented the uploader from reading the file, just ignore this node
+		// (but only for children of dir)
+		// TODO(tsileo): report it somewhere?
+		if !os.IsPermission(cnode.err) {
+			hashes = append(hashes, cnode.meta.Hash)
+			cnode.meta.Close()
+		}
 		cnode.meta = nil
 		cnode.mu.Unlock()
 	}
@@ -203,7 +209,9 @@ func (up *Uploader) PutDir(path string) (*meta.Meta, error) {
 					defer node.mu.Unlock()
 					node.meta, node.err = up.PutFile(node.path)
 					if node.err != nil {
-						n.err = fmt.Errorf("error PutFile with node %v", node)
+						if !os.IsPermission(node.err) {
+							n.err = fmt.Errorf("error PutFile with node %v", node)
+						}
 					}
 					// if node.wr.FilesSkipped == 1 {
 					// 	node.skipped = true
