@@ -8,9 +8,8 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
-	"time"
 
-	"a4.io/blobstash/pkg/filetree/filetreeutil/meta"
+	rnode "a4.io/blobstash/pkg/filetree/filetreeutil/node"
 )
 
 // node represents either a file or directory in the directory tree
@@ -31,7 +30,7 @@ type node struct {
 
 	// Upload result is stored in the node
 	// wr   *WriteResult
-	meta *meta.Meta
+	meta *rnode.RawNode
 	err  error
 
 	// Used to sync access to the WriteResult/Meta
@@ -108,7 +107,6 @@ func (up *Uploader) DirWriterNode(node *node) {
 		// TODO(tsileo): report it somewhere?
 		if !os.IsPermission(cnode.err) {
 			hashes = append(hashes, cnode.meta.Hash)
-			cnode.meta.Close()
 		}
 		cnode.meta = nil
 		cnode.mu.Unlock()
@@ -116,7 +114,7 @@ func (up *Uploader) DirWriterNode(node *node) {
 	up.StartDirUpload()
 	defer up.DirUploadDone()
 
-	node.meta = meta.NewMeta()
+	node.meta = &rnode.RawNode{}
 	sort.Strings(hashes)
 	for _, hash := range hashes {
 		node.meta.AddRef(hash)
@@ -131,9 +129,7 @@ func (up *Uploader) DirWriterNode(node *node) {
 	node.meta.Name = filepath.Base(node.path)
 	node.meta.Type = "dir"
 	// node.meta.Size = node.wr.Size
-	node.meta.Mode = uint32(node.fi.Mode())
-	node.meta.ModTime = node.fi.ModTime().Format(time.RFC3339)
-	mhash, mjs := node.meta.Json()
+	mhash, mjs := node.meta.Encode()
 	node.meta.Hash = mhash
 	mexists, err := up.bs.Stat(mhash)
 	if err != nil {
@@ -158,7 +154,7 @@ func (up *Uploader) DirWriterNode(node *node) {
 
 // PutDir upload a directory, it returns the saved Meta,
 // a WriteResult containing infos about uploaded blobs.
-func (up *Uploader) PutDir(path string) (*meta.Meta, error) {
+func (up *Uploader) PutDir(path string) (*rnode.RawNode, error) {
 	//log.Printf("PutDir %v\n", path)
 	abspath, err := filepath.Abs(path)
 	if err != nil {

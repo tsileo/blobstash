@@ -39,6 +39,7 @@ import (
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
 	logext "github.com/inconshreveable/log15/ext"
+	"github.com/vmihailenco/msgpack"
 
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/blobstore"
@@ -477,13 +478,13 @@ func isQueryAll(q string) bool {
 // Insert the given doc (`*map[string]interface{}` for now) in the given collection
 func (docstore *DocStore) Insert(collection string, doc *map[string]interface{}) (*id.ID, error) {
 	docFlag := FlagNoop
-	data, err := json.Marshal(doc)
-	if err != nil {
-		return nil, err
-	}
 	// If there's already an "_id" field in the doc, remove it
 	if _, ok := (*doc)["_id"]; ok {
 		delete(*doc, "_id")
+	}
+	data, err := msgpack.Marshal(doc)
+	if err != nil {
+		return nil, err
 	}
 
 	// Store the payload (JSON data) in a blob
@@ -625,7 +626,9 @@ QUERY:
 		// switch optzType {
 		// case optimizer.Linear:
 		// Performs a unoptimized linear scan
+		// res, cursor, err := docstore.kvStore.Keys(context.TODO(), end, start, fetchLimit)
 		res, cursor, err := docstore.kvStore.ReverseKeys(start, end, fetchLimit)
+		fmt.Printf("res=%+v\ncursor=%+v\nerr=%+v", res, cursor, err)
 		// res, err := docstore.kvStore.ReverseKeys(end, start, fetchLimit)
 		if err != nil {
 			panic(err)
@@ -667,6 +670,7 @@ QUERY:
 			doc := map[string]interface{}{}
 			qLogger.Debug("fetch doc", "_id", _id)
 			var err error
+			// FIXME(tsileo): only fetch the pointers once the doc has been matched!
 			if _id, docPointers, err = docstore.Fetch(collection, _id.String(), &doc, fetchPointers); err != nil {
 
 				// The document is deleted skip it
@@ -891,7 +895,7 @@ func (docstore *DocStore) FetchVersions(collection, sid string, start, limit int
 		}
 
 		// Build the doc
-		if err := json.Unmarshal(blob, &doc); err != nil {
+		if err := msgpack.Unmarshal(blob, &doc); err != nil {
 			return nil, nil, fmt.Errorf("failed to unmarshal blob: %s", blob)
 		}
 		// TODO(tsileo): set the special fields _created/_updated/_hash
@@ -951,7 +955,7 @@ func (docstore *DocStore) Fetch(collection, sid string, res interface{}, fetchPo
 	case nil:
 		// Do nothing
 	case *map[string]interface{}:
-		if err := json.Unmarshal(blob, idoc); err != nil {
+		if err := msgpack.Unmarshal(blob, idoc); err != nil {
 			return nil, nil, fmt.Errorf("failed to unmarshal blob: %s", blob)
 		}
 		// TODO(tsileo): set the special fields _created/_updated/_hash
@@ -962,8 +966,18 @@ func (docstore *DocStore) Fetch(collection, sid string, res interface{}, fetchPo
 			}
 		}
 	case *[]byte:
+		// Decode the doc and encode it to JSON
+		if err := msgpack.Unmarshal(blob, idoc); err != nil {
+			return nil, nil, fmt.Errorf("failed to unmarshal blob: %s", blob)
+		}
+		// TODO(tsileo): set the special fields _created/_updated/_hash
+		js, err := json.Marshal(idoc)
+		if err != nil {
+			return nil, nil, err
+		}
+
 		// Just the copy if JSON if a []byte is provided
-		*idoc = append(*idoc, blob...)
+		*idoc = append(*idoc, js...)
 	}
 	_id.SetHash(hash)
 	_id.SetFlag(kv.Data[0])
@@ -1067,10 +1081,17 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			}
 			docstore.logger.Debug("patch decoded", "patch", patch)
 
-			data, err := patch.Apply(js)
+			pdata, err := patch.Apply(js)
 			if err != nil {
 				panic(err)
 			}
+
+			// Back to msgpack
+			ndoc := map[string]interface{}{}
+			if err := json.Unmarshal(pdata, &ndoc); err != nil {
+				panic(err)
+			}
+			data, err := msgpack.Marshal(ndoc)
 
 			// TODO(tsileo): also check for reserved keys here
 
@@ -1136,7 +1157,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 				}
 			}
 
-			data, err = json.Marshal(newDoc)
+			data, err = msgpack.Marshal(newDoc)
 			if err != nil {
 				panic(err)
 			}

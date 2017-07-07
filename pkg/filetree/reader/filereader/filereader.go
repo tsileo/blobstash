@@ -11,7 +11,7 @@ import (
 	"github.com/dchest/blake2b"
 	"github.com/hashicorp/golang-lru"
 
-	"a4.io/blobstash/pkg/filetree/filetreeutil/meta"
+	"a4.io/blobstash/pkg/filetree/filetreeutil/node"
 )
 
 // FIXME(tsileo): implements os.FileInfo
@@ -40,7 +40,7 @@ func GetFile(bs BlobStore, hash, path string) error {
 	if err != nil {
 		return err
 	}
-	meta, err := meta.NewMetaFromBlob(hash, js)
+	meta, err := node.NewNodeFromBlob(hash, js)
 	if err != nil {
 		return fmt.Errorf("failed to get meta %v \"%s\": %v", hash, js, err)
 	}
@@ -86,7 +86,7 @@ func (iv *IndexValue) Key() uint64 {
 type File struct {
 	name    string
 	bs      BlobStore
-	meta    *meta.Meta
+	meta    *node.RawNode
 	offset  int64
 	size    int64
 	llen    int
@@ -96,7 +96,7 @@ type File struct {
 }
 
 // NewFakeFile creates a new FakeFile instance.
-func NewFile(bs BlobStore, meta *meta.Meta) (f *File) {
+func NewFile(bs BlobStore, meta *node.RawNode) (f *File) {
 	// Needed for the blob routing
 	cache, err := lru.New(2)
 	if err != nil {
@@ -121,6 +121,22 @@ func NewFile(bs BlobStore, meta *meta.Meta) (f *File) {
 				index = int64(i)
 			case int64:
 				index = i
+			case int8:
+				index = int64(i)
+			case int16:
+				index = int64(i)
+			case int32:
+				index = int64(i)
+
+			// XXX(tsileo): these a used by msgpack
+			case uint8:
+				index = int64(i)
+			case uint16:
+				index = int64(i)
+			case uint32:
+				index = int64(i)
+			case uint64:
+				index = int64(i)
 			default:
 				panic("unexpected index")
 			}

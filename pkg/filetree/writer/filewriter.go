@@ -5,12 +5,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/dchest/blake2b"
 	"github.com/restic/chunker"
 
-	"a4.io/blobstash/pkg/filetree/filetreeutil/meta"
+	rnode "a4.io/blobstash/pkg/filetree/filetreeutil/node"
 	"a4.io/blobstash/pkg/hashutil"
 )
 
@@ -18,7 +17,7 @@ var (
 	pol = chunker.Pol(0x3c657535c4d6f5)
 )
 
-func (up *Uploader) writeReader(f io.Reader, meta *meta.Meta) error { // (*WriteResult, error) {
+func (up *Uploader) writeReader(f io.Reader, meta *rnode.RawNode) error { // (*WriteResult, error) {
 	// writeResult := NewWriteResult()
 	// Init the rolling checksum
 
@@ -67,7 +66,7 @@ func (up *Uploader) writeReader(f io.Reader, meta *meta.Meta) error { // (*Write
 	// return writeResult, nil
 }
 
-func (up *Uploader) PutFile(path string) (*meta.Meta, error) { // , *WriteResult, error) {
+func (up *Uploader) PutFile(path string) (*rnode.RawNode, error) { // , *WriteResult, error) {
 	up.StartUpload()
 	defer up.UploadDone()
 	fstat, err := os.Stat(path)
@@ -79,12 +78,10 @@ func (up *Uploader) PutFile(path string) (*meta.Meta, error) { // , *WriteResult
 	//if err != nil {
 	//	return nil, nil, fmt.Errorf("failed to compute fulle hash %v: %v", path, err)
 	//}
-	meta := meta.NewMeta()
+	meta := &rnode.RawNode{}
 	meta.Name = filename
 	meta.Size = int(fstat.Size())
 	meta.Type = "file"
-	meta.ModTime = fstat.ModTime().Format(time.RFC3339)
-	meta.Mode = uint32(fstat.Mode())
 	// wr := NewWriteResult()
 	if fstat.Size() > 0 {
 		f, err := os.Open(path)
@@ -101,7 +98,7 @@ func (up *Uploader) PutFile(path string) (*meta.Meta, error) { // , *WriteResult
 		// wr.free()
 		// wr = cwr
 	}
-	mhash, mjs := meta.Json()
+	mhash, mjs := meta.Encode()
 	mexists, err := up.bs.Stat(mhash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat blob %v: %v", mhash, err)
@@ -121,8 +118,8 @@ func (up *Uploader) PutFile(path string) (*meta.Meta, error) { // , *WriteResult
 	return meta, nil
 }
 
-func (up *Uploader) PutMeta(meta *meta.Meta) error {
-	mhash, mjs := meta.Json()
+func (up *Uploader) PutMeta(meta *rnode.RawNode) error {
+	mhash, mjs := meta.Encode()
 	mexists, err := up.bs.Stat(mhash)
 	if err != nil {
 		return fmt.Errorf("failed to stat blob %v: %v", mhash, err)
@@ -142,10 +139,9 @@ func (up *Uploader) PutMeta(meta *meta.Meta) error {
 	return nil
 }
 
-func (up *Uploader) RenameMeta(meta *meta.Meta, name string) error {
+func (up *Uploader) RenameMeta(meta *rnode.RawNode, name string) error {
 	meta.Name = filepath.Base(name)
-	meta.ModTime = time.Now().Format(time.RFC3339)
-	mhash, mjs := meta.Json()
+	mhash, mjs := meta.Encode()
 	mexists, err := up.bs.Stat(mhash)
 	if err != nil {
 		return fmt.Errorf("failed to stat blob %v: %v", mhash, err)
@@ -166,15 +162,13 @@ func (up *Uploader) RenameMeta(meta *meta.Meta, name string) error {
 }
 
 // fmt.Sprintf("%x", blake2b.Sum256(js))
-func (up *Uploader) PutReader(name string, reader io.Reader, data map[string]interface{}) (*meta.Meta, error) { // *WriteResult, error) {
+func (up *Uploader) PutReader(name string, reader io.Reader, data map[string]interface{}) (*rnode.RawNode, error) { // *WriteResult, error) {
 	up.StartUpload()
 	defer up.UploadDone()
 
-	meta := meta.NewMeta()
+	meta := &rnode.RawNode{}
 	meta.Name = filepath.Base(name)
 	meta.Type = "file"
-	meta.ModTime = time.Now().Format(time.RFC3339)
-	meta.Mode = uint32(0666)
 	if data != nil {
 		for k, v := range data {
 			meta.AddData(k, v)
@@ -190,7 +184,7 @@ func (up *Uploader) PutReader(name string, reader io.Reader, data map[string]int
 	// meta.Size = cwr.Size
 	// wr.free()
 	// wr = cwr
-	mhash, mjs := meta.Json()
+	mhash, mjs := meta.Encode()
 	mexists, err := up.bs.Stat(mhash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat blob %v: %v", mhash, err)

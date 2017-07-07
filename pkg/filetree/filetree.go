@@ -1,7 +1,6 @@
 package filetree // import "a4.io/blobstash/pkg/filetree"
 
 import (
-	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -24,7 +23,7 @@ import (
 	"a4.io/blobstash/pkg/cache"
 	"a4.io/blobstash/pkg/client/clientutil"
 	"a4.io/blobstash/pkg/config"
-	"a4.io/blobstash/pkg/filetree/filetreeutil/meta"
+	rnode "a4.io/blobstash/pkg/filetree/filetreeutil/node"
 	"a4.io/blobstash/pkg/filetree/imginfo"
 	"a4.io/blobstash/pkg/filetree/reader/filereader"
 	"a4.io/blobstash/pkg/filetree/writer"
@@ -36,19 +35,10 @@ import (
 	"a4.io/blobstash/pkg/vkv"
 )
 
-// XXX(tsileo): handle the fetching of meta from the FS name and reconstruct the vkv key
-// to the root in children link
-// XXX(tsileo): bind a folder to the root path, e.g. {hostname}/ => dirHandler?
-// FIXME(tsileo): use `FileTreeExt.fetchInfo` where needed, and add a way to diable it (in the docstore too)
-
 var (
-	indexFile = "index.html"
-
-	// FIXME(tsile): check forbidden
-	forbidden = map[string]bool{"app.yaml": true}
-
 	// FIXME(tsileo): add a way to set a custom fmt key life for Blobs CLI as we don't care about the FS?
-	FSKeyFmt = "blobfs:root:%s"
+	indexFile = "index.html"
+	FSKeyFmt  = "blobfs:root:%s"
 	// FSKeyFmt = "_:filetree:fs:%s"
 	// PermName     = "filetree"
 	// PermTreeName = "filetree:root:"
@@ -152,13 +142,11 @@ func (ft *FileTreeExt) Register(r *mux.Router, root *mux.Router, basicAuth func(
 
 	r.Handle("/fs/root", basicAuth(http.HandlerFunc(ft.fsRootHandler())))
 	r.Handle("/fs/{type}/{name}/", basicAuth(http.HandlerFunc(ft.fsHandler())))
-	r.Handle("/fs/{type}/{name}/_app", basicAuth(http.HandlerFunc(ft.fsAppHandler())))
 	r.Handle("/fs/{type}/{name}/{path:.+}", basicAuth(http.HandlerFunc(ft.fsHandler())))
 	// r.Handle("/fs", http.HandlerFunc(ft.fsHandler()))
 	// r.Handle("/fs/{name}", http.HandlerFunc(ft.fsByNameHandler()))
 
 	r.Handle("/upload", basicAuth(http.HandlerFunc(ft.uploadHandler())))
-	r.Handle("/zip", basicAuth(http.HandlerFunc(ft.zipHandler())))
 
 	// Hook the standard endpint
 	r.Handle("/dir/{ref}", dirHandler)
@@ -176,24 +164,22 @@ type Node struct {
 	Name     string  `json:"name"`
 	Type     string  `json:"type"`
 	Size     int     `json:"size"`
-	Mode     uint32  `json:"mode"`
-	ModTime  string  `json:"mtime"`
 	Hash     string  `json:"ref"`
 	Children []*Node `json:"children,omitempty"`
 
-	Data   map[string]interface{} `json:"data,omitempty"`
-	Info   *Info                  `json:"info,omitempty"`
-	XAttrs map[string]string      `json:"xattrs,omitempty"`
+	// FIXME(ts): rename to Metadata
+	Data map[string]interface{} `json:"metadata,omitempty"`
+	Info *Info                  `json:"info,omitempty"`
 
-	Meta   *meta.Meta `json:"-"`
-	parent *Node      `json:"-"`
-	fs     *FS        `json:"-"`
+	Meta   *rnode.RawNode `json:"-"`
+	parent *Node          `json:"-"`
+	fs     *FS            `json:"-"`
 
 	URL string `json:"url",omitempty`
 }
 
 // Update the given node with the given meta
-func (ft *FileTreeExt) Update(n *Node, m *meta.Meta) (*Node, error) {
+func (ft *FileTreeExt) Update(n *Node, m *rnode.RawNode) (*Node, error) {
 	newNode, err := metaToNode(m)
 	if err != nil {
 		return nil, err
@@ -234,10 +220,7 @@ func (ft *FileTreeExt) Update(n *Node, m *meta.Meta) (*Node, error) {
 	// parentMeta.Refs = newRefs
 	// n.parent.Children = newChildren
 
-	// Update the node  modtime
-	newNode.parent.Meta.ModTime = time.Now().Format(meta.ModTimeFmt)
-	// fmt.Printf("saving parent meta: %+v\n", newNode.parent.meta)
-	newRef, data := newNode.parent.Meta.Json()
+	newRef, data := newNode.parent.Meta.Encode()
 	newNode.parent.Hash = newRef
 	newNode.parent.Meta.Hash = newRef
 	if err := ft.blobStore.Put(context.TODO(), &blob.Blob{Hash: newRef, Data: data}); err != nil {
@@ -253,8 +236,6 @@ func (ft *FileTreeExt) Update(n *Node, m *meta.Meta) (*Node, error) {
 }
 
 func (n *Node) Close() error {
-	// FIXME(tsileo): no nore Meta pool
-	n.Meta.Close()
 	return nil
 }
 
@@ -264,17 +245,14 @@ func (s byName) Len() int           { return len(s) }
 func (s byName) Less(i, j int) bool { return s[i].Name < s[j].Name }
 func (s byName) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
-func metaToNode(m *meta.Meta) (*Node, error) {
+func metaToNode(m *rnode.RawNode) (*Node, error) {
 	n := &Node{
-		Name:    m.Name,
-		Type:    m.Type,
-		Size:    m.Size,
-		Mode:    m.Mode,
-		ModTime: m.ModTime,
-		Data:    m.Data,
-		XAttrs:  m.XAttrs,
-		Hash:    m.Hash,
-		Meta:    m,
+		Name: m.Name,
+		Type: m.Type,
+		Size: m.Size,
+		Data: m.Metadata,
+		Hash: m.Hash,
+		Meta: m,
 	}
 	return n, nil
 }
@@ -334,9 +312,10 @@ func (fs *FS) Root(create bool) (*Node, error) {
 		if !create {
 			return nil, err
 		}
-		meta := meta.NewMeta()
-		meta.Type = "dir"
-		meta.Name = "_root"
+		meta := &rnode.RawNode{
+			Type: "dir",
+			Name: "_root",
+		}
 		node, err = metaToNode(meta)
 		if err != nil {
 			return nil, err
@@ -350,13 +329,13 @@ func (fs *FS) Root(create bool) (*Node, error) {
 }
 
 // Path returns the `Node` at the given path, create it if requested
-func (fs *FS) Path(path string, create bool) (*Node, *meta.Meta, error) {
+func (fs *FS) Path(path string, create bool) (*Node, *rnode.RawNode, error) {
 	node, err := fs.Root(create)
 	if err != nil {
 		return nil, nil, err
 	}
 	var prev *Node
-	var cmeta *meta.Meta
+	var cmeta *rnode.RawNode
 	node.fs = fs
 	node.parent = nil
 	if err := fs.ft.fetchDir(node, 1, 1); err != nil {
@@ -397,9 +376,7 @@ func (fs *FS) Path(path string, create bool) (*Node, *meta.Meta, error) {
 				return nil, nil, clientutil.ErrBlobNotFound
 			}
 			// Create a new dir since it doesn't exist
-			cmeta = meta.NewMeta()
-			cmeta.Name = p
-			cmeta.Type = "dir"
+			cmeta = &rnode.RawNode{Type: "dir", Name: p}
 			if i == pathCount-1 {
 				cmeta.Type = "file"
 			}
@@ -455,89 +432,6 @@ func (ft *FileTreeExt) buildIndex(path string, node *Node) map[string]string {
 		out[dpath+"/"] = node.Hash
 	}
 	return out
-}
-
-func (ft *FileTreeExt) zipHandler() func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-
-		if r.URL.Query().Get("name") == "" {
-			panic("missing name")
-		}
-
-		body, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			panic(err)
-		}
-
-		fs, err := ft.FS(r.URL.Query().Get("name"), true)
-		if err != nil {
-			panic(err)
-		}
-
-		zr, err := zip.NewReader(bytes.NewReader(body), r.ContentLength)
-		if err != nil {
-			panic(err)
-		}
-
-		for _, zf := range zr.File {
-			path := filepath.Join("/", zf.Name)
-			node, _, err := fs.Path(path, true)
-			if err != nil {
-				panic(err)
-			}
-			if zf.FileInfo().IsDir() {
-				cmeta := meta.NewMeta()
-				cmeta.Name = filepath.Base(path)
-				cmeta.Type = "dir"
-
-				if _, err := ft.Update(node, cmeta); err != nil {
-					panic(err)
-				}
-
-				// Skip dir as we won't display them
-				continue
-			}
-			uploader := writer.NewUploader(&BlobStore{ft.blobStore})
-
-			// Create/save me Meta
-			file, err := zf.Open()
-			meta, err := uploader.PutReader(filepath.Base(path), file, nil)
-			if err != nil {
-				panic(err)
-			}
-			file.Close()
-
-			// Update the Node with the new Meta
-			// fmt.Printf("uploaded meta=%+v\nold node=%+v", meta, node)
-			if _, err := ft.Update(node, meta); err != nil {
-				panic(err)
-			}
-		}
-
-		_, cmeta, err := fs.Path("/.app.yaml", false)
-		switch err {
-		case nil:
-		case clientutil.ErrBlobNotFound:
-		default:
-			panic(err)
-		}
-		f := filereader.NewFile(ft.blobStore, cmeta)
-		defer f.Close()
-		yamlData, err := ioutil.ReadAll(f)
-
-		// FIXME(tsileo): fire an app if needed
-		if err := ft.hub.NewAppUpdateEvent(context.TODO(), nil, &hub.AppUpdateData{
-			Name:         r.URL.Query().Get("name"),
-			Ref:          fs.Ref,
-			RawAppConfig: yamlData,
-		}); err != nil {
-			panic(err)
-		}
-	}
 }
 
 // Handle multipart form upload to create a new Node (outside of any FS)
@@ -638,63 +532,6 @@ func (ft *FileTreeExt) fetchInfo(reader io.ReadSeeker, filename, hash string) (*
 	}
 
 	return info, nil
-}
-
-func (ft *FileTreeExt) fsAppHandler() func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		vars := mux.Vars(r)
-		fsName := vars["name"]
-		refType := vars["type"]
-		var fs *FS
-		var err error
-		switch refType {
-		case "ref":
-			fs = &FS{
-				Ref: fsName,
-				ft:  ft,
-			}
-		case "fs":
-			fs, err = ft.FS(fsName, false)
-			if err != nil {
-				panic(err)
-			}
-		default:
-			panic(fmt.Errorf("Unknown type \"%s\"", refType))
-		}
-		switch r.Method {
-		case "POST":
-			_, _, err := fs.Path("/.app.yaml", false)
-			switch err {
-			case nil:
-			case clientutil.ErrBlobNotFound:
-				// Returns a 404 if the blob/children is not found
-				w.WriteHeader(http.StatusNotFound)
-				return
-			default:
-				panic(err)
-			}
-			// f := filereader.NewFile(ft.blobStore, cmeta)
-			// defer f.Close()
-			// yamlData, err := ioutil.ReadAll(f)
-			// if err != nil {
-			// 	panic(err)
-			// }
-			// appConfig := &AppConfig{}
-			// if err := yaml.Unmarshal(yamlData, appConfig); err != nil {
-			// 	panic(err)
-			// }
-			// if err := ft.hub.NewAppUpdateEvent(context.TODO(), nil, &hub.AppUpdateData{
-			// 	Name: appConfig.Name,
-			// 	Ref:  fs.Ref,
-			// }); err != nil {
-			// 	panic(err)
-			// }
-			w.WriteHeader(http.StatusNoContent)
-		default:
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-	}
 }
 
 func (ft *FileTreeExt) fsRootHandler() func(http.ResponseWriter, *http.Request) {
@@ -904,18 +741,9 @@ func (ft *FileTreeExt) fileHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-// isPublic ensures the givem Meta is public
-func (ft *FileTreeExt) isPublic(m *meta.Meta) (bool, error) {
-	if m.IsPublic() {
-		ft.log.Debug("XAttrs public=1")
-		return true, nil
-	}
-	// FIXME(tsileo): a way to find if a meta is part of a public directory
-	return false, nil
-}
-
 // serveFile serve the node as a file using `net/http` FS util
 func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash string) {
+	// FIXME(tsileo): set authorized to true if the API call is authenticated via API key!
 	var authorized bool
 
 	if err := bewit.Validate(r, ft.sharingCred); err != nil {
@@ -934,16 +762,15 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 		panic(err)
 	}
 
-	m, err := meta.NewMetaFromBlob(hash, blob)
+	m, err := rnode.NewNodeFromBlob(hash, blob)
 	if err != nil {
 		panic(err)
 	}
-	defer m.Close()
 
-	if !authorized && m.IsPublic() {
-		ft.log.Debug("XAttrs public=1")
-		authorized = true
-	}
+	// if !authorized && m.IsPublic() {
+	// ft.log.Debug("XAttrs public=1")
+	// authorized = true
+	// }
 
 	if !authorized {
 		// Try if an API key is provided
@@ -955,7 +782,7 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 		}
 	}
 
-	if m.IsDir() {
+	if !m.IsFile() {
 		panic(httputil.NewPublicErrorFmt("node is not a file (%s)", m.Type))
 	}
 
@@ -974,7 +801,7 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 	}
 
 	// Serve the file content using the same code as the `http.ServeFile` (it'll handle HEAD request)
-	mtime, _ := m.Mtime()
+	mtime := time.Now() // TODO(ts): use the FS time
 	http.ServeContent(w, r, m.Name, mtime, f)
 }
 
@@ -1008,12 +835,6 @@ func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 			dlMode = d
 		}
 		u := &url.URL{Path: fmt.Sprintf("/%s/%s", n.Type[0:1], n.Hash)}
-		pubHeader := "0"
-		if n.Meta.IsPublic() {
-			pubHeader = "1"
-			w.Header().Add("BlobStash-FileTree-Public-Path", u.String())
-		}
-		w.Header().Add("BlobStash-FileTree-Public", pubHeader)
 
 		if r.URL.Query().Get("bewit") == "1" {
 			if err := bewit.Bewit(ft.sharingCred, u, ft.shareTTL); err != nil {
@@ -1056,7 +877,7 @@ func (ft *FileTreeExt) nodeByRef(hash string) (*Node, error) {
 		return nil, err
 	}
 
-	m, err := meta.NewMetaFromBlob(hash, blob)
+	m, err := rnode.NewNodeFromBlob(hash, blob)
 	if err != nil {
 		return nil, err
 	}
@@ -1123,11 +944,6 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 			panic(err)
 		}
 
-		if !authorized && n.Meta.IsPublic() {
-			ft.log.Debug("XAttrs public=1")
-			authorized = true
-		}
-
 		if !authorized {
 			// Returns a 404 to prevent leak of hashes
 			ft.log.Info("Unauthorized access")
@@ -1163,10 +979,8 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 			u := &url.URL{Path: fmt.Sprintf("/%s/%s", cn.Type[0:1], cn.Hash)}
 
 			// Only compute the Bewit if the node is not public
-			if !cn.Meta.IsPublic() {
-				if err := bewit.Bewit(ft.sharingCred, u, ft.shareTTL); err != nil {
-					panic(err)
-				}
+			if err := bewit.Bewit(ft.sharingCred, u, ft.shareTTL); err != nil {
+				panic(err)
 			}
 			fmt.Fprintf(w, "<a href=\"%s\">%s</a>\n", u.String(), cn.Name)
 		}
