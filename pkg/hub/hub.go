@@ -15,14 +15,7 @@ const (
 	NewBlob EventType = iota
 	ScanBlob
 	GarbageCollection
-	AppUpdate
 )
-
-type AppUpdateData struct {
-	Ref          string
-	Name         string
-	RawAppConfig []byte
-}
 
 type Hub struct {
 	log         log.Logger
@@ -46,10 +39,6 @@ func (h *Hub) newEvent(ctx context.Context, etype EventType, blob *blob.Blob, da
 	return nil
 }
 
-func (h *Hub) NewAppUpdateEvent(ctx context.Context, blob *blob.Blob, data interface{}) error {
-	return h.newEvent(ctx, AppUpdate, blob, data)
-}
-
 func (h *Hub) NewBlobEvent(ctx context.Context, blob *blob.Blob, data interface{}) error {
 	return h.newEvent(ctx, NewBlob, blob, data)
 }
@@ -63,9 +52,8 @@ func New(logger log.Logger) *Hub {
 	return &Hub{
 		log: logger,
 		subscribers: map[EventType]map[string]func(context.Context, *blob.Blob, interface{}) error{
-			NewBlob:   map[string]func(context.Context, *blob.Blob, interface{}) error{},
-			ScanBlob:  map[string]func(context.Context, *blob.Blob, interface{}) error{},
-			AppUpdate: map[string]func(context.Context, *blob.Blob, interface{}) error{},
+			NewBlob:  map[string]func(context.Context, *blob.Blob, interface{}) error{},
+			ScanBlob: map[string]func(context.Context, *blob.Blob, interface{}) error{},
 		},
 	}
 }
