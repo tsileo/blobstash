@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"a4.io/blobstash/pkg/client/blobstore"
-	"a4.io/blobstash/pkg/filetree/filetreeutil/meta"
+	"a4.io/blobstash/pkg/filetree/filetreeutil/node"
 	"a4.io/blobstash/pkg/filetree/reader/filereader"
 )
 
@@ -25,7 +25,7 @@ func NewDownloader(bs *blobstore.BlobStore) *Downloader {
 	return &Downloader{bs}
 }
 
-func (d *Downloader) Download(m *meta.Meta, path string) error {
+func (d *Downloader) Download(m *node.RawNode, path string) error {
 	if _, err := os.Stat(path); err == nil {
 		return fmt.Errorf("path already exists")
 	}
@@ -44,6 +44,6 @@ func (d *Downloader) Download(m *meta.Meta, path string) error {
 	return nil
 }
 
-func (d *Downloader) File(m *meta.Meta) (io.ReadCloser, error) {
+func (d *Downloader) File(m *node.RawNode) (io.ReadCloser, error) {
 	return filereader.NewFile(d.bs, m), nil
 }

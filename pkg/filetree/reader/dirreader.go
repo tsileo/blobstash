@@ -9,7 +9,7 @@ import (
 	"golang.org/x/net/context"
 
 	"a4.io/blobstash/pkg/client/blobstore"
-	"a4.io/blobstash/pkg/filetree/filetreeutil/meta"
+	"a4.io/blobstash/pkg/filetree/filetreeutil/node"
 	"a4.io/blobstash/pkg/filetree/reader/filereader"
 )
 
@@ -27,7 +27,7 @@ func GetDir(bs *blobstore.BlobStore, hash, path string) error { // (rr *ReadResu
 	if err != nil {
 		return err
 	}
-	cmeta, err := meta.NewMetaFromBlob(hash, js)
+	cmeta, err := node.NewNodeFromBlob(hash, js)
 	if err != nil {
 		return fmt.Errorf("failed to fetch meta %s \"%s\": %v", hash, js, err)
 	}
@@ -36,7 +36,7 @@ func GetDir(bs *blobstore.BlobStore, hash, path string) error { // (rr *ReadResu
 	if cmeta.Size > 0 {
 		for _, hash := range cmeta.Refs {
 			blob, err := bs.Get(context.TODO(), hash.(string))
-			submeta, err := meta.NewMetaFromBlob(hash.(string), blob)
+			submeta, err := node.NewNodeFromBlob(hash.(string), blob)
 			if err != nil {
 				return fmt.Errorf("failed to fetch meta: %v", err)
 			}

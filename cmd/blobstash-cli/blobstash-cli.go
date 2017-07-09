@@ -13,7 +13,7 @@ import (
 
 	"a4.io/blobstash/pkg/client/blobstore"
 	"a4.io/blobstash/pkg/client/kvstore"
-	"a4.io/blobstash/pkg/filetree/filetreeutil/meta"
+	"a4.io/blobstash/pkg/filetree/filetreeutil/node"
 	"a4.io/blobstash/pkg/filetree/reader"
 	"a4.io/blobstash/pkg/filetree/writer"
 
@@ -60,7 +60,7 @@ type Node struct {
 	Hash     string  `json:"ref"`
 	Children []*Node `json:"children,omitempty"`
 
-	Meta *meta.Meta `json:"meta"`
+	Meta *node.RawNode `json:"meta"`
 
 	Data   map[string]interface{} `json:"data,omitempty"`
 	XAttrs map[string]string      `json:"xattrs,omitempty"`
@@ -194,7 +194,7 @@ func (r *filetreePutCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interf
 	default:
 		return rerr("failed to stat file: %v", err)
 	}
-	var m *meta.Meta
+	var m *node.RawNode
 	up := writer.NewUploader(r.bs)
 	// It's a dir
 	if finfo.IsDir() {
