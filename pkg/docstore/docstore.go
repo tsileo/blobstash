@@ -627,7 +627,7 @@ QUERY:
 		// case optimizer.Linear:
 		// Performs a unoptimized linear scan
 		// res, cursor, err := docstore.kvStore.Keys(context.TODO(), end, start, fetchLimit)
-		res, cursor, err := docstore.kvStore.ReverseKeys(start, end, fetchLimit)
+		res, cursor, err := docstore.kvStore.ReverseKeys(end, start, fetchLimit)
 		fmt.Printf("res=%+v\ncursor=%+v\nerr=%+v", res, cursor, err)
 		// res, err := docstore.kvStore.ReverseKeys(end, start, fetchLimit)
 		if err != nil {
@@ -885,7 +885,7 @@ func (docstore *DocStore) FetchVersions(collection, sid string, start, limit int
 		var doc map[string]interface{}
 		// Extract the hash (first byte is the Flag)
 		// XXX(tsileo): add/handle a `Deleted` flag
-		hash := kv.Hash
+		hash := kv.HexHash()
 		// kv.Value[1:len(kv.Value)]
 
 		// Fetch the blob
@@ -939,7 +939,7 @@ func (docstore *DocStore) Fetch(collection, sid string, res interface{}, fetchPo
 
 	// Extract the hash (first byte is the Flag)
 	// XXX(tsileo): add/handle a `Deleted` flag
-	hash := kv.Hash
+	hash := kv.HexHash()
 	// kv.Value[1:len(kv.Value)]
 
 	// Fetch the blob

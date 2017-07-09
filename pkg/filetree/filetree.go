@@ -555,7 +555,7 @@ func (ft *FileTreeExt) fsRootHandler() func(http.ResponseWriter, *http.Request) 
 
 		for _, kv := range keys {
 			data := strings.Split(kv.Key, ":")
-			fs := &FS{Name: data[len(data)-1], Ref: kv.Hash, ft: ft}
+			fs := &FS{Name: data[len(data)-1], Ref: kv.HexHash(), ft: ft}
 			node, _, err := fs.Path("/", false)
 			if err != nil {
 				panic(err)

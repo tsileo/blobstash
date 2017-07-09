@@ -33,6 +33,22 @@ type KvStore struct {
 	vkv *vkv.DB
 }
 
+type keyValue struct {
+	Key     string `json:"key"`
+	Version int    `json:"version"`
+	Hash    string `json:"hash,omitempty"`
+	Data    []byte `json:"data,omitempty"`
+}
+
+func toKeyValue(okv *vkv.KeyValue) *keyValue {
+	return &keyValue{
+		Key:     okv.Key,
+		Version: okv.Version,
+		Hash:    okv.HexHash(),
+		Data:    okv.Data,
+	}
+}
+
 func New(logger log.Logger, conf *config.Config, blobStore *blobstore.BlobStore, metaHandler *meta.Meta) (*KvStore, error) {
 	logger.Debug("init")
 	// TODO(tsileo): handle config
@@ -63,7 +79,7 @@ func (kv *KvStore) applyMetaFunc(hash string, data []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to unserialize blob: %v", err)
 	}
-	if _, err := kv.Put(context.Background(), rkv.Key, rkv.Hash, rkv.Data, rkv.Version); err != nil {
+	if _, err := kv.Put(context.Background(), rkv.Key, rkv.HexHash(), rkv.Data, rkv.Version); err != nil {
 		return fmt.Errorf("failed to put: %v", err)
 	}
 	kv.log.Debug("Applied meta", "kv", rkv)
@@ -109,8 +125,15 @@ func (kv *KvStore) ReverseKeys(start, end string, limit int) ([]*vkv.KeyValue, s
 func (kv *KvStore) Put(ctx context.Context, key, ref string, data []byte, version int) (*vkv.KeyValue, error) {
 	// _, fromHttp := ctxutil.Request(ctx)
 	// kv.log.Info("OP Put", "from_http", fromHttp, "key", key, "value", value, "version", version)
-	res, err := kv.vkv.Put(key, ref, data, version)
-	if err != nil {
+	res := &vkv.KeyValue{
+		Key:     key,
+		Version: version,
+		Data:    data,
+	}
+	if ref != "" {
+		res.SetHexHash(ref)
+	}
+	if err := kv.vkv.Put(res); err != nil {
 		return nil, err
 	}
 	metaBlob, err := kv.meta.Build(res)
@@ -166,6 +189,7 @@ func (kv *KvStore) versionsHandler() func(http.ResponseWriter, *http.Request) {
 			if err != nil {
 				panic(err)
 			}
+			// FIXME(tsileo): convert to []*keyValue
 			resp, cursor, err := kv.Versions(ctx, key, start, limit)
 			if err != nil {
 				if err == vkv.ErrNotFound {
@@ -211,7 +235,7 @@ func (kv *KvStore) getHandler() func(http.ResponseWriter, *http.Request) {
 			}
 			// TODO(tsileo): handle HEAD
 			srw := httputil.NewSnappyResponseWriter(w, r)
-			httputil.WriteJSON(srw, item)
+			httputil.WriteJSON(srw, toKeyValue(item))
 			srw.Close()
 			return
 		case "POST", "PUT":
@@ -246,7 +270,7 @@ func (kv *KvStore) getHandler() func(http.ResponseWriter, *http.Request) {
 				return
 			}
 			srw := httputil.NewSnappyResponseWriter(w, r)
-			httputil.WriteJSON(srw, res)
+			httputil.WriteJSON(srw, toKeyValue(res))
 			srw.Close()
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
