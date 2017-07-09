@@ -11,6 +11,7 @@ script:
 - pip install requests
 # Run golang unit tests
 - go get -v a4.io/blobstash/...
+- cd $GOPATH/src/a4.io/blobstash
 - go test $(go list ./... | grep pkg)
 # Cross compile script
 - ./extras/cross_compile.sh
