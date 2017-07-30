@@ -12,7 +12,7 @@ class BlobStash(object):
 
     def run(self):
         """Execute `blobsfs-mount {fs_name} {fs_name}` and return the running process."""
-        self.process = Popen(['blobstash', '--loglevel', 'debug', './tests/blobstash.yaml'], env=os.environ)
+        self.process = Popen(['blobstash', '--loglevel', 'error', './tests/blobstash.yaml'], env=os.environ)
         time.sleep(1)
         if self.process.poll():
             raise Exception('failed to mount')
