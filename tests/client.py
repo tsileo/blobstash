@@ -30,11 +30,13 @@ class Client:
 
     def _get(self, path, params={}):
         r = requests.get(urljoin(self.base_url, path), auth=('', self.api_key), params={})
+        r.raise_for_status()
         return r
 
     def put_blob(self, blob):
         files = {blob.hash: blob.data}
         r = requests.post(urljoin(self.base_url, '/api/blobstore/upload'), auth=('', self.api_key), files=files)
+        r.raise_for_status()
         return r
 
     def get_blob(self, hash, to_blob=True):
@@ -43,3 +45,21 @@ class Client:
             return r
         r.raise_for_status()
         return Blob(hash, r.content)
+
+    def put_kv(self, key, data, ref='', version=-1):
+        r = requests.post(
+            urljoin(self.base_url, '/api/kvstore/key/'+key),
+            auth=('', self.api_key),
+            data=dict(data=data, ref=ref, version=version),
+        )
+        r.raise_for_status()
+        return r.json()
+
+    def get_kv(self, key):
+        return self._get('/api/kvstore/key/'+key).json()
+
+    def get_kv_versions(self, key):
+        return self._get('/api/kvstore/key/'+key+'/_versions').json()
+
+    def get_kv_keys(self):
+        return self._get('/api/kvstore/keys').json()

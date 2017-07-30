@@ -63,6 +63,27 @@ for blob in more_blobs:
     blob2 = c.get_blob(blob.hash, to_blob=True)
     assert blob2.data == blob.data, 'failed to fetch blob {} != {}'.format(blob.data, blob2.data)
 
+logging.info('[STEP 2] Testing the key-value store')
+
+keys = {}
+for x in range(10):
+    key = 'k{}'.format(x)
+    if key not in keys:
+        keys[key] = []
+    for y in range(200):
+        val = 'value.{}.{}'.format(x, y)
+        kv = c.put_kv('k{}'.format(x), val, version=y+1)
+        keys[key].append(kv)
+
+for key in keys.keys():
+    kv = c.get_kv(key)
+    assert kv == keys[key][-1]
+    versions = c.get_kv_versions(key)
+    for i, version in enumerate(versions['versions']):
+        assert version == keys[key][200-(1+i)]
+
+
+# TODO(tsileo): recount the number of blob, check meta blob, check restart, check index rebuild
 
 # Shutdown BlobStash
 b.shutdown()
