@@ -45,6 +45,8 @@ func (db *RangeDB) Destroy() error {
 }
 
 func (db *RangeDB) Set(k, v []byte) error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
 	if err := db.db.Set(k, v); err != nil {
 		return err
 	}
@@ -71,53 +73,56 @@ func (db *RangeDB) Range(min, max []byte, reverse bool) *Range {
 	}
 }
 
-func (c *Range) first() ([]byte, []byte, error) {
+func (r *Range) first() ([]byte, []byte, error) {
 	var err error
-	if c.Reverse {
-		c.enum, _, err = c.db.db.Seek(c.Max)
+	if r.Reverse {
+		r.enum, _, err = r.db.db.Seek(r.Max)
 		if err != nil {
 			return nil, nil, err
 		}
-		k, v, err := c.enum.Prev()
+		k, v, err := r.enum.Prev()
 		if err == io.EOF {
-			c.enum, err = c.db.db.SeekLast()
-			return c.enum.Prev()
+			r.enum, err = r.db.db.SeekLast()
+			return r.enum.Prev()
 		}
 		if err != nil {
 			return nil, nil, err
 		}
-		if bytes.Compare(k, c.Max) > 0 {
-			k, v, err = c.enum.Prev()
+		if bytes.Compare(k, r.Max) > 0 {
+			k, v, err = r.enum.Prev()
 		}
 		return k, v, err
 	}
 
-	c.enum, _, err = c.db.db.Seek(c.Min)
-	return c.enum.Next()
+	r.enum, _, err = r.db.db.Seek(r.Min)
+	return r.enum.Next()
 }
 
-func (c *Range) next() ([]byte, []byte, error) {
-	if c.enum == nil {
-		return c.first()
+func (r *Range) next() ([]byte, []byte, error) {
+	if r.enum == nil {
+		return r.first()
 	}
-	if c.Reverse {
-		return c.enum.Prev()
+	if r.Reverse {
+		return r.enum.Prev()
 	}
-	return c.enum.Next()
+	return r.enum.Next()
 }
 
-func (c *Range) Next() ([]byte, []byte, error) {
-	k, v, err := c.next()
-	if c.shouldContinue(k) {
+func (r *Range) Next() ([]byte, []byte, error) {
+	r.db.mu.Lock()
+	defer r.db.mu.Unlock()
+
+	k, v, err := r.next()
+	if r.shouldContinue(k) {
 		return k, v, err
 	}
 	return nil, nil, io.EOF
 }
 
-func (c *Range) shouldContinue(key []byte) bool {
-	if c.Reverse {
-		return key != nil && bytes.Compare(key, c.Min) >= 0
+func (r *Range) shouldContinue(key []byte) bool {
+	if r.Reverse {
+		return key != nil && bytes.Compare(key, r.Min) >= 0
 	}
 
-	return key != nil && bytes.Compare(key, c.Max) <= 0
+	return key != nil && bytes.Compare(key, r.Max) <= 0
 }

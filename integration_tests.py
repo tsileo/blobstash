@@ -1,4 +1,5 @@
 import logging
+import os
 
 from tests.client import Blob
 from tests.client import Client
@@ -82,8 +83,26 @@ for key in keys.keys():
     for i, version in enumerate(versions['versions']):
         assert version == keys[key][200-(1+i)]
 
+b.shutdown()
+for f in [
+    'blobstash_data/.80a3e998d3248e3f44c5c608fd8dc813e00567a3',
+    'blobstash_data/.82481ffa006d3077c01fb135f375eaa25816881c',
+    'blobstash_data/.e7ecafda402e922e0fcefb3741538bd152c35405',
+    'blobstash_data/vkv',
+]:
+    os.unlink(f)
 
-# TODO(tsileo): recount the number of blob, check meta blob, check restart, check index rebuild
+b.run(reindex=True)
+
+for key in keys.keys():
+    kv = c.get_kv(key)
+    assert kv == keys[key][-1]
+    versions = c.get_kv_versions(key)
+    for i, version in enumerate(versions['versions']):
+        assert version == keys[key][200-(1+i)]
+
+
+# TODO(tsileo): recount the number of blob, check meta blob
 
 # Shutdown BlobStash
 b.shutdown()

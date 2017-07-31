@@ -4,7 +4,9 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/vmihailenco/msgpack"
@@ -29,7 +31,7 @@ var ErrNotFound = errors.New("vkv: key not found")
 type KeyValue struct {
 	SchemaVersion int `msgpack:"_v"`
 
-	Key     string `msgpack:"-"`
+	Key     string `msgpack:"k,omitempty"`
 	Version int    `msgpack:"v"`
 	Hash    []byte `msgpack:"h,omitempty"`
 	Data    []byte `msgpack:"d,omitempty"`
@@ -99,6 +101,7 @@ func PrevKey(key string) string {
 
 type DB struct {
 	rdb *rangedb.RangeDB
+	mu  sync.Mutex
 }
 
 // New creates a new database.
@@ -107,7 +110,7 @@ func New(path string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &DB{rdb}, nil
+	return &DB{rdb: rdb}, nil
 }
 
 func (db *DB) Close() error { return db.rdb.Close() }
@@ -140,6 +143,8 @@ func (db *DB) get(key string) (*KeyValue, error) {
 }
 
 func (db *DB) Put(kv *KeyValue) error {
+	// db.mu.Lock()
+	// defer db.mu.Unlock()
 	kv.SchemaVersion = schemaVersion
 
 	if kv.Version < 1 {
@@ -160,6 +165,7 @@ func (db *DB) Put(kv *KeyValue) error {
 		return err
 	}
 
+	fmt.Printf("\n\n\nDEBUG\n%+v\n%+v\n\n\n", ckv, kv.Version)
 	if ckv == nil || kv.Version > ckv.Version {
 		if err := db.rdb.Set(kvkey, encoded); err != nil {
 			return err
