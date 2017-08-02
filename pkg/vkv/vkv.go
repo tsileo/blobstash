@@ -165,7 +165,6 @@ func (db *DB) Put(kv *KeyValue) error {
 		return err
 	}
 
-	fmt.Printf("\n\n\nDEBUG\n%+v\n%+v\n\n\n", ckv, kv.Version)
 	if ckv == nil || kv.Version > ckv.Version {
 		if err := db.rdb.Set(kvkey, encoded); err != nil {
 			return err
