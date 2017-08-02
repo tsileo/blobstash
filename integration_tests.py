@@ -15,7 +15,7 @@ b.cleanup()
 c = Client()
 
 logging.info('Start BlobStash')
-b.run()
+b.run(log_level='debug')
 
 logging.info('[STEP 1] Testing the blob store...')
 # FIXME(tsileo): only GET/POST at / and GET /{hash}
@@ -35,8 +35,8 @@ logging.info('Enumerating blobs')
 blobs_resp = c._get('/api/blobstore/blobs').json()
 assert len(blobs_resp['refs']) == 1, 'failed to enumate blobs, expected 1 got {}'.format(len(blobs_resp['refs']))
 blob_ref = blobs_resp['refs'][0]
-assert blob_ref['Hash'] == blob2.hash, 'failed to enumate blobs, hash does not match, expected {} got {}'.format(
-    blob_ref['Hash'], blob2.hash
+assert blob_ref['hash'] == blob2.hash, 'failed to enumate blobs, hash does not match, expected {} got {}'.format(
+    blob_ref['hash'], blob2.hash
 )
 
 logging.info('Now adding more blobs')
@@ -66,12 +66,15 @@ for blob in more_blobs:
 
 logging.info('[STEP 2] Testing the key-value store')
 
+KV_COUNT = 5
+KV_VERSIONS_COUNT = 100
+
 keys = {}
-for x in range(10):
+for x in range(KV_COUNT):
     key = 'k{}'.format(x)
     if key not in keys:
         keys[key] = []
-    for y in range(200):
+    for y in range(KV_VERSIONS_COUNT):
         val = 'value.{}.{}'.format(x, y)
         kv = c.put_kv('k{}'.format(x), val, version=y+1)
         keys[key].append(kv)
@@ -81,7 +84,7 @@ for key in keys.keys():
     assert kv == keys[key][-1]
     versions = c.get_kv_versions(key)
     for i, version in enumerate(versions['versions']):
-        assert version == keys[key][200-(1+i)]
+        assert version == keys[key][KV_VERSIONS_COUNT-(1+i)]
 
 b.shutdown()
 for f in [
@@ -92,7 +95,8 @@ for f in [
 ]:
     os.unlink(f)
 
-b.run(reindex=True)
+
+b.run(reindex=True)  #, log_level='debug')
 
 for key in keys.keys():
     kv = c.get_kv(key)
@@ -102,7 +106,22 @@ for key in keys.keys():
         assert version == keys[key][200-(1+i)]
 
 
-# TODO(tsileo): recount the number of blob, check meta blob
+all_blobs = []
+
+cursor = ''
+while 1:
+    resp = c._get('/api/blobstore/blobs?limit=100&start='+cursor).json()
+
+    if len(resp['refs']) == 0 or not resp['cursor']:
+        break
+
+    cursor = resp['cursor']
+    all_blobs.extend(resp['refs'])
+    print(len(all_blobs))
+    print(len(resp['refs']))
+
+# Ensure one meta blob for each key-value has been created
+assert len(all_blobs) == len(more_blobs) + KV_COUNT * KV_VERSIONS_COUNT
 
 # Shutdown BlobStash
 b.shutdown()
