@@ -14,8 +14,8 @@ type NamespacedBlobRef struct {
 }
 
 type SizedBlobRef struct {
-	Hash string
-	Size int
+	Hash string `json:"hash"`
+	Size int    `json:"size"`
 }
 
 type Blob struct {

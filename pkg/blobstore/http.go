@@ -2,6 +2,7 @@ package blobstore
 
 import (
 	"bytes"
+	"encoding/hex"
 	"io"
 	"net/http"
 
@@ -111,6 +112,23 @@ func (bs *BlobStore) blobHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
+func nextHexKey(key string) string {
+	bkey, err := hex.DecodeString(key)
+	if err != nil {
+		// XXX(tsileo): error invalid cursor?
+		panic(err)
+	}
+	i := len(bkey)
+	for i > 0 {
+		i--
+		bkey[i]++
+		if bkey[i] != 0 {
+			break
+		}
+	}
+	return hex.EncodeToString(bkey)
+}
+
 func (bs *BlobStore) enumerateHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := ctxutil.WithRequest(context.Background(), r)
@@ -132,8 +150,15 @@ func (bs *BlobStore) enumerateHandler() func(http.ResponseWriter, *http.Request)
 				httputil.Error(w, err)
 				return
 			}
+			var cursor string
+			if len(refs) > 0 {
+				cursor = nextHexKey(refs[len(refs)-1].Hash)
+			}
 			srw := httputil.NewSnappyResponseWriter(w, r)
-			httputil.WriteJSON(srw, map[string]interface{}{"refs": refs})
+			httputil.WriteJSON(srw, map[string]interface{}{
+				"refs":   refs,
+				"cursor": cursor,
+			})
 			srw.Close()
 			return
 		default:
