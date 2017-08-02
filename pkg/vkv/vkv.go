@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"sync"
 	"time"
