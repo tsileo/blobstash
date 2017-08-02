@@ -7,15 +7,21 @@ from tests.server import BlobStash
 
 MORE_BLOBS = 999
 
-logging.basicConfig(level=logging.DEBUG)
+logging_log_level = logging.INFO
+log_level = 'error'
+if os.getenv('BLOBSTASH_DEBUG'):
+    logging_log_level = logging.DEBUG
+    log_level = 'debug'
+
+
+logging.basicConfig(level=logging_log_level)
 logging.info('Running integration tests...')
 
 b = BlobStash()
 b.cleanup()
 c = Client()
-
 logging.info('Start BlobStash')
-b.run(log_level='debug')
+b.run(log_level=log_level)
 
 logging.info('[STEP 1] Testing the blob store...')
 # FIXME(tsileo): only GET/POST at / and GET /{hash}
@@ -96,7 +102,7 @@ for f in [
     os.unlink(f)
 
 
-b.run(reindex=True)  #, log_level='debug')
+b.run(reindex=True, log_level=log_level)
 
 for key in keys.keys():
     kv = c.get_kv(key)
