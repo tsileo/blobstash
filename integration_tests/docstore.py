@@ -27,7 +27,6 @@ b.cleanup()
 c = Client()
 logging.info('Start BlobStash')
 b.run(log_level=log_level)
-import IPython; IPython.embed()
 
 # Shutdown BlobStash
 b.shutdown()
