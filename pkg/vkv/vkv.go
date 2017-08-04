@@ -43,6 +43,7 @@ func (kv *KeyValue) Type() string {
 
 // Implements the `MetaData` interface
 func (kv *KeyValue) Dump() ([]byte, error) {
+	kv.SchemaVersion = schemaVersion
 	return msgpack.Marshal(kv)
 }
 
@@ -285,6 +286,7 @@ func (db *DB) Versions(key string, start, end, limit int) (*KeyValueVersions, in
 		}
 
 		res.Versions = append(res.Versions, kv)
+
 		nstart = kv.Version - 1
 	}
 

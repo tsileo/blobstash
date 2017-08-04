@@ -1,5 +1,11 @@
 import logging
 import os
+import time
+
+import sys
+
+p = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+sys.path.insert(0, p)
 
 from tests.client import Blob
 from tests.client import Client
@@ -72,7 +78,7 @@ for blob in more_blobs:
 
 logging.info('[STEP 2] Testing the key-value store')
 
-KV_COUNT = 5
+KV_COUNT = 10
 KV_VERSIONS_COUNT = 100
 
 keys = {}
@@ -104,12 +110,19 @@ for f in [
 
 b.run(reindex=True, log_level=log_level)
 
+time.sleep(2)
+
 for key in keys.keys():
     kv = c.get_kv(key)
     assert kv == keys[key][-1]
     versions = c.get_kv_versions(key)
+    assert len(versions['versions']) == KV_VERSIONS_COUNT
     for i, version in enumerate(versions['versions']):
-        assert version == keys[key][200-(1+i)]
+        assert version == keys[key][KV_VERSIONS_COUNT-(1+i)]
+
+keys_resp = c.get_kv_keys()
+for key_resp in keys_resp['keys']:
+    assert key_resp == keys[key_resp['key']][-1]
 
 
 all_blobs = []

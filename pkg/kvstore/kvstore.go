@@ -110,7 +110,7 @@ func (kv *KvStore) Versions(ctx context.Context, key string, start, limit int) (
 	if start == -1 {
 		start = int(time.Now().UTC().UnixNano())
 	}
-	res, cursor, err := kv.vkv.Versions(key, start, 0, 0)
+	res, cursor, err := kv.vkv.Versions(key, 0, start, limit)
 	if err != nil {
 		return nil, cursor, err
 	}
@@ -151,20 +151,22 @@ func (kv *KvStore) keysHandler() func(http.ResponseWriter, *http.Request) {
 		switch r.Method {
 		case "GET":
 			// ctx := ctxutil.WithRequest(context.Background(), r)
-			// TODO(tsileo): handle limit
 			q := httputil.NewQuery(r.URL.Query())
 			start := q.GetDefault("start", "")
 			limit, err := q.GetIntDefault("limit", -1)
 			if err != nil {
 				panic(err)
 			}
-			keys, cursor, err := kv.vkv.Keys(start, "\xff", limit)
+			keys := []*keyValue{}
+			rawKeys, cursor, err := kv.vkv.Keys(start, "\xff", limit)
 			if err != nil {
 				panic(err)
 			}
-			w.Header().Set("KvStore-Cusrsor", cursor)
+			for _, kv := range rawKeys {
+				keys = append(keys, toKeyValue(kv))
+			}
 			srw := httputil.NewSnappyResponseWriter(w, r)
-			httputil.WriteJSON(srw, map[string]interface{}{"keys": keys})
+			httputil.WriteJSON(srw, map[string]interface{}{"keys": keys, "cursor": cursor})
 			srw.Close()
 
 		default:
@@ -181,7 +183,7 @@ func (kv *KvStore) versionsHandler() func(http.ResponseWriter, *http.Request) {
 		//POST takes the uploaded file(s) and saves it to disk.
 		case "GET", "HEAD":
 			ctx := ctxutil.WithRequest(context.Background(), r)
-			limit, err := q.GetIntDefault("limit", 0)
+			limit, err := q.GetIntDefault("limit", -1)
 			if err != nil {
 				panic(err)
 			}
@@ -189,8 +191,11 @@ func (kv *KvStore) versionsHandler() func(http.ResponseWriter, *http.Request) {
 			if err != nil {
 				panic(err)
 			}
-			// FIXME(tsileo): convert to []*keyValue
+			var out []*keyValue
 			resp, cursor, err := kv.Versions(ctx, key, start, limit)
+			for _, v := range resp.Versions {
+				out = append(out, toKeyValue(v))
+			}
 			if err != nil {
 				if err == vkv.ErrNotFound {
 					w.WriteHeader(http.StatusNotFound)
@@ -199,10 +204,12 @@ func (kv *KvStore) versionsHandler() func(http.ResponseWriter, *http.Request) {
 				}
 				panic(err)
 			}
-			// TODO(tsileo): handle HEAD
-			w.Header().Set("KvStore-Cusrsor", strconv.Itoa(cursor))
 			srw := httputil.NewSnappyResponseWriter(w, r)
-			httputil.WriteJSON(srw, resp)
+			httputil.WriteJSON(srw, map[string]interface{}{
+				"key":      resp.Key,
+				"versions": out,
+				"cursor":   strconv.Itoa(cursor),
+			})
 			srw.Close()
 			return
 		default:
@@ -215,35 +222,35 @@ func (kv *KvStore) getHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key := mux.Vars(r)["key"]
 		switch r.Method {
-		//POST takes the uploaded file(s) and saves it to disk.
 		case "GET", "HEAD":
 			ctx := ctxutil.WithRequest(context.Background(), r)
 
-			if ns := r.Header.Get("BlobStash-Namespace"); ns != "" {
-				ctx = ctxutil.WithNamespace(ctx, ns)
+			q := httputil.NewQuery(r.URL.Query())
+			version, err := q.GetIntDefault("version", -1)
+			if err != nil {
+				panic(err)
 			}
 
-			// FIXME(tsileo): read the version from query args
-			item, err := kv.Get(ctx, key, -1)
+			item, err := kv.Get(ctx, key, version)
 			if err != nil {
 				if err == vkv.ErrNotFound {
 					w.WriteHeader(http.StatusNotFound)
-					w.Write([]byte(http.StatusText(http.StatusNotFound)))
+					if r.Method == "GET" {
+						w.Write([]byte(http.StatusText(http.StatusNotFound)))
+					}
 					return
 				}
 				panic(err)
 			}
-			// TODO(tsileo): handle HEAD
-			srw := httputil.NewSnappyResponseWriter(w, r)
-			httputil.WriteJSON(srw, toKeyValue(item))
-			srw.Close()
+			w.WriteHeader(http.StatusOK)
+			if r.Method == "GET" {
+				srw := httputil.NewSnappyResponseWriter(w, r)
+				httputil.WriteJSON(srw, toKeyValue(item))
+				srw.Close()
+			}
 			return
 		case "POST", "PUT":
 			ctx := ctxutil.WithRequest(context.Background(), r)
-
-			if ns := r.Header.Get("BlobStash-Namespace"); ns != "" {
-				ctx = ctxutil.WithNamespace(ctx, ns)
-			}
 
 			// Parse the form value
 			hah, err := ioutil.ReadAll(r.Body)
@@ -277,40 +284,6 @@ func (kv *KvStore) getHandler() func(http.ResponseWriter, *http.Request) {
 		}
 	}
 }
-
-// if err != nil {
-// 	if err == clientutil.ErrBlobNotFound {
-// 		httputil.WriteJSONError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
-// 	} else {
-// 		httputil.Error(w, err)
-// 	}
-// 	return
-// }
-// srw := httputil.NewSnappyResponseWriter(w, r)
-// srw.Write(blob)
-// srw.Close()
-// return
-// case "HEAD":
-// exists, err := bs.Stat(ctx, vars["hash"])
-// if err != nil {
-// 	http.Error(w, err.Error(), http.StatusInternalServerError)
-// }
-// if exists {
-// 	w.WriteHeader(http.StatusNoContent)
-// 	return
-// }
-// httputil.WriteJSONError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
-// return
-// // case "DELETE":
-// // 	if err := backend.Delete(vars["hash"]); err != nil {
-// // 		http.Error(w, err.Error(), http.StatusInternalServerError)
-// // 	}
-// // 	return
-// default:
-// w.WriteHeader(http.StatusMethodNotAllowed)
-// }
-// }
-// }
 
 func (kv *KvStore) Register(r *mux.Router, basicAuth func(http.Handler) http.Handler) {
 	r.Handle("/keys", basicAuth(http.HandlerFunc(kv.keysHandler())))

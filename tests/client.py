@@ -1,10 +1,28 @@
 from hashlib import blake2b
 from urllib.parse import urljoin
+import base64
 import os
 
 import requests
 BASE_URL = 'http://localhost:8050'
 API_KEY = '123'
+
+
+class KeyValue:
+    def __init__(self, key, version, data=None, hash=None):
+        self.key = key
+        self.data = None
+        if data:
+            self.data = base64.b64decode(data)
+        self.hash = hash
+        self.version = version
+
+    def __str__(self):
+        return '<KeyValue key={!r}, version={}>'.format(self.key, self.version)
+
+    def __repr__(self):
+        return self.__str__()
+
 
 
 class Blob:
@@ -21,6 +39,12 @@ class Blob:
     @classmethod
     def from_random(cls, size=512):
         return cls.from_data(os.urandom(size))
+
+    def __str__(self):
+        return '<Blob hash={}>'.format(self.hash)
+
+    def __repr__(self):
+        return self.__str__()
 
 
 class Client:
@@ -55,11 +79,29 @@ class Client:
         r.raise_for_status()
         return r.json()
 
-    def get_kv(self, key):
-        return self._get('/api/kvstore/key/'+key).json()
+    def get_kv(self, key, to_kv=False):
+        data = self._get('/api/kvstore/key/'+key).json()
+        if to_kv:
+            return KeyValue(**data)
+        return data
 
     def get_kv_versions(self, key):
         return self._get('/api/kvstore/key/'+key+'/_versions').json()
 
     def get_kv_keys(self):
         return self._get('/api/kvstore/keys').json()
+
+    def put_doc(self, collection, doc):
+        r = requests.post(
+            urljoin(self.base_url, '/api/docstore/'+collection),
+            auth=('', self.api_key),
+            json=doc,
+        )
+        r.raise_for_status()
+        return r.json()
+
+    def get_docs(self, collection):
+        return self._get('/api/docstore/'+collection).json()
+
+    def get_doc(self, collection, id):
+        return self._get('/api/docstore/'+collection+'/'+id).json()

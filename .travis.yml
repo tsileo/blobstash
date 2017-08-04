@@ -17,7 +17,8 @@ script:
 - ./extras/cross_compile.sh
 # Run the integrations tests
 - go build blobstash.go
-- python3 integration_tests.py
+- python3 integration_tests/blobstore_kvstore.py
+- python3 integration_tests/docstore.py
 deploy:
   provider: releases
   api_key:
