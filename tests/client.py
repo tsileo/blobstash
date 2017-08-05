@@ -100,8 +100,8 @@ class Client:
         r.raise_for_status()
         return r.json()
 
-    def get_docs(self, collection):
-        return self._get('/api/docstore/'+collection).json()
+    def get_docs(self, collection, limit=50, cursor=''):
+        return self._get('/api/docstore/'+collection+'?cursor='+cursor+'&limit='+str(limit)).json()
 
     def get_doc(self, collection, id):
         return self._get('/api/docstore/'+collection+'/'+id).json()
