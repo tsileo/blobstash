@@ -78,8 +78,9 @@ type Config struct {
 	ReplicateFrom *ReplicateFrom  `yaml:"replicate_from"`
 
 	// Items defined with the CLI flags
-	ScanMode   bool `yaml:"-"`
-	S3ScanMode bool `yaml:"-"`
+	ScanMode      bool `yaml:"-"`
+	S3ScanMode    bool `yaml:"-"`
+	S3RestoreMode bool `yaml:"-"`
 }
 
 func (c *Config) LogLvl() log15.Lvl {

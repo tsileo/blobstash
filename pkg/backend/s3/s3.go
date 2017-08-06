@@ -8,6 +8,7 @@ package s3 // import "a4.io/blobstash/pkg/backend/s3"
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -33,6 +34,7 @@ import (
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/hashutil"
+	"a4.io/blobstash/pkg/hub"
 	"a4.io/blobstash/pkg/queue"
 )
 
@@ -264,6 +266,7 @@ type S3Backend struct {
 	key       *[32]byte
 
 	backend *blobsfile.BlobsFiles
+	hub     *hub.Hub
 
 	wg sync.WaitGroup
 
@@ -273,11 +276,12 @@ type S3Backend struct {
 	bucket string
 }
 
-func New(logger log.Logger, back *blobsfile.BlobsFiles, conf *config.Config) (*S3Backend, error) {
+func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config.Config) (*S3Backend, error) {
 	// Parse config
 	bucket := conf.S3Repl.Bucket
 	region := conf.S3Repl.Region
 	scanMode := conf.S3ScanMode
+	restoreMode := conf.S3RestoreMode
 	key, err := conf.S3Repl.Key()
 	if err != nil {
 		return nil, err
@@ -294,7 +298,7 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, conf *config.Config) (*S
 
 	// Init the disk-backed index
 	indexPath := filepath.Join(conf.VarDir(), "s3-backend.index")
-	if scanMode {
+	if scanMode || restoreMode {
 		logger.Debug("trying to remove old index file")
 		os.Remove(indexPath)
 	}
@@ -306,6 +310,7 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, conf *config.Config) (*S
 	s3backend := &S3Backend{
 		log:     logger,
 		backend: back,
+		hub:     h,
 		s3:      s3.New(sess),
 		stop:    make(chan struct{}),
 		bucket:  bucket,
@@ -319,7 +324,7 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, conf *config.Config) (*S
 		s3backend.encrypted = true
 	}
 
-	logger.Info("Initializing S3 replication", "bucket", bucket, "encrypted", s3backend.encrypted, "scan_mode", scanMode)
+	logger.Info("Initializing S3 replication", "bucket", bucket, "encrypted", s3backend.encrypted, "scan_mode", scanMode, "restore_mode", restoreMode)
 
 	// Ensure the bucket exist
 	obucket := NewBucket(s3backend.s3, bucket)
@@ -336,9 +341,9 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, conf *config.Config) (*S
 		}
 	}
 
-	// Trigger a re-indexing if requested
-	if scanMode {
-		if err := s3backend.reindex(obucket); err != nil {
+	// Trigger a re-indexing/full restore if requested
+	if scanMode || restoreMode {
+		if err := s3backend.reindex(obucket, restoreMode); err != nil {
 			return nil, err
 		}
 	}
@@ -375,7 +380,7 @@ func nextKey(key string) string {
 	return string(bkey)
 }
 
-func (b *S3Backend) reindex(bucket *Bucket) error {
+func (b *S3Backend) reindex(bucket *Bucket, restore bool) error {
 	b.log.Info("Starting S3 re-indexing")
 	start := time.Now()
 	max := 100
@@ -383,8 +388,8 @@ func (b *S3Backend) reindex(bucket *Bucket) error {
 
 	if err := bucket.Iter(max, func(object *Object) error {
 		b.log.Debug("fetching an objects batch from S3")
-		blob := NewEncryptedBlob(object, nil)
-		hash, err := blob.PlainTextHash()
+		eblob := NewEncryptedBlob(object, b.key)
+		hash, err := eblob.PlainTextHash()
 		if err != nil {
 			return err
 		}
@@ -392,6 +397,39 @@ func (b *S3Backend) reindex(bucket *Bucket) error {
 
 		if err := b.index.Index(hash); err != nil {
 			return err
+		}
+
+		if restore {
+			// Here we interact with the BlobsFile directly, which is quite dangerous
+			// (the hub event is crucial here to behave like the BlobStore)
+
+			exists, err := b.backend.Exists(hash)
+			if err != nil {
+				return err
+			}
+
+			if exists {
+				b.log.Debug("blob already saved", "hash", hash)
+				return nil
+			}
+
+			data, err := eblob.PlainText()
+			if err != nil {
+				return err
+			}
+
+			if err := b.backend.Put(hash, data); err != nil {
+				return err
+			}
+
+			// Wait for subscribed event completion
+			if err := b.hub.NewBlobEvent(context.TODO(), &blob.Blob{
+				Hash: hash,
+				Data: data,
+			}, nil); err != nil {
+				return err
+			}
+
 		}
 
 		return nil
@@ -432,6 +470,18 @@ L:
 							deqFunc(false)
 							return err
 						}
+						// Double check the blob does not exists
+						exists, err := b.index.Exists(blob.Hash)
+						if err != nil {
+							deqFunc(false)
+							return err
+						}
+						if exists {
+							b.log.Debug("blob already exist", "hash", blob.Hash)
+							deqFunc(true)
+							return nil
+						}
+
 						if err := b.put(blob.Hash, data); err != nil {
 							deqFunc(false)
 							return err
@@ -453,15 +503,7 @@ L:
 }
 
 func (b *S3Backend) put(hash string, data []byte) error {
-	// Double check the blob does not exists
-	exists, err := b.index.Exists(hash)
-	if err != nil {
-		return err
-	}
-	if exists {
-		b.log.Debug("blob already exist", "hash", hash)
-		return nil
-	}
+	// At this point, we're sure the blob does not exist remotely
 
 	// Encrypt if requested
 	if b.encrypted {

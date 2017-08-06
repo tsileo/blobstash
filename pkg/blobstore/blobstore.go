@@ -39,7 +39,7 @@ func New(logger log.Logger, conf2 *config.Config, hub *hub.Hub) (*BlobStore, err
 	if s3repl := conf2.S3Repl; s3repl != nil && s3repl.Bucket != "" {
 		logger.Debug("init s3 replication")
 		var err error
-		s3back, err = s3.New(logger.New("app", "s3_replication"), back, conf2)
+		s3back, err = s3.New(logger.New("app", "s3_replication"), back, hub, conf2)
 		if err != nil {
 			return nil, err
 		}
