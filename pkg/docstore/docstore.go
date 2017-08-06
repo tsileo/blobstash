@@ -554,10 +554,10 @@ func addSpecialFields(doc map[string]interface{}, _id *id.ID) {
 	doc["_id"] = _id
 	doc["_hash"] = _id.Hash()
 
-	doc["_created"] = time.Unix(0, _id.Ts()).Format(time.RFC3339)
+	doc["_created"] = time.Unix(0, _id.Ts()).UTC().Format(time.RFC3339)
 	updated := _id.Version()
 	if updated != doc["_created"] {
-		doc["_updated"] = time.Unix(0, int64(updated)).Format(time.RFC3339)
+		doc["_updated"] = time.Unix(0, int64(updated)).UTC().Format(time.RFC3339)
 	}
 }
 
@@ -842,9 +842,12 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			w.Header().Set("BlobStash-DocStore-Doc-CreatedAt", strconv.FormatInt(_id.Ts(), 10))
 			w.WriteHeader(http.StatusCreated)
 			srw := httputil.NewSnappyResponseWriter(w, r)
+
+			created := time.Unix(0, _id.Ts()).UTC().Format(time.RFC3339)
+
 			httputil.WriteJSON(srw, map[string]interface{}{
 				"_id":      _id.String(),
-				"_created": _id.Ts(),
+				"_created": created,
 				"_hash":    _id.Hash(),
 			})
 			srw.Close()

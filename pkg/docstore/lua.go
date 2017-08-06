@@ -68,6 +68,23 @@ func (docstore *DocStore) newLuaQueryEngine(query *query) (*LuaQueryEngine, erro
 	fmt.Printf("code=\n\n%s\n\n", engine.code)
 	gluarequire2.NewRequire2Module(gluarequire2.NewRequireFromGitHub(nil)).SetGlobal(engine.L)
 	setGlobals(engine.L)
+	if err := engine.L.DoString(`
+return function (t, wanted)
+  print('in_list')
+  print(t)
+  print(wanted)
+  for _, value in ipairs(t) do
+    if value == wanted then
+      return true
+    end
+  end
+  return false
+end
+`); err != nil {
+		panic(err)
+	}
+	engine.L.SetGlobal("in_list", engine.L.Get(-1).(*lua.LFunction))
+
 	engine.logger.Debug("init", "query", engine.query)
 	// Parse the Lua query, which should be defined as a `function(doc) -> bool`, we parse it only once, then we got
 	// a "Lua func" Go object which we can call repeatedly for each document.
@@ -137,12 +154,6 @@ func (lqe *LuaQueryEngine) Match(doc map[string]interface{}) (bool, error) {
 	return out, nil
 }
 
-func stem(L *lua.LState) int {
-	in := L.ToString(1)
-	L.Push(lua.LString(porterstemmer.StemString(in)))
-	return 1
-}
-
 func ltokenize(L *lua.LState) int {
 	in := L.ToString(1)
 	out, err := tokenize([]byte(in))
@@ -150,6 +161,12 @@ func ltokenize(L *lua.LState) int {
 		panic(err)
 	}
 	L.Push(luautil.InterfaceToLValue(L, out))
+	return 1
+}
+
+func stem(L *lua.LState) int {
+	in := L.ToString(1)
+	L.Push(lua.LString(porterstemmer.StemString(in)))
 	return 1
 }
 
