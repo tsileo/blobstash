@@ -44,7 +44,6 @@ import (
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/blobstore"
 	"a4.io/blobstash/pkg/config"
-	"a4.io/blobstash/pkg/ctxutil"
 	"a4.io/blobstash/pkg/docstore/id"
 	_ "a4.io/blobstash/pkg/docstore/index"
 	"a4.io/blobstash/pkg/filetree"
@@ -970,11 +969,12 @@ func (docstore *DocStore) Fetch(collection, sid string, res interface{}, fetchPo
 		}
 	case *[]byte:
 		// Decode the doc and encode it to JSON
-		if err := msgpack.Unmarshal(blob, idoc); err != nil {
+		out := map[string]interface{}{}
+		if err := msgpack.Unmarshal(blob, &out); err != nil {
 			return nil, nil, fmt.Errorf("failed to unmarshal blob: %s", blob)
 		}
 		// TODO(tsileo): set the special fields _created/_updated/_hash
-		js, err := json.Marshal(idoc)
+		js, err := json.Marshal(out)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1109,7 +1109,19 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 				panic(err)
 			}
 
-			w.WriteHeader(http.StatusNoContent)
+			w.Header().Set("Etag", _id.Hash())
+			w.WriteHeader(http.StatusOK)
+			srw := httputil.NewSnappyResponseWriter(w, r)
+
+			created := time.Unix(0, _id.Ts()).UTC().Format(time.RFC3339)
+
+			httputil.WriteJSON(srw, map[string]interface{}{
+				"_id":      _id.String(),
+				"_created": created,
+				"_hash":    _id.Hash(),
+			})
+			srw.Close()
+
 			return
 		case "POST":
 			// Update the whole document
@@ -1119,9 +1131,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			defer docstore.locker.Unlock(sid)
 
 			// permissions.CheckPerms(r, PermCollectionName, collection, PermWrite)
-			ns := r.Header.Get("BlobStash-Namespace")
-			// FIXME(tsileo): remove namespace support
-			ctx := ctxutil.WithNamespace(context.Background(), ns)
+			ctx := context.Background()
 			// Fetch the actual doc
 			doc := map[string]interface{}{}
 			_id, _, err = docstore.Fetch(collection, sid, &doc, false)
@@ -1165,7 +1175,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 				panic(err)
 			}
 
-			docstore.logger.Debug("Update", "_id", sid, "ns", ns, "new_doc", newDoc)
+			docstore.logger.Debug("Update", "_id", sid, "new_doc", newDoc)
 
 			// Compute the Blake2B hash and save the blob
 			hash := fmt.Sprintf("%x", blake2b.Sum256(data))
@@ -1177,6 +1187,19 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			if _, err := docstore.kvStore.Put(ctx, fmt.Sprintf(KeyFmt, collection, _id.String()), hash, []byte{_id.Flag()}, -1); err != nil {
 				panic(err)
 			}
+			w.Header().Set("Etag", _id.Hash())
+			w.WriteHeader(http.StatusOK)
+			srw := httputil.NewSnappyResponseWriter(w, r)
+
+			created := time.Unix(0, _id.Ts()).UTC().Format(time.RFC3339)
+
+			httputil.WriteJSON(srw, map[string]interface{}{
+				"_id":      _id.String(),
+				"_created": created,
+				"_hash":    _id.Hash(),
+			})
+			srw.Close()
+
 			return
 		case "DELETE":
 			docstore.locker.Lock(sid)

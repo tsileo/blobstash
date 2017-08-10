@@ -106,7 +106,7 @@ function get_path (doc, q)
       part = part:sub(2, 2)
     end
     if tonumber(part) ~= nil then
-      p = p[tonumber(part)+1]
+      p = p[tonumber(part)]
     else
       p = p[part]
     end
@@ -117,7 +117,7 @@ function get_path (doc, q)
   return p
 end
 _G.get_path = get_path
-return function (doc, path, value, q)
+function in_list (doc, path, value, q)
   local p = get_path(doc, path)
   if type(p) ~= 'table' then
     return false
@@ -131,6 +131,28 @@ return function (doc, path, value, q)
   end
   return false
 end
+
+function match (doc, path, op, value)
+  p = get_path(doc, path)
+  if type(p) ~= type(value) then return false end
+  if op == 'EQ' then
+    return p == value
+  elseif op == 'NE' then
+    return p ~= value
+  elseif op == 'GT' then
+    return p > value
+  elseif op == 'GE' then
+    return p >= value
+  elseif op == 'LT' then
+    return p < value
+  elseif op == 'LE' then
+    return p <= value
+  end
+  return false
+end
+_G.match = match
+
+return in_list
 `); err != nil {
 		panic(err)
 	}
