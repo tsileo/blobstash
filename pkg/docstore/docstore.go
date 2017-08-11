@@ -192,7 +192,7 @@ func (docstore *DocStore) Register(r *mux.Router, basicAuth func(http.Handler) h
 	// r.Handle("/{collection}/_indexes", middlewares.Auth(http.HandlerFunc(docstore.indexesHandler())))
 	// TODO(tsileo): a /{collection}/{_id}/_versions handler that use `docstore.FetchVerions`
 	r.Handle("/{collection}/{_id}", basicAuth(http.HandlerFunc(docstore.docHandler())))
-	r.Handle("/{collection}/{_id}/_versions", basicAuth(http.HandlerFunc(docstore.docVersionsHandler())))
+	// r.Handle("/{collection}/{_id}/_versions", basicAuth(http.HandlerFunc(docstore.docVersionsHandler())))
 }
 
 // Expand a doc keys (fetch the blob as JSON, or a filesystem reference)
