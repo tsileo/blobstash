@@ -192,6 +192,7 @@ func (docstore *DocStore) Register(r *mux.Router, basicAuth func(http.Handler) h
 	// r.Handle("/{collection}/_indexes", middlewares.Auth(http.HandlerFunc(docstore.indexesHandler())))
 	// TODO(tsileo): a /{collection}/{_id}/_versions handler that use `docstore.FetchVerions`
 	r.Handle("/{collection}/{_id}", basicAuth(http.HandlerFunc(docstore.docHandler())))
+	r.Handle("/{collection}/{_id}/_versions", basicAuth(http.HandlerFunc(docstore.docVersionsHandler())))
 }
 
 // Expand a doc keys (fetch the blob as JSON, or a filesystem reference)
@@ -627,7 +628,7 @@ QUERY:
 		// Performs a unoptimized linear scan
 		// res, cursor, err := docstore.kvStore.Keys(context.TODO(), end, start, fetchLimit)
 		res, cursor, err := docstore.kvStore.ReverseKeys(end, start, fetchLimit)
-		fmt.Printf("res=%+v\ncursor=%+v\nerr=%+v", res, cursor, err)
+		fmt.Printf("res=%+v\ncursor=%+v\nerr=%+v\n%+v\n%+v\n", res, cursor, err, []byte(end), []byte(start))
 		// res, err := docstore.kvStore.ReverseKeys(end, start, fetchLimit)
 		if err != nil {
 			panic(err)
@@ -754,7 +755,10 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				basicQuery:      q.Get("query"),
 			}, cursor, limit, true)
 			if err != nil {
+				panic(err)
+				docstore.logger.Error("query failed", "err", err)
 				httputil.Error(w, err)
+				return
 			}
 
 			// Set some meta headers to help the client build subsequent query

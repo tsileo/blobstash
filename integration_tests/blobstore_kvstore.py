@@ -9,7 +9,7 @@ sys.path.insert(0, p)
 
 from tests.client import Blob
 from tests.client import Client
-from tests.server import BlobStash
+from blobstash.base.test_utils import BlobStash
 
 MORE_BLOBS = 999
 

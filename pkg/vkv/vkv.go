@@ -18,8 +18,8 @@ const schemaVersion = 1
 const (
 	Sep              = ':'
 	FlagUnknown byte = iota
-	FlagKey
 	FlagVersion
+	FlagKey
 )
 
 // KvType for meta serialization

@@ -19,11 +19,13 @@ func getRange(t *testing.T, db *RangeDB, start, end []byte, r bool) [][]byte {
 	c := db.Range(start, end, r)
 
 	k, v, err := c.Next()
+	t.Logf("err after next=%+v %+v %+v", err, k, v)
 	for ; err == nil; k, v, err = c.Next() {
 		out = append(out, k)
 		t.Logf("k=%s, v=%s", k, v)
 	}
 	if err == io.EOF {
+		t.Logf("EOF")
 		return out
 	}
 	check(err)
@@ -66,7 +68,9 @@ func TestDBBasic(t *testing.T) {
 		out[i], out[j] = out[j], out[i]
 	}
 
+	t.Logf("before r3")
 	r3 := getRange(t, db, []byte("hello080"), []byte("hello\xff"), true)
+	t.Logf("len r3=%d", len(r3))
 	if !reflect.DeepEqual(r3, out[0:20]) {
 		t.Errorf("range check failed")
 	}

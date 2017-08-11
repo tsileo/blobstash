@@ -2,6 +2,7 @@ package rangedb // import "a4.io/blobstash/pkg/rangedb"
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -78,12 +79,13 @@ func (r *Range) first() ([]byte, []byte, error) {
 	if r.Reverse {
 		r.enum, _, err = r.db.db.Seek(r.Max)
 		if err != nil {
+
 			return nil, nil, err
 		}
 		k, v, err := r.enum.Prev()
 		if err == io.EOF {
 			r.enum, err = r.db.db.SeekLast()
-			return r.enum.Prev()
+			k, v, err = r.enum.Prev()
 		}
 		if err != nil {
 			return nil, nil, err
@@ -108,20 +110,29 @@ func (r *Range) next() ([]byte, []byte, error) {
 	return r.enum.Next()
 }
 
+func cut(k []byte, i int) []byte {
+	if len(k) < i {
+		return k
+	}
+	return k[0:i]
+}
+
 func (r *Range) Next() ([]byte, []byte, error) {
 	r.db.mu.Lock()
 	defer r.db.mu.Unlock()
 
 	k, v, err := r.next()
 	if r.shouldContinue(k) {
+		fmt.Printf("should continue %s %+v %+v %+v %v %+v %+v\n", k, k, v, err, bytes.Compare(cut(k, len(r.Min)), r.Min), r.Min, r.Max)
 		return k, v, err
 	}
+	fmt.Printf("should not continue %s %+v %+v %+v\n", k, k, v, err)
 	return nil, nil, io.EOF
 }
 
 func (r *Range) shouldContinue(key []byte) bool {
 	if r.Reverse {
-		return key != nil && bytes.Compare(key, r.Min) >= 0
+		return key != nil && bytes.Compare(key, r.Min) >= 0 && bytes.Compare(key, r.Max) <= 0
 	}
 
 	return key != nil && bytes.Compare(key, r.Max) <= 0
