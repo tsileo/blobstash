@@ -2,7 +2,6 @@ package rangedb // import "a4.io/blobstash/pkg/rangedb"
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -123,10 +122,8 @@ func (r *Range) Next() ([]byte, []byte, error) {
 
 	k, v, err := r.next()
 	if r.shouldContinue(k) {
-		fmt.Printf("should continue %s %+v %+v %+v %v %+v %+v\n", k, k, v, err, bytes.Compare(cut(k, len(r.Min)), r.Min), r.Min, r.Max)
 		return k, v, err
 	}
-	fmt.Printf("should not continue %s %+v %+v %+v\n", k, k, v, err)
 	return nil, nil, io.EOF
 }
 

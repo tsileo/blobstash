@@ -628,7 +628,6 @@ QUERY:
 		// Performs a unoptimized linear scan
 		// res, cursor, err := docstore.kvStore.Keys(context.TODO(), end, start, fetchLimit)
 		res, cursor, err := docstore.kvStore.ReverseKeys(end, start, fetchLimit)
-		fmt.Printf("res=%+v\ncursor=%+v\nerr=%+v\n%+v\n%+v\n", res, cursor, err, []byte(end), []byte(start))
 		// res, err := docstore.kvStore.ReverseKeys(end, start, fetchLimit)
 		if err != nil {
 			panic(err)
