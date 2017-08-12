@@ -1,16 +1,10 @@
 import logging
 import os
-import time
 
-import sys
+from blobstash.docstore import DocStoreClient
+from blobstash.docstore import Q
+from blobstash.base.test_utils import BlobStash
 
-p = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-sys.path.insert(0, p)
-
-from tests.client import Client
-from tests.server import BlobStash
-
-MORE_BLOBS = 999
 
 logging_log_level = logging.INFO
 log_level = 'error'
@@ -24,43 +18,43 @@ logging.info('Running integration tests...')
 
 b = BlobStash()
 b.cleanup()
-c = Client()
+client = DocStoreClient(api_key='123')
 logging.info('Start BlobStash')
 b.run(log_level=log_level)
 
+col1 = client.col1
 
-def clean_doc(doc):
-    new_doc = doc.copy()
-    for k in doc.keys():
-        if k.startswith('_'):
-            del new_doc[k]
-    return new_doc
+for i in range(10):
+    col1.insert({'lol': i+1})
+
+col2 = client.col2
 
 COL = 'hello'
 DOCS_COUNT = 1000
 docs = []
 for i in range(DOCS_COUNT):
     doc = dict(hello=i)
-    resp = c.put_doc(COL, doc)
-    doc.update(resp)
+    resp = col2.insert(doc)
     docs.append(doc)
 
 for doc in docs:
-    rdoc = c.get_doc(COL, doc['_id'])['data']
-    assert clean_doc(doc) == clean_doc(rdoc)
+    rdoc = col2.get_by_id(doc['_id'])
+    assert rdoc == doc
 
 rdocs = []
-cursor = ''
-while 1:
-    resp = c.get_docs(COL, cursor=cursor)
-    rdocs.extend(resp['data'])
-    pagination = resp['pagination']
-    if not pagination['has_more']:
-        break
-    cursor = pagination['cursor']
+for rdoc in col2.query():
+    rdocs.append(rdoc)
 
-for i, rdoc in enumerate(rdocs):
-    assert clean_doc(rdoc) == clean_doc(docs[DOCS_COUNT-(1+i)])
+assert rdocs == docs[::-1]
+
+col3 = client.col3
+
+for i in range(50):
+    col3.insert({'i': i, 'nested': {'i': i}, 'l': [True, i]})
+
+assert len(list(col3.query(Q['nested']['i'] >= 25))) == 25
+
+assert sorted(['col1', 'col2', 'col3']) == sorted([c.name for c in client.collections()])
 
 # Shutdown BlobStash
 b.shutdown()
