@@ -23,7 +23,7 @@ if os.getenv('BLOBSTASH_DEBUG'):
 logging.basicConfig(level=logging_log_level)
 logging.info('Running integration tests...')
 
-b = BlobStash()
+b = BlobStash(config='tests/blobstash.yaml')
 b.cleanup()
 c = Client()
 logging.info('Start BlobStash')
