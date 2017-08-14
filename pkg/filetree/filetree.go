@@ -598,6 +598,10 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 				// Returns a 404 if the blob/children is not found
 				w.WriteHeader(http.StatusNotFound)
 				return
+			case blobsfile.ErrBlobNotFound:
+				// Returns a 404 if the blob/children is not found
+				w.WriteHeader(http.StatusNotFound)
+				return
 			default:
 				panic(err)
 			}
