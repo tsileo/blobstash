@@ -18,6 +18,7 @@ import (
 	log "github.com/inconshreveable/log15"
 	"golang.org/x/net/context"
 
+	"a4.io/blobsfile"
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/blobstore"
 	"a4.io/blobstash/pkg/cache"
@@ -38,7 +39,7 @@ import (
 var (
 	// FIXME(tsileo): add a way to set a custom fmt key life for Blobs CLI as we don't care about the FS?
 	indexFile = "index.html"
-	FSKeyFmt  = "blobfs:root:%s"
+	FSKeyFmt  = "_filetree:fs:%s"
 	// FSKeyFmt = "_:filetree:fs:%s"
 	// PermName     = "filetree"
 	// PermTreeName = "filetree:root:"
@@ -152,7 +153,7 @@ func (ft *FileTreeExt) Register(r *mux.Router, root *mux.Router, basicAuth func(
 	r.Handle("/dir/{ref}", dirHandler)
 	r.Handle("/file/{ref}", fileHandler)
 
-	r.Handle("/index/{ref}", basicAuth(http.HandlerFunc(ft.indexHandler())))
+	// r.Handle("/index/{ref}", basicAuth(http.HandlerFunc(ft.indexHandler())))
 
 	// Enable shortcut path from the root
 	root.Handle("/d/{ref}", dirHandler)
@@ -207,7 +208,7 @@ func (ft *FileTreeExt) Update(n *Node, m *rnode.RawNode) (*Node, error) {
 	newChildren := []*Node{newNode}
 
 	for _, c := range newNode.parent.Children {
-		if c.Hash != n.Hash {
+		if c.Name != n.Name {
 			newRefs = append(newRefs, c.Hash)
 			newChildren = append(newChildren, c)
 		}
@@ -308,7 +309,7 @@ func (fs *FS) Root(create bool) (*Node, error) {
 	fs.ft.log.Info("Root", "fs", fs)
 	node, err := fs.ft.nodeByRef(fs.Ref)
 	switch err {
-	case clientutil.ErrBlobNotFound:
+	case blobsfile.ErrBlobNotFound:
 		if !create {
 			return nil, err
 		}
