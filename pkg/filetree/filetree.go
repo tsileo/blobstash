@@ -141,7 +141,7 @@ func (ft *FileTreeExt) Register(r *mux.Router, root *mux.Router, basicAuth func(
 	dirHandler := http.HandlerFunc(ft.dirHandler())
 	fileHandler := http.HandlerFunc(ft.fileHandler())
 
-	r.Handle("/fs/root", basicAuth(http.HandlerFunc(ft.fsRootHandler())))
+	r.Handle("/fs", basicAuth(http.HandlerFunc(ft.fsRootHandler())))
 	r.Handle("/fs/{type}/{name}/", basicAuth(http.HandlerFunc(ft.fsHandler())))
 	r.Handle("/fs/{type}/{name}/{path:.+}", basicAuth(http.HandlerFunc(ft.fsHandler())))
 	// r.Handle("/fs", http.HandlerFunc(ft.fsHandler()))
@@ -180,7 +180,7 @@ type Node struct {
 }
 
 // Update the given node with the given meta
-func (ft *FileTreeExt) Update(n *Node, m *rnode.RawNode) (*Node, error) {
+func (ft *FileTreeExt) Update(n *Node, m *rnode.RawNode, prefixFmt string) (*Node, error) {
 	newNode, err := metaToNode(m)
 	if err != nil {
 		return nil, err
@@ -198,7 +198,7 @@ func (ft *FileTreeExt) Update(n *Node, m *rnode.RawNode) (*Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		if ft.kvStore.Put(context.TODO(), fmt.Sprintf(FSKeyFmt, n.fs.Name), "", js, -1); err != nil {
+		if ft.kvStore.Put(context.TODO(), fmt.Sprintf(prefixFmt, n.fs.Name), "", js, -1); err != nil {
 			return nil, err
 		}
 		return newNode, nil
@@ -230,7 +230,7 @@ func (ft *FileTreeExt) Update(n *Node, m *rnode.RawNode) (*Node, error) {
 	// n.parent.Hash = newRef
 	// parentMeta.Hash = newRef
 	// Propagate the change to the parents
-	if _, err := ft.Update(newNode.parent, newNode.parent.Meta); err != nil {
+	if _, err := ft.Update(newNode.parent, newNode.parent.Meta, prefixFmt); err != nil {
 		return nil, err
 	}
 	return newNode, nil
@@ -281,10 +281,10 @@ func (ft *FileTreeExt) fetchDir(n *Node, depth, maxDepth int) error {
 }
 
 // FS fetch the FileSystem by name, returns an empty one if not found
-func (ft *FileTreeExt) FS(name string, newState bool) (*FS, error) {
+func (ft *FileTreeExt) FS(name, prefixFmt string, newState bool) (*FS, error) {
 	fs := &FS{}
 	if !newState {
-		kv, err := ft.kvStore.Get(context.TODO(), fmt.Sprintf(FSKeyFmt, name), -1)
+		kv, err := ft.kvStore.Get(context.TODO(), fmt.Sprintf(prefixFmt, name), -1)
 		if err != nil && err != vkv.ErrNotFound {
 			return nil, err
 		}
@@ -535,6 +535,7 @@ func (ft *FileTreeExt) fetchInfo(reader io.ReadSeeker, filename, hash string) (*
 	return info, nil
 }
 
+// FIXME(ts): fix this one
 func (ft *FileTreeExt) fsRootHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
@@ -545,9 +546,13 @@ func (ft *FileTreeExt) fsRootHandler() func(http.ResponseWriter, *http.Request) 
 		nodes := []*Node{}
 
 		prefix := r.URL.Query().Get("prefix")
-		if prefix == "" {
+		if prefix != "" {
+			prefix = prefix + ":%s"
+		} else {
 			prefix = FSKeyFmt
 		}
+		prefix = prefix[0 : len(prefix)-2]
+
 		keys, _, err := ft.kvStore.Keys(context.TODO(), prefix, prefix+"\xff", 0)
 		if err != nil {
 			panic(err)
@@ -573,6 +578,10 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 		fsName := vars["name"]
 		path := "/" + vars["path"]
 		refType := vars["type"]
+		prefixFmt := FSKeyFmt
+		if p := r.URL.Query().Get("prefix"); p != "" {
+			prefixFmt = p + ":%s"
+		}
 		var fs *FS
 		var err error
 		switch refType {
@@ -582,7 +591,7 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 				ft:  ft,
 			}
 		case "fs":
-			fs, err = ft.FS(fsName, false)
+			fs, err = ft.FS(fsName, prefixFmt, false)
 			if err != nil {
 				panic(err)
 			}
@@ -638,7 +647,7 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 
 			// Update the Node with the new Meta
 			// fmt.Printf("uploaded meta=%+v\nold node=%+v", meta, node)
-			newNode, err := ft.Update(node, meta)
+			newNode, err := ft.Update(node, meta, prefixFmt)
 			if err != nil {
 				panic(err)
 			}
