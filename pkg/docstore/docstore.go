@@ -560,8 +560,8 @@ func addSpecialFields(doc map[string]interface{}, _id *id.ID) {
 	}
 }
 
-func (docstore *DocStore) Query(collection string, query *query, cursor string, limit int) ([]map[string]interface{}, map[string]interface{}, *executionStats, error) {
-	docs, pointers, stats, err := docstore.query(collection, query, cursor, limit, true)
+func (docstore *DocStore) Query(collection string, query *query, cursor string, limit, asOf int) ([]map[string]interface{}, map[string]interface{}, *executionStats, error) {
+	docs, pointers, stats, err := docstore.query(collection, query, cursor, limit, true, asOf)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -571,7 +571,7 @@ func (docstore *DocStore) Query(collection string, query *query, cursor string, 
 
 // query returns a JSON list as []byte for the given query
 // docs are unmarhsalled to JSON only when needed.
-func (docstore *DocStore) query(collection string, query *query, cursor string, limit int, fetchPointers bool) ([]map[string]interface{}, map[string]interface{}, *executionStats, error) {
+func (docstore *DocStore) query(collection string, query *query, cursor string, limit int, fetchPointers bool, asOf int) ([]map[string]interface{}, map[string]interface{}, *executionStats, error) {
 	// js := []byte("[")
 	tstart := time.Now()
 	stats := &executionStats{
@@ -661,25 +661,39 @@ QUERY:
 		}
 		defer qmatcher.Close()
 		var docPointers map[string]interface{}
-
 		for _, _id := range _ids {
 			// Check if the doc match the query
 			// jsPart := []byte{}
 			doc := map[string]interface{}{}
-			qLogger.Debug("fetch doc", "_id", _id)
+			qLogger.Debug("fetch doc", "_id", _id, "as_of", asOf)
 			var err error
-			// FIXME(tsileo): only fetch the pointers once the doc has been matched!
-			if _id, docPointers, err = docstore.Fetch(collection, _id.String(), &doc, fetchPointers); err != nil {
-
-				// The document is deleted skip it
-				if _id.Flag() == FlagDeleted {
+			if asOf > 0 {
+				// FIXME(tsileo): should return a `[]*id.ID` to, and check the flag before selecting the doc
+				docVersions, allDocPointers, _, err := docstore.FetchVersions(collection, _id.String(), asOf, 1, fetchPointers)
+				// FIXME(tsileo): check deleted
+				if err != nil {
+					panic(err)
+				}
+				if len(docVersions) > 0 {
+					doc = docVersions[0]
+					docPointers = allDocPointers
+				} else {
 					continue
 				}
-				// TODO(tsileo): why catch ErrNotFound? should panic?
-				if err == vkv.ErrNotFound {
-					break
+			} else {
+				// FIXME(tsileo): only fetch the pointers once the doc has been matched!
+				if _id, docPointers, err = docstore.Fetch(collection, _id.String(), &doc, fetchPointers, -1); err != nil {
+
+					// The document is deleted skip it
+					if _id.Flag() == FlagDeleted {
+						continue
+					}
+					// TODO(tsileo): why catch ErrNotFound? should panic?
+					if err == vkv.ErrNotFound {
+						break
+					}
+					panic(err)
 				}
-				panic(err)
 			}
 			stats.TotalDocsExamined++
 			ok, err := qmatcher.Match(doc)
@@ -727,8 +741,23 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 		case "GET", "HEAD":
 			// permissions.CheckPerms(r, PermCollectionName, collection, PermRead)
 
+			var asOf int
+			var err error
 			// Parse the cursor
 			cursor := q.Get("cursor")
+			if v := q.Get("as_of"); v != "" {
+				t, err := time.Parse("2006-1-2 15:4:5", v)
+				if err != nil {
+					panic(err)
+				}
+				asOf = int(t.UTC().UnixNano())
+			}
+			if asOf == 0 {
+				asOf, err = q.GetIntDefault("as_of_nano", 0)
+				if err != nil {
+					panic(err)
+				}
+			}
 
 			// Parse the query (JSON-encoded)
 			var queryArgs interface{}
@@ -751,7 +780,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				storedQuery:     q.Get("stored_query"),
 				script:          q.Get("script"),
 				basicQuery:      q.Get("query"),
-			}, cursor, limit, true)
+			}, cursor, limit, true, asOf)
 			if err != nil {
 				panic(err)
 				docstore.logger.Error("query failed", "err", err)
@@ -907,7 +936,7 @@ func (docstore *DocStore) FetchVersions(collection, sid string, start, limit int
 		if err != nil {
 			panic(err)
 		}
-		_id.SetHash(hash)
+		_id.SetHash(kv.HexHash())
 		_id.SetVersion(kv.Version)
 		addSpecialFields(doc, _id)
 
@@ -932,13 +961,13 @@ func (docstore *DocStore) FetchVersions(collection, sid string, start, limit int
 }
 
 // Fetch a single document into `res` and returns the `id.ID`
-func (docstore *DocStore) Fetch(collection, sid string, res interface{}, fetchPointers bool) (*id.ID, map[string]interface{}, error) {
+func (docstore *DocStore) Fetch(collection, sid string, res interface{}, fetchPointers bool, version int) (*id.ID, map[string]interface{}, error) {
 	if collection == "" {
 		return nil, nil, errors.New("missing collection query arg")
 	}
 
 	// Fetch the VKV entry for this _id
-	kv, err := docstore.kvStore.Get(context.TODO(), fmt.Sprintf(KeyFmt, collection, sid), -1)
+	kv, err := docstore.kvStore.Get(context.TODO(), fmt.Sprintf(KeyFmt, collection, sid), version)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1023,7 +1052,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			// js := []byte{}
 			var doc, pointers map[string]interface{}
 
-			if _id, pointers, err = docstore.Fetch(collection, sid, &doc, true); err != nil {
+			if _id, pointers, err = docstore.Fetch(collection, sid, &doc, true, -1); err != nil {
 				if err == vkv.ErrNotFound || _id.Flag() == FlagDeleted {
 					// Document doesn't exist, returns a status 404
 					w.WriteHeader(http.StatusNotFound)
@@ -1066,7 +1095,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 
 			// Fetch the current doc
 			js := []byte{}
-			if _id, _, err = docstore.Fetch(collection, sid, &js, false); err != nil {
+			if _id, _, err = docstore.Fetch(collection, sid, &js, false, -1); err != nil {
 				if err == vkv.ErrNotFound {
 					// Document doesn't exist, returns a status 404
 					w.WriteHeader(http.StatusNotFound)
@@ -1144,7 +1173,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			ctx := context.Background()
 			// Fetch the actual doc
 			doc := map[string]interface{}{}
-			_id, _, err = docstore.Fetch(collection, sid, &doc, false)
+			_id, _, err = docstore.Fetch(collection, sid, &doc, false, -1)
 			if err != nil {
 				if err == vkv.ErrNotFound || _id.Flag() == FlagDeleted {
 					// Document doesn't exist, returns a status 404
@@ -1215,7 +1244,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			docstore.locker.Lock(sid)
 			defer docstore.locker.Unlock(sid)
 
-			_id, _, err := docstore.Fetch(collection, sid, nil, false)
+			_id, _, err := docstore.Fetch(collection, sid, nil, false, -1)
 			if err != nil {
 				if err == vkv.ErrNotFound || _id.Flag() == FlagDeleted {
 					// Document doesn't exist, returns a status 404
