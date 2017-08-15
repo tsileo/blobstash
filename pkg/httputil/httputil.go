@@ -157,11 +157,25 @@ func (q *Query) GetDefault(key, defaultval string) string {
 	return defaultval
 }
 
+func (q *Query) GetBoolDefault(key string, defaultval bool) (bool, error) {
+	if sv := q.values.Get(key); sv != "" {
+		val, err := strconv.ParseBool(sv)
+		if err != nil {
+			return false, fmt.Errorf("failed to parse %s as bool: %v", key, err)
+		}
+
+		return val, nil
+	}
+
+	// Return the default value
+	return defaultval, nil
+}
+
 func (q *Query) GetIntDefault(key string, defaultval int) (int, error) {
 	if sv := q.values.Get(key); sv != "" {
 		val, err := strconv.Atoi(sv)
 		if err != nil {
-			return 0, fmt.Errorf("failed to parse %s: %v", key, err)
+			return 0, fmt.Errorf("failed to parse %s as int: %v", key, err)
 		}
 
 		return val, nil

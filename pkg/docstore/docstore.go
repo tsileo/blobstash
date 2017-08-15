@@ -99,7 +99,7 @@ const (
 	PointerBlobJSON = "@blobs/json:" // FIXME(tsileo): document the Pointer feature
 	// PointerBlobRef     = "@blobs/ref:"  // FIXME(tsileo): implements this like a @filetree/ref
 	PointerFiletreeRef = "@filetree/ref:"
-	PointerURLInfo     = "@url/info:" // FIXME(tsileo): fetch OG meta data or at least title, optionally screenshot?
+	PointerURLInfo     = "@url/info:" // FIXME(tsileo): fetch OG meta data or at least title, optionally screenshot???
 	// TODO(tsileo): implements PointerKvRef
 	// PointerKvRef = "@kv/ref:"
 	// XXX(tsileo): allow custom Lua-defined pointer, this could be useful for implement cross-note linking in Blobs
@@ -190,9 +190,8 @@ func (docstore *DocStore) Register(r *mux.Router, basicAuth func(http.Handler) h
 
 	r.Handle("/{collection}", basicAuth(http.HandlerFunc(docstore.docsHandler())))
 	// r.Handle("/{collection}/_indexes", middlewares.Auth(http.HandlerFunc(docstore.indexesHandler())))
-	// TODO(tsileo): a /{collection}/{_id}/_versions handler that use `docstore.FetchVerions`
 	r.Handle("/{collection}/{_id}", basicAuth(http.HandlerFunc(docstore.docHandler())))
-	// r.Handle("/{collection}/{_id}/_versions", basicAuth(http.HandlerFunc(docstore.docVersionsHandler())))
+	r.Handle("/{collection}/{_id}/_versions", basicAuth(http.HandlerFunc(docstore.docVersionsHandler())))
 }
 
 // Expand a doc keys (fetch the blob as JSON, or a filesystem reference)
@@ -864,10 +863,11 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 
 // Fetch a single document into `res` and returns the `id.ID`
 // Start acts like a cursor.
-func (docstore *DocStore) FetchVersions(collection, sid string, start, limit int, fetchPointers bool) ([]map[string]interface{}, map[string]interface{}, error) {
+func (docstore *DocStore) FetchVersions(collection, sid string, start, limit int, fetchPointers bool) ([]map[string]interface{}, map[string]interface{}, int, error) {
+	var cursor int
 	// TODO(tsileo): better output than a slice of `map[string]interface{}`
 	if collection == "" {
-		return nil, nil, errors.New("missing collection query arg")
+		return nil, nil, cursor, errors.New("missing collection query arg")
 	}
 
 	// Fetch the KV versions entry for this _id
@@ -875,7 +875,7 @@ func (docstore *DocStore) FetchVersions(collection, sid string, start, limit int
 	kvv, _, err := docstore.kvStore.Versions(context.TODO(), fmt.Sprintf(KeyFmt, collection, sid), start, limit)
 	// FIXME(tsileo): return the cursor from Versions
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, cursor, err
 	}
 
 	// Parse the ID
@@ -896,19 +896,25 @@ func (docstore *DocStore) FetchVersions(collection, sid string, start, limit int
 		// Fetch the blob
 		blob, err := docstore.blobStore.Get(context.TODO(), hash)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to fetch blob %v", hash)
+			return nil, nil, cursor, fmt.Errorf("failed to fetch blob %v", hash)
 		}
 
 		// Build the doc
 		if err := msgpack.Unmarshal(blob, &doc); err != nil {
-			return nil, nil, fmt.Errorf("failed to unmarshal blob: %s", blob)
+			return nil, nil, cursor, fmt.Errorf("failed to unmarshal blob: %s", blob)
 		}
-		// TODO(tsileo): set the special fields _created/_updated/_hash
+		_id, err := id.FromHex(sid)
+		if err != nil {
+			panic(err)
+		}
+		_id.SetHash(hash)
+		_id.SetVersion(kv.Version)
+		addSpecialFields(doc, _id)
 
 		if fetchPointers {
 			docPointers, err := docstore.fetchPointers(doc)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, cursor, err
 			}
 			for k, v := range docPointers {
 				pointers[k] = v
@@ -916,12 +922,13 @@ func (docstore *DocStore) FetchVersions(collection, sid string, start, limit int
 		}
 
 		docs = append(docs, doc)
+		cursor = kv.Version - 1
 		// _id.SetHash(hash)
 		// _id.SetFlag(byte(kv.Data[0]))
 		// _id.SetVersion(kv.Version)
 
 	}
-	return docs, pointers, nil
+	return docs, pointers, cursor, nil
 }
 
 // Fetch a single document into `res` and returns the `id.ID`
@@ -1231,5 +1238,80 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 		w.Header().Set("BlobStash-DocStore-Doc-Id", sid)
 		w.Header().Set("BlobStash-DocStore-Doc-Hash", _id.Hash())
 		w.Header().Set("BlobStash-DocStore-Doc-CreatedAt", strconv.FormatInt(_id.Ts(), 10))
+	}
+}
+
+// HTTP handler for serving/updating a single doc
+func (docstore *DocStore) docVersionsHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		collection := vars["collection"]
+		if collection == "" {
+			httputil.WriteJSONError(w, http.StatusInternalServerError, "Missing collection in the URL")
+			return
+		}
+		sid := vars["_id"]
+		if sid == "" {
+			httputil.WriteJSONError(w, http.StatusInternalServerError, "Missing _id in the URL")
+			return
+		}
+		var _id *id.ID
+		srw := httputil.NewSnappyResponseWriter(w, r)
+		defer srw.Close()
+		switch r.Method {
+		case "GET", "HEAD":
+			q := httputil.NewQuery(r.URL.Query())
+			limit, err := q.GetIntDefault("limit", 50)
+			if err != nil {
+				httputil.Error(w, err)
+				return
+			}
+			cursor, err := q.GetIntDefault("cursor", int(time.Now().UTC().UnixNano()))
+			if err != nil {
+				httputil.Error(w, err)
+				return
+			}
+			fetchPointers, err := q.GetBoolDefault("fetch_pointers", true)
+			if err != nil {
+				httputil.Error(w, err)
+				return
+			}
+
+			// Serve the document JSON encoded
+			// permissions.CheckPerms(r, PermCollectionName, collection, PermRead)
+			// js := []byte{}
+
+			docs, pointers, cursor, err := docstore.FetchVersions(collection, sid, cursor, limit, fetchPointers)
+			if err != nil {
+				if err == vkv.ErrNotFound || _id.Flag() == FlagDeleted {
+					// Document doesn't exist, returns a status 404
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				panic(err)
+			}
+
+			js, err := json.Marshal(map[string]interface{}{
+				"pointers": pointers,
+				"data":     docs,
+				"pagination": map[string]interface{}{
+					"cursor":   cursor,
+					"has_more": len(docs) == limit,
+					"count":    len(docs),
+					"per_page": limit,
+				},
+			})
+			if err != nil {
+				panic(err)
+			}
+
+			if r.Method == "GET" {
+				w.Header().Set("Content-Type", "application/json")
+				srw.Write(js)
+			}
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+
+		}
 	}
 }
