@@ -34,10 +34,11 @@ func (p *BlobStoreProxy) Get(ctx context.Context, hash string) ([]byte, error) {
 	switch err {
 	case nil:
 	case blobsfile.ErrBlobNotFound:
-		return p.readSrc.Get(ctx, hash)
+		return p.ReadSrc.Get(ctx, hash)
 	default:
 		return nil, err
 	}
+	return data, nil
 }
 
 func (p *BlobStoreProxy) Stat(ctx context.Context, hash string) (bool, error) {
@@ -46,13 +47,13 @@ func (p *BlobStoreProxy) Stat(ctx context.Context, hash string) (bool, error) {
 		return false, err
 	}
 	if !exists {
-		return p.readSrc.Stat(ctx, hash)
+		return p.ReadSrc.Stat(ctx, hash)
 	}
 	return exists, nil
 }
 
 func (p *BlobStoreProxy) Put(ctx context.Context, blob *blob.Blob) error {
-	existsSrc, err := p.readSrc.Stat(ctx, blob.Hash)
+	existsSrc, err := p.ReadSrc.Stat(ctx, blob.Hash)
 	if err != nil {
 		return err
 	}
