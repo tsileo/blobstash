@@ -9,7 +9,7 @@ import (
 )
 
 type KvStore interface {
-	Put(ctx context.Context, key, ref string, data []byte, version int)
+	Put(ctx context.Context, key, ref string, data []byte, version int) (*vkv.KeyValue, error)
 	Get(ctx context.Context, key string, version int) (*vkv.KeyValue, error)
 	Versions(ctx context.Context, key string, start, limit int) (*vkv.KeyValueVersions, int, error)
 	Keys(ctx context.Context, start, end string, limit int) ([]*vkv.KeyValue, string, error)

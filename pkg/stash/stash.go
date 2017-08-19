@@ -1,14 +1,15 @@
 package stash // import "a4.io/blobstash/pkg/stash"
 
 import (
-	"context"
+	_ "context"
 	"os"
+	"path/filepath"
 	"sync"
 
 	log "github.com/inconshreveable/log15"
 
 	"a4.io/blobstash/pkg/blobstore"
-	"a4.io/blobstash/pkg/ctxutil"
+	_ "a4.io/blobstash/pkg/ctxutil"
 	"a4.io/blobstash/pkg/hub"
 	"a4.io/blobstash/pkg/kvstore"
 	"a4.io/blobstash/pkg/meta"
@@ -30,7 +31,7 @@ type Stash struct {
 	sync.Mutex
 }
 
-func New(dir string, m *meta.Meta, bs *blobstore.BlobStore, kvs *kvstore.KvStore, h *hub.Hub, l *log.Logger) (*Stash, error) {
+func New(dir string, m *meta.Meta, bs *blobstore.BlobStore, kvs *kvstore.KvStore, h *hub.Hub, l log.Logger) (*Stash, error) {
 	s := &Stash{
 		contexes: map[string]*dataContext{},
 		path:     dir,
@@ -63,7 +64,7 @@ func (s Stash) newDataContext(name string) error {
 			return err
 		}
 	}
-	l := s.log.New("data_ctx", name)
+	l := s.rootDataContext.log.New("data_ctx", name)
 	h := hub.New(l.New("app", "hub"))
 	m, err := meta.New(l.New("app", "meta"), h)
 	if err != nil {
@@ -97,21 +98,21 @@ func (s *Stash) Close() error {
 	return nil
 }
 
-func (s *Stash) BlobStore(ctx context.Context) (*blobstore.BlobStore, bool) {
-	if ns, ok := ctxutil.Namespace(ctx); ok {
-		return nil, false
-	}
-	return s.bs, true
-}
+// func (s *Stash) BlobStore(ctx context.Context) (*blobstore.BlobStore, bool) {
+// 	if ns, ok := ctxutil.Namespace(ctx); ok {
+// 		return nil, false
+// 	}
+// 	return s.bs, true
+// }
 
-func (s *Stash) KvStore(ctx context.Context) (*kvstore.KvStore, bool) {
-	return s.kvs, true
-}
+// func (s *Stash) KvStore(ctx context.Context) (*kvstore.KvStore, bool) {
+// 	return s.kvs, true
+// }
 
-func (s *Stash) Hub(ctx context.Context) (*hub.Hub, bool) {
-	return s.hub, true
-}
+// func (s *Stash) Hub(ctx context.Context) (*hub.Hub, bool) {
+// 	return s.hub, true
+// }
 
-func (s *Stash) Meta(ctx context.Context) (*meta.Meta, bool) {
-	return s.meta, true
-}
+// func (s *Stash) Meta(ctx context.Context) (*meta.Meta, bool) {
+// 	return s.meta, true
+// }
