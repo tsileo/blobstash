@@ -9,8 +9,8 @@ import (
 	"github.com/gorilla/mux"
 	"golang.org/x/net/context"
 
+	"a4.io/blobsfile"
 	mblob "a4.io/blobstash/pkg/blob"
-	"a4.io/blobstash/pkg/client/clientutil"
 	"a4.io/blobstash/pkg/ctxutil"
 	"a4.io/blobstash/pkg/hashutil"
 	"a4.io/blobstash/pkg/httputil"
@@ -84,7 +84,7 @@ func (bs *BlobStore) blobHandler() func(http.ResponseWriter, *http.Request) {
 		case "GET":
 			blob, err := bs.Get(ctx, vars["hash"])
 			if err != nil {
-				if err == clientutil.ErrBlobNotFound {
+				if err == blobsfile.ErrBlobNotFound {
 					httputil.WriteJSONError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
 				} else {
 					httputil.Error(w, err)
@@ -135,7 +135,6 @@ func (bs *BlobStore) enumerateHandler() func(http.ResponseWriter, *http.Request)
 		switch r.Method {
 		case "GET":
 			q := httputil.NewQuery(r.URL.Query())
-			end := q.GetDefault("end", "\xff")
 			limit, err := q.GetInt("limit", 50, 1000)
 			if err != nil {
 				httputil.Error(w, err)
@@ -145,7 +144,7 @@ func (bs *BlobStore) enumerateHandler() func(http.ResponseWriter, *http.Request)
 			// if sscan := r.URL.Query().Get("scan"); sscan != "" {
 			// 	scan = true
 			// }
-			refs, err := bs.Enumerate(ctx, q.Get("start"), end, limit)
+			refs, err := bs.Enumerate(ctx, q.Get("cursor"), "\xff", limit)
 			if err != nil {
 				httputil.Error(w, err)
 				return
@@ -156,8 +155,13 @@ func (bs *BlobStore) enumerateHandler() func(http.ResponseWriter, *http.Request)
 			}
 			srw := httputil.NewSnappyResponseWriter(w, r)
 			httputil.WriteJSON(srw, map[string]interface{}{
-				"refs":   refs,
-				"cursor": cursor,
+				"data": refs,
+				"pagination": map[string]interface{}{
+					"cursor":   cursor,
+					"has_more": len(refs) == limit,
+					"count":    len(refs),
+					"per_page": limit,
+				},
 			})
 			srw.Close()
 			return

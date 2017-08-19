@@ -267,9 +267,12 @@ type File struct {
 	fd   uintptr
 	node *Node
 	nodefs.File
+	inode *nodefs.Inode
 }
 
-func (f *File) SetInode(inode *nodefs.Inode) {}
+func (f *File) SetInode(inode *nodefs.Inode) {
+	f.inode = inode
+}
 
 func (f *File) String() string {
 	return fmt.Sprintf("File(%s, %s)", f.node.Name, f.node.Ref)

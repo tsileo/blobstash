@@ -66,7 +66,7 @@ func New(conf *config.Config) (*Server, error) {
 	authFunc, basicAuth := middleware.NewBasicAuth(conf)
 	hub := hub.New(logger.New("app", "hub"))
 	// Load the blobstore
-	blobstore, err := blobstore.New(logger.New("app", "blobstore"), conf, hub)
+	blobstore, err := blobstore.New(logger.New("app", "blobstore"), conf.VarDir(), conf, hub)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize blobstore app: %v", err)
 	}
@@ -88,7 +88,7 @@ func New(conf *config.Config) (*Server, error) {
 		oplg.Register(s.router.PathPrefix("/_oplog").Subrouter(), basicAuth)
 	}
 	// Load the kvstore
-	kvstore, err := kvstore.New(logger.New("app", "kvstore"), conf, blobstore, metaHandler)
+	kvstore, err := kvstore.New(logger.New("app", "kvstore"), conf.VarDir(), blobstore, metaHandler)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize kvstore app: %v", err)
 	}

@@ -130,6 +130,11 @@ func (c *Config) VarDir() string {
 	return pathutil.VarDir()
 }
 
+// VarDir returns the directory where the index will be stored
+func (c *Config) StashDir() string {
+	return filepath.Join(c.VarDir(), "stash")
+}
+
 // Init initialize the config.
 //
 // It will try to create all the needed directory.
@@ -138,6 +143,11 @@ func (c *Config) Init() error {
 		return nil
 	}
 	if _, err := os.Stat(c.VarDir()); os.IsNotExist(err) {
+		if err := os.MkdirAll(c.VarDir(), 0700); err != nil {
+			return err
+		}
+	}
+	if _, err := os.Stat(c.StashDir()); os.IsNotExist(err) {
 		if err := os.MkdirAll(c.VarDir(), 0700); err != nil {
 			return err
 		}

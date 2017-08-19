@@ -18,6 +18,7 @@ const schemaVersion = 1
 const (
 	Sep              = ':'
 	FlagUnknown byte = iota
+	FlagMetaBlob
 	FlagVersion
 	FlagKey
 )
@@ -197,6 +198,55 @@ func buildVkey(kvkey []byte, version int) []byte {
 	binary.BigEndian.PutUint64(vkey[klen+2:], uint64(version))
 
 	return vkey
+}
+
+func buildMetaBlobKey(key []byte, version int) []byte {
+	klen := len(key)
+	vkey := make([]byte, klen+10)
+
+	// Set the version flag
+	vkey[0] = FlagMetaBlob
+
+	// Copy the key
+	copy(vkey[1:], key[:])
+
+	// Add separator
+	vkey[klen+1] = Sep
+
+	// Add the binary encoded version
+	binary.BigEndian.PutUint64(vkey[klen+2:], uint64(version))
+
+	return vkey
+}
+
+func (db *DB) SetMetaBlob(key string, version int, hash string) error {
+	vkey := buildMetaBlobKey([]byte(key), version)
+
+	h, err := hex.DecodeString(hash)
+	if err != nil {
+		return err
+	}
+
+	if err := db.rdb.Set(vkey, h); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (db *DB) GetMetaBlob(key string, version int) (string, error) {
+	vkey := buildMetaBlobKey([]byte(key), version)
+
+	data, err := db.rdb.Get(vkey)
+	if err != nil {
+		return "", err
+	}
+
+	if data != nil && len(data) > 0 {
+		return hex.EncodeToString(data), nil
+	}
+
+	return "", nil
 }
 
 func (db *DB) getAt(key string, version int) (*KeyValue, error) {

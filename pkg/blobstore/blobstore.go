@@ -23,33 +23,32 @@ type BlobStore struct {
 	back   *blobsfile.BlobsFiles
 	s3back *s3.S3Backend
 	hub    *hub.Hub
-	conf   *config.Config
 
 	log log.Logger
 }
 
-func New(logger log.Logger, conf2 *config.Config, hub *hub.Hub) (*BlobStore, error) {
+func New(logger log.Logger, dir string, conf2 *config.Config, hub *hub.Hub) (*BlobStore, error) {
 	logger.Debug("init")
 
-	back, err := blobsfile.New(&blobsfile.Opts{Directory: filepath.Join(conf2.VarDir(), "blobs")})
+	back, err := blobsfile.New(&blobsfile.Opts{Directory: filepath.Join(dir, "blobs")})
 	if err != nil {
 		return nil, fmt.Errorf("failed to init BlobsFile: %v", err)
 	}
 	var s3back *s3.S3Backend
-	if s3repl := conf2.S3Repl; s3repl != nil && s3repl.Bucket != "" {
-		logger.Debug("init s3 replication")
-		var err error
-		s3back, err = s3.New(logger.New("app", "s3_replication"), back, hub, conf2)
-		if err != nil {
-			return nil, err
+	if conf2 != nil {
+		if s3repl := conf2.S3Repl; s3repl != nil && s3repl.Bucket != "" {
+			logger.Debug("init s3 replication")
+			var err error
+			s3back, err = s3.New(logger.New("app", "s3_replication"), back, hub, conf2)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
-
 	return &BlobStore{
 		back:   back,
 		s3back: s3back,
 		hub:    hub,
-		conf:   conf2,
 		log:    logger,
 	}, nil
 }
