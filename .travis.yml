@@ -20,7 +20,8 @@ script:
 - pip install git+https://github.com/tsileo/blobstash-python-base.git
 - pip install git+https://github.com/tsileo/blobstash-python-filetree.git
 - pip install git+https://github.com/tsileo/blobstash-python-docstore.git
-- python3 integration_tests/blobstore_kvstore.py
+# FIXME(tsileo): import the new tests from blobstash-base
+# - python3 integration_tests/blobstore_kvstore.py
 - python3 integration_tests/docstore.py
 deploy:
   provider: releases
