@@ -1,8 +1,8 @@
 package gc
 
-import (
-	"a4.io/blobstash/pkg/stash/store"
-)
+// import (
+// "a4.io/blobstash/pkg/stash/store"
+// )
 
 // XXX(tsileo): take store interface, and exec store Lua script that can
 // read a blob, or a key/version(/iterate keys?) and
