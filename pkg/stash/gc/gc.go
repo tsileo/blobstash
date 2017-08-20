@@ -21,7 +21,7 @@ type GarbageCollector struct {
 	dataContext store.DataContext
 	stash       *stash.Stash
 	L           *lua.LState
-	refs        []string
+	refs        map[string]struct{}
 }
 
 func New(s *stash.Stash, dc store.DataContext) *GarbageCollector {
@@ -29,14 +29,16 @@ func New(s *stash.Stash, dc store.DataContext) *GarbageCollector {
 	res := &GarbageCollector{
 		L:           L,
 		dataContext: dc,
-		refs:        []string{},
+		refs:        map[string]struct{}{},
 		stash:       s,
 	}
 
 	// mark(<blob hash>) is the lowest-level func, it "mark"s a blob to be copied to the root blobstore
 	mark := func(L *lua.LState) int {
 		ref := L.ToString(1)
-		res.refs = append(res.refs, ref)
+		if _, ok := res.refs[ref]; !ok {
+			res.refs[ref] = struct{}{}
+		}
 		return 0
 	}
 	L.SetGlobal("mark", L.NewFunction(mark))
@@ -70,6 +72,7 @@ _G.mark_kv = mark_kv
 function mark_filetree_node (ref)
   local data = blobstash.blobstore:get(ref)
   local node = msgpack.decode(data)
+  mark(ref)
   if node.t == 'dir' then
     for _, childRef in ipairs(node.r) do
       mark_filetree_node(childRef)
@@ -94,10 +97,10 @@ func (gc *GarbageCollector) GC(ctx context.Context, script string) error {
 		return err
 	}
 	fmt.Printf("refs=%+v\n", gc.refs)
-	for _, ref := range gc.refs {
+	for ref, _ := range gc.refs {
 		// FIXME(tsileo): stat before get/put
 
-		data, err := gc.dataContext.BlobStore().Get(ctx, ref)
+		data, err := gc.dataContext.BlobStoreProxy().Get(ctx, ref)
 		if err != nil {
 			return err
 		}
