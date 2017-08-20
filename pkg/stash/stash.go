@@ -18,14 +18,45 @@ import (
 )
 
 type dataContext struct {
-	bs   store.BlobStore
-	kvs  store.KvStore
-	hub  *hub.Hub
-	meta *meta.Meta
-	log  log.Logger
+	bs       store.BlobStore
+	kvs      store.KvStore
+	bsProxy  store.BlobStore
+	kvsProxy store.KvStore
+	hub      *hub.Hub
+	meta     *meta.Meta
+	log      log.Logger
+	dir      string
+	root     bool
+	closed   bool
+}
+
+func (dc *dataContext) Merge(ctx context.Context) error {
+	if dc.root {
+		return nil
+	}
+
+	blobs, _, err := dc.bs.Enumerate(ctx, "", "\xff", 0)
+	if err != nil {
+		return err
+	}
+	for _, blobRef := range blobs {
+		data, err := dc.bs.Get(ctx, blobRef.Hash)
+		if err != nil {
+			return err
+		}
+		b := &blob.Blob{Hash: blobRef.Hash, Data: data}
+		if err := dc.bsProxy.(*store.BlobStoreProxy).ReadSrc.Put(ctx, b); err != nil {
+			return err
+		}
+	}
+
+	return dc.Destroy()
 }
 
 func (dc *dataContext) Close() error {
+	if dc.closed || dc.root {
+		return nil
+	}
 	// TODO(tsileo): multi error
 	if err := dc.kvs.Close(); err != nil {
 		return err
@@ -33,7 +64,19 @@ func (dc *dataContext) Close() error {
 	if err := dc.bs.Close(); err != nil {
 		return err
 	}
+	dc.closed = true
 	return nil
+}
+
+func (dc *dataContext) Destroy() error {
+	if dc.root {
+		return nil
+	}
+	if err := dc.Close(); err != nil {
+		return err
+	}
+	// TODO(tsileo): only call Destroy from Stash and unexport this one, also remove from index
+	return os.RemoveAll(dc.dir)
 }
 
 type Stash struct {
@@ -48,11 +91,14 @@ func New(dir string, m *meta.Meta, bs *blobstore.BlobStore, kvs *kvstore.KvStore
 		contexes: map[string]*dataContext{},
 		path:     dir,
 		rootDataContext: &dataContext{
-			bs:   bs,
-			kvs:  kvs,
-			hub:  h,
-			meta: m,
-			log:  l,
+			bs:       bs,
+			kvs:      kvs,
+			bsProxy:  bs,
+			kvsProxy: kvs,
+			hub:      h,
+			meta:     m,
+			log:      l,
+			root:     true,
 		},
 	}
 
@@ -85,7 +131,7 @@ func (s Stash) newDataContext(name string) error {
 	if err != nil {
 		return err
 	}
-	bsDst, err := blobstore.New(l.New("app", "blobstore"), s.path, nil, h)
+	bsDst, err := blobstore.New(l.New("app", "blobstore"), path, nil, h)
 	if err != nil {
 		return err
 	}
@@ -93,7 +139,7 @@ func (s Stash) newDataContext(name string) error {
 		BlobStore: bsDst,
 		ReadSrc:   s.rootDataContext.bs,
 	}
-	kvsDst, err := kvstore.New(l.New("app", "kvstore"), s.path, bs, m)
+	kvsDst, err := kvstore.New(l.New("app", "kvstore"), path, bs, m)
 	if err != nil {
 		return err
 	}
@@ -102,11 +148,14 @@ func (s Stash) newDataContext(name string) error {
 		ReadSrc: s.rootDataContext.kvs,
 	}
 	dataCtx := &dataContext{
-		log:  l,
-		meta: m,
-		hub:  h,
-		kvs:  kvs,
-		bs:   bs,
+		log:      l,
+		meta:     m,
+		hub:      h,
+		bs:       bsDst,
+		kvs:      kvsDst,
+		kvsProxy: kvs,
+		bsProxy:  bs,
+		dir:      path,
 	}
 	s.contexes[name] = dataCtx
 	return nil
@@ -123,7 +172,20 @@ func (s *Stash) Close() error {
 }
 
 func (s *Stash) dataContext(ctx context.Context) (*dataContext, error) {
+	// TODO(tsileo): handle destroyed context
 	return s.rootDataContext, nil
+}
+
+func (s *Stash) dataContextByName(name string) (*dataContext, bool) {
+	if name == "" {
+		return s.rootDataContext, true
+	}
+
+	if dc, ok := s.contexes[name]; ok {
+		return dc, true
+	}
+
+	return nil, false
 }
 
 func (s *Stash) BlobStore() *BlobStore {
@@ -141,7 +203,7 @@ func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
 	if err != nil {
 		return err
 	}
-	return dataContext.bs.Put(ctx, blob)
+	return dataContext.bsProxy.Put(ctx, blob)
 }
 
 func (bs *BlobStore) Get(ctx context.Context, hash string) ([]byte, error) {
