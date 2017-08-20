@@ -2,12 +2,15 @@ package gc // import "a4.io/blobstash/pkg/stash/gc"
 
 import (
 	"context"
+	"fmt"
+
+	"github.com/vmihailenco/msgpack"
+	"github.com/yuin/gopher-lua"
 
 	"a4.io/blobstash/pkg/apps/luautil"
-	"a4.io/blobstash/pkg/blob"
+	_ "a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/stash"
 	"a4.io/blobstash/pkg/stash/store"
-	"github.com/yuin/gopher-lua"
 )
 
 // XXX(tsileo): take store interface, and exec store Lua script that can
@@ -38,6 +41,7 @@ func New(s *stash.Stash, dc store.DataContext) *GarbageCollector {
 	}
 	L.SetGlobal("mark", L.NewFunction(mark))
 	L.PreloadModule("json", loadJSON)
+	L.PreloadModule("msgpack", loadMsgpack)
 	bs, err := newBlobstore(L, dc)
 	if err != nil {
 		panic(err)
@@ -50,6 +54,38 @@ func New(s *stash.Stash, dc store.DataContext) *GarbageCollector {
 	rootTable.RawSetH(lua.LString("blobstore"), bs)
 	rootTable.RawSetH(lua.LString("kvstore"), kvs)
 	L.SetGlobal("blobstash", rootTable)
+	if err := L.DoString(`
+local msgpack = require('msgpack')
+function mark_kv (key, version)
+  local h = blobstash.kvstore:get_meta_blob(key, version)
+  if h ~= nil then
+    mark(h)
+    local _, ref = blobstash.kvstore:get(key, version)
+    if ref ~= '' then
+      mark(ref)
+    end
+  end
+end
+_G.mark_kv = mark_kv
+function mark_filetree_node (ref)
+  local data = blobstash.blobstore:get(ref)
+  local node = msgpack.decode(data)
+  if node.t == 'dir' then
+    for _, childRef in ipairs(node.r) do
+      mark_filetree_node(childRef)
+    end
+  else
+    for _, contentRef in ipairs(node.r) do
+      mark(contentRef[2])
+    end
+  end
+end
+_G.mark_filetree_node = mark_filetree_node
+`); err != nil {
+		panic(err)
+	}
+	// FIXME(tsileo): do like in the docstore, export code _G.mark_kv(key, version), _G.mark_fs_ref(ref)...
+	// and the option to load custom GC script from the filesystem like stored queries
 	return res
 }
 
@@ -57,19 +93,57 @@ func (gc *GarbageCollector) GC(ctx context.Context, script string) error {
 	if err := gc.L.DoString(script); err != nil {
 		return err
 	}
-	for _, ref := range gc.refs {
-		// FIXME(tsileo): stat before get/put
+	fmt.Printf("refs=%+v\n", gc.refs)
+	// for _, ref := range gc.refs {
+	// 	// FIXME(tsileo): stat before get/put
 
-		data, err := gc.dataContext.BlobStore().Get(ctx, ref)
-		if err != nil {
-			return err
-		}
+	// 	data, err := gc.dataContext.BlobStore().Get(ctx, ref)
+	// 	if err != nil {
+	// 		return err
+	// 	}
 
-		if err := gc.stash.Root().BlobStore().Put(ctx, &blob.Blob{Hash: ref, Data: data}); err != nil {
-			return err
-		}
+	// 	if err := gc.stash.Root().BlobStore().Put(ctx, &blob.Blob{Hash: ref, Data: data}); err != nil {
+	// 		return err
+	// 	}
+	// }
+	return nil
+	// return gc.dataContext.Destroy()
+}
+
+func loadMsgpack(L *lua.LState) int {
+	// register functions to the table
+	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
+		"decode": msgpackDecode,
+		"encode": msgpackEncode,
+	})
+	// returns the module
+	L.Push(mod)
+	return 1
+}
+
+func msgpackEncode(L *lua.LState) int {
+	data := L.CheckAny(1)
+	if data == nil {
+		L.Push(lua.LNil)
+		return 1
 	}
-	return gc.dataContext.Destroy()
+	txt, err := msgpack.Marshal(data)
+	if err != nil {
+		panic(err)
+	}
+	L.Push(lua.LString(string(txt)))
+	return 1
+}
+
+// TODO(tsileo): a note about empty list vs empty object
+func msgpackDecode(L *lua.LState) int {
+	data := L.ToString(1)
+	out := map[string]interface{}{}
+	if err := msgpack.Unmarshal([]byte(data), &out); err != nil {
+		panic(err)
+	}
+	L.Push(luautil.InterfaceToLValue(L, out))
+	return 1
 }
 
 func loadJSON(L *lua.LState) int {
@@ -131,7 +205,7 @@ func blobstoreStat(L *lua.LState) int {
 	if bs == nil {
 		return 1
 	}
-	data, err := bs.dc.BlobStore().Stat(context.TODO(), L.ToString(2))
+	data, err := bs.dc.BlobStoreProxy().Stat(context.TODO(), L.ToString(2))
 	if err != nil {
 		L.Push(lua.LNil)
 		return 1
@@ -150,8 +224,9 @@ func blobstoreGet(L *lua.LState) int {
 	if bs == nil {
 		return 1
 	}
-	data, err := bs.dc.BlobStore().Get(context.TODO(), L.ToString(2))
+	data, err := bs.dc.BlobStoreProxy().Get(context.TODO(), L.ToString(2))
 	if err != nil {
+		fmt.Printf("failed to fetch %s: %v\n", L.ToString(2), err)
 		L.Push(lua.LNil)
 		return 1
 		// TODO(tsileo): handle not found
@@ -193,7 +268,7 @@ func kvstoreGet(L *lua.LState) int {
 	if kv == nil {
 		return 1
 	}
-	fkv, err := kv.dc.KvStore().Get(context.TODO(), L.ToString(2), L.ToInt(3))
+	fkv, err := kv.dc.KvStoreProxy().Get(context.TODO(), L.ToString(2), L.ToInt(3))
 	if err != nil {
 		panic(err)
 	}
@@ -207,7 +282,7 @@ func kvstoreGetMetaBlob(L *lua.LState) int {
 	if kv == nil {
 		return 1
 	}
-	data, err := kv.dc.KvStore().GetMetaBlob(context.TODO(), L.ToString(2), L.ToInt(3))
+	data, err := kv.dc.KvStoreProxy().GetMetaBlob(context.TODO(), L.ToString(2), L.ToInt(3))
 	if err != nil {
 		L.Push(lua.LNil)
 		return 1

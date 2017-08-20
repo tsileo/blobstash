@@ -81,8 +81,7 @@ func TestDataContextMerge(t *testing.T) {
 		lastBlob = b
 	}
 
-	kv, err := tmpDataContext.KvStore().Put(context.TODO(), "hello", lastBlob.Hash, nil, 10)
-	if err != nil {
+	if _, err := tmpDataContext.KvStore().Put(context.TODO(), "hello", lastBlob.Hash, nil, 10); err != nil {
 		panic(err)
 	}
 
@@ -93,14 +92,9 @@ func TestDataContextMerge(t *testing.T) {
 	if len(blobsRoot) != 0 {
 		t.Errorf("root blobstore should be empty")
 	}
-	fmt.Printf("kv=%+v\n", kv)
+
 	gc := New(s, tmpDataContext)
-	if err := gc.GC(context.Background(), fmt.Sprintf(`
-h = blobstash.kvstore:get_meta_blob('hello', 10)
-mark(h)
-data, ref = blobstash.kvstore:get('hello', 10)
-mark(ref)
-`)); err != nil {
+	if err := gc.GC(context.Background(), "mark_kv('hello', 10)"); err != nil {
 		panic(err)
 	}
 

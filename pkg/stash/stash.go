@@ -200,6 +200,16 @@ func (s *Stash) dataContext(ctx context.Context) (*dataContext, error) {
 	return s.rootDataContext, nil
 }
 
+func (s *Stash) ContextNames() []string {
+	s.Lock()
+	defer s.Unlock()
+	var out []string
+	for k, _ := range s.contexes {
+		out = append(out, k)
+	}
+	return out
+}
+
 func (s *Stash) DataContextByName(name string) (*dataContext, bool) {
 	if name == "" {
 		return s.rootDataContext, true
