@@ -30,6 +30,7 @@ import (
 	"a4.io/blobstash/pkg/oplog"
 	"a4.io/blobstash/pkg/replication"
 	"a4.io/blobstash/pkg/stash"
+	stashAPI "a4.io/blobstash/pkg/stash/api"
 	synctable "a4.io/blobstash/pkg/sync"
 
 	"github.com/gorilla/mux"
@@ -100,6 +101,7 @@ func New(conf *config.Config) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize the stash manager: %v", err)
 	}
+	stashAPI.New(cstash).Register(s.router.PathPrefix("/api/stash").Subrouter(), basicAuth)
 
 	blobstore := cstash.BlobStore()
 	kvstore := rootKvstore

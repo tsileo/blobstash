@@ -29,6 +29,8 @@ func New(s *stash.Stash, dc store.DataContext) *GarbageCollector {
 		refs:        []string{},
 		stash:       s,
 	}
+
+	// mark(<blob hash>) is the lowest-level func, it "mark"s a blob to be copied to the root blobstore
 	mark := func(L *lua.LState) int {
 		ref := L.ToString(1)
 		res.refs = append(res.refs, ref)
