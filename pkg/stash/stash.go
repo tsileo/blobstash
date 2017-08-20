@@ -30,6 +30,26 @@ type dataContext struct {
 	closed   bool
 }
 
+func (dc *dataContext) BlobStore() store.BlobStore {
+	return dc.bs
+}
+
+func (dc *dataContext) KvStore() store.KvStore {
+	return dc.kvs
+}
+
+func (dc *dataContext) BlobStoreProxy() store.BlobStore {
+	return dc.bsProxy
+}
+
+func (dc *dataContext) KvStoreProxy() store.KvStore {
+	return dc.kvsProxy
+}
+
+func (dc *dataContext) Closed() bool {
+	return dc.closed
+}
+
 func (dc *dataContext) Merge(ctx context.Context) error {
 	if dc.root {
 		return nil
@@ -171,12 +191,16 @@ func (s *Stash) Close() error {
 	return nil
 }
 
+func (s *Stash) Root() store.DataContext {
+	return s.rootDataContext
+}
+
 func (s *Stash) dataContext(ctx context.Context) (*dataContext, error) {
 	// TODO(tsileo): handle destroyed context
 	return s.rootDataContext, nil
 }
 
-func (s *Stash) dataContextByName(name string) (*dataContext, bool) {
+func (s *Stash) DataContextByName(name string) (*dataContext, bool) {
 	if name == "" {
 		return s.rootDataContext, true
 	}

@@ -11,6 +11,17 @@ import (
 	"a4.io/blobstash/pkg/vkv"
 )
 
+type DataContext interface {
+	BlobStore() BlobStore
+	KvStore() KvStore
+	BlobStoreProxy() BlobStore
+	KvStoreProxy() KvStore
+	Merge(context.Context) error
+	Close() error
+	Closed() bool
+	Destroy() error
+}
+
 type KvStore interface {
 	Put(ctx context.Context, key, ref string, data []byte, version int) (*vkv.KeyValue, error)
 	Get(ctx context.Context, key string, version int) (*vkv.KeyValue, error)

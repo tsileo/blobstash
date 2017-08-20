@@ -1,4 +1,4 @@
-package stash
+package gc
 
 import (
 	"context"
@@ -9,11 +9,12 @@ import (
 	log "github.com/inconshreveable/log15"
 
 	"a4.io/blobstash/pkg/blob"
-	"a4.io/blobstash/pkg/blobstore"
+	bstore "a4.io/blobstash/pkg/blobstore"
 	"a4.io/blobstash/pkg/hashutil"
 	"a4.io/blobstash/pkg/hub"
 	"a4.io/blobstash/pkg/kvstore"
 	"a4.io/blobstash/pkg/meta"
+	"a4.io/blobstash/pkg/stash"
 )
 
 func makeBlob(data []byte) *blob.Blob {
@@ -42,7 +43,7 @@ func TestDataContextMerge(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	bsRoot, err := blobstore.New(logger.New("app", "blobstore"), dir, nil, hub)
+	bsRoot, err := bstore.New(logger.New("app", "blobstore"), dir, nil, hub)
 	if err != nil {
 		panic(err)
 	}
@@ -51,13 +52,13 @@ func TestDataContextMerge(t *testing.T) {
 		panic(err)
 	}
 
-	s, err := New("stashtest2", metaHandler, bsRoot, kvsRoot, hub, logger)
+	s, err := stash.New("stashtest2", metaHandler, bsRoot, kvsRoot, hub, logger)
 	if err != nil {
 		panic(err)
 	}
 	defer s.Close()
 
-	blobsRoot, _, err := s.rootDataContext.bs.Enumerate(context.Background(), "", "\xff", 0)
+	blobsRoot, _, err := s.Root().BlobStore().Enumerate(context.Background(), "", "\xff", 0)
 	if err != nil {
 		panic(err)
 	}
@@ -70,12 +71,14 @@ func TestDataContextMerge(t *testing.T) {
 		t.Errorf("tmp data context should exists")
 	}
 	blobsIdx := map[string]*blob.Blob{}
+	var lastBlob *blob.Blob
 	for i := 0; i < 5; i++ {
 		b := makeBlob([]byte(fmt.Sprintf("hello%d", i)))
-		if err := tmpDataContext.bsProxy.Put(context.TODO(), b); err != nil {
+		if err := tmpDataContext.BlobStoreProxy().Put(context.TODO(), b); err != nil {
 			panic(err)
 		}
 		blobsIdx[b.Hash] = b
+		lastBlob = b
 	}
 
 	blobsRoot, _, err = s.Root().BlobStore().Enumerate(context.Background(), "", "\xff", 0)
@@ -86,22 +89,20 @@ func TestDataContextMerge(t *testing.T) {
 		t.Errorf("root blobstore should be empty")
 	}
 
-	if err := tmpDataContext.Merge(context.TODO()); err != nil {
+	gc := New(s, tmpDataContext)
+	if err := gc.GC(context.Background(), fmt.Sprintf("mark('%s')", lastBlob.Hash)); err != nil {
 		panic(err)
 	}
 
-	blobsRoot, _, err = s.rootDataContext.bs.Enumerate(context.Background(), "", "\xff", 0)
+	blobsRoot, _, err = s.Root().BlobStore().Enumerate(context.Background(), "", "\xff", 0)
 	if err != nil {
 		panic(err)
 	}
-	if len(blobsRoot) != 5 {
-		t.Errorf("root blobstore should contains 5 blobs, got %d", len(blobsRoot))
+	if len(blobsRoot) != 1 {
+		t.Errorf("root blobstore should contains 1 blobs, got %d", len(blobsRoot))
 	}
 
-	for _, blobRef := range blobsRoot {
-		if _, ok := blobsIdx[blobRef.Hash]; !ok {
-			t.Errorf("blob %s should be in the root blobstore", blobRef.Hash)
-		}
+	if blobsRoot[0].Hash != lastBlob.Hash {
+		t.Errorf("bad GCed blob, expected %s, got %s", lastBlob.Hash, blobsRoot[0].Hash)
 	}
-
 }
