@@ -8,7 +8,7 @@ import (
 	"github.com/yuin/gopher-lua"
 
 	"a4.io/blobstash/pkg/apps/luautil"
-	_ "a4.io/blobstash/pkg/blob"
+	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/stash"
 	"a4.io/blobstash/pkg/stash/store"
 )
