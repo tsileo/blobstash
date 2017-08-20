@@ -25,6 +25,7 @@ type DataContext interface {
 type KvStore interface {
 	Put(ctx context.Context, key, ref string, data []byte, version int) (*vkv.KeyValue, error)
 	Get(ctx context.Context, key string, version int) (*vkv.KeyValue, error)
+	GetMetaBlob(ctx context.Context, key string, version int) (string, error)
 	Versions(ctx context.Context, key string, start, limit int) (*vkv.KeyValueVersions, int, error)
 	Keys(ctx context.Context, start, end string, limit int) ([]*vkv.KeyValue, string, error)
 	ReverseKeys(ctx context.Context, start, end string, limit int) ([]*vkv.KeyValue, string, error)
@@ -60,6 +61,18 @@ func (p *KvStoreProxy) Get(ctx context.Context, key string, version int) (*vkv.K
 	}
 
 	return kv, nil
+}
+
+func (p *KvStoreProxy) GetMetaBlob(ctx context.Context, key string, version int) (string, error) {
+	h, err := p.KvStore.GetMetaBlob(ctx, key, version)
+	switch err {
+	case nil:
+	case vkv.ErrNotFound:
+		return p.ReadSrc.GetMetaBlob(ctx, key, version)
+	}
+
+	return h, nil
+
 }
 
 func (p *KvStoreProxy) Versions(ctx context.Context, key string, start, limit int) (*vkv.KeyValueVersions, int, error) {

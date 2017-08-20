@@ -41,6 +41,10 @@ func New(logger log.Logger, dir string, blobStore store.BlobStore, metaHandler *
 	return kvStore, nil
 }
 
+func (kv *KvStore) GetMetaBlob(ctx context.Context, key string, version int) (string, error) {
+	return kv.vkv.GetMetaBlob(key, version)
+}
+
 func (kv *KvStore) applyMetaFunc(hash string, data []byte) error {
 	kv.log.Debug("Apply meta init", "hash", hash)
 	// applied, err := kv.vkv.MetaBlobApplied(hash)

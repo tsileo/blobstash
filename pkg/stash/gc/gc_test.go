@@ -12,7 +12,7 @@ import (
 	bstore "a4.io/blobstash/pkg/blobstore"
 	"a4.io/blobstash/pkg/hashutil"
 	"a4.io/blobstash/pkg/hub"
-	"a4.io/blobstash/pkg/kvstore"
+	kstore "a4.io/blobstash/pkg/kvstore"
 	"a4.io/blobstash/pkg/meta"
 	"a4.io/blobstash/pkg/stash"
 )
@@ -47,7 +47,7 @@ func TestDataContextMerge(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	kvsRoot, err := kvstore.New(logger.New("app", "kvstore"), dir, bsRoot, metaHandler)
+	kvsRoot, err := kstore.New(logger.New("app", "kvstore"), dir, bsRoot, metaHandler)
 	if err != nil {
 		panic(err)
 	}
@@ -81,6 +81,11 @@ func TestDataContextMerge(t *testing.T) {
 		lastBlob = b
 	}
 
+	kv, err := tmpDataContext.KvStore().Put(context.TODO(), "hello", lastBlob.Hash, nil, 10)
+	if err != nil {
+		panic(err)
+	}
+
 	blobsRoot, _, err = s.Root().BlobStore().Enumerate(context.Background(), "", "\xff", 0)
 	if err != nil {
 		panic(err)
@@ -88,9 +93,14 @@ func TestDataContextMerge(t *testing.T) {
 	if len(blobsRoot) != 0 {
 		t.Errorf("root blobstore should be empty")
 	}
-
+	fmt.Printf("kv=%+v\n", kv)
 	gc := New(s, tmpDataContext)
-	if err := gc.GC(context.Background(), fmt.Sprintf("mark('%s')", lastBlob.Hash)); err != nil {
+	if err := gc.GC(context.Background(), fmt.Sprintf(`
+h = blobstash.kvstore:get_meta_blob('hello', 10)
+mark(h)
+data, ref = blobstash.kvstore:get('hello', 10)
+mark(ref)
+`)); err != nil {
 		panic(err)
 	}
 
@@ -98,11 +108,13 @@ func TestDataContextMerge(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	if len(blobsRoot) != 1 {
-		t.Errorf("root blobstore should contains 1 blobs, got %d", len(blobsRoot))
+	if len(blobsRoot) != 2 {
+		t.Errorf("root blobstore should contains 2 blobs, got %d", len(blobsRoot))
 	}
 
-	if blobsRoot[0].Hash != lastBlob.Hash {
-		t.Errorf("bad GCed blob, expected %s, got %s", lastBlob.Hash, blobsRoot[0].Hash)
-	}
+	// FIXME(tsileo): try to read the kv and the blob in the root data context
+
+	// if blobsRoot[0].Hash != lastBlob.Hash {
+	// t.Errorf("bad GCed blob, expected %s, got %s", lastBlob.Hash, blobsRoot[0].Hash)
+	// }
 }
