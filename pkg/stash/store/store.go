@@ -17,6 +17,7 @@ type KvStore interface {
 	Versions(ctx context.Context, key string, start, limit int) (*vkv.KeyValueVersions, int, error)
 	Keys(ctx context.Context, start, end string, limit int) ([]*vkv.KeyValue, string, error)
 	ReverseKeys(ctx context.Context, start, end string, limit int) ([]*vkv.KeyValue, string, error)
+	Close() error
 }
 
 type KvStoreProxy struct {
@@ -119,6 +120,7 @@ type BlobStore interface {
 	Get(ctx context.Context, hash string) ([]byte, error)
 	Stat(ctx context.Context, hash string) (bool, error)
 	Enumerate(ctx context.Context, start, end string, limit int) ([]*blob.SizedBlobRef, string, error)
+	Close() error
 }
 
 type BlobStoreProxy struct {

@@ -29,6 +29,7 @@ import (
 	"a4.io/blobstash/pkg/middleware"
 	"a4.io/blobstash/pkg/oplog"
 	"a4.io/blobstash/pkg/replication"
+	"a4.io/blobstash/pkg/stash"
 	synctable "a4.io/blobstash/pkg/sync"
 
 	"github.com/gorilla/mux"
@@ -68,13 +69,11 @@ func New(conf *config.Config) (*Server, error) {
 	authFunc, basicAuth := middleware.NewBasicAuth(conf)
 	hub := hub.New(logger.New("app", "hub"))
 	// Load the blobstore
-	blobstore, err := blobstore.New(logger.New("app", "blobstore"), conf.VarDir(), conf, hub)
+	rootBlobstore, err := blobstore.New(logger.New("app", "blobstore"), conf.VarDir(), conf, hub)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize blobstore app: %v", err)
 	}
-	s.blobstore = blobstore
-	// FIXME(tsileo): handle middleware in the `Register` interface
-	blobStoreAPI.New(blobstore).Register(s.router.PathPrefix("/api/blobstore").Subrouter(), basicAuth)
+	s.blobstore = rootBlobstore
 
 	// Load the meta
 	metaHandler, err := meta.New(logger.New("app", "meta"), hub)
@@ -90,11 +89,25 @@ func New(conf *config.Config) (*Server, error) {
 		oplg.Register(s.router.PathPrefix("/_oplog").Subrouter(), basicAuth)
 	}
 	// Load the kvstore
-	kvstore, err := kvstore.New(logger.New("app", "kvstore"), conf.VarDir(), blobstore, metaHandler)
+	rootKvstore, err := kvstore.New(logger.New("app", "kvstore"), conf.VarDir(), rootBlobstore, metaHandler)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize kvstore app: %v", err)
 	}
+
+	// Now load the stash manager
+	// func New(dir string, m *meta.Meta, bs *blobstore.BlobStore, kvs *kvstore.KvStore, h *hub.Hub, l log.Logger) (*Stash, error) {
+	cstash, err := stash.New(conf.StashDir(), metaHandler, rootBlobstore, rootKvstore, hub, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize the stash manager: %v", err)
+	}
+
+	blobstore := cstash.BlobStore()
+	kvstore := rootKvstore
+
 	kvStoreAPI.New(kvstore).Register(s.router.PathPrefix("/api/kvstore").Subrouter(), basicAuth)
+	// FIXME(tsileo): handle middleware in the `Register` interface
+	blobStoreAPI.New(blobstore).Register(s.router.PathPrefix("/api/blobstore").Subrouter(), basicAuth)
+
 	// nsDB, err := nsdb.New(logger.New("app", "nsdb"), conf, blobstore, metaHandler, hub)
 	// if err != nil {
 	// 	return nil, fmt.Errorf("failed to initialize nsdb: %v", err)
@@ -135,10 +148,14 @@ func New(conf *config.Config) (*Server, error) {
 		wg.Wait()
 		logger.Debug("waitgroup done")
 
-		if err := blobstore.Close(); err != nil {
+		if err := rootBlobstore.Close(); err != nil {
 			return err
 		}
-		if err := kvstore.Close(); err != nil {
+		if err := rootKvstore.Close(); err != nil {
+			return err
+		}
+
+		if err := cstash.Close(); err != nil {
 			return err
 		}
 		// if err := nsDB.Close(); err != nil {

@@ -8,6 +8,7 @@ import (
 
 	log "github.com/inconshreveable/log15"
 
+	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/blobstore"
 	_ "a4.io/blobstash/pkg/ctxutil"
 	"a4.io/blobstash/pkg/hub"
@@ -24,11 +25,15 @@ type dataContext struct {
 	log  log.Logger
 }
 
-func (dc *dataContext) Close() {
-	kvs.Close()
-	bs.Close()
-	meta.Close()
-	hub.Close()
+func (dc *dataContext) Close() error {
+	// TODO(tsileo): multi error
+	if err := dc.kvs.Close(); err != nil {
+		return err
+	}
+	if err := dc.bs.Close(); err != nil {
+		return err
+	}
+	return nil
 }
 
 type Stash struct {
@@ -122,15 +127,17 @@ func (s *Stash) dataContext(ctx context.Context) (*dataContext, error) {
 }
 
 func (s *Stash) BlobStore() *BlobStore {
-	return &Blobstore{s}
+	return &BlobStore{s}
 }
 
 type BlobStore struct {
 	s *Stash
 }
 
+func (bs *BlobStore) Close() error { return nil }
+
 func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
-	dataContext, err := bs.dataContext(ctx)
+	dataContext, err := bs.s.dataContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -138,25 +145,26 @@ func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
 }
 
 func (bs *BlobStore) Get(ctx context.Context, hash string) ([]byte, error) {
-	dataContext, err := bs.dataContext(ctx)
+	dataContext, err := bs.s.dataContext(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	return dataContext.bs.Get(ctx, hash)
 
 }
 func (bs *BlobStore) Stat(ctx context.Context, hash string) (bool, error) {
-	dataContext, err := bs.dataContext(ctx)
+	dataContext, err := bs.s.dataContext(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	return dataContext.bs.Stat(ctx, hash)
 
 }
+
 func (bs *BlobStore) Enumerate(ctx context.Context, start, end string, limit int) ([]*blob.SizedBlobRef, string, error) {
-	dataContext, err := bs.dataContext(ctx)
+	dataContext, err := bs.s.dataContext(ctx)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	return dataContext.bs.Enumerate(ctx, start, end, limit)
 }

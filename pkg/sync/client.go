@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"a4.io/blobstash/pkg/blob"
-	"a4.io/blobstash/pkg/blobstore"
 	"a4.io/blobstash/pkg/client/clientutil"
+	"a4.io/blobstash/pkg/stash/store"
 
 	log "github.com/inconshreveable/log15"
 )
@@ -21,7 +21,7 @@ type SyncClient struct {
 	url    string
 	apiKey string
 
-	blobstore *blobstore.BlobStore
+	blobstore store.BlobStore
 
 	st *Sync
 	// FIXME(tsileo): close the state
@@ -30,7 +30,7 @@ type SyncClient struct {
 	log log.Logger
 }
 
-func NewSyncClient(logger log.Logger, st *Sync, state *StateTree, blobstore *blobstore.BlobStore, url, apiKey string) *SyncClient {
+func NewSyncClient(logger log.Logger, st *Sync, state *StateTree, blobstore store.BlobStore, url, apiKey string) *SyncClient {
 	clientOpts := &clientutil.Opts{
 		APIKey:            apiKey,
 		Host:              url,

@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"a4.io/blobstash/pkg/blob"
-	"a4.io/blobstash/pkg/blobstore"
 	"a4.io/blobstash/pkg/client/oplog"
 	"a4.io/blobstash/pkg/config"
+	"a4.io/blobstash/pkg/stash/store"
 	bsync "a4.io/blobstash/pkg/sync"
 
 	log "github.com/inconshreveable/log15"
@@ -39,7 +39,7 @@ func (b *Backoff) Delay() time.Duration {
 type Replication struct {
 	log       log.Logger
 	synctable *bsync.Sync
-	blobstore *blobstore.BlobStore
+	blobstore store.BlobStore
 	backoff   *Backoff
 
 	remoteOplog *oplog.Oplog
@@ -49,7 +49,7 @@ type Replication struct {
 	wg sync.WaitGroup
 }
 
-func New(logger log.Logger, conf *config.Config, bs *blobstore.BlobStore, s *bsync.Sync, wg sync.WaitGroup) (*Replication, error) {
+func New(logger log.Logger, conf *config.Config, bs store.BlobStore, s *bsync.Sync, wg sync.WaitGroup) (*Replication, error) {
 	logger.Debug("init")
 	rep := &Replication{
 		conf:        conf.ReplicateFrom,

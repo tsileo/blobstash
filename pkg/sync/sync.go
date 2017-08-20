@@ -20,9 +20,9 @@ import (
 	"net/http"
 	"sync"
 
-	"a4.io/blobstash/pkg/blobstore"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/httputil"
+	"a4.io/blobstash/pkg/stash/store"
 
 	"github.com/dchest/blake2b"
 	"github.com/gorilla/mux"
@@ -46,13 +46,13 @@ func NewHash() (h hash.Hash) {
 }
 
 type Sync struct {
-	blobstore *blobstore.BlobStore
+	blobstore store.BlobStore
 	conf      *config.Config
 
 	log log2.Logger
 }
 
-func New(logger log2.Logger, conf *config.Config, blobstore *blobstore.BlobStore) *Sync {
+func New(logger log2.Logger, conf *config.Config, blobstore store.BlobStore) *Sync {
 	logger.Debug("init")
 	return &Sync{
 		blobstore: blobstore,
