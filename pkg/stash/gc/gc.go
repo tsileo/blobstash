@@ -94,18 +94,18 @@ func (gc *GarbageCollector) GC(ctx context.Context, script string) error {
 		return err
 	}
 	fmt.Printf("refs=%+v\n", gc.refs)
-	// for _, ref := range gc.refs {
-	// 	// FIXME(tsileo): stat before get/put
+	for _, ref := range gc.refs {
+		// FIXME(tsileo): stat before get/put
 
-	// 	data, err := gc.dataContext.BlobStore().Get(ctx, ref)
-	// 	if err != nil {
-	// 		return err
-	// 	}
+		data, err := gc.dataContext.BlobStore().Get(ctx, ref)
+		if err != nil {
+			return err
+		}
 
-	// 	if err := gc.stash.Root().BlobStore().Put(ctx, &blob.Blob{Hash: ref, Data: data}); err != nil {
-	// 		return err
-	// 	}
-	// }
+		if err := gc.stash.Root().BlobStore().Put(ctx, &blob.Blob{Hash: ref, Data: data}); err != nil {
+			return err
+		}
+	}
 	return nil
 	// return gc.dataContext.Destroy()
 }
