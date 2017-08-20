@@ -17,12 +17,14 @@ import (
 
 	"a4.io/blobstash/pkg/apps"
 	"a4.io/blobstash/pkg/blobstore"
+	blobStoreAPI "a4.io/blobstash/pkg/blobstore/api"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/docstore"
 	"a4.io/blobstash/pkg/filetree"
 	"a4.io/blobstash/pkg/httputil"
 	"a4.io/blobstash/pkg/hub"
 	"a4.io/blobstash/pkg/kvstore"
+	kvStoreAPI "a4.io/blobstash/pkg/kvstore/api"
 	"a4.io/blobstash/pkg/meta"
 	"a4.io/blobstash/pkg/middleware"
 	"a4.io/blobstash/pkg/oplog"
@@ -72,7 +74,7 @@ func New(conf *config.Config) (*Server, error) {
 	}
 	s.blobstore = blobstore
 	// FIXME(tsileo): handle middleware in the `Register` interface
-	blobstore.Register(s.router.PathPrefix("/api/blobstore").Subrouter(), basicAuth)
+	blobStoreAPI.New(blobstore).Register(s.router.PathPrefix("/api/blobstore").Subrouter(), basicAuth)
 
 	// Load the meta
 	metaHandler, err := meta.New(logger.New("app", "meta"), hub)
@@ -92,12 +94,13 @@ func New(conf *config.Config) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize kvstore app: %v", err)
 	}
-	kvstore.Register(s.router.PathPrefix("/api/kvstore").Subrouter(), basicAuth)
+	kvStoreAPI.New(kvstore).Register(s.router.PathPrefix("/api/kvstore").Subrouter(), basicAuth)
 	// nsDB, err := nsdb.New(logger.New("app", "nsdb"), conf, blobstore, metaHandler, hub)
 	// if err != nil {
 	// 	return nil, fmt.Errorf("failed to initialize nsdb: %v", err)
 	// }
 	// Load the synctable
+	// XXX(tsileo): sync should always get the root data context
 	synctable := synctable.New(logger.New("app", "sync"), conf, blobstore)
 	synctable.Register(s.router.PathPrefix("/api/sync").Subrouter(), basicAuth)
 

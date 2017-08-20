@@ -1,7 +1,7 @@
 package stash // import "a4.io/blobstash/pkg/stash"
 
 import (
-	_ "context"
+	"context"
 	"os"
 	"path/filepath"
 	"sync"
@@ -24,6 +24,13 @@ type dataContext struct {
 	log  log.Logger
 }
 
+func (dc *dataContext) Close() {
+	kvs.Close()
+	bs.Close()
+	meta.Close()
+	hub.Close()
+}
+
 type Stash struct {
 	rootDataContext *dataContext
 	contexes        map[string]*dataContext
@@ -44,9 +51,12 @@ func New(dir string, m *meta.Meta, bs *blobstore.BlobStore, kvs *kvstore.KvStore
 		},
 	}
 
+	// TODO(tsileo): list an load the existing stashes
 	if err := s.newDataContext("tmp"); err != nil {
 		return nil, err
 	}
+
+	// FIXME(tsileo): BlobStore.Scan should be triggered here, and for all available stashes
 
 	return s, nil
 
@@ -70,49 +80,85 @@ func (s Stash) newDataContext(name string) error {
 	if err != nil {
 		return err
 	}
-	bs, err := blobstore.New(l.New("app", "blobstore"), s.path, nil, h)
+	bsDst, err := blobstore.New(l.New("app", "blobstore"), s.path, nil, h)
 	if err != nil {
 		return err
 	}
-	kvs, err := kvstore.New(l.New("app", "kvstore"), s.path, bs, m)
+	bs := &store.BlobStoreProxy{
+		BlobStore: bsDst,
+		ReadSrc:   s.rootDataContext.bs,
+	}
+	kvsDst, err := kvstore.New(l.New("app", "kvstore"), s.path, bs, m)
 	if err != nil {
 		return err
 	}
-
+	kvs := &store.KvStoreProxy{
+		KvStore: kvsDst,
+		ReadSrc: s.rootDataContext.kvs,
+	}
 	dataCtx := &dataContext{
 		log:  l,
 		meta: m,
 		hub:  h,
 		kvs:  kvs,
-		bs: &store.BlobStoreProxy{
-			BlobStore: bs,
-			ReadSrc:   s.rootDataContext.bs,
-		},
+		bs:   bs,
 	}
 	s.contexes[name] = dataCtx
 	return nil
 }
 
 func (s *Stash) Close() error {
-	// TODO(tsileo): clean shutdown
+	s.rootDataContext.Close()
+	s.Lock()
+	defer s.Unlock()
+	for _, dc := range s.contexes {
+		dc.Close()
+	}
 	return nil
 }
 
-// func (s *Stash) BlobStore(ctx context.Context) (*blobstore.BlobStore, bool) {
+func (s *Stash) dataContext(ctx context.Context) (*dataContext, error) {
+	return s.rootDataContext, nil
+}
+
+func (s *Stash) BlobStore() *BlobStore {
+	return &Blobstore{s}
+}
+
+type BlobStore struct {
+	s *Stash
+}
+
+func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
+	dataContext, err := bs.dataContext(ctx)
+	if err != nil {
+		return err
+	}
+	return dataContext.bs.Put(ctx, blob)
+}
+
+func (bs *BlobStore) Get(ctx context.Context, hash string) ([]byte, error) {
+	dataContext, err := bs.dataContext(ctx)
+	if err != nil {
+		return err
+	}
+	return dataContext.bs.Get(ctx, hash)
+
+}
+func (bs *BlobStore) Stat(ctx context.Context, hash string) (bool, error) {
+	dataContext, err := bs.dataContext(ctx)
+	if err != nil {
+		return err
+	}
+	return dataContext.bs.Stat(ctx, hash)
+
+}
+func (bs *BlobStore) Enumerate(ctx context.Context, start, end string, limit int) ([]*blob.SizedBlobRef, string, error) {
+	dataContext, err := bs.dataContext(ctx)
+	if err != nil {
+		return err
+	}
+	return dataContext.bs.Enumerate(ctx, start, end, limit)
+}
+
 // 	if ns, ok := ctxutil.Namespace(ctx); ok {
-// 		return nil, false
-// 	}
-// 	return s.bs, true
-// }
-
-// func (s *Stash) KvStore(ctx context.Context) (*kvstore.KvStore, bool) {
-// 	return s.kvs, true
-// }
-
-// func (s *Stash) Hub(ctx context.Context) (*hub.Hub, bool) {
-// 	return s.hub, true
-// }
-
-// func (s *Stash) Meta(ctx context.Context) (*meta.Meta, bool) {
-// 	return s.meta, true
-// }

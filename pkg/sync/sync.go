@@ -96,7 +96,7 @@ func (st *Sync) triggerHandler() func(http.ResponseWriter, *http.Request) {
 
 func (st *Sync) generateTree() *StateTree {
 	state := NewStateTree()
-	blobs, err := st.blobstore.Enumerate(context.Background(), "", "\xff", 0)
+	blobs, _, err := st.blobstore.Enumerate(context.Background(), "", "\xff", 0)
 	if err != nil {
 		panic(err)
 	}
@@ -126,7 +126,7 @@ func (st *State) String() string {
 }
 
 func (st *Sync) LeafState(prefix string) (*LeafState, error) {
-	blobs, err := st.blobstore.Enumerate(context.Background(), prefix, prefix+"\xff", 0)
+	blobs, _, err := st.blobstore.Enumerate(context.Background(), prefix, prefix+"\xff", 0)
 	if err != nil {
 		panic(err)
 	}

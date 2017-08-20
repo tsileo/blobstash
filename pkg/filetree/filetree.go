@@ -20,7 +20,6 @@ import (
 
 	"a4.io/blobsfile"
 	"a4.io/blobstash/pkg/blob"
-	"a4.io/blobstash/pkg/blobstore"
 	"a4.io/blobstash/pkg/cache"
 	"a4.io/blobstash/pkg/client/clientutil"
 	"a4.io/blobstash/pkg/config"
@@ -32,7 +31,7 @@ import (
 	"a4.io/blobstash/pkg/httputil/bewit"
 	"a4.io/blobstash/pkg/httputil/resize"
 	"a4.io/blobstash/pkg/hub"
-	"a4.io/blobstash/pkg/kvstore"
+	"a4.io/blobstash/pkg/stash/store"
 	"a4.io/blobstash/pkg/vkv"
 )
 
@@ -51,8 +50,8 @@ var (
 
 // TODO(tsileo): rename to FileTree
 type FileTreeExt struct {
-	kvStore       *kvstore.KvStore
-	blobStore     *blobstore.BlobStore
+	kvStore       store.KvStore
+	blobStore     store.BlobStore
 	conf          *config.Config
 	hub           *hub.Hub
 	sharingCred   *bewit.Cred
@@ -74,7 +73,7 @@ func (ft *FileTreeExt) ShareTTL() time.Duration {
 
 // BlobStore is the interface to be compatible with both the server and the BlobStore client
 type BlobStore struct {
-	blobStore *blobstore.BlobStore
+	blobStore store.BlobStore
 }
 
 func (bs *BlobStore) Get(hash string) ([]byte, error) {
@@ -97,7 +96,7 @@ type FS struct {
 }
 
 // New initializes the `DocStoreExt`
-func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bool, kvStore *kvstore.KvStore, blobStore *blobstore.BlobStore, chub *hub.Hub) (*FileTreeExt, error) {
+func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bool, kvStore store.KvStore, blobStore store.BlobStore, chub *hub.Hub) (*FileTreeExt, error) {
 	logger.Debug("init")
 	// FIXME(tsileo): make the number of thumbnails to keep in memory a config item
 	thumbscache, err := cache.New(conf, "filetree_thumbs.cache", 512<<20)

@@ -21,10 +21,10 @@ The raw JSON will be stored as is, but the API will add the _id field on the fly
 package docstore // import "a4.io/blobstash/pkg/docstore"
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"golang.org/x/net/context"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -42,14 +42,13 @@ import (
 	"github.com/vmihailenco/msgpack"
 
 	"a4.io/blobstash/pkg/blob"
-	"a4.io/blobstash/pkg/blobstore"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/docstore/id"
 	_ "a4.io/blobstash/pkg/docstore/index"
 	"a4.io/blobstash/pkg/filetree"
 	"a4.io/blobstash/pkg/httputil"
 	"a4.io/blobstash/pkg/httputil/bewit"
-	"a4.io/blobstash/pkg/kvstore"
+	"a4.io/blobstash/pkg/stash/store"
 	"a4.io/blobstash/pkg/vkv"
 	_ "github.com/tsileo/blobstash/pkg/docstore/optimizer"
 )
@@ -118,8 +117,8 @@ type executionStats struct {
 }
 
 type DocStore struct {
-	kvStore   *kvstore.KvStore
-	blobStore *blobstore.BlobStore
+	kvStore   store.KvStore
+	blobStore store.BlobStore
 	filetree  *filetree.FileTreeExt
 
 	conf *config.Config
@@ -138,7 +137,7 @@ type storedQuery struct {
 }
 
 // New initializes the `DocStoreExt`
-func New(logger log.Logger, conf *config.Config, kvStore *kvstore.KvStore, blobStore *blobstore.BlobStore, ft *filetree.FileTreeExt) (*DocStore, error) {
+func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStore store.BlobStore, ft *filetree.FileTreeExt) (*DocStore, error) {
 	logger.Debug("init")
 	// Try to load the docstore index (powered by a kv file)
 	// docIndex, err := index.New()
@@ -626,7 +625,7 @@ QUERY:
 		// case optimizer.Linear:
 		// Performs a unoptimized linear scan
 		// res, cursor, err := docstore.kvStore.Keys(context.TODO(), end, start, fetchLimit)
-		res, cursor, err := docstore.kvStore.ReverseKeys(end, start, fetchLimit)
+		res, cursor, err := docstore.kvStore.ReverseKeys(context.TODO(), end, start, fetchLimit)
 		// res, err := docstore.kvStore.ReverseKeys(end, start, fetchLimit)
 		if err != nil {
 			panic(err)

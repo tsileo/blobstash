@@ -2,6 +2,7 @@ package blobstore // import "a4.io/blobstash/pkg/blobstore"
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"path/filepath"
 
@@ -18,6 +19,23 @@ import (
 )
 
 var ErrBlobExists = fmt.Errorf("blob exist")
+
+func NextHexKey(key string) string {
+	bkey, err := hex.DecodeString(key)
+	if err != nil {
+		// XXX(tsileo): error invalid cursor?
+		panic(err)
+	}
+	i := len(bkey)
+	for i > 0 {
+		i--
+		bkey[i]++
+		if bkey[i] != 0 {
+			break
+		}
+	}
+	return hex.EncodeToString(bkey)
+}
 
 type BlobStore struct {
 	back   *blobsfile.BlobsFiles
@@ -118,16 +136,17 @@ func (bs *BlobStore) Stat(ctx context.Context, hash string) (bool, error) {
 }
 
 // func (backend *BlobsFileBackend) Enumerate(blobs chan<- *blob.SizedBlobRef, start, stop string, limit int) error {
-func (bs *BlobStore) Enumerate(ctx context.Context, start, end string, limit int) ([]*blob.SizedBlobRef, error) {
+func (bs *BlobStore) Enumerate(ctx context.Context, start, end string, limit int) ([]*blob.SizedBlobRef, string, error) {
 	return bs.enumerate(ctx, start, end, limit, false)
 }
 
 func (bs *BlobStore) Scan(ctx context.Context) error {
-	_, err := bs.enumerate(ctx, "", "\xff", 0, true)
+	_, _, err := bs.enumerate(ctx, "", "\xff", 0, true)
 	return err
 }
 
-func (bs *BlobStore) enumerate(ctx context.Context, start, end string, limit int, scan bool) ([]*blob.SizedBlobRef, error) {
+func (bs *BlobStore) enumerate(ctx context.Context, start, end string, limit int, scan bool) ([]*blob.SizedBlobRef, string, error) {
+	var cursor string
 	_, fromHttp := ctxutil.Request(ctx)
 	bs.log.Info("OP Enumerate", "from_http", fromHttp, "start", start, "end", end, "limit", limit)
 	out := make(chan *blobsfile.Blob)
@@ -140,16 +159,20 @@ func (bs *BlobStore) enumerate(ctx context.Context, start, end string, limit int
 		if scan {
 			fullblob, err := bs.Get(ctx, cblob.Hash)
 			if err != nil {
-				return nil, err
+				return nil, cursor, err
 			}
 			if err := bs.hub.ScanBlobEvent(ctx, &blob.Blob{Hash: cblob.Hash, Data: fullblob}, nil); err != nil {
-				return nil, err
+				return nil, cursor, err
 			}
 		}
 		refs = append(refs, &blob.SizedBlobRef{Hash: cblob.Hash, Size: cblob.Size})
 	}
 	if err := <-errc; err != nil {
-		return nil, err
+		return nil, cursor, err
 	}
-	return refs, nil
+	if len(refs) > 0 {
+		cursor = NextHexKey(refs[len(refs)-1].Hash)
+	}
+
+	return refs, cursor, nil
 }
