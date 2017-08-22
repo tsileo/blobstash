@@ -16,6 +16,7 @@ import (
 )
 
 var ErrBlobNotFound = errors.New("blob not found")
+var ErrNotFound = errors.New("not found")
 
 var transport http.RoundTripper = &http.Transport{
 	Proxy: http.ProxyFromEnvironment,
@@ -139,6 +140,9 @@ func (client *Client) GetJSON(path string, headers map[string]string, out interf
 		return err
 	}
 	if resp.StatusCode != 200 {
+		if resp.StatusCode == 404 {
+			return ErrNotFound
+		}
 		return fmt.Errorf("API call failed with status %d: %s", resp.StatusCode, body)
 	}
 	if err := json.Unmarshal(body, out); err != nil {

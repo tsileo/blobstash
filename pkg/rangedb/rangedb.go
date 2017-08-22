@@ -17,11 +17,17 @@ type RangeDB struct {
 
 // New creates a new database.
 func New(path string) (*RangeDB, error) {
-	createOpen := kv.Open
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		createOpen = kv.Create
+	var err error
+	var kvdb *kv.DB
+	if path != "" {
+		createOpen := kv.Open
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			createOpen = kv.Create
+		}
+		kvdb, err = createOpen(path, &kv.Options{})
+	} else {
+		kvdb, err = kv.CreateMem(&kv.Options{})
 	}
-	kvdb, err := createOpen(path, &kv.Options{})
 	if err != nil {
 		return nil, err
 	}

@@ -55,6 +55,12 @@ func (o *Oplog) newBlobCallback(ctx context.Context, blob *blob.Blob, _ interfac
 	return nil
 }
 
+func (o *Oplog) filetreeFSUpdateCallback(ctx context.Context, _ *blob.Blob, event interface{}) error {
+	// Send the blob hash to the broker
+	o.broker.ops <- &Op{Event: "filetree", Data: event.(string)}
+	return nil
+}
+
 func (o *Oplog) Register(r *mux.Router, basicAuth func(http.Handler) http.Handler) {
 	// Register the SSE HTTP endpoint
 	r.Handle("/", basicAuth(o.broker))
@@ -65,6 +71,7 @@ func (o *Oplog) init() {
 	o.broker.start()
 	// Register to the new blob event
 	o.hub.Subscribe(hub.NewBlob, "oplog", o.newBlobCallback)
+	o.hub.Subscribe(hub.FiletreeFSUpdate, "oplog", o.filetreeFSUpdateCallback)
 
 	go func() {
 		for {
@@ -171,6 +178,8 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// disconnected.
 			break
 		}
+
+		// FIXME(tsileo): add a way to whitelist event, like only blob or filetree (but make heartbeat part of the whitelist)
 
 		// Write to the ResponseWriter, `w`.
 		fmt.Fprintf(w, "event: %s\n", op.Event)

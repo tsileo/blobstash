@@ -15,6 +15,7 @@ const (
 	NewBlob EventType = iota
 	ScanBlob
 	GarbageCollection
+	FiletreeFSUpdate
 )
 
 type Hub struct {
@@ -47,13 +48,18 @@ func (h *Hub) ScanBlobEvent(ctx context.Context, blob *blob.Blob, data interface
 	return h.newEvent(ctx, ScanBlob, blob, data)
 }
 
+func (h *Hub) FiletreeFSUpdateEvent(ctx context.Context, blob *blob.Blob, data interface{}) error {
+	return h.newEvent(ctx, FiletreeFSUpdate, blob, data)
+}
+
 func New(logger log.Logger) *Hub {
 	logger.Debug("init")
 	return &Hub{
 		log: logger,
 		subscribers: map[EventType]map[string]func(context.Context, *blob.Blob, interface{}) error{
-			NewBlob:  map[string]func(context.Context, *blob.Blob, interface{}) error{},
-			ScanBlob: map[string]func(context.Context, *blob.Blob, interface{}) error{},
+			NewBlob:          map[string]func(context.Context, *blob.Blob, interface{}) error{},
+			ScanBlob:         map[string]func(context.Context, *blob.Blob, interface{}) error{},
+			FiletreeFSUpdate: map[string]func(context.Context, *blob.Blob, interface{}) error{},
 		},
 	}
 }

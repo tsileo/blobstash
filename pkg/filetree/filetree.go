@@ -49,6 +49,23 @@ var (
 	MaxUploadSize int64 = 512 << 20
 )
 
+type FSUpdateEvent struct {
+	Name     string `json:"fs_name"`
+	Path     string `json:"fs_path"`
+	Ref      string `json:"node_ref"`
+	Type     string `json:"node_type"`
+	Time     int64  `json:"event_time"`
+	Hostname string `json:"event_hostname"`
+}
+
+func (e *FSUpdateEvent) JSON() string {
+	js, err := json.Marshal(e)
+	if err != nil {
+		panic(err)
+	}
+	return string(js)
+}
+
 // TODO(tsileo): rename to FileTree
 type FileTreeExt struct {
 	kvStore       store.KvStore
@@ -180,7 +197,7 @@ type Node struct {
 	URL string `json:"url",omitempty`
 }
 
-// Update the given node with the given meta
+// Update the given node with the given meta, the updated/new node is assumed to be already saved
 func (ft *FileTreeExt) Update(ctx context.Context, n *Node, m *rnode.RawNode, prefixFmt string) (*Node, error) {
 	newNode, err := metaToNode(m)
 	if err != nil {
@@ -237,6 +254,79 @@ func (ft *FileTreeExt) Update(ctx context.Context, n *Node, m *rnode.RawNode, pr
 	return newNode, nil
 }
 
+// Update the given node with the given meta, the updated/new node is assumed to be already saved
+func (ft *FileTreeExt) AddChild(ctx context.Context, n *Node, newChild *rnode.RawNode, prefixFmt string) (*Node, error) {
+	// Save the new child meta
+	newChildRef, data := newChild.Encode()
+	newChild.Hash = newChildRef
+	if err := ft.blobStore.Put(ctx, &blob.Blob{Hash: newChildRef, Data: data}); err != nil {
+		return nil, err
+	}
+	newChildNode, err := metaToNode(newChild)
+	if err != nil {
+		return nil, err
+	}
+	newChildNode.Hash = newChildRef
+
+	// Add it as a new child for the node
+	newRefs := []interface{}{newChildNode.Hash}
+	newChildren := []*Node{newChildNode}
+
+	for _, c := range n.Children {
+		if c.Name == newChildNode.Name {
+			panic("duplicate file")
+		}
+		newRefs = append(newRefs, c.Hash)
+		newChildren = append(newChildren, c)
+	}
+
+	n.Meta.Refs = newRefs
+	n.Children = newChildren
+
+	// Save the new node (the updated dir)
+	newRef, data := n.Meta.Encode()
+	n.Hash = newRef
+	n.Meta.Hash = newRef
+	if err := ft.blobStore.Put(ctx, &blob.Blob{Hash: newRef, Data: data}); err != nil {
+		return nil, err
+	}
+
+	// Proagate the change up to the ~moon~ root
+	return ft.Update(ctx, n, n.Meta, prefixFmt)
+}
+
+// Delete removes the given node from its parent children
+func (ft *FileTreeExt) Delete(ctx context.Context, n *Node, prefixFmt string) error {
+	if n.parent == nil {
+		panic("can't delete root")
+	}
+	parent := n.parent
+
+	newRefs := []interface{}{}
+	newChildren := []*Node{}
+	for _, c := range parent.Children {
+		if c.Name != n.Name {
+			newRefs = append(newRefs, c.Hash)
+			newChildren = append(newChildren, c)
+		}
+	}
+
+	parent.Meta.Refs = newRefs
+	parent.Children = newChildren
+	newRef, data := parent.Meta.Encode()
+	parent.Hash = newRef
+	parent.Meta.Hash = newRef
+	if err := ft.blobStore.Put(ctx, &blob.Blob{Hash: newRef, Data: data}); err != nil {
+		return err
+	}
+
+	if _, err := ft.Update(ctx, parent, parent.Meta, prefixFmt); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (n *Node) Close() error {
 	return nil
 }
@@ -257,6 +347,14 @@ func metaToNode(m *rnode.RawNode) (*Node, error) {
 		Meta: m,
 	}
 	return n, nil
+}
+func nodeToMeta(n *Node) *rnode.RawNode {
+	return &rnode.RawNode{
+		Name:     n.Name,
+		Type:     n.Type,
+		Size:     n.Size,
+		Metadata: n.Data,
+	}
 }
 
 // fetchDir recursively fetch dir children
@@ -620,6 +718,8 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 				panic(err)
 			}
 
+			w.Header().Set("ETag", node.Hash)
+
 			// Handle HEAD request
 			if r.Method == "HEAD" {
 				return
@@ -627,13 +727,23 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 
 			// Returns the Node as JSON
 			httputil.WriteJSON(w, node)
+
 		case "POST":
+			// FIXME(tsileo): support conditional requests
 			// FIXME(tsileo): add a way to upload a file as public ? like AWS S3 public-read canned ACL
 			// Add a new node in the FS at the given path
 			node, _, err := fs.Path(ctx, path, true)
 			if err != nil {
 				panic(err)
 			}
+
+			if hash := r.Header.Get("If-Match"); hash != "" {
+				if node.Hash != hash {
+					w.WriteHeader(http.StatusPreconditionFailed)
+					return
+				}
+			}
+
 			// fmt.Printf("Current node:%v %+v %+v\n", path, node, node.meta)
 			// fmt.Printf("Current node parent:%+v %+v\n", node.parent, node.parent.meta)
 			r.ParseMultipartForm(MaxUploadSize)
@@ -658,8 +768,92 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 				panic(err)
 			}
 
+			updateEvent := &FSUpdateEvent{
+				Name: fs.Name,
+				Type: "file-updated",
+				Ref:  newNode.Hash,
+				Path: path[1:],
+				Time: time.Now().UTC().Unix(),
+				// FIXME(tsileo): get hostname from header and set it in FS
+			}
+			if err := ft.hub.FiletreeFSUpdateEvent(ctx, nil, updateEvent.JSON()); err != nil {
+				panic(err)
+			}
+
 			httputil.WriteJSON(w, newNode)
-		// FIXME(tsileo): handle delete
+
+		case "PATCH":
+			// Add a node (from its JSON representation) to a directory
+			node, _, err := fs.Path(ctx, path, false)
+			if err != nil {
+				if err == blobsfile.ErrBlobNotFound {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				panic(err)
+			}
+			if node.Type != "dir" {
+				panic("only dir can be patched")
+			}
+
+			if hash := r.Header.Get("If-Match"); hash != "" {
+				if node.Hash != hash {
+					w.WriteHeader(http.StatusPreconditionFailed)
+					return
+				}
+			}
+			var newChild *rnode.RawNode
+
+			if newRef := r.Header.Get("BlobStash-Filetree-Patch-Ref"); newRef != "" {
+				newName := r.Header.Get("BlobStash-Filetree-Patch-Name")
+
+				blob, err := ft.blobStore.Get(ctx, newRef)
+				if err != nil {
+					panic(err)
+				}
+
+				newChild, err = rnode.NewNodeFromBlob(newRef, blob)
+				if newChild != nil && newName != "" {
+					newChild.Name = newName
+				}
+			} else {
+				// Decode the raw node from the request body
+				newChild = &rnode.RawNode{}
+				err = json.NewDecoder(r.Body).Decode(newChild)
+			}
+			if err != nil {
+				panic(err)
+			}
+			newNode, err := ft.AddChild(ctx, node, newChild, prefixFmt)
+			if err != nil {
+				panic(err)
+			}
+
+			httputil.WriteJSON(w, newNode)
+
+		case "DELETE":
+			// Delete the node
+			node, _, err := fs.Path(ctx, path, false)
+			if err != nil {
+				if err == blobsfile.ErrBlobNotFound {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				panic(err)
+			}
+
+			if hash := r.Header.Get("If-Match"); hash != "" {
+				if node.Hash != hash {
+					w.WriteHeader(http.StatusPreconditionFailed)
+					return
+				}
+			}
+
+			if err := ft.Delete(ctx, node, prefixFmt); err != nil {
+				panic(err)
+			}
+			w.WriteHeader(http.StatusNoContent)
+
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return

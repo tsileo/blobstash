@@ -1068,7 +1068,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 				}
 			}
 
-			w.Header().Set("Etag", _id.Hash())
+			w.Header().Set("ETag", _id.Hash())
 			addSpecialFields(doc, _id)
 
 			js, err := json.Marshal(map[string]interface{}{
@@ -1147,7 +1147,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 				panic(err)
 			}
 
-			w.Header().Set("Etag", _id.Hash())
+			w.Header().Set("ETag", _id.Hash())
 			w.WriteHeader(http.StatusOK)
 			srw := httputil.NewSnappyResponseWriter(w, r)
 
@@ -1225,7 +1225,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			if _, err := docstore.kvStore.Put(ctx, fmt.Sprintf(KeyFmt, collection, _id.String()), hash, []byte{_id.Flag()}, -1); err != nil {
 				panic(err)
 			}
-			w.Header().Set("Etag", _id.Hash())
+			w.Header().Set("ETag", _id.Hash())
 			w.WriteHeader(http.StatusOK)
 			srw := httputil.NewSnappyResponseWriter(w, r)
 

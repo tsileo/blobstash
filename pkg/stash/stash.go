@@ -151,6 +151,7 @@ func (s Stash) newDataContext(name string) error {
 	if err != nil {
 		return err
 	}
+	// FIXME(tsileo): use a dumb single file cache instead of the blobstore
 	bsDst, err := blobstore.New(l.New("app", "blobstore"), path, nil, h)
 	if err != nil {
 		return err
@@ -159,7 +160,7 @@ func (s Stash) newDataContext(name string) error {
 		BlobStore: bsDst,
 		ReadSrc:   s.rootDataContext.bs,
 	}
-	kvsDst, err := kvstore.New(l.New("app", "kvstore"), path, bs, m)
+	kvsDst, err := kvstore.New(l.New("app", "kvstore"), "", bs, m)
 	if err != nil {
 		return err
 	}
