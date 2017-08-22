@@ -2,6 +2,7 @@ package filetree // import "a4.io/blobstash/pkg/filetree"
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,13 +17,13 @@ import (
 
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
-	"golang.org/x/net/context"
 
 	"a4.io/blobsfile"
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/cache"
 	"a4.io/blobstash/pkg/client/clientutil"
 	"a4.io/blobstash/pkg/config"
+	"a4.io/blobstash/pkg/ctxutil"
 	rnode "a4.io/blobstash/pkg/filetree/filetreeutil/node"
 	"a4.io/blobstash/pkg/filetree/imginfo"
 	"a4.io/blobstash/pkg/filetree/reader/filereader"
@@ -74,18 +75,19 @@ func (ft *FileTreeExt) ShareTTL() time.Duration {
 // BlobStore is the interface to be compatible with both the server and the BlobStore client
 type BlobStore struct {
 	blobStore store.BlobStore
+	ctx       context.Context
 }
 
 func (bs *BlobStore) Get(hash string) ([]byte, error) {
-	return bs.blobStore.Get(context.TODO(), hash)
+	return bs.blobStore.Get(bs.ctx, hash)
 }
 
 func (bs *BlobStore) Stat(hash string) (bool, error) {
-	return bs.blobStore.Stat(context.TODO(), hash)
+	return bs.blobStore.Stat(bs.ctx, hash)
 }
 
 func (bs *BlobStore) Put(hash string, data []byte) error {
-	return bs.blobStore.Put(context.TODO(), &blob.Blob{Hash: hash, Data: data})
+	return bs.blobStore.Put(bs.ctx, &blob.Blob{Hash: hash, Data: data})
 }
 
 type FS struct {
@@ -179,7 +181,7 @@ type Node struct {
 }
 
 // Update the given node with the given meta
-func (ft *FileTreeExt) Update(n *Node, m *rnode.RawNode, prefixFmt string) (*Node, error) {
+func (ft *FileTreeExt) Update(ctx context.Context, n *Node, m *rnode.RawNode, prefixFmt string) (*Node, error) {
 	newNode, err := metaToNode(m)
 	if err != nil {
 		return nil, err
@@ -197,7 +199,7 @@ func (ft *FileTreeExt) Update(n *Node, m *rnode.RawNode, prefixFmt string) (*Nod
 		if err != nil {
 			return nil, err
 		}
-		if ft.kvStore.Put(context.TODO(), fmt.Sprintf(prefixFmt, n.fs.Name), "", js, -1); err != nil {
+		if ft.kvStore.Put(ctx, fmt.Sprintf(prefixFmt, n.fs.Name), "", js, -1); err != nil {
 			return nil, err
 		}
 		return newNode, nil
@@ -223,13 +225,13 @@ func (ft *FileTreeExt) Update(n *Node, m *rnode.RawNode, prefixFmt string) (*Nod
 	newRef, data := newNode.parent.Meta.Encode()
 	newNode.parent.Hash = newRef
 	newNode.parent.Meta.Hash = newRef
-	if err := ft.blobStore.Put(context.TODO(), &blob.Blob{Hash: newRef, Data: data}); err != nil {
+	if err := ft.blobStore.Put(ctx, &blob.Blob{Hash: newRef, Data: data}); err != nil {
 		return nil, err
 	}
 	// n.parent.Hash = newRef
 	// parentMeta.Hash = newRef
 	// Propagate the change to the parents
-	if _, err := ft.Update(newNode.parent, newNode.parent.Meta, prefixFmt); err != nil {
+	if _, err := ft.Update(ctx, newNode.parent, newNode.parent.Meta, prefixFmt); err != nil {
 		return nil, err
 	}
 	return newNode, nil
@@ -258,19 +260,19 @@ func metaToNode(m *rnode.RawNode) (*Node, error) {
 }
 
 // fetchDir recursively fetch dir children
-func (ft *FileTreeExt) fetchDir(n *Node, depth, maxDepth int) error {
+func (ft *FileTreeExt) fetchDir(ctx context.Context, n *Node, depth, maxDepth int) error {
 	if depth > maxDepth {
 		return nil
 	}
 	if n.Type == "dir" {
 		n.Children = []*Node{}
 		for _, ref := range n.Meta.Refs {
-			cn, err := ft.nodeByRef(ref.(string))
+			cn, err := ft.nodeByRef(ctx, ref.(string))
 			if err != nil {
 				return err
 			}
 			n.Children = append(n.Children, cn)
-			if err := ft.fetchDir(cn, depth+1, maxDepth); err != nil {
+			if err := ft.fetchDir(ctx, cn, depth+1, maxDepth); err != nil {
 				return err
 			}
 		}
@@ -280,10 +282,10 @@ func (ft *FileTreeExt) fetchDir(n *Node, depth, maxDepth int) error {
 }
 
 // FS fetch the FileSystem by name, returns an empty one if not found
-func (ft *FileTreeExt) FS(name, prefixFmt string, newState bool) (*FS, error) {
+func (ft *FileTreeExt) FS(ctx context.Context, name, prefixFmt string, newState bool) (*FS, error) {
 	fs := &FS{}
 	if !newState {
-		kv, err := ft.kvStore.Get(context.TODO(), fmt.Sprintf(prefixFmt, name), -1)
+		kv, err := ft.kvStore.Get(ctx, fmt.Sprintf(prefixFmt, name), -1)
 		if err != nil && err != vkv.ErrNotFound {
 			return nil, err
 		}
@@ -304,9 +306,9 @@ func (ft *FileTreeExt) FS(name, prefixFmt string, newState bool) (*FS, error) {
 }
 
 // Root fetch the FS root, and creates a new one if `create` is set to true (but it won't be savec automatically in the BlobStore
-func (fs *FS) Root(create bool) (*Node, error) {
+func (fs *FS) Root(ctx context.Context, create bool) (*Node, error) {
 	fs.ft.log.Info("Root", "fs", fs)
-	node, err := fs.ft.nodeByRef(fs.Ref)
+	node, err := fs.ft.nodeByRef(ctx, fs.Ref)
 	switch err {
 	case blobsfile.ErrBlobNotFound:
 		if !create {
@@ -329,8 +331,8 @@ func (fs *FS) Root(create bool) (*Node, error) {
 }
 
 // Path returns the `Node` at the given path, create it if requested
-func (fs *FS) Path(path string, create bool) (*Node, *rnode.RawNode, error) {
-	node, err := fs.Root(create)
+func (fs *FS) Path(ctx context.Context, path string, create bool) (*Node, *rnode.RawNode, error) {
+	node, err := fs.Root(ctx, create)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -338,7 +340,7 @@ func (fs *FS) Path(path string, create bool) (*Node, *rnode.RawNode, error) {
 	var cmeta *rnode.RawNode
 	node.fs = fs
 	node.parent = nil
-	if err := fs.ft.fetchDir(node, 1, 1); err != nil {
+	if err := fs.ft.fetchDir(ctx, node, 1, 1); err != nil {
 		return nil, nil, err
 	}
 	if path == "/" {
@@ -355,11 +357,11 @@ func (fs *FS) Path(path string, create bool) (*Node, *rnode.RawNode, error) {
 		// fmt.Printf("split:%+v\n", p)
 		for _, child := range node.Children {
 			if child.Name == p {
-				node, err = fs.ft.nodeByRef(child.Hash)
+				node, err = fs.ft.nodeByRef(ctx, child.Hash)
 				if err != nil {
 					return nil, nil, err
 				}
-				if err := fs.ft.fetchDir(node, 1, 1); err != nil {
+				if err := fs.ft.fetchDir(ctx, node, 1, 1); err != nil {
 					return nil, nil, err
 				}
 				node.parent = prev
@@ -398,9 +400,10 @@ func (ft *FileTreeExt) indexHandler() func(http.ResponseWriter, *http.Request) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+		ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 		vars := mux.Vars(r)
 		ref := vars["ref"]
-		node, err := ft.nodeByRef(ref)
+		node, err := ft.nodeByRef(ctx, ref)
 		if err != nil {
 			if err == clientutil.ErrBlobNotFound {
 				w.WriteHeader(http.StatusNotFound)
@@ -408,14 +411,14 @@ func (ft *FileTreeExt) indexHandler() func(http.ResponseWriter, *http.Request) {
 			}
 			panic(err)
 		}
-		out := ft.buildIndex("/", node)
+		out := ft.buildIndex(ctx, "/", node)
 		httputil.WriteJSON(w, out)
 	}
 }
 
-func (ft *FileTreeExt) buildIndex(path string, node *Node) map[string]string {
+func (ft *FileTreeExt) buildIndex(ctx context.Context, path string, node *Node) map[string]string {
 	out := map[string]string{}
-	if err := ft.fetchDir(node, 1, 1); err != nil {
+	if err := ft.fetchDir(ctx, node, 1, 1); err != nil {
 		panic(err)
 	}
 	dpath := filepath.Join(path, node.Name)
@@ -423,7 +426,7 @@ func (ft *FileTreeExt) buildIndex(path string, node *Node) map[string]string {
 		if child.Type == "file" {
 			out[filepath.Join(dpath, child.Name)] = child.Hash
 		} else {
-			for p, ref := range ft.buildIndex(dpath, child) {
+			for p, ref := range ft.buildIndex(ctx, dpath, child) {
 				out[p] = ref
 			}
 		}
@@ -441,6 +444,7 @@ func (ft *FileTreeExt) uploadHandler() func(http.ResponseWriter, *http.Request) 
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+		ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 		// Try to parse the metadata (JSON encoded in the `data` query argument)
 		var data map[string]interface{}
 		if d := r.URL.Query().Get("data"); d != "" {
@@ -460,7 +464,7 @@ func (ft *FileTreeExt) uploadHandler() func(http.ResponseWriter, *http.Request) 
 			panic(err)
 		}
 		defer file.Close()
-		uploader := writer.NewUploader(&BlobStore{ft.blobStore})
+		uploader := writer.NewUploader(&BlobStore{ft.blobStore, ctx})
 		fdata, err := ioutil.ReadAll(file)
 		if err != nil {
 			panic(err)
@@ -541,6 +545,7 @@ func (ft *FileTreeExt) fsRootHandler() func(http.ResponseWriter, *http.Request) 
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+		ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 
 		nodes := []*Node{}
 
@@ -552,7 +557,7 @@ func (ft *FileTreeExt) fsRootHandler() func(http.ResponseWriter, *http.Request) 
 		}
 		prefix = prefix[0 : len(prefix)-2]
 
-		keys, _, err := ft.kvStore.Keys(context.TODO(), prefix, prefix+"\xff", 0)
+		keys, _, err := ft.kvStore.Keys(ctx, prefix, prefix+"\xff", 0)
 		if err != nil {
 			panic(err)
 		}
@@ -561,7 +566,7 @@ func (ft *FileTreeExt) fsRootHandler() func(http.ResponseWriter, *http.Request) 
 		for _, kv := range keys {
 			data := strings.Split(kv.Key, ":")
 			fs := &FS{Name: data[len(data)-1], Ref: kv.HexHash(), ft: ft}
-			node, _, err := fs.Path("/", false)
+			node, _, err := fs.Path(ctx, "/", false)
 			if err != nil {
 				panic(err)
 			}
@@ -573,6 +578,7 @@ func (ft *FileTreeExt) fsRootHandler() func(http.ResponseWriter, *http.Request) 
 
 func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 		vars := mux.Vars(r)
 		fsName := vars["name"]
 		path := "/" + vars["path"]
@@ -590,7 +596,7 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 				ft:  ft,
 			}
 		case "fs":
-			fs, err = ft.FS(fsName, prefixFmt, false)
+			fs, err = ft.FS(ctx, fsName, prefixFmt, false)
 			if err != nil {
 				panic(err)
 			}
@@ -599,7 +605,7 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 		}
 		switch r.Method {
 		case "GET", "HEAD":
-			node, _, err := fs.Path(path, false)
+			node, _, err := fs.Path(ctx, path, false)
 			switch err {
 			case nil:
 			case clientutil.ErrBlobNotFound:
@@ -624,7 +630,7 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 		case "POST":
 			// FIXME(tsileo): add a way to upload a file as public ? like AWS S3 public-read canned ACL
 			// Add a new node in the FS at the given path
-			node, _, err := fs.Path(path, true)
+			node, _, err := fs.Path(ctx, path, true)
 			if err != nil {
 				panic(err)
 			}
@@ -636,17 +642,18 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 				panic(err)
 			}
 			defer file.Close()
-			uploader := writer.NewUploader(&BlobStore{ft.blobStore})
+			uploader := writer.NewUploader(&BlobStore{ft.blobStore, ctx})
 
 			// Create/save me Meta
 			meta, err := uploader.PutReader(filepath.Base(path), file, nil)
 			if err != nil {
 				panic(err)
 			}
+			fmt.Printf("new meta=%+v\n", meta)
 
 			// Update the Node with the new Meta
 			// fmt.Printf("uploaded meta=%+v\nold node=%+v", meta, node)
-			newNode, err := ft.Update(node, meta, prefixFmt)
+			newNode, err := ft.Update(ctx, node, meta, prefixFmt)
 			if err != nil {
 				panic(err)
 			}
@@ -667,15 +674,16 @@ func (ft *FileTreeExt) fileHandler() func(http.ResponseWriter, *http.Request) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+		ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 		vars := mux.Vars(r)
 
 		hash := vars["ref"]
-		ft.serveFile(w, r, hash)
+		ft.serveFile(ctx, w, r, hash)
 	}
 }
 
 // serveFile serve the node as a file using `net/http` FS util
-func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash string) {
+func (ft *FileTreeExt) serveFile(ctx context.Context, w http.ResponseWriter, r *http.Request, hash string) {
 	// FIXME(tsileo): set authorized to true if the API call is authenticated via API key!
 	var authorized bool
 
@@ -686,7 +694,7 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 		authorized = true
 	}
 
-	blob, err := ft.blobStore.Get(context.TODO(), hash)
+	blob, err := ft.blobStore.Get(ctx, hash)
 	if err != nil {
 		if err == clientutil.ErrBlobNotFound {
 			w.WriteHeader(http.StatusNotFound)
@@ -721,7 +729,8 @@ func (ft *FileTreeExt) serveFile(w http.ResponseWriter, r *http.Request, hash st
 
 	// Initialize a new `File`
 	var f io.ReadSeeker
-	f = filereader.NewFile(ft.blobStore, m)
+	// FIXME(tsileo): ctx
+	f = filereader.NewFile(ctx, ft.blobStore, m)
 
 	// Check if the file is requested for download (?dl=1)
 	httputil.SetAttachment(m.Name, r, w)
@@ -750,10 +759,11 @@ func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
+		ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 		vars := mux.Vars(r)
 
 		hash := vars["ref"]
-		n, err := ft.nodeByRef(hash)
+		n, err := ft.nodeByRef(ctx, hash)
 		if err != nil {
 			if err == clientutil.ErrBlobNotFound {
 				w.WriteHeader(http.StatusNotFound)
@@ -782,7 +792,7 @@ func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
-		if err := ft.fetchDir(n, 1, 1); err != nil {
+		if err := ft.fetchDir(ctx, n, 1, 1); err != nil {
 			panic(err)
 		}
 
@@ -804,8 +814,8 @@ func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 }
 
 // nodeByRef fetch the blob containing the `meta.Meta` and convert it to a `Node`
-func (ft *FileTreeExt) nodeByRef(hash string) (*Node, error) {
-	blob, err := ft.blobStore.Get(context.TODO(), hash)
+func (ft *FileTreeExt) nodeByRef(ctx context.Context, hash string) (*Node, error) {
+	blob, err := ft.blobStore.Get(ctx, hash)
 	if err != nil {
 		return nil, err
 	}
@@ -823,13 +833,13 @@ func (ft *FileTreeExt) nodeByRef(hash string) (*Node, error) {
 	return n, nil
 }
 
-func (ft *FileTreeExt) Node(hash string) (*Node, error) {
-	node, err := ft.nodeByRef(hash)
+func (ft *FileTreeExt) Node(ctx context.Context, hash string) (*Node, error) {
+	node, err := ft.nodeByRef(ctx, hash)
 	if err != nil {
 		return nil, err
 	}
 
-	f := filereader.NewFile(ft.blobStore, node.Meta)
+	f := filereader.NewFile(ctx, ft.blobStore, node.Meta)
 	defer f.Close()
 
 	info, err := ft.fetchInfo(f, node.Meta.Name, node.Meta.Hash)
@@ -856,6 +866,7 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+		ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 		var authorized bool
 
 		if err := bewit.Validate(r, ft.sharingCred); err != nil {
@@ -868,7 +879,7 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 		vars := mux.Vars(r)
 
 		hash := vars["ref"]
-		n, err := ft.nodeByRef(hash)
+		n, err := ft.nodeByRef(ctx, hash)
 		if err != nil {
 			if err == clientutil.ErrBlobNotFound {
 				w.WriteHeader(http.StatusNotFound)
@@ -892,7 +903,7 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
-		if err := ft.fetchDir(n, 1, 1); err != nil {
+		if err := ft.fetchDir(ctx, n, 1, 1); err != nil {
 			panic(err)
 		}
 
@@ -901,7 +912,7 @@ func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
 		// Check if the dir contains an "index.html")
 		for _, cn := range n.Children {
 			if cn.Name == indexFile {
-				ft.serveFile(w, r, cn.Hash)
+				ft.serveFile(ctx, w, r, cn.Hash)
 				return
 			}
 		}

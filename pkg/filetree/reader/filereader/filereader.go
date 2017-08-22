@@ -27,7 +27,7 @@ type BlobStore interface {
 }
 
 // Download a file by its hash to path
-func GetFile(bs BlobStore, hash, path string) error {
+func GetFile(ctx context.Context, bs BlobStore, hash, path string) error {
 	// FIXME(tsileo): take a `*meta.Meta` as argument instead of the hash
 	// readResult := &ReadResult{}
 	buf, err := os.Create(path)
@@ -36,7 +36,7 @@ func GetFile(bs BlobStore, hash, path string) error {
 		return err
 	}
 	h := blake2b.New256()
-	js, err := bs.Get(context.TODO(), hash)
+	js, err := bs.Get(ctx, hash)
 	if err != nil {
 		return err
 	}
@@ -45,7 +45,7 @@ func GetFile(bs BlobStore, hash, path string) error {
 		return fmt.Errorf("failed to get meta %v \"%s\": %v", hash, js, err)
 	}
 	meta.Hash = hash
-	ffile := NewFile(bs, meta)
+	ffile := NewFile(ctx, bs, meta)
 	defer ffile.Close()
 	fileReader := io.TeeReader(ffile, h)
 	io.Copy(buf, fileReader)
@@ -93,10 +93,11 @@ type File struct {
 	lmrange []*IndexValue
 	trie    *yfast.YFastTrie
 	lru     *lru.Cache
+	ctx     context.Context
 }
 
 // NewFakeFile creates a new FakeFile instance.
-func NewFile(bs BlobStore, meta *node.RawNode) (f *File) {
+func NewFile(ctx context.Context, bs BlobStore, meta *node.RawNode) (f *File) {
 	// Needed for the blob routing
 	cache, err := lru.New(2)
 	if err != nil {
@@ -109,6 +110,7 @@ func NewFile(bs BlobStore, meta *node.RawNode) (f *File) {
 		lmrange: []*IndexValue{},
 		trie:    yfast.New(uint64(0)),
 		lru:     cache,
+		ctx:     ctx,
 	}
 	if meta.Size > 0 {
 		for idx, m := range meta.Refs {
@@ -196,7 +198,7 @@ func (f *File) read(offset int64, cnt int) ([]byte, error) {
 		if cached, ok := f.lru.Get(iv.Value); ok {
 			cbuf = cached.([]byte)
 		} else {
-			bbuf, err := f.bs.Get(context.TODO(), iv.Value)
+			bbuf, err := f.bs.Get(f.ctx, iv.Value)
 			if err != nil {
 				return nil, fmt.Errorf("failed to fetch blob %v: %v", iv.Value, err)
 			}

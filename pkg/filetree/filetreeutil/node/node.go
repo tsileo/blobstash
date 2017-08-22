@@ -19,6 +19,7 @@ var (
 )
 
 type RawNode struct {
+	Mtime    string                 `msgpack:"d,omitempty"` // FIXME(tsileo): re-add mtime support (only for file?)
 	Name     string                 `msgpack:"n"`
 	Type     string                 `msgpack:"t"`
 	Size     int                    `msgpack:"s"`

@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"a4.io/blobstash/pkg/ctxutil"
 	"a4.io/blobstash/pkg/meta"
 	"a4.io/blobstash/pkg/stash/store"
 	"a4.io/blobstash/pkg/vkv"
@@ -79,20 +78,17 @@ func (kv *KvStore) Close() error {
 }
 
 func (kv *KvStore) Get(ctx context.Context, key string, version int) (*vkv.KeyValue, error) {
-	_, fromHttp := ctxutil.Request(ctx)
-	kv.log.Info("OP Get", "from_http", fromHttp, "key", key, "version", version)
+	kv.log.Info("OP Get", "key", key, "version", version)
 	return kv.vkv.Get(key, version)
 }
 
 func (kv *KvStore) Keys(ctx context.Context, start, end string, limit int) ([]*vkv.KeyValue, string, error) {
-	_, fromHttp := ctxutil.Request(ctx)
-	kv.log.Info("OP Keys", "from_http", fromHttp, "start", "", "end", end)
+	kv.log.Info("OP Keys", "start", "", "end", end)
 	return kv.vkv.Keys(start, end, limit)
 }
 
 func (kv *KvStore) Versions(ctx context.Context, key string, start, limit int) (*vkv.KeyValueVersions, int, error) {
-	_, fromHttp := ctxutil.Request(ctx)
-	kv.log.Info("OP Versions", "from_http", fromHttp, "key", key, "start", start)
+	kv.log.Info("OP Versions", "key", key, "start", start)
 	// FIXME(tsileo): decide between -1/0 for default, or introduce a constant Max/Min?? and the end only make sense for the reverse Versions?
 	if start <= 0 {
 		start = int(time.Now().UTC().UnixNano())

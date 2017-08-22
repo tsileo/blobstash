@@ -1,12 +1,18 @@
-package fs // import "a4.io/blobstash/pkg/filetree/fs"
+package main
+
+// import "a4.io/blobstash/pkg/filetree/fs"
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math/rand"
+	"mime/multipart"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -18,8 +24,9 @@ import (
 )
 
 var kvs *kvstore.KvStore
+var cache = newCache()
 
-func CLI() {
+func main() {
 	// Scans the arg list and sets up flags
 	debug := flag.Bool("debug", false, "print debugging messages.")
 	flag.Parse()
@@ -74,6 +81,21 @@ type Node struct {
 	Children []*Node `json:"children"`
 }
 
+func (n *Node) Copy(dst io.Writer) error {
+	resp, err := kvs.Client().DoReq("GET", "/api/filetree/file/"+n.Ref, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	fmt.Printf("resp=%+v\n", resp)
+	n2, err := io.Copy(dst, resp.Body)
+	fmt.Printf("copied %s bytes (Node.Copy)\n", n2)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (n *Node) ReadAt(buf []byte, off int64) ([]byte, fuse.Status) {
 	end := int(off) + int(len(buf))
 	if end > n.Size {
@@ -97,6 +119,244 @@ func (n *Node) ReadAt(buf []byte, off int64) ([]byte, fuse.Status) {
 	return data, fuse.OK
 }
 
+type loopbackFile struct {
+	File *os.File
+	node *WritableNode
+	lock sync.Mutex
+}
+
+func (*loopbackFile) Utimens(a *time.Time, m *time.Time) fuse.Status {
+	fmt.Printf("lf OP Utimens\n")
+	return fuse.OK
+}
+func (f *loopbackFile) InnerFile() nodefs.File {
+	return nil
+}
+
+func (f *loopbackFile) SetInode(n *nodefs.Inode) {
+	fmt.Printf("setting inode %+v\n", n)
+}
+
+func (f *loopbackFile) String() string {
+	return fmt.Sprintf("loopbackFile(%s)", f.File.Name())
+}
+
+func (f *loopbackFile) Read(buf []byte, off int64) (res fuse.ReadResult, code fuse.Status) {
+	f.lock.Lock()
+	// This is not racy by virtue of the kernel properly
+	// synchronizing the open/write/close.
+	r := fuse.ReadResultFd(f.File.Fd(), off, len(buf))
+	f.lock.Unlock()
+	return r, fuse.OK
+}
+
+func (f *loopbackFile) Write(data []byte, off int64) (uint32, fuse.Status) {
+	f.lock.Lock()
+	n, err := f.File.WriteAt(data, off)
+	f.lock.Unlock()
+	return uint32(n), fuse.ToStatus(err)
+}
+
+func (f *loopbackFile) Release() {
+	f.lock.Lock()
+	f.File.Close()
+	f.lock.Unlock()
+}
+
+func (f *loopbackFile) Flush() fuse.Status {
+	fmt.Printf("lf OP Flush\n")
+	f.lock.Lock()
+
+	// Since Flush() may be called for each dup'd fd, we don't
+	// want to really close the file, we just want to flush. This
+	// is achieved by closing a dup'd fd.
+	newFd, err := syscall.Dup(int(f.File.Fd()))
+	f.lock.Unlock()
+
+	if err != nil {
+		return fuse.ToStatus(err)
+	}
+	err = syscall.Close(newFd)
+	return fuse.ToStatus(err)
+}
+
+func (f *loopbackFile) Fsync(flags int) (code fuse.Status) {
+	fmt.Printf("lf OP sync\n")
+	f.lock.Lock()
+	r := fuse.ToStatus(syscall.Fsync(int(f.File.Fd())))
+	f.lock.Unlock()
+
+	return r
+}
+
+func (f *loopbackFile) Flock(flags int) fuse.Status {
+	f.lock.Lock()
+	r := fuse.ToStatus(syscall.Flock(int(f.File.Fd()), flags))
+	f.lock.Unlock()
+
+	return r
+}
+
+func (f *loopbackFile) Truncate(size uint64) fuse.Status {
+	fmt.Printf("truncate(%d)\n", size)
+	return fuse.OK
+	f.lock.Lock()
+	r := fuse.ToStatus(syscall.Ftruncate(int(f.File.Fd()), int64(size)))
+	f.lock.Unlock()
+
+	return r
+}
+
+func (f *loopbackFile) Chmod(mode uint32) fuse.Status {
+	f.lock.Lock()
+	r := fuse.ToStatus(f.File.Chmod(os.FileMode(mode)))
+	f.lock.Unlock()
+
+	return r
+}
+
+func (f *loopbackFile) Chown(uid uint32, gid uint32) fuse.Status {
+	f.lock.Lock()
+	r := fuse.ToStatus(f.File.Chown(int(uid), int(gid)))
+	f.lock.Unlock()
+
+	return r
+}
+
+func (f *loopbackFile) GetAttr(a *fuse.Attr) fuse.Status {
+	fmt.Printf("lf OP Attr\n")
+	st := syscall.Stat_t{}
+	f.lock.Lock()
+	err := syscall.Fstat(int(f.File.Fd()), &st)
+	f.lock.Unlock()
+	if err != nil {
+		return fuse.ToStatus(err)
+	}
+	a.FromStat(&st)
+	fmt.Printf("attr=%+v\n", a)
+	return fuse.OK
+}
+
+func (f *loopbackFile) Flush2() fuse.Status {
+	// if status := f.File.Flush(); status != fuse.OK {
+	// return status
+	// }
+	return fuse.OK
+
+	fmt.Printf("custom flush")
+
+	bodyBuf := &bytes.Buffer{}
+	bodyWriter := multipart.NewWriter(bodyBuf)
+	fileWriter, err := bodyWriter.CreateFormFile("file", f.node.node.Name)
+	if err != nil {
+		return fuse.EIO
+	}
+	contentType := bodyWriter.FormDataContentType()
+	bodyWriter.Close()
+
+	fi, err := os.Open(f.node.tmpPath)
+	if err != nil {
+		return fuse.EIO
+	}
+	defer fi.Close()
+	if _, err := io.Copy(fileWriter, fi); err != nil {
+		return fuse.EIO
+	}
+
+	resp, err := kvs.Client().DoReq("POST", "/api/filetree/fs/fs/lol/"+f.node.path, map[string]string{
+		"Content-Type": contentType,
+	}, bodyBuf)
+	if err != nil || resp.StatusCode == 500 { // TODO check for the right status code instead
+		return fuse.EIO
+	}
+
+	// FIXME(tsileo): read the JSON and upload the Node in nodeIndex
+
+	return fuse.OK
+}
+func (*loopbackFile) Allocate(off uint64, size uint64, mode uint32) (code fuse.Status) {
+	return fuse.OK
+}
+
+func newLoopbackFile(f *os.File, n *WritableNode) nodefs.File {
+	return &loopbackFile{
+		File: f,
+		node: n,
+	}
+}
+
+type WritableNode struct {
+	node    *Node
+	path    string
+	tmpPath string
+}
+
+type Cache struct {
+	openedFiles map[string]*WritableNode
+	nodeIndex   map[string]*Node
+	mu          sync.Mutex
+}
+
+func newCache() *Cache {
+	return &Cache{
+		openedFiles: map[string]*WritableNode{},
+		nodeIndex:   map[string]*Node{},
+	}
+}
+
+func (c *Cache) newWritableNode(ref, path string) (nodefs.File, error) {
+	fmt.Printf("writableNode(%s, %s)\n", ref, path)
+	// FIXME(tsileo): use a custom cache dir
+	// tmpfile, err := ioutil.TempFile("", "blobfs_node")
+	f1, err := ioutil.TempFile("", "blobfs_node")
+	if err != nil {
+		return nil, err
+	}
+
+	var n *Node
+
+	// if ref != "" {
+	n, err = c.getNode(ref, path)
+	if err != nil {
+		return nil, err
+	}
+	if err := n.Copy(f1); err != nil {
+		return nil, err
+	}
+	f1.Seek(0, os.SEEK_SET)
+	if err := f1.Sync(); err != nil {
+		return nil, err
+	}
+	// }
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	wnode := &WritableNode{
+		node:    n,
+		path:    path,
+		tmpPath: f1.Name(),
+	}
+	c.openedFiles[path] = wnode
+
+	return newLoopbackFile(f1, wnode), nil
+}
+
+func (c *Cache) getNode(ref, path string) (*Node, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	// XXX(tsileo): HEAD requests to check if the ref at path is the same
+	if n, ok := c.nodeIndex[path]; ok {
+		return n, nil
+	}
+	node := &Node{}
+	if err := kvs.Client().GetJSON("/api/filetree/fs/fs/lol/"+path, nil, &node); err != nil {
+		return nil, err
+	}
+	c.nodeIndex[path] = node
+	return node, nil
+
+}
+
 var nodeIndex = map[string]*Node{}
 
 func getNode(ref, path string) (*Node, error) {
@@ -104,7 +364,8 @@ func getNode(ref, path string) (*Node, error) {
 		return n, nil
 	}
 	node := &Node{}
-	if err := kvs.Client().GetJSON("/api/filetree/fs/ref/"+ref+"/"+path, nil, &node); err != nil {
+	// if err := kvs.Client().GetJSON("/api/filetree/fs/ref/"+ref+"/"+path, nil, &node); err != nil {
+	if err := kvs.Client().GetJSON("/api/filetree/fs/fs/lol/"+path, nil, &node); err != nil {
 		return nil, err
 	}
 	nodeIndex[path] = node
@@ -140,7 +401,9 @@ func (fs *FileSystem) Utimens(path string, a *time.Time, m *time.Time, context *
 }
 
 func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (a *fuse.Attr, code fuse.Status) {
-	node, err := getNode(fs.ref, name)
+	fmt.Printf("Getattr(%s)\n", name)
+	node, err := cache.getNode(fs.ref, name)
+	fmt.Printf("node=%+v\n", node)
 	if err != nil {
 		return nil, fuse.ENOENT
 	}
@@ -149,14 +412,20 @@ func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (a *fuse.Attr,
 			Mode: fuse.S_IFDIR | 0755,
 		}, fuse.OK
 	}
+	fmt.Printf("returning size:%d\n", node.Size)
 	return &fuse.Attr{
 		Mode: fuse.S_IFREG | 0644,
 		Size: uint64(node.Size),
 	}, fuse.OK
 }
 
+func (fs *FileSystem) SetAttr(input *fuse.SetAttrIn, out *fuse.AttrOut) (code fuse.Status) {
+	fmt.Printf("SET ATTR\n")
+	return fuse.EPERM
+}
+
 func (fs *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse.DirEntry, status fuse.Status) {
-	node, err := getNode(fs.ref, name)
+	node, err := cache.getNode(fs.ref, name)
 	if err != nil {
 		return nil, fuse.ENOENT
 	}
@@ -178,7 +447,16 @@ func (fs *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse
 }
 
 func (fs *FileSystem) Open(name string, flags uint32, context *fuse.Context) (fuseFile nodefs.File, status fuse.Status) {
-	node, err := getNode(fs.ref, name)
+	fmt.Printf("Open write=%v\n", flags&fuse.O_ANYWRITE != 0)
+	if flags&fuse.O_ANYWRITE != 0 {
+		f, err := cache.newWritableNode(fs.ref, name)
+		if err != nil {
+			return nil, fuse.EIO
+		}
+		fmt.Print("before open return\n")
+		return f, fuse.OK
+	}
+	node, err := cache.getNode(fs.ref, name)
 	if err != nil {
 		return nil, fuse.ENOENT
 	}
@@ -257,6 +535,7 @@ func (fs *FileSystem) RemoveXAttr(name string, attr string, context *fuse.Contex
 }
 
 func NewFile(node *Node) *File {
+	fmt.Printf("NewFile(%+v)\n", node)
 	return &File{
 		fd:   uintptr(rand.Uint32()),
 		node: node,

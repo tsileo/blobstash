@@ -248,7 +248,7 @@ func (docstore *DocStore) fetchPointers(doc map[string]interface{}) (map[string]
 				// if err := json.Unmarshal(blob, &p); err != nil {
 				// 	return nil, fmt.Errorf("failed to unmarshal meta  \"%v => %v\": %v", PointerBlobJSON, v, err)
 				// }
-				node, err := docstore.filetree.Node(hash)
+				node, err := docstore.filetree.Node(context.TODO(), hash)
 				if err != nil {
 					return nil, err
 				}

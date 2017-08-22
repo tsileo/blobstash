@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
-	"golang.org/x/net/context"
 
 	"a4.io/blobsfile"
 	mblob "a4.io/blobstash/pkg/blob"
@@ -37,11 +36,7 @@ func (bs *BlobStoreAPI) uploadHandler() func(http.ResponseWriter, *http.Request)
 			// FIXME(tsileo): download the content from r.URL.Query().Get("url") and upload it, returns its ref
 		//POST takes the uploaded file(s) and saves it to disk.
 		case "POST":
-			ctx := ctxutil.WithRequest(context.Background(), r)
-
-			if ns := r.Header.Get("BlobStash-Namespace"); ns != "" {
-				ctx = ctxutil.WithNamespace(ctx, ns)
-			}
+			ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 
 			//parse the multipart form in the request
 			mr, err := r.MultipartReader()
@@ -82,11 +77,7 @@ func (bs *BlobStoreAPI) uploadHandler() func(http.ResponseWriter, *http.Request)
 
 func (bs *BlobStoreAPI) blobHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := ctxutil.WithRequest(context.Background(), r)
-
-		if ns := r.Header.Get("BlobStash-Namespace"); ns != "" {
-			ctx = ctxutil.WithNamespace(ctx, ns)
-		}
+		ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 		vars := mux.Vars(r)
 		switch r.Method {
 		case "GET":
@@ -122,9 +113,9 @@ func (bs *BlobStoreAPI) blobHandler() func(http.ResponseWriter, *http.Request) {
 
 func (bs *BlobStoreAPI) enumerateHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := ctxutil.WithRequest(context.Background(), r)
 		switch r.Method {
 		case "GET":
+			ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 			q := httputil.NewQuery(r.URL.Query())
 			limit, err := q.GetInt("limit", 50, 1000)
 			if err != nil {

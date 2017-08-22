@@ -116,12 +116,12 @@ func New(conf *config.Config) (*Server, error) {
 	// }
 	// Load the synctable
 	// XXX(tsileo): sync should always get the root data context
-	synctable := synctable.New(logger.New("app", "sync"), conf, blobstore)
+	synctable := synctable.New(logger.New("app", "sync"), conf, rootBlobstore)
 	synctable.Register(s.router.PathPrefix("/api/sync").Subrouter(), basicAuth)
 
 	// Enable replication if set in the config
 	if conf.ReplicateFrom != nil {
-		if _, err := replication.New(logger.New("app", "replication"), conf, blobstore, synctable, wg); err != nil {
+		if _, err := replication.New(logger.New("app", "replication"), conf, rootBlobstore, synctable, wg); err != nil {
 			return nil, fmt.Errorf("failed to initialize replication app: %v", err)
 		}
 	}

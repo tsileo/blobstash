@@ -14,7 +14,6 @@ import (
 	"a4.io/blobstash/pkg/backend/s3"
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/config"
-	"a4.io/blobstash/pkg/ctxutil"
 	"a4.io/blobstash/pkg/hub"
 )
 
@@ -84,8 +83,7 @@ func (bs *BlobStore) Close() error {
 }
 
 func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
-	_, fromHttp := ctxutil.Request(ctx)
-	bs.log.Info("OP Put", "from_http", fromHttp, "hash", blob.Hash, "len", len(blob.Data))
+	bs.log.Info("OP Put", "hash", blob.Hash, "len", len(blob.Data))
 
 	// Ensure the blob hash match the blob content
 	if err := blob.Check(); err != nil {
@@ -124,14 +122,12 @@ func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
 }
 
 func (bs *BlobStore) Get(ctx context.Context, hash string) ([]byte, error) {
-	_, fromHttp := ctxutil.Request(ctx)
-	bs.log.Info("OP Get", "from_http", fromHttp, "hash", hash)
+	bs.log.Info("OP Get", "hash", hash)
 	return bs.back.Get(hash)
 }
 
 func (bs *BlobStore) Stat(ctx context.Context, hash string) (bool, error) {
-	_, fromHttp := ctxutil.Request(ctx)
-	bs.log.Info("OP Stat", "from_http", fromHttp, "hash", hash)
+	bs.log.Info("OP Stat", "hash", hash)
 	return bs.back.Exists(hash)
 }
 
@@ -147,8 +143,7 @@ func (bs *BlobStore) Scan(ctx context.Context) error {
 
 func (bs *BlobStore) enumerate(ctx context.Context, start, end string, limit int, scan bool) ([]*blob.SizedBlobRef, string, error) {
 	var cursor string
-	_, fromHttp := ctxutil.Request(ctx)
-	bs.log.Info("OP Enumerate", "from_http", fromHttp, "start", start, "end", end, "limit", limit)
+	bs.log.Info("OP Enumerate", "start", start, "end", end, "limit", limit)
 	out := make(chan *blobsfile.Blob)
 	refs := []*blob.SizedBlobRef{}
 	errc := make(chan error, 1)

@@ -237,7 +237,7 @@ func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
 	if err != nil {
 		return err
 	}
-	return dataContext.bsProxy.Put(ctx, blob)
+	return dataContext.BlobStoreProxy().Put(ctx, blob)
 }
 
 func (bs *BlobStore) Get(ctx context.Context, hash string) ([]byte, error) {
@@ -245,7 +245,7 @@ func (bs *BlobStore) Get(ctx context.Context, hash string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return dataContext.bs.Get(ctx, hash)
+	return dataContext.BlobStoreProxy().Get(ctx, hash)
 
 }
 func (bs *BlobStore) Stat(ctx context.Context, hash string) (bool, error) {
@@ -253,7 +253,7 @@ func (bs *BlobStore) Stat(ctx context.Context, hash string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return dataContext.bs.Stat(ctx, hash)
+	return dataContext.BlobStoreProxy().Stat(ctx, hash)
 
 }
 
@@ -262,7 +262,5 @@ func (bs *BlobStore) Enumerate(ctx context.Context, start, end string, limit int
 	if err != nil {
 		return nil, "", err
 	}
-	return dataContext.bs.Enumerate(ctx, start, end, limit)
+	return dataContext.BlobStoreProxy().Enumerate(ctx, start, end, limit)
 }
-
-// 	if ns, ok := ctxutil.Namespace(ctx); ok {

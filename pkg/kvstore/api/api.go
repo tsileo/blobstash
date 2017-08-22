@@ -1,12 +1,12 @@
 package api // import "a4.io/blobstash/pkg/kvstore/api"
 
 import (
-	"context"
-	"github.com/gorilla/mux"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strconv"
+
+	"github.com/gorilla/mux"
 
 	"a4.io/blobstash/pkg/ctxutil"
 	"a4.io/blobstash/pkg/httputil"
@@ -42,7 +42,7 @@ func (kv *KvStoreAPI) keysHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
-			// ctx := ctxutil.WithRequest(context.Background(), r)
+			ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 			q := httputil.NewQuery(r.URL.Query())
 			start := q.GetDefault("cursor", "")
 			limit, err := q.GetIntDefault("limit", 50)
@@ -50,7 +50,7 @@ func (kv *KvStoreAPI) keysHandler() func(http.ResponseWriter, *http.Request) {
 				panic(err)
 			}
 			keys := []*keyValue{}
-			rawKeys, cursor, err := kv.kv.Keys(context.TODO(), start, "\xff", limit)
+			rawKeys, cursor, err := kv.kv.Keys(ctx, start, "\xff", limit)
 			if err != nil {
 				panic(err)
 			}
@@ -82,7 +82,7 @@ func (kv *KvStoreAPI) versionsHandler() func(http.ResponseWriter, *http.Request)
 		switch r.Method {
 		//POST takes the uploaded file(s) and saves it to disk.
 		case "GET", "HEAD":
-			ctx := ctxutil.WithRequest(context.Background(), r)
+			ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 			limit, err := q.GetIntDefault("limit", 50)
 			if err != nil {
 				panic(err)
@@ -127,7 +127,7 @@ func (kv *KvStoreAPI) getHandler() func(http.ResponseWriter, *http.Request) {
 		key := mux.Vars(r)["key"]
 		switch r.Method {
 		case "GET", "HEAD":
-			ctx := ctxutil.WithRequest(context.Background(), r)
+			ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 
 			q := httputil.NewQuery(r.URL.Query())
 			version, err := q.GetIntDefault("version", -1)
@@ -154,7 +154,7 @@ func (kv *KvStoreAPI) getHandler() func(http.ResponseWriter, *http.Request) {
 			}
 			return
 		case "POST", "PUT":
-			ctx := ctxutil.WithRequest(context.Background(), r)
+			ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 
 			// Parse the form value
 			hah, err := ioutil.ReadAll(r.Body)
