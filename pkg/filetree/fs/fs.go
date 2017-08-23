@@ -121,14 +121,14 @@ func main() {
 				fmt.Printf("op=%+v\n", op)
 				evt := EventFromJSON(op.Data)
 				fmt.Printf("evt=%+v\n", evt)
-				switch evt.Type {
-				case "file-updated":
-					if err := nfs.Notify(evt.Path); err != fuse.OK {
-						fmt.Printf("failed to notify=%+v\n", err)
-					}
-				default:
-					panic("unknown event type")
+				// switch evt.Type {
+				// case "file-updated":
+				if err := nfs.Notify(evt.Path); err != fuse.OK {
+					fmt.Printf("failed to notify=%+v\n", err)
 				}
+				// default:
+				// panic("unknown event type")
+				// }
 			}
 		}
 	}()

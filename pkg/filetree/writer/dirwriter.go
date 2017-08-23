@@ -3,7 +3,6 @@ package writer
 import (
 	"fmt"
 	"io/ioutil"
-	_ "log"
 	"os"
 	"path/filepath"
 	"sort"

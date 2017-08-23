@@ -19,7 +19,7 @@ var (
 )
 
 type RawNode struct {
-	Mtime    string                 `msgpack:"d,omitempty"` // FIXME(tsileo): re-add mtime support (only for file?)
+	ModTime  int64                  `msgpack:"mt,omitempty"` // Only set for file, for dir, it can be the most recent mtime of children
 	Name     string                 `msgpack:"n"`
 	Type     string                 `msgpack:"t"`
 	Size     int                    `msgpack:"s"`

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/hashicorp/golang-lru"
 	log "github.com/inconshreveable/log15"
 
 	"a4.io/blobsfile"
@@ -77,6 +78,7 @@ type FileTreeExt struct {
 	shareTTL      time.Duration
 	thumbCache    *cache.Cache
 	metadataCache *cache.Cache
+	nodeCache     *lru.Cache
 
 	log log.Logger
 }
@@ -126,6 +128,11 @@ func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bo
 	if err != nil {
 		return nil, err
 	}
+	nodeCache, err := lru.New(512)
+	if err != nil {
+		return nil, err
+	}
+
 	return &FileTreeExt{
 		conf:      conf,
 		kvStore:   kvStore,
@@ -136,6 +143,7 @@ func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bo
 		},
 		thumbCache:    thumbscache,
 		metadataCache: metacache,
+		nodeCache:     nodeCache,
 		authFunc:      authFunc,
 		shareTTL:      1 * time.Hour,
 		hub:           chub,
@@ -183,6 +191,7 @@ type Node struct {
 	Name     string  `json:"name"`
 	Type     string  `json:"type"`
 	Size     int     `json:"size"`
+	ModTime  string  `json:"mtime"`
 	Hash     string  `json:"ref"`
 	Children []*Node `json:"children,omitempty"`
 
@@ -198,7 +207,7 @@ type Node struct {
 }
 
 // Update the given node with the given meta, the updated/new node is assumed to be already saved
-func (ft *FileTreeExt) Update(ctx context.Context, n *Node, m *rnode.RawNode, prefixFmt string) (*Node, error) {
+func (ft *FileTreeExt) Update(ctx context.Context, n *Node, m *rnode.RawNode, prefixFmt string, first bool) (*Node, error) {
 	newNode, err := metaToNode(m)
 	if err != nil {
 		return nil, err
@@ -235,6 +244,22 @@ func (ft *FileTreeExt) Update(ctx context.Context, n *Node, m *rnode.RawNode, pr
 	newNode.parent.Meta.Refs = newRefs
 	newNode.parent.Children = newChildren
 
+	if first {
+		newNode.parent.Meta.ModTime = m.ModTime
+		newNode.parent.ModTime = time.Unix(m.ModTime, 0).Format(time.RFC3339)
+	}
+	if newNode.parent.Meta.ModTime == 0 {
+		t := time.Now()
+		newNode.parent.Meta.ModTime = t.Unix()
+		newNode.parent.ModTime = t.Format(time.RFC3339)
+	}
+	// else {
+	// 	if newNode.parent.Meta.ModTime == 0 { // || m.ModTime > newNode.parent.Meta.ModTime {
+	// 		newNode.parent.Meta.ModTime = m.ModTime
+	// 		newNode.parent.ModTime = time.Unix(m.ModTime, 0).Format(time.RFC3339)
+	// 	}
+	// }
+
 	// parentMeta := n.parent.meta
 	// parentMeta.Refs = newRefs
 	// n.parent.Children = newChildren
@@ -248,7 +273,7 @@ func (ft *FileTreeExt) Update(ctx context.Context, n *Node, m *rnode.RawNode, pr
 	// n.parent.Hash = newRef
 	// parentMeta.Hash = newRef
 	// Propagate the change to the parents
-	if _, err := ft.Update(ctx, newNode.parent, newNode.parent.Meta, prefixFmt); err != nil {
+	if _, err := ft.Update(ctx, newNode.parent, newNode.parent.Meta, prefixFmt, false); err != nil {
 		return nil, err
 	}
 	return newNode, nil
@@ -257,6 +282,7 @@ func (ft *FileTreeExt) Update(ctx context.Context, n *Node, m *rnode.RawNode, pr
 // Update the given node with the given meta, the updated/new node is assumed to be already saved
 func (ft *FileTreeExt) AddChild(ctx context.Context, n *Node, newChild *rnode.RawNode, prefixFmt string) (*Node, error) {
 	// Save the new child meta
+	newChild.ModTime = time.Now().UTC().Unix()
 	newChildRef, data := newChild.Encode()
 	newChild.Hash = newChildRef
 	if err := ft.blobStore.Put(ctx, &blob.Blob{Hash: newChildRef, Data: data}); err != nil {
@@ -292,7 +318,7 @@ func (ft *FileTreeExt) AddChild(ctx context.Context, n *Node, newChild *rnode.Ra
 	}
 
 	// Proagate the change up to the ~moon~ root
-	return ft.Update(ctx, n, n.Meta, prefixFmt)
+	return ft.Update(ctx, n, n.Meta, prefixFmt, true)
 }
 
 // Delete removes the given node from its parent children
@@ -320,7 +346,7 @@ func (ft *FileTreeExt) Delete(ctx context.Context, n *Node, prefixFmt string) er
 		return err
 	}
 
-	if _, err := ft.Update(ctx, parent, parent.Meta, prefixFmt); err != nil {
+	if _, err := ft.Update(ctx, parent, parent.Meta, prefixFmt, true); err != nil {
 		return err
 	}
 
@@ -346,15 +372,10 @@ func metaToNode(m *rnode.RawNode) (*Node, error) {
 		Hash: m.Hash,
 		Meta: m,
 	}
-	return n, nil
-}
-func nodeToMeta(n *Node) *rnode.RawNode {
-	return &rnode.RawNode{
-		Name:     n.Name,
-		Type:     n.Type,
-		Size:     n.Size,
-		Metadata: n.Data,
+	if m.ModTime > 0 {
+		n.ModTime = time.Unix(m.ModTime, 0).Format(time.RFC3339)
 	}
+	return n, nil
 }
 
 // fetchDir recursively fetch dir children
@@ -375,7 +396,6 @@ func (ft *FileTreeExt) fetchDir(ctx context.Context, n *Node, depth, maxDepth in
 			}
 		}
 	}
-	// n.meta.Close()
 	return nil
 }
 
@@ -429,21 +449,22 @@ func (fs *FS) Root(ctx context.Context, create bool) (*Node, error) {
 }
 
 // Path returns the `Node` at the given path, create it if requested
-func (fs *FS) Path(ctx context.Context, path string, create bool) (*Node, *rnode.RawNode, error) {
+func (fs *FS) Path(ctx context.Context, path string, create bool) (*Node, *rnode.RawNode, bool, error) {
+	var found bool
 	node, err := fs.Root(ctx, create)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, found, err
 	}
 	var prev *Node
 	var cmeta *rnode.RawNode
 	node.fs = fs
 	node.parent = nil
 	if err := fs.ft.fetchDir(ctx, node, 1, 1); err != nil {
-		return nil, nil, err
+		return nil, nil, found, err
 	}
 	if path == "/" {
 		fs.ft.log.Info("returning root")
-		return node, cmeta, err
+		return node, cmeta, found, err
 	}
 	split := strings.Split(path[1:], "/")
 	// fmt.Printf("split res=%+v\n", split)
@@ -451,16 +472,16 @@ func (fs *FS) Path(ctx context.Context, path string, create bool) (*Node, *rnode
 	pathCount := len(split)
 	for i, p := range split {
 		prev = node
-		found := false
+		found = false
 		// fmt.Printf("split:%+v\n", p)
 		for _, child := range node.Children {
 			if child.Name == p {
 				node, err = fs.ft.nodeByRef(ctx, child.Hash)
 				if err != nil {
-					return nil, nil, err
+					return nil, nil, found, err
 				}
 				if err := fs.ft.fetchDir(ctx, node, 1, 1); err != nil {
-					return nil, nil, err
+					return nil, nil, found, err
 				}
 				node.parent = prev
 				node.fs = fs
@@ -473,24 +494,24 @@ func (fs *FS) Path(ctx context.Context, path string, create bool) (*Node, *rnode
 		// At this point, we found no node at the given path
 		if !found {
 			if !create {
-				return nil, nil, clientutil.ErrBlobNotFound
+				return nil, nil, found, clientutil.ErrBlobNotFound
 			}
 			// Create a new dir since it doesn't exist
-			cmeta = &rnode.RawNode{Type: "dir", Name: p}
+			cmeta = &rnode.RawNode{Type: "dir", Name: p, ModTime: time.Now().Unix()}
 			if i == pathCount-1 {
 				cmeta.Type = "file"
 			}
 			//  we don't set the meta type, it will be set on Update if it doesn't exist
 			node, err = metaToNode(cmeta)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, found, err
 			}
 			node.parent = prev
 			node.fs = fs
 			// fmt.Printf("split:%+v created:%+v\n", p, node)
 		}
 	}
-	return node, cmeta, nil
+	return node, cmeta, !found, nil
 }
 func (ft *FileTreeExt) indexHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -664,7 +685,7 @@ func (ft *FileTreeExt) fsRootHandler() func(http.ResponseWriter, *http.Request) 
 		for _, kv := range keys {
 			data := strings.Split(kv.Key, ":")
 			fs := &FS{Name: data[len(data)-1], Ref: kv.HexHash(), ft: ft}
-			node, _, err := fs.Path(ctx, "/", false)
+			node, _, _, err := fs.Path(ctx, "/", false)
 			if err != nil {
 				panic(err)
 			}
@@ -703,7 +724,7 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 		}
 		switch r.Method {
 		case "GET", "HEAD":
-			node, _, err := fs.Path(ctx, path, false)
+			node, _, _, err := fs.Path(ctx, path, false)
 			switch err {
 			case nil:
 			case clientutil.ErrBlobNotFound:
@@ -732,7 +753,7 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 			// FIXME(tsileo): support conditional requests
 			// FIXME(tsileo): add a way to upload a file as public ? like AWS S3 public-read canned ACL
 			// Add a new node in the FS at the given path
-			node, _, err := fs.Path(ctx, path, true)
+			node, _, created, err := fs.Path(ctx, path, true)
 			if err != nil {
 				panic(err)
 			}
@@ -763,14 +784,19 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 
 			// Update the Node with the new Meta
 			// fmt.Printf("uploaded meta=%+v\nold node=%+v", meta, node)
-			newNode, err := ft.Update(ctx, node, meta, prefixFmt)
+			newNode, err := ft.Update(ctx, node, meta, prefixFmt, true)
 			if err != nil {
 				panic(err)
 			}
 
+			// Event handling for the oplog
+			evtType := "file-updated"
+			if created {
+				evtType = "file-created"
+			}
 			updateEvent := &FSUpdateEvent{
 				Name: fs.Name,
-				Type: "file-updated",
+				Type: evtType,
 				Ref:  newNode.Hash,
 				Path: path[1:],
 				Time: time.Now().UTC().Unix(),
@@ -784,7 +810,7 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 
 		case "PATCH":
 			// Add a node (from its JSON representation) to a directory
-			node, _, err := fs.Path(ctx, path, false)
+			node, _, _, err := fs.Path(ctx, path, false)
 			if err != nil {
 				if err == blobsfile.ErrBlobNotFound {
 					w.WriteHeader(http.StatusNotFound)
@@ -833,7 +859,7 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 
 		case "DELETE":
 			// Delete the node
-			node, _, err := fs.Path(ctx, path, false)
+			node, _, _, err := fs.Path(ctx, path, false)
 			if err != nil {
 				if err == blobsfile.ErrBlobNotFound {
 					w.WriteHeader(http.StatusNotFound)
@@ -1009,6 +1035,17 @@ func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 
 // nodeByRef fetch the blob containing the `meta.Meta` and convert it to a `Node`
 func (ft *FileTreeExt) nodeByRef(ctx context.Context, hash string) (*Node, error) {
+	if cached, ok := ft.nodeCache.Get(hash); ok {
+		n := cached.(*Node)
+		if n.Hash != hash {
+			panic("cache messed up")
+		}
+		if n.Children != nil && len(n.Children) > 0 {
+			n.Children = nil
+		}
+		return n, nil
+	}
+
 	blob, err := ft.blobStore.Get(ctx, hash)
 	if err != nil {
 		return nil, err
@@ -1023,6 +1060,8 @@ func (ft *FileTreeExt) nodeByRef(ctx context.Context, hash string) (*Node, error
 	if err != nil {
 		return nil, err
 	}
+
+	ft.nodeCache.Add(hash, n)
 
 	return n, nil
 }

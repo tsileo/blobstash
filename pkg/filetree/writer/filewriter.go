@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/dchest/blake2b"
 	"github.com/restic/chunker"
@@ -82,6 +83,7 @@ func (up *Uploader) PutFile(path string) (*rnode.RawNode, error) { // , *WriteRe
 	meta.Name = filename
 	meta.Size = int(fstat.Size())
 	meta.Type = "file"
+	meta.ModTime = fstat.ModTime().Unix()
 	// wr := NewWriteResult()
 	if fstat.Size() > 0 {
 		f, err := os.Open(path)
@@ -169,6 +171,7 @@ func (up *Uploader) PutReader(name string, reader io.Reader, data map[string]int
 	meta := &rnode.RawNode{}
 	meta.Name = filepath.Base(name)
 	meta.Type = "file"
+	meta.ModTime = time.Now().Unix()
 	if data != nil {
 		for k, v := range data {
 			meta.AddData(k, v)
@@ -178,12 +181,6 @@ func (up *Uploader) PutReader(name string, reader io.Reader, data map[string]int
 	if err := up.writeReader(reader, meta); err != nil {
 		return nil, err
 	}
-	// if err != nil {
-	// 	return nil, nil, fmt.Errorf("FileWriter error: %v", err)
-	// }
-	// meta.Size = cwr.Size
-	// wr.free()
-	// wr = cwr
 	mhash, mjs := meta.Encode()
 	mexists, err := up.bs.Stat(mhash)
 	if err != nil {
