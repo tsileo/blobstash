@@ -25,12 +25,30 @@ import (
 
 	"a4.io/blobstash/pkg/client/clientutil"
 	"a4.io/blobstash/pkg/client/kvstore"
+	"a4.io/blobstash/pkg/client/oplog"
 )
 
 // TODO(tsileo): test Server.Notify(path)!
 
 var kvs *kvstore.KvStore
 var cache *Cache
+
+type FSUpdateEvent struct {
+	Name     string `json:"fs_name"`
+	Path     string `json:"fs_path"`
+	Ref      string `json:"node_ref"`
+	Type     string `json:"node_type"`
+	Time     int64  `json:"event_time"`
+	Hostname string `json:"event_hostname"`
+}
+
+func EventFromJSON(data string) *FSUpdateEvent {
+	out := &FSUpdateEvent{}
+	if err := json.Unmarshal([]byte(data), out); err != nil {
+		panic(err)
+	}
+	return out
+}
 
 func main() {
 	// Scans the arg list and sets up flags
@@ -51,12 +69,12 @@ func main() {
 	kvopts.SnappyCompression = false
 	kvs = kvstore.New(kvopts)
 
+	oplogClient := oplog.New(kvopts)
+	ops := make(chan *oplog.Op)
 	root := NewFileSystem(flag.Arg(1))
 
 	opts := &nodefs.Options{
-		AttrTimeout:  300 * time.Second,
-		EntryTimeout: 300 * time.Second,
-		Debug:        *debug,
+		Debug: *debug,
 	}
 	nfs := pathfs.NewPathNodeFs(root, nil)
 	// state, _, err := nodefs.MountRoot(flag.Arg(0), nfs.Root(), opts)
@@ -66,7 +84,7 @@ func main() {
 	// XXX(tsileo): different options on READ ONLY mode
 	mountOpts := fuse.MountOptions{
 		Options: []string{
-			// FIXME(tsileo): no more nolocalcaches and use notify instead
+			// FIXME(tsileo): no more nolocalcaches and use notify instead for linux
 			"nolocalcaches",
 			"defer_permissions",
 			"noappledouble",
@@ -91,6 +109,29 @@ func main() {
 
 	go state.Serve()
 	fmt.Printf("mounted\n")
+
+	go func() {
+		if err := oplogClient.Notify(ops); err != nil {
+			panic(err)
+		}
+	}()
+	go func() {
+		for op := range ops {
+			if op.Event == "filetree" {
+				fmt.Printf("op=%+v\n", op)
+				evt := EventFromJSON(op.Data)
+				fmt.Printf("evt=%+v\n", evt)
+				switch evt.Type {
+				case "file-updated":
+					if err := nfs.Notify(evt.Path); err != fuse.OK {
+						fmt.Printf("failed to notify=%+v\n", err)
+					}
+				default:
+					panic("unknown event type")
+				}
+			}
+		}
+	}()
 
 	// Be ready to cleanup if we receive a kill signal
 	cs := make(chan os.Signal, 1)
@@ -395,9 +436,9 @@ func (fs *FileSystem) Utimens(path string, a *time.Time, m *time.Time, context *
 }
 
 func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (a *fuse.Attr, code fuse.Status) {
-	fmt.Printf("Getattr(%s)\n", name)
+	// fmt.Printf("Getattr(%s)\n", name)
 	node, err := cache.getNode(fs.ref, name)
-	fmt.Printf("node=%+v\n", node)
+	// fmt.Printf("node=%+v\n", node)
 	if err != nil || node.Type == "file" {
 		// TODO(tsileo): proper error checking
 
