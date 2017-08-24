@@ -163,7 +163,7 @@ func (r *filetreeDownloadCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...i
 		tpath = n.Name
 	}
 
-	if err := downloader.Download(n.Meta, tpath); err != nil {
+	if err := downloader.Download(context.TODO(), n.Meta, tpath); err != nil {
 		return rerr("failed to download: %v", err)
 	}
 
