@@ -41,15 +41,11 @@ var (
 	// FIXME(tsileo): add a way to set a custom fmt key life for Blobs CLI as we don't care about the FS?
 	indexFile = "index.html"
 	FSKeyFmt  = "_filetree:fs:%s"
-	// FSKeyFmt = "_:filetree:fs:%s"
-	// PermName     = "filetree"
-	// PermTreeName = "filetree:root:"
-	// PermWrite    = "write"
-	// PermRead     = "read"
 
-	MaxUploadSize int64 = 512 << 20
+	MaxUploadSize int64 = 512 << 20 // 512MB
 )
 
+// FSUpdateEvent represents an even fired on FS update to the Oplog
 type FSUpdateEvent struct {
 	Name     string `json:"fs_name"`
 	Path     string `json:"fs_path"`
@@ -67,8 +63,7 @@ func (e *FSUpdateEvent) JSON() string {
 	return string(js)
 }
 
-// TODO(tsileo): rename to FileTree
-type FileTreeExt struct {
+type FileTree struct {
 	kvStore       store.KvStore
 	blobStore     store.BlobStore
 	conf          *config.Config
@@ -83,11 +78,11 @@ type FileTreeExt struct {
 	log log.Logger
 }
 
-func (ft *FileTreeExt) SharingCred() *bewit.Cred {
+func (ft *FileTree) SharingCred() *bewit.Cred {
 	return ft.sharingCred
 }
 
-func (ft *FileTreeExt) ShareTTL() time.Duration {
+func (ft *FileTree) ShareTTL() time.Duration {
 	return ft.shareTTL
 }
 
@@ -113,18 +108,18 @@ type FS struct {
 	Name string `json:"-"`
 	Ref  string `json:"ref"`
 
-	ft *FileTreeExt `json:"-"`
+	ft *FileTree `json:"-"`
 }
 
 // New initializes the `DocStoreExt`
-func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bool, kvStore store.KvStore, blobStore store.BlobStore, chub *hub.Hub) (*FileTreeExt, error) {
+func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bool, kvStore store.KvStore, blobStore store.BlobStore, chub *hub.Hub) (*FileTree, error) {
 	logger.Debug("init")
 	// FIXME(tsileo): make the number of thumbnails to keep in memory a config item
-	thumbscache, err := cache.New(conf, "filetree_thumbs.cache", 512<<20)
+	thumbscache, err := cache.New(conf.VarDir(), "filetree_thumbs.cache", 512<<20)
 	if err != nil {
 		return nil, err
 	}
-	metacache, err := cache.New(conf, "filetree_info.cache", 256<<20)
+	metacache, err := cache.New(conf.VarDir(), "filetree_info.cache", 256<<20)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +128,7 @@ func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bo
 		return nil, err
 	}
 
-	return &FileTreeExt{
+	return &FileTree{
 		conf:      conf,
 		kvStore:   kvStore,
 		blobStore: blobStore,
@@ -152,14 +147,14 @@ func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bo
 }
 
 // Close closes all the open DB files.
-func (ft *FileTreeExt) Close() error {
+func (ft *FileTree) Close() error {
 	ft.thumbCache.Close()
 	ft.metadataCache.Close()
 	return nil
 }
 
 // RegisterRoute registers all the HTTP handlers for the extension
-func (ft *FileTreeExt) Register(r *mux.Router, root *mux.Router, basicAuth func(http.Handler) http.Handler) {
+func (ft *FileTree) Register(r *mux.Router, root *mux.Router, basicAuth func(http.Handler) http.Handler) {
 	// Raw node endpoint
 	r.Handle("/node/{ref}", basicAuth(http.HandlerFunc(ft.nodeHandler())))
 
@@ -207,7 +202,7 @@ type Node struct {
 }
 
 // Update the given node with the given meta, the updated/new node is assumed to be already saved
-func (ft *FileTreeExt) Update(ctx context.Context, n *Node, m *rnode.RawNode, prefixFmt string, first bool) (*Node, error) {
+func (ft *FileTree) Update(ctx context.Context, n *Node, m *rnode.RawNode, prefixFmt string, first bool) (*Node, error) {
 	newNode, err := metaToNode(m)
 	if err != nil {
 		return nil, err
@@ -221,11 +216,11 @@ func (ft *FileTreeExt) Update(ctx context.Context, n *Node, m *rnode.RawNode, pr
 	// }
 	if n.parent == nil {
 		n.fs.Ref = newNode.Hash
-		js, err := json.Marshal(n.fs)
-		if err != nil {
-			return nil, err
-		}
-		if ft.kvStore.Put(ctx, fmt.Sprintf(prefixFmt, n.fs.Name), "", js, -1); err != nil {
+		// js, err := json.Marshal(n.fs)
+		// if err != nil {
+		// return nil, err
+		// }
+		if ft.kvStore.Put(ctx, fmt.Sprintf(prefixFmt, n.fs.Name), newNode.Hash, nil, -1); err != nil {
 			return nil, err
 		}
 		return newNode, nil
@@ -280,7 +275,7 @@ func (ft *FileTreeExt) Update(ctx context.Context, n *Node, m *rnode.RawNode, pr
 }
 
 // Update the given node with the given meta, the updated/new node is assumed to be already saved
-func (ft *FileTreeExt) AddChild(ctx context.Context, n *Node, newChild *rnode.RawNode, prefixFmt string) (*Node, error) {
+func (ft *FileTree) AddChild(ctx context.Context, n *Node, newChild *rnode.RawNode, prefixFmt string) (*Node, error) {
 	// Save the new child meta
 	newChild.ModTime = time.Now().UTC().Unix()
 	newChildRef, data := newChild.Encode()
@@ -322,7 +317,7 @@ func (ft *FileTreeExt) AddChild(ctx context.Context, n *Node, newChild *rnode.Ra
 }
 
 // Delete removes the given node from its parent children
-func (ft *FileTreeExt) Delete(ctx context.Context, n *Node, prefixFmt string) error {
+func (ft *FileTree) Delete(ctx context.Context, n *Node, prefixFmt string) error {
 	if n.parent == nil {
 		panic("can't delete root")
 	}
@@ -379,7 +374,7 @@ func metaToNode(m *rnode.RawNode) (*Node, error) {
 }
 
 // fetchDir recursively fetch dir children
-func (ft *FileTreeExt) fetchDir(ctx context.Context, n *Node, depth, maxDepth int) error {
+func (ft *FileTree) fetchDir(ctx context.Context, n *Node, depth, maxDepth int) error {
 	if depth > maxDepth {
 		return nil
 	}
@@ -400,7 +395,7 @@ func (ft *FileTreeExt) fetchDir(ctx context.Context, n *Node, depth, maxDepth in
 }
 
 // FS fetch the FileSystem by name, returns an empty one if not found
-func (ft *FileTreeExt) FS(ctx context.Context, name, prefixFmt string, newState bool) (*FS, error) {
+func (ft *FileTree) FS(ctx context.Context, name, prefixFmt string, newState bool) (*FS, error) {
 	fs := &FS{}
 	if !newState {
 		kv, err := ft.kvStore.Get(ctx, fmt.Sprintf(prefixFmt, name), -1)
@@ -409,9 +404,8 @@ func (ft *FileTreeExt) FS(ctx context.Context, name, prefixFmt string, newState 
 		}
 		switch err {
 		case nil:
-			if err := json.Unmarshal([]byte(kv.Data), fs); err != nil {
-				return nil, err
-			}
+			// Set the existing ref
+			fs.Ref = kv.HexHash()
 		case vkv.ErrNotFound:
 			// XXX(tsileo): should the `ErrNotFound` be returned here?
 		default:
@@ -513,7 +507,7 @@ func (fs *FS) Path(ctx context.Context, path string, create bool) (*Node, *rnode
 	}
 	return node, cmeta, !found, nil
 }
-func (ft *FileTreeExt) indexHandler() func(http.ResponseWriter, *http.Request) {
+func (ft *FileTree) indexHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -535,7 +529,7 @@ func (ft *FileTreeExt) indexHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-func (ft *FileTreeExt) buildIndex(ctx context.Context, path string, node *Node) map[string]string {
+func (ft *FileTree) buildIndex(ctx context.Context, path string, node *Node) map[string]string {
 	out := map[string]string{}
 	if err := ft.fetchDir(ctx, node, 1, 1); err != nil {
 		panic(err)
@@ -557,7 +551,7 @@ func (ft *FileTreeExt) buildIndex(ctx context.Context, path string, node *Node) 
 }
 
 // Handle multipart form upload to create a new Node (outside of any FS)
-func (ft *FileTreeExt) uploadHandler() func(http.ResponseWriter, *http.Request) {
+func (ft *FileTree) uploadHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -611,7 +605,7 @@ type Info struct {
 	Image *imginfo.Image `json:"image",omitempty`
 }
 
-func (ft *FileTreeExt) fetchInfo(reader io.ReadSeeker, filename, hash string) (*Info, error) {
+func (ft *FileTree) fetchInfo(reader io.ReadSeeker, filename, hash string) (*Info, error) {
 	if ft.metadataCache != nil {
 		cached, ok, err := ft.metadataCache.Get(hash)
 		if err != nil {
@@ -630,7 +624,6 @@ func (ft *FileTreeExt) fetchInfo(reader io.ReadSeeker, filename, hash string) (*
 
 	info := &Info{}
 	lname := strings.ToLower(filename)
-	// FIXME(tsileo): parse EXIF data
 	// TODO(tsileo): parse PDF text
 	// XXX(tsileo): generate video thumbnail?
 	if strings.HasSuffix(lname, ".jpg") || strings.HasSuffix(lname, ".png") || strings.HasSuffix(lname, ".gif") {
@@ -658,7 +651,7 @@ func (ft *FileTreeExt) fetchInfo(reader io.ReadSeeker, filename, hash string) (*
 }
 
 // FIXME(ts): fix this one
-func (ft *FileTreeExt) fsRootHandler() func(http.ResponseWriter, *http.Request) {
+func (ft *FileTree) fsRootHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -695,7 +688,7 @@ func (ft *FileTreeExt) fsRootHandler() func(http.ResponseWriter, *http.Request) 
 	}
 }
 
-func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
+func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 		vars := mux.Vars(r)
@@ -750,7 +743,6 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 			httputil.WriteJSON(w, node)
 
 		case "POST":
-			// FIXME(tsileo): support conditional requests
 			// FIXME(tsileo): add a way to upload a file as public ? like AWS S3 public-read canned ACL
 			// Add a new node in the FS at the given path
 			node, _, created, err := fs.Path(ctx, path, true)
@@ -888,7 +880,7 @@ func (ft *FileTreeExt) fsHandler() func(http.ResponseWriter, *http.Request) {
 }
 
 // fileHandler serve the Meta like it's a standard file
-func (ft *FileTreeExt) fileHandler() func(http.ResponseWriter, *http.Request) {
+func (ft *FileTree) fileHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" && r.Method != "HEAD" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -903,7 +895,7 @@ func (ft *FileTreeExt) fileHandler() func(http.ResponseWriter, *http.Request) {
 }
 
 // serveFile serve the node as a file using `net/http` FS util
-func (ft *FileTreeExt) serveFile(ctx context.Context, w http.ResponseWriter, r *http.Request, hash string) {
+func (ft *FileTree) serveFile(ctx context.Context, w http.ResponseWriter, r *http.Request, hash string) {
 	// FIXME(tsileo): set authorized to true if the API call is authenticated via API key!
 	var authorized bool
 
@@ -950,7 +942,7 @@ func (ft *FileTreeExt) serveFile(ctx context.Context, w http.ResponseWriter, r *
 	// Initialize a new `File`
 	var f io.ReadSeeker
 	// FIXME(tsileo): ctx
-	f = filereader.NewFile(ctx, ft.blobStore, m)
+	f = filereader.NewFile(ctx, ft.blobStore, m, nil)
 
 	// Check if the file is requested for download (?dl=1)
 	httputil.SetAttachment(m.Name, r, w)
@@ -968,7 +960,7 @@ func (ft *FileTreeExt) serveFile(ctx context.Context, w http.ResponseWriter, r *
 }
 
 // Fetch a Node outside any FS
-func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
+func (ft *FileTree) nodeHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Check permissions
 		// permissions.CheckPerms(r, PermName)
@@ -1034,7 +1026,7 @@ func (ft *FileTreeExt) nodeHandler() func(http.ResponseWriter, *http.Request) {
 }
 
 // nodeByRef fetch the blob containing the `meta.Meta` and convert it to a `Node`
-func (ft *FileTreeExt) nodeByRef(ctx context.Context, hash string) (*Node, error) {
+func (ft *FileTree) nodeByRef(ctx context.Context, hash string) (*Node, error) {
 	if cached, ok := ft.nodeCache.Get(hash); ok {
 		n := cached.(*Node)
 		if n.Hash != hash {
@@ -1066,13 +1058,13 @@ func (ft *FileTreeExt) nodeByRef(ctx context.Context, hash string) (*Node, error
 	return n, nil
 }
 
-func (ft *FileTreeExt) Node(ctx context.Context, hash string) (*Node, error) {
+func (ft *FileTree) Node(ctx context.Context, hash string) (*Node, error) {
 	node, err := ft.nodeByRef(ctx, hash)
 	if err != nil {
 		return nil, err
 	}
 
-	f := filereader.NewFile(ctx, ft.blobStore, node.Meta)
+	f := filereader.NewFile(ctx, ft.blobStore, node.Meta, nil)
 	defer f.Close()
 
 	info, err := ft.fetchInfo(f, node.Meta.Name, node.Meta.Hash)
@@ -1093,7 +1085,7 @@ func notFound(w http.ResponseWriter) {
 }
 
 // dirHandler serve the directory like a standard directory (an HTML page with links to each Node)
-func (ft *FileTreeExt) dirHandler() func(http.ResponseWriter, *http.Request) {
+func (ft *FileTree) dirHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" && r.Method != "HEAD" {
 			w.WriteHeader(http.StatusMethodNotAllowed)

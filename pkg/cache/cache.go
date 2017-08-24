@@ -12,8 +12,6 @@ import (
 	"time"
 
 	"github.com/cznic/kv"
-
-	"a4.io/blobstash/pkg/config"
 )
 
 type Cache struct {
@@ -47,11 +45,11 @@ type element struct {
 	lastAccess int64
 }
 
-func New(conf *config.Config, name string, maxSize int) (*Cache, error) {
+func New(dir, name string, maxSize int) (*Cache, error) {
 	if !(maxSize > 0) {
 		return nil, fmt.Errorf("maxSize should be greater than 0")
 	}
-	path := filepath.Join(conf.VarDir(), name)
+	path := filepath.Join(dir, name)
 	createOpen := kv.Open
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		createOpen = kv.Create

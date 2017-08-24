@@ -45,7 +45,11 @@ func GetFile(ctx context.Context, bs BlobStore, hash, path string) error {
 		return fmt.Errorf("failed to get meta %v \"%s\": %v", hash, js, err)
 	}
 	meta.Hash = hash
-	ffile := NewFile(ctx, bs, meta)
+	cache, err := lru.New(2)
+	if err != nil {
+		return err
+	}
+	ffile := NewFile(ctx, bs, meta, cache)
 	defer ffile.Close()
 	fileReader := io.TeeReader(ffile, h)
 	io.Copy(buf, fileReader)
@@ -97,12 +101,7 @@ type File struct {
 }
 
 // NewFakeFile creates a new FakeFile instance.
-func NewFile(ctx context.Context, bs BlobStore, meta *node.RawNode) (f *File) {
-	// Needed for the blob routing
-	cache, err := lru.New(2)
-	if err != nil {
-		panic(err)
-	}
+func NewFile(ctx context.Context, bs BlobStore, meta *node.RawNode, cache *lru.Cache) (f *File) {
 	f = &File{
 		bs:      bs,
 		meta:    meta,
@@ -151,7 +150,9 @@ func NewFile(ctx context.Context, bs BlobStore, meta *node.RawNode) (f *File) {
 }
 
 func (f *File) Close() error {
-	f.lru.Purge()
+	if f.lru != nil {
+		f.lru.Purge()
+	}
 	return nil
 }
 
@@ -194,16 +195,23 @@ func (f *File) read(offset int64, cnt int) ([]byte, error) {
 		if offset > iv.Index {
 			continue
 		}
-		//bbuf, _, _ := f.client.Blobs.Get(iv.Value)
-		if cached, ok := f.lru.Get(iv.Value); ok {
-			cbuf = cached.([]byte)
+		if f.lru != nil {
+			//bbuf, _, _ := f.client.Blobs.Get(iv.Value)
+			if cached, ok := f.lru.Get(iv.Value); ok {
+				cbuf = cached.([]byte)
+			} else {
+				bbuf, err := f.bs.Get(f.ctx, iv.Value)
+				if err != nil {
+					return nil, fmt.Errorf("failed to fetch blob %v: %v", iv.Value, err)
+				}
+				f.lru.Add(iv.Value, bbuf)
+				cbuf = bbuf
+			}
 		} else {
-			bbuf, err := f.bs.Get(f.ctx, iv.Value)
+			cbuf, err = f.bs.Get(f.ctx, iv.Value)
 			if err != nil {
 				return nil, fmt.Errorf("failed to fetch blob %v: %v", iv.Value, err)
 			}
-			f.lru.Add(iv.Value, bbuf)
-			cbuf = bbuf
 		}
 		bbuf := cbuf
 		foffset := 0

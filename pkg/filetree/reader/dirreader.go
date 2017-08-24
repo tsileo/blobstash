@@ -1,12 +1,12 @@
 package reader // import "a4.io/blobstash/pkg/filetree/reader"
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	_ "github.com/dchest/blake2b"
-	"golang.org/x/net/context"
 
 	"a4.io/blobstash/pkg/client/blobstore"
 	"a4.io/blobstash/pkg/filetree/filetreeutil/node"
@@ -14,7 +14,7 @@ import (
 )
 
 // GetDir restore the directory to path
-func GetDir(bs *blobstore.BlobStore, hash, path string) error { // (rr *ReadResult, err error) {
+func GetDir(ctx context.Context, bs *blobstore.BlobStore, hash, path string) error { // (rr *ReadResult, err error) {
 	// FIXME(tsileo): take a `*meta.Meta` as argument instead of the hash
 
 	// fullHash := blake2b.New256()
@@ -23,7 +23,7 @@ func GetDir(bs *blobstore.BlobStore, hash, path string) error { // (rr *ReadResu
 		return err
 	}
 
-	js, err := bs.Get(context.TODO(), hash)
+	js, err := bs.Get(ctx, hash)
 	if err != nil {
 		return err
 	}
@@ -35,17 +35,17 @@ func GetDir(bs *blobstore.BlobStore, hash, path string) error { // (rr *ReadResu
 	// var crr *ReadResult
 	if cmeta.Size > 0 {
 		for _, hash := range cmeta.Refs {
-			blob, err := bs.Get(context.TODO(), hash.(string))
+			blob, err := bs.Get(ctx, hash.(string))
 			submeta, err := node.NewNodeFromBlob(hash.(string), blob)
 			if err != nil {
 				return fmt.Errorf("failed to fetch meta: %v", err)
 			}
 			if submeta.IsFile() {
-				if err := filereader.GetFile(bs, submeta.Hash, filepath.Join(path, submeta.Name)); err != nil {
+				if err := filereader.GetFile(ctx, bs, submeta.Hash, filepath.Join(path, submeta.Name)); err != nil {
 					return fmt.Errorf("failed to GetFile %+v: %v", submeta, err)
 				}
 			} else {
-				if err := GetDir(bs, submeta.Hash, filepath.Join(path, submeta.Name)); err != nil {
+				if err := GetDir(ctx, bs, submeta.Hash, filepath.Join(path, submeta.Name)); err != nil {
 					return fmt.Errorf("failed to GetDir %+v: %v", submeta, err)
 				}
 			}

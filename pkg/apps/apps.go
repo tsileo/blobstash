@@ -30,7 +30,7 @@ import (
 type Apps struct {
 	apps            map[string]*App
 	config          *config.Config
-	ft              *filetree.FileTreeExt
+	ft              *filetree.FileTree
 	hub             *hub.Hub
 	hostWhitelister func(...string)
 	log             log.Logger
@@ -201,7 +201,7 @@ func (app *App) serve(ctx context.Context, p string, w http.ResponseWriter, req 
 }
 
 // New initializes the Apps manager
-func New(logger log.Logger, conf *config.Config, ft *filetree.FileTreeExt, chub *hub.Hub, hostWhitelister func(...string)) (*Apps, error) {
+func New(logger log.Logger, conf *config.Config, ft *filetree.FileTree, chub *hub.Hub, hostWhitelister func(...string)) (*Apps, error) {
 	// var err error
 	apps := &Apps{
 		apps:            map[string]*App{},

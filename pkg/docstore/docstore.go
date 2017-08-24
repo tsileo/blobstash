@@ -119,7 +119,7 @@ type executionStats struct {
 type DocStore struct {
 	kvStore   store.KvStore
 	blobStore store.BlobStore
-	filetree  *filetree.FileTreeExt
+	filetree  *filetree.FileTree
 
 	conf *config.Config
 	// docIndex *index.HashIndexes
@@ -137,7 +137,7 @@ type storedQuery struct {
 }
 
 // New initializes the `DocStoreExt`
-func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStore store.BlobStore, ft *filetree.FileTreeExt) (*DocStore, error) {
+func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStore store.BlobStore, ft *filetree.FileTree) (*DocStore, error) {
 	logger.Debug("init")
 	// Try to load the docstore index (powered by a kv file)
 	// docIndex, err := index.New()
