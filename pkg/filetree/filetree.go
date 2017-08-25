@@ -317,7 +317,7 @@ func (ft *FileTree) AddChild(ctx context.Context, n *Node, newChild *rnode.RawNo
 }
 
 // Delete removes the given node from its parent children
-func (ft *FileTree) Delete(ctx context.Context, n *Node, prefixFmt string) error {
+func (ft *FileTree) Delete(ctx context.Context, n *Node, prefixFmt string) (*Node, error) {
 	if n.parent == nil {
 		panic("can't delete root")
 	}
@@ -338,14 +338,10 @@ func (ft *FileTree) Delete(ctx context.Context, n *Node, prefixFmt string) error
 	parent.Hash = newRef
 	parent.Meta.Hash = newRef
 	if err := ft.blobStore.Put(ctx, &blob.Blob{Hash: newRef, Data: data}); err != nil {
-		return err
+		return nil, err
 	}
 
-	if _, err := ft.Update(ctx, parent, parent.Meta, prefixFmt, true); err != nil {
-		return err
-	}
-
-	return nil
+	return ft.Update(ctx, parent, parent.Meta, prefixFmt, true)
 }
 
 func (n *Node) Close() error {
@@ -395,21 +391,37 @@ func (ft *FileTree) fetchDir(ctx context.Context, n *Node, depth, maxDepth int) 
 }
 
 // FS fetch the FileSystem by name, returns an empty one if not found
-func (ft *FileTree) FS(ctx context.Context, name, prefixFmt string, newState bool) (*FS, error) {
+func (ft *FileTree) FS(ctx context.Context, name, prefixFmt string, newState bool, asOf int) (*FS, error) {
 	fs := &FS{}
 	if !newState {
-		kv, err := ft.kvStore.Get(ctx, fmt.Sprintf(prefixFmt, name), -1)
-		if err != nil && err != vkv.ErrNotFound {
-			return nil, err
-		}
-		switch err {
-		case nil:
+		if asOf == 0 {
+			kv, err := ft.kvStore.Get(ctx, fmt.Sprintf(prefixFmt, name), -1)
+			if err != nil && err != vkv.ErrNotFound {
+				return nil, err
+			}
+			switch err {
+			case nil:
+				// Set the existing ref
+				fs.Ref = kv.HexHash()
+			case vkv.ErrNotFound:
+				// XXX(tsileo): should the `ErrNotFound` be returned here?
+			default:
+				return nil, err
+			}
+		} else {
 			// Set the existing ref
-			fs.Ref = kv.HexHash()
-		case vkv.ErrNotFound:
-			// XXX(tsileo): should the `ErrNotFound` be returned here?
-		default:
-			return nil, err
+			kvv, _, err := ft.kvStore.Versions(ctx, fmt.Sprintf(prefixFmt, name), asOf, 1)
+			switch err {
+			case nil:
+				if len(kvv.Versions) > 0 {
+					fs.Ref = kvv.Versions[0].HexHash()
+				}
+
+			case vkv.ErrNotFound:
+				// XXX(tsileo): should the `ErrNotFound` be returned here?
+			default:
+				return nil, err
+			}
 		}
 	}
 	fs.Name = name
@@ -688,6 +700,13 @@ func (ft *FileTree) fsRootHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
+func fixPath(p string) string {
+	if p == "." {
+		return ""
+	}
+	return p
+}
+
 func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
@@ -708,7 +727,7 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 				ft:  ft,
 			}
 		case "fs":
-			fs, err = ft.FS(ctx, fsName, prefixFmt, false)
+			fs, err = ft.FS(ctx, fsName, prefixFmt, false, 0)
 			if err != nil {
 				panic(err)
 			}
@@ -847,6 +866,18 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 				panic(err)
 			}
 
+			updateEvent := &FSUpdateEvent{
+				Name: fs.Name,
+				Type: fmt.Sprintf("%s-patched", newChild.Type),
+				Ref:  newChild.Hash,
+				Path: filepath.Join(path[1:], newChild.Name),
+				Time: time.Now().UTC().Unix(),
+				// FIXME(tsileo): get hostname from header and set it in FS
+			}
+			if err := ft.hub.FiletreeFSUpdateEvent(ctx, nil, updateEvent.JSON()); err != nil {
+				panic(err)
+			}
+
 			httputil.WriteJSON(w, newNode)
 
 		case "DELETE":
@@ -867,9 +898,22 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 				}
 			}
 
-			if err := ft.Delete(ctx, node, prefixFmt); err != nil {
+			if _, err := ft.Delete(ctx, node, prefixFmt); err != nil {
 				panic(err)
 			}
+
+			updateEvent := &FSUpdateEvent{
+				Name: fs.Name,
+				Type: fmt.Sprintf("%s-deleted", node.Type),
+				Ref:  node.Hash,
+				Path: path[1:],
+				Time: time.Now().UTC().Unix(),
+				// FIXME(tsileo): get hostname from header and set it in FS
+			}
+			if err := ft.hub.FiletreeFSUpdateEvent(ctx, nil, updateEvent.JSON()); err != nil {
+				panic(err)
+			}
+
 			w.WriteHeader(http.StatusNoContent)
 
 		default:

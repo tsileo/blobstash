@@ -106,7 +106,7 @@ func (r *Replication) init() error {
 			}
 
 			r.log.Debug("listen to remote oplog")
-			if err := r.remoteOplog.Notify(ops); err != nil {
+			if err := r.remoteOplog.Notify(ops, nil); err != nil {
 				r.log.Error("remote oplog SSE error", "err", err, "attempt", r.backoff.attempt)
 				resync = true
 				time.Sleep(r.backoff.Delay())

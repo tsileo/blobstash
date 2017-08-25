@@ -48,7 +48,7 @@ func (d *Downloader) Download(ctx context.Context, m *node.RawNode, path string)
 }
 
 func (d *Downloader) File(ctx context.Context, m *node.RawNode) (io.ReadCloser, error) {
-	cache, err := lru.New(2)
+	cache, err := lru.New(5)
 	if err != nil {
 		return nil, err
 	}

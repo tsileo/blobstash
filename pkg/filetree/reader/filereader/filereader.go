@@ -45,7 +45,7 @@ func GetFile(ctx context.Context, bs BlobStore, hash, path string) error {
 		return fmt.Errorf("failed to get meta %v \"%s\": %v", hash, js, err)
 	}
 	meta.Hash = hash
-	cache, err := lru.New(2)
+	cache, err := lru.New(5)
 	if err != nil {
 		return err
 	}

@@ -71,7 +71,7 @@ func (o *Oplog) GetBlob(hash string) ([]byte, error) {
 }
 
 // FIXME(tsileo): use a ctx and support cancelation
-func (o *Oplog) Notify(ops chan<- *Op) error {
+func (o *Oplog) Notify(ops chan<- *Op, connCallback func()) error {
 	resp, err := o.client.DoReq("GET", "/_oplog/", nil, nil)
 	if err != nil {
 		return err
@@ -79,6 +79,10 @@ func (o *Oplog) Notify(ops chan<- *Op) error {
 
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("bad status code: %d", resp.StatusCode)
+	}
+
+	if connCallback != nil {
+		connCallback()
 	}
 
 	reader := bufio.NewReader(resp.Body)
