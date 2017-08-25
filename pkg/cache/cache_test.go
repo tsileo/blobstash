@@ -7,8 +7,6 @@ import (
 	"os"
 	"testing"
 	"time"
-
-	"a4.io/blobstash/pkg/config"
 )
 
 func check(e error) {
@@ -17,7 +15,7 @@ func check(e error) {
 	}
 }
 
-var c = &config.Config{DataDir: "."}
+var c = "."
 
 func TestCacheFileStorage(t *testing.T) {
 	cache, err := New(c, "test.cache", 1000000)
