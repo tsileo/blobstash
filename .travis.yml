@@ -1,6 +1,6 @@
 language: go
 go:
-- 1.8
+- 1.9
 install: true
 script:
 # Install Python3 (Anaconda looks like the easiest way in Travis)
