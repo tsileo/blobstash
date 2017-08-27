@@ -44,6 +44,7 @@ import (
 
 var kvs *kvstore.KvStore
 var cache *Cache
+var owner *fuse.Owner
 
 type FSUpdateEvent struct {
 	Name     string `json:"fs_name"`
@@ -106,7 +107,7 @@ func main() {
 	root := NewFileSystem(flag.Arg(1), *debug, *rw, *snapshot, *liveUpdate)
 
 	opts := &nodefs.Options{
-		Debug: *debug,
+		Debug: false, // *debug,
 	}
 	nfs := pathfs.NewPathNodeFs(root, nil)
 	// state, _, err := nodefs.MountRoot(flag.Arg(0), nfs.Root(), opts)
@@ -117,8 +118,11 @@ func main() {
 	mountOpts := fuse.MountOptions{
 		Options: []string{
 			// FIXME(tsileo): no more nolocalcaches and use notify instead for linux
+			"allow_root",
+			"allow_other",
 			"nolocalcaches",
 			"defer_permissions",
+			"noclock",
 			"noappledouble",
 			"noapplexattr",
 			"volname=BlobFS." + flag.Arg(1),
@@ -138,6 +142,8 @@ func main() {
 		fmt.Printf("Mount fail: %v\n", err)
 		os.Exit(1)
 	}
+
+	owner = fuse.CurrentOwner()
 
 	if *liveUpdate {
 		go func() {
@@ -455,7 +461,7 @@ func (c *Cache) Get(ctx context.Context, hash string) ([]byte, error) {
 	return data, nil
 }
 
-func (c *Cache) newWritableNode(ref, path string) (nodefs.File, error) {
+func (c *Cache) newWritableNode(ref, path string, mode uint32) (nodefs.File, error) {
 	// XXX(tsileo): use hash for consistent filename, only load the node into the file if it just got created
 	// or return a fd to the already present file
 	// FIXME(tsileo): use a custom cache dir
@@ -465,7 +471,7 @@ func (c *Cache) newWritableNode(ref, path string) (nodefs.File, error) {
 	var tmpFile *os.File
 	cdata, alreadyOpen := cache.openedFiles[path]
 	if alreadyOpen {
-		tmpFile, err = os.OpenFile(cdata.tmpPath, os.O_RDWR, 0755)
+		tmpFile, err = os.OpenFile(cdata.tmpPath, os.O_RDWR, os.FileMode(mode))
 		if err != nil {
 			return nil, err
 		}
@@ -575,8 +581,13 @@ func (fs *FileSystem) SetDebug(debug bool) {
 }
 
 func (*FileSystem) StatFs(name string) *fuse.StatfsOut {
-	// out := &fuse.StatfsOut{}
-	return nil
+	blocks := uint64(9999999999)
+	return &fuse.StatfsOut{
+		Bfree:  blocks,
+		Ffree:  blocks,
+		Bavail: blocks,
+		Blocks: blocks,
+	}
 }
 
 func (*FileSystem) OnMount(nodeFs *pathfs.PathNodeFs) {}
@@ -584,7 +595,7 @@ func (*FileSystem) OnMount(nodeFs *pathfs.PathNodeFs) {}
 func (*FileSystem) OnUnmount() {}
 
 func (fs *FileSystem) Utimens(path string, a *time.Time, m *time.Time, context *fuse.Context) fuse.Status {
-	return fuse.ENOSYS
+	return fuse.EPERM
 }
 
 func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (a *fuse.Attr, code fuse.Status) {
@@ -613,11 +624,13 @@ func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (a *fuse.Attr,
 			if err != nil {
 				return nil, fuse.EIO
 			}
-			return &fuse.Attr{
-				Mode:  fuse.S_IFREG | 0644,
-				Size:  uint64(stat.Size()),
-				Mtime: uint64(stat.ModTime().Unix()),
-			}, fuse.OK
+			return fuse.ToAttr(stat), fuse.OK
+			// return &fuse.Attr{
+			// 	Mode: fuse.S_IFREG | 0644,
+			// 	// Mode:  uint32(stat.Mode()),
+			// 	Size:  uint64(stat.Size()),
+			// 	Mtime: uint64(stat.ModTime().Unix()),
+			// }, fuse.OK
 		}
 
 		if node == nil {
@@ -629,6 +642,7 @@ func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (a *fuse.Attr,
 		return &fuse.Attr{
 			Mode:  fuse.S_IFDIR | 0755,
 			Mtime: node.Mtime(),
+			Owner: *owner,
 		}, fuse.OK
 	}
 	// fmt.Printf("returning size:%d\n", node.Size)
@@ -636,6 +650,7 @@ func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (a *fuse.Attr,
 		Mode:  fuse.S_IFREG | 0644,
 		Size:  uint64(node.Size),
 		Mtime: node.Mtime(),
+		Owner: *owner,
 	}, fuse.OK
 }
 
@@ -643,7 +658,7 @@ func (fs *FileSystem) SetAttr(input *fuse.SetAttrIn, out *fuse.AttrOut) (code fu
 	if fs.ro {
 		return fuse.EROFS
 	}
-	return fuse.ENOSYS
+	return fuse.EPERM
 }
 
 func (fs *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse.DirEntry, status fuse.Status) {
@@ -682,7 +697,7 @@ func (fs *FileSystem) Open(name string, flags uint32, context *fuse.Context) (fu
 			return nil, fuse.EROFS
 		}
 
-		f, err := cache.newWritableNode(fs.ref, name)
+		f, err := cache.newWritableNode(fs.ref, name, 0755)
 		if err != nil {
 			return nil, fuse.EIO
 		}
@@ -702,17 +717,11 @@ func (fs *FileSystem) Open(name string, flags uint32, context *fuse.Context) (fu
 }
 
 func (fs *FileSystem) Chmod(path string, mode uint32, context *fuse.Context) (code fuse.Status) {
-	if fs.ro {
-		return fuse.EROFS
-	}
-	return fuse.ENOSYS
+	return fuse.EPERM
 }
 
 func (fs *FileSystem) Chown(path string, uid uint32, gid uint32, context *fuse.Context) (code fuse.Status) {
-	if fs.ro {
-		return fuse.EROFS
-	}
-	return fuse.ENOSYS
+	return fuse.EPERM
 }
 
 func (fs *FileSystem) Truncate(path string, offset uint64, context *fuse.Context) (code fuse.Status) {
@@ -726,9 +735,6 @@ func (fs *FileSystem) Readlink(name string, context *fuse.Context) (out string, 
 }
 
 func (fs *FileSystem) Mknod(name string, mode uint32, dev uint32, context *fuse.Context) (code fuse.Status) {
-	if fs.ro {
-		return fuse.EROFS
-	}
 	return fuse.ENOSYS
 }
 
@@ -878,7 +884,7 @@ func (fs *FileSystem) Create(path string, flags uint32, mode uint32, context *fu
 		delete(cache.negNodeIndex, path)
 	}
 
-	f, err := cache.newWritableNode(fs.ref, path)
+	f, err := cache.newWritableNode(fs.ref, path, mode)
 	if err != nil {
 		return nil, fuse.EIO
 	}
@@ -904,14 +910,14 @@ func (fs *FileSystem) GetXAttr(name string, attr string, context *fuse.Context) 
 		}
 	}
 
-	return nil, fuse.ENODATA
+	return nil, fuse.ENOATTR
 }
 
 func (fs *FileSystem) SetXAttr(name string, attr string, data []byte, flags int, context *fuse.Context) fuse.Status {
-	if fs.ro {
-		return fuse.EROFS
+	if fs.debug {
+		log.Printf("OP SetXAttr %s", name)
 	}
-	return fuse.ENOSYS
+	return fuse.EPERM
 }
 
 func (fs *FileSystem) ListXAttr(name string, context *fuse.Context) ([]string, fuse.Status) {
@@ -932,10 +938,13 @@ func (fs *FileSystem) ListXAttr(name string, context *fuse.Context) ([]string, f
 }
 
 func (fs *FileSystem) RemoveXAttr(name string, attr string, context *fuse.Context) fuse.Status {
+	if fs.debug {
+		log.Printf("OP RemoveXAttr %s", name)
+	}
 	if fs.ro {
 		return fuse.EROFS
 	}
-	return fuse.ENOSYS
+	return fuse.EPERM
 }
 
 func NewFile(fs *FileSystem, path string, node *Node) (*File, error) {
@@ -1016,5 +1025,6 @@ func (f *File) GetAttr(a *fuse.Attr) fuse.Status {
 	a.Mode = fuse.S_IFREG | 0644
 	a.Size = uint64(f.node.Size)
 	a.Mtime = f.node.Mtime()
+	a.Owner = *owner
 	return fuse.OK
 }
