@@ -1073,13 +1073,16 @@ func (ft *FileTree) nodeHandler() func(http.ResponseWriter, *http.Request) {
 func (ft *FileTree) nodeByRef(ctx context.Context, hash string) (*Node, error) {
 	if cached, ok := ft.nodeCache.Get(hash); ok {
 		n := cached.(*Node)
-		if n.Hash != hash {
-			panic("cache messed up")
+		// FIXME(tsileo): investigate a bug in PATCH that cause this
+		// if n.Hash != hash {
+		// panic("cache messed up")
+		// }
+		if n.Hash == hash {
+			if n.Children != nil && len(n.Children) > 0 {
+				n.Children = nil
+			}
+			return n, nil
 		}
-		if n.Children != nil && len(n.Children) > 0 {
-			n.Children = nil
-		}
-		return n, nil
 	}
 
 	blob, err := ft.blobStore.Get(ctx, hash)
