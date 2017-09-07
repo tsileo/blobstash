@@ -34,7 +34,6 @@ func NewSyncClient(logger log.Logger, st *Sync, state *StateTree, blobstore stor
 	clientOpts := &clientutil.Opts{
 		APIKey:            apiKey,
 		Host:              url,
-		EnableHTTP2:       true,
 		SnappyCompression: false, // FIXME(tsileo): Activate this once snappy response reader is imported
 	}
 	return &SyncClient{

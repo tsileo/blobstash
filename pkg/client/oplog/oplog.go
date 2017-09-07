@@ -33,7 +33,6 @@ func DefaultOpts() *clientutil.Opts {
 		Host:              defaultServerAddr,
 		UserAgent:         defaultUserAgent,
 		APIKey:            "",
-		EnableHTTP2:       true,
 		SnappyCompression: false,
 	}
 }

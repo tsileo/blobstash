@@ -26,7 +26,6 @@ type KvStore struct {
 func DefaultOpts() *clientutil.Opts {
 	return &clientutil.Opts{
 		SnappyCompression: false,
-		EnableHTTP2:       true,
 		Host:              defaultServerAddr,
 		UserAgent:         defaultUserAgent,
 		APIKey:            "",
