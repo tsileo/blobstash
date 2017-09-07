@@ -38,21 +38,22 @@ import (
 // - support file@<date> ; e.g.: file.txt@2017-5-4T21:30 ???
 // - [/] `-snapshot` mode that lock to the current version, very efficient, can specify a snapshot version `-at`
 // - [X] `-rw` mode that support mutation, will query BlobStah a lot (without `-live-update`)
-// - [/] `-live-update` (or `-ro`?) mode to receive update via SSE (e.g. serve static over fuse, or Dropbox infinite like), allow caching and to invalidate cache on remote changes (need to be able to discard its own generated event via the hostname)
+// - [X] `-live-update` (or `-ro`?) mode to receive update via SSE (e.g. serve static over fuse, or Dropbox infinite like), allow caching and to invalidate cache on remote changes (need to be able to discard its own generated event via the hostname)
 // - [ ] support data context (add timeout server-side), and merge the data context on unmount
-// - [ ] Add a header with the client Hostname via clientutil
+// - [ ] Fake the file that disable MacOS Finder to crawl it
 
 var kvs *kvstore.KvStore
 var cache *Cache
 var owner *fuse.Owner
 
 type FSUpdateEvent struct {
-	Name     string `json:"fs_name"`
-	Path     string `json:"fs_path"`
-	Ref      string `json:"node_ref"`
-	Type     string `json:"node_type"`
-	Time     int64  `json:"event_time"`
-	Hostname string `json:"event_hostname"`
+	Name      string `json:"fs_name"`
+	Path      string `json:"fs_path"`
+	Ref       string `json:"node_ref"`
+	Type      string `json:"node_type"`
+	Time      int64  `json:"event_time"`
+	Hostname  string `json:"event_hostname"`
+	SessionID string `json:"session_id"`
 }
 
 func EventFromJSON(data string) *FSUpdateEvent {
@@ -184,6 +185,10 @@ func main() {
 					fmt.Printf("op=%+v\n", op)
 					evt := EventFromJSON(op.Data)
 					fmt.Printf("evt=%+v\n", evt)
+					if evt.SessionID == kvs.Client().SessionID() {
+						// If this host generated the event, we just discard it
+						continue
+					}
 					// switch evt.Type {
 					// case "file-updated":
 					if err := nfs.Notify(evt.Path); err != fuse.OK {
@@ -334,7 +339,8 @@ func (f *loopbackFile) Flush() fuse.Status {
 	}
 	fmt.Printf("CUSTOM FLUSH")
 	// FIXME(tsileo): ensure the file has been modified!
-	// TODO(tsileo): in the future, chunk **big** files locally to prevent sending everyting
+	// TODO(tsileo): in the future, chunk **big** files locally to prevent sending everyting (don't forget
+	// the SessionID)
 
 	bodyBuf := &bytes.Buffer{}
 	bodyWriter := multipart.NewWriter(bodyBuf)

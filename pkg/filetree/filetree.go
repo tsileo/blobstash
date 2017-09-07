@@ -47,12 +47,13 @@ var (
 
 // FSUpdateEvent represents an even fired on FS update to the Oplog
 type FSUpdateEvent struct {
-	Name     string `json:"fs_name"`
-	Path     string `json:"fs_path"`
-	Ref      string `json:"node_ref"`
-	Type     string `json:"node_type"`
-	Time     int64  `json:"event_time"`
-	Hostname string `json:"event_hostname"`
+	Name      string `json:"fs_name"`
+	Path      string `json:"fs_path"`
+	Ref       string `json:"node_ref"`
+	Type      string `json:"node_type"`
+	Time      int64  `json:"event_time"`
+	Hostname  string `json:"event_hostname"`
+	SessionID string `json:"session_id"`
 }
 
 func (e *FSUpdateEvent) JSON() string {
@@ -806,12 +807,12 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 				evtType = "file-created"
 			}
 			updateEvent := &FSUpdateEvent{
-				Name: fs.Name,
-				Type: evtType,
-				Ref:  newNode.Hash,
-				Path: path[1:],
-				Time: time.Now().UTC().Unix(),
-				// FIXME(tsileo): get hostname from header and set it in FS
+				Name:      fs.Name,
+				Type:      evtType,
+				Ref:       newNode.Hash,
+				Path:      path[1:],
+				Time:      time.Now().UTC().Unix(),
+				SessionID: httputil.GetSessionID(r),
 			}
 			if err := ft.hub.FiletreeFSUpdateEvent(ctx, nil, updateEvent.JSON()); err != nil {
 				panic(err)
@@ -867,12 +868,12 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 			}
 
 			updateEvent := &FSUpdateEvent{
-				Name: fs.Name,
-				Type: fmt.Sprintf("%s-patched", newChild.Type),
-				Ref:  newChild.Hash,
-				Path: filepath.Join(path[1:], newChild.Name),
-				Time: time.Now().UTC().Unix(),
-				// FIXME(tsileo): get hostname from header and set it in FS
+				Name:      fs.Name,
+				Type:      fmt.Sprintf("%s-patched", newChild.Type),
+				Ref:       newChild.Hash,
+				Path:      filepath.Join(path[1:], newChild.Name),
+				Time:      time.Now().UTC().Unix(),
+				SessionID: httputil.GetSessionID(r),
 			}
 			if err := ft.hub.FiletreeFSUpdateEvent(ctx, nil, updateEvent.JSON()); err != nil {
 				panic(err)
@@ -903,12 +904,12 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 			}
 
 			updateEvent := &FSUpdateEvent{
-				Name: fs.Name,
-				Type: fmt.Sprintf("%s-deleted", node.Type),
-				Ref:  node.Hash,
-				Path: path[1:],
-				Time: time.Now().UTC().Unix(),
-				// FIXME(tsileo): get hostname from header and set it in FS
+				Name:      fs.Name,
+				Type:      fmt.Sprintf("%s-deleted", node.Type),
+				Ref:       node.Hash,
+				Path:      path[1:],
+				Time:      time.Now().UTC().Unix(),
+				SessionID: httputil.GetSessionID(r),
 			}
 			if err := ft.hub.FiletreeFSUpdateEvent(ctx, nil, updateEvent.JSON()); err != nil {
 				panic(err)

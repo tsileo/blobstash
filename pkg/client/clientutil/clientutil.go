@@ -1,6 +1,8 @@
 package clientutil // import "a4.io/blobstash/pkg/client/clientutil"
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,8 +13,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"golang.org/x/net/http2"
 )
 
 var ErrBlobNotFound = errors.New("blob not found")
@@ -26,15 +26,6 @@ var transport http.RoundTripper = &http.Transport{
 	}).Dial,
 	TLSHandshakeTimeout: 10 * time.Second,
 }
-var setupHTTP2Once sync.Once
-
-func setupHTTP2() {
-	if err := http2.ConfigureTransport(transport.(*http.Transport)); err != nil {
-		// TODO(tsileo): add a enable HTTP 2 flag in opts?
-		fmt.Printf("HTTP2 ERROR: %+v", err)
-	}
-
-}
 
 // Opts holds the client configuration
 type Opts struct {
@@ -47,7 +38,6 @@ type Opts struct {
 	UserAgent string            // Custom User-Agent
 
 	SnappyCompression bool // Enable snappy compression for the HTTP requests
-	EnableHTTP2       bool // Enable HTTP2 as the client level
 }
 
 // SetNamespace is a shortcut for setting the namespace at the client level
@@ -70,15 +60,15 @@ func (opts *Opts) SetHost(host, apiKey string) *Opts {
 type Client struct {
 	opts   *Opts
 	client *http.Client
+
+	sessionID string
+	mu        sync.Mutex // mutex for keeping the sessionID safe
 }
 
 // New initializes an HTTP client
 func New(opts *Opts) *Client {
 	if opts == nil {
 		panic("missing clientutil.Client opts")
-	}
-	if opts.EnableHTTP2 && strings.HasPrefix(opts.Host, "https") {
-		setupHTTP2Once.Do(setupHTTP2)
 	}
 	client := &http.Client{
 		Transport: transport,
@@ -87,6 +77,20 @@ func New(opts *Opts) *Client {
 		client: client,
 		opts:   opts,
 	}
+}
+
+// ClientID returns a unique "session ID" that won't change for the lifetime of the client
+func (client *Client) SessionID() string {
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	if client.sessionID != "" {
+		return client.sessionID
+	}
+	data := make([]byte, 16)
+	if _, err := rand.Read(data); err != nil {
+		panic(err)
+	}
+	return hex.EncodeToString(data)
 }
 
 // Opts returns the current opts
@@ -101,6 +105,7 @@ func (client *Client) DoReq(method, path string, headers map[string]string, body
 		return nil, err
 	}
 
+	request.Header.Set("BlobStash-Session-ID", client.SessionID())
 	if client.opts.APIKey != "" {
 		request.SetBasicAuth("", client.opts.APIKey)
 	}

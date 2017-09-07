@@ -133,9 +133,6 @@ func New(dir string, m *meta.Meta, bs *blobstore.BlobStore, kvs *kvstore.KvStore
 
 }
 
-// TODO(tsileo): implements a blobstore/kvstore that statisfy the store.BlobStore/KvStore interface and
-// proxy all read operations to the rootDataProxy if it failed
-
 func (s Stash) newDataContext(name string) error {
 	s.Lock()
 	defer s.Unlock()
@@ -151,7 +148,7 @@ func (s Stash) newDataContext(name string) error {
 	if err != nil {
 		return err
 	}
-	// FIXME(tsileo): use a dumb single file cache instead of the blobstore
+	// XXX(tsileo): use a dumb single file cache instead of the blobstore?
 	bsDst, err := blobstore.New(l.New("app", "blobstore"), path, nil, h)
 	if err != nil {
 		return err

@@ -58,6 +58,12 @@ func ipAddrFromRemoteAddr(s string) string {
 	return s[:idx]
 }
 
+// GetSessionID returns the client "session ID" (set via the `BlobStash-Session-ID` header).
+// Returns an empty string if it's missing.
+func GetSessionID(r *http.Request) string {
+	return r.Header.Get("BlobStash-Session-ID")
+}
+
 // Return the IP Address from the `*http.Request`.
 // Try the `X-Real-Ip`, `X-Forwarded-For` headers first.
 func GetIpAddress(r *http.Request) string {
