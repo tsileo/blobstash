@@ -1,6 +1,7 @@
 package clientutil // import "a4.io/blobstash/pkg/client/clientutil"
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -98,11 +99,13 @@ func (client *Client) Opts() *Opts {
 }
 
 // DoReq "do" the request and returns the `*http.Response`
-func (client *Client) DoReq(method, path string, headers map[string]string, body io.Reader) (*http.Response, error) {
+func (client *Client) DoReq(ctx context.Context, method, path string, headers map[string]string, body io.Reader) (*http.Response, error) {
 	request, err := http.NewRequest(method, fmt.Sprintf("%s%s", client.opts.Host, path), body)
 	if err != nil {
 		return nil, err
 	}
+
+	request = request.WithContext(ctx)
 
 	request.Header.Set("BlobStash-Session-ID", client.SessionID())
 	if client.opts.APIKey != "" {
@@ -133,8 +136,8 @@ func (client *Client) DoReq(method, path string, headers map[string]string, body
 	return client.client.Do(request)
 }
 
-func (client *Client) GetJSON(path string, headers map[string]string, out interface{}) error {
-	resp, err := client.DoReq("GET", path, headers, nil)
+func (client *Client) GetJSON(ctx context.Context, path string, headers map[string]string, out interface{}) error {
+	resp, err := client.DoReq(ctx, "GET", path, headers, nil)
 	if err != nil {
 		return err
 	}

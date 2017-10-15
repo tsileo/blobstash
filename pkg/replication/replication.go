@@ -106,7 +106,7 @@ func (r *Replication) init() error {
 			}
 
 			r.log.Debug("listen to remote oplog")
-			if err := r.remoteOplog.Notify(ops, nil); err != nil {
+			if err := r.remoteOplog.Notify(context.TODO(), ops, nil); err != nil {
 				r.log.Error("remote oplog SSE error", "err", err, "attempt", r.backoff.attempt)
 				resync = true
 				time.Sleep(r.backoff.Delay())
@@ -122,7 +122,7 @@ func (r *Replication) init() error {
 				r.log.Info("new blob from replication", "hash", hash)
 
 				// Fetch the blob from the remote BlobStash instance
-				data, err := r.remoteOplog.GetBlob(hash)
+				data, err := r.remoteOplog.GetBlob(context.TODO(), hash)
 				if err != nil {
 					panic(err)
 				}

@@ -2,6 +2,7 @@ package kvstore // import "a4.io/blobstash/pkg/client/kvstore"
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -45,14 +46,14 @@ func (kvs *KvStore) Client() *clientutil.Client {
 	return kvs.client
 }
 
-func (kvs *KvStore) Put(key, ref string, pdata []byte, version int) (*response.KeyValue, error) {
+func (kvs *KvStore) Put(ctx context.Context, key, ref string, pdata []byte, version int) (*response.KeyValue, error) {
 	data := url.Values{}
 	data.Set("data", string(pdata))
 	data.Set("ref", ref)
 	if version != -1 {
 		data.Set("version", strconv.Itoa(version))
 	}
-	resp, err := kvs.client.DoReq("PUT", "/api/kvstore/key/"+key, nil, strings.NewReader(data.Encode())) //data.Encode()))
+	resp, err := kvs.client.DoReq(ctx, "PUT", "/api/kvstore/key/"+key, nil, strings.NewReader(data.Encode())) //data.Encode()))
 	if err != nil {
 		return nil, err
 	}
@@ -71,8 +72,8 @@ func (kvs *KvStore) Put(key, ref string, pdata []byte, version int) (*response.K
 	}
 }
 
-func (kvs *KvStore) Get(key string, version int) (*response.KeyValue, error) {
-	resp, err := kvs.client.DoReq("GET", fmt.Sprintf("/api/kvstore/key/%s?version=%v", key, version), nil, nil)
+func (kvs *KvStore) Get(ctx context.Context, key string, version int) (*response.KeyValue, error) {
+	resp, err := kvs.client.DoReq(ctx, "GET", fmt.Sprintf("/api/kvstore/key/%s?version=%v", key, version), nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -96,9 +97,9 @@ func (kvs *KvStore) Get(key string, version int) (*response.KeyValue, error) {
 
 }
 
-func (kvs *KvStore) Versions(key string, start, end, limit int) (*response.KeyValueVersions, error) {
+func (kvs *KvStore) Versions(ctx context.Context, key string, start, end, limit int) (*response.KeyValueVersions, error) {
 	// TODO handle start, end and limit
-	resp, err := kvs.client.DoReq("GET", "/api/kvstore/key/"+key+fmt.Sprintf("/_versions?start=%d&end=%d&limit=%d", start, end, limit), nil, nil)
+	resp, err := kvs.client.DoReq(ctx, "GET", "/api/kvstore/key/"+key+fmt.Sprintf("/_versions?start=%d&end=%d&limit=%d", start, end, limit), nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -135,8 +136,8 @@ func nextKey(key string) string {
 	return string(bkey)
 }
 
-func (kvs *KvStore) Keys(prefix, start, end string, limit int) ([]*response.KeyValue, error) {
-	resp, err := kvs.client.DoReq("GET", fmt.Sprintf("/api/kvstore/keys?prefix=%s&start=%s&end=%s&limit=%d", prefix, start, end, limit), nil, nil)
+func (kvs *KvStore) Keys(ctx context.Context, prefix, start, end string, limit int) ([]*response.KeyValue, error) {
+	resp, err := kvs.client.DoReq(ctx, "GET", fmt.Sprintf("/api/kvstore/keys?prefix=%s&start=%s&end=%s&limit=%d", prefix, start, end, limit), nil, nil)
 	if err != nil {
 		return nil, err
 	}

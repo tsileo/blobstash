@@ -1,6 +1,7 @@
 package writer // import "a4.io/blobstash/pkg/filetree/writer"
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -44,7 +45,7 @@ func (up *Uploader) writeReader(f io.Reader, meta *rnode.RawNode) error { // (*W
 			panic(fmt.Sprintf("DB error: %v", err))
 		}
 		if !exists {
-			if err := up.bs.Put(chunkHash, chunk.Data); err != nil {
+			if err := up.bs.Put(context.TODO(), chunkHash, chunk.Data); err != nil {
 				panic(fmt.Errorf("failed to PUT blob %v", err))
 			}
 		}
@@ -107,7 +108,7 @@ func (up *Uploader) PutFile(path string) (*rnode.RawNode, error) { // , *WriteRe
 	}
 	// wr.Size += len(mjs)
 	if !mexists {
-		if err := up.bs.Put(mhash, mjs); err != nil {
+		if err := up.bs.Put(context.TODO(), mhash, mjs); err != nil {
 			return nil, fmt.Errorf("failed to put blob %v: %v", mhash, err)
 		}
 		// wr.BlobsCount++
@@ -128,7 +129,7 @@ func (up *Uploader) PutMeta(meta *rnode.RawNode) error {
 	}
 	// wr.Size += len(mjs)
 	if !mexists {
-		if err := up.bs.Put(mhash, mjs); err != nil {
+		if err := up.bs.Put(context.TODO(), mhash, mjs); err != nil {
 			return fmt.Errorf("failed to put blob %v: %v", mhash, err)
 		}
 		// wr.BlobsCount++
@@ -150,7 +151,7 @@ func (up *Uploader) RenameMeta(meta *rnode.RawNode, name string) error {
 	}
 	// wr.Size += len(mjs)
 	if !mexists {
-		if err := up.bs.Put(mhash, mjs); err != nil {
+		if err := up.bs.Put(context.TODO(), mhash, mjs); err != nil {
 			return fmt.Errorf("failed to put blob %v: %v", mhash, err)
 		}
 		// wr.BlobsCount++
@@ -188,7 +189,7 @@ func (up *Uploader) PutReader(name string, reader io.Reader, data map[string]int
 	}
 	// wr.Size += len(mjs)
 	if !mexists {
-		if err := up.bs.Put(mhash, mjs); err != nil {
+		if err := up.bs.Put(context.TODO(), mhash, mjs); err != nil {
 			return nil, fmt.Errorf("failed to put blob %v: %v", mhash, err)
 		}
 		// wr.BlobsCount++

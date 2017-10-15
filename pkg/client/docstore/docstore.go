@@ -2,6 +2,7 @@ package docstore // import "a4.io/blobstash/pkg/client/docstore"
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -113,7 +114,7 @@ func (docstore *DocStore) Col(collection string) *Collection {
 	}
 }
 
-func (col *Collection) Insert(idoc interface{}, opts *InsertOpts) (*ID, error) {
+func (col *Collection) Insert(ctx context.Context, idoc interface{}, opts *InsertOpts) (*ID, error) {
 	if opts == nil {
 		opts = DefaultInsertOpts()
 	}
@@ -135,7 +136,7 @@ func (col *Collection) Insert(idoc interface{}, opts *InsertOpts) (*ID, error) {
 	// if opts.Indexed {
 	// 	headers["BlobStash-DocStore-IndexFullText"] = "1"
 	// }
-	resp, err := col.docstore.client.DoReq("POST", fmt.Sprintf("/api/docstore/%s", col.col), headers, payload)
+	resp, err := col.docstore.client.DoReq(ctx, "POST", fmt.Sprintf("/api/docstore/%s", col.col), headers, payload)
 	if err != nil {
 		return nil, err
 	}
@@ -156,12 +157,12 @@ func (col *Collection) Insert(idoc interface{}, opts *InsertOpts) (*ID, error) {
 }
 
 // Update the whole document
-func (col *Collection) UpdateID(id string, doc interface{}) error {
+func (col *Collection) UpdateID(ctx context.Context, id string, doc interface{}) error {
 	js, err := json.Marshal(doc)
 	if err != nil {
 		return err
 	}
-	resp, err := col.docstore.client.DoReq("POST", fmt.Sprintf("/api/docstore/%s/%s", col.col, id), nil, bytes.NewReader(js))
+	resp, err := col.docstore.client.DoReq(ctx, "POST", fmt.Sprintf("/api/docstore/%s/%s", col.col, id), nil, bytes.NewReader(js))
 	if err != nil {
 		return err
 	}
@@ -177,8 +178,8 @@ func (col *Collection) UpdateID(id string, doc interface{}) error {
 }
 
 // Get retrieve the document, `doc` must a map[string]interface{} or a struct pointer.
-func (col *Collection) GetID(id string, doc interface{}) error {
-	resp, err := col.docstore.client.DoReq("GET", fmt.Sprintf("/api/docstore/%s/%s", col.col, id), nil, nil)
+func (col *Collection) GetID(ctx context.Context, id string, doc interface{}) error {
+	resp, err := col.docstore.client.DoReq(ctx, "GET", fmt.Sprintf("/api/docstore/%s/%s", col.col, id), nil, nil)
 	if err != nil {
 		return err
 	}
@@ -205,6 +206,7 @@ type Iter struct {
 	col   *Collection
 	query *Query
 
+	// FIXME(tsileo): attch the cursor?
 	Opts     *IterOpts // Contains the current `IterOpts`
 	LatestID string    // Needed for the subsequent API calls
 	cursor   string

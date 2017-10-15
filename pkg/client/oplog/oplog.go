@@ -3,6 +3,7 @@ package oplog // import "a4.io/blobstash/pkg/client/oplog"
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io/ioutil"
 
@@ -47,8 +48,8 @@ func New(opts *clientutil.Opts) *Oplog {
 }
 
 // Get fetch the given blob from the remote BlobStash instance.
-func (o *Oplog) GetBlob(hash string) ([]byte, error) {
-	resp, err := o.client.DoReq("GET", fmt.Sprintf("/api/blobstore/blob/%s", hash), nil, nil)
+func (o *Oplog) GetBlob(ctx context.Context, hash string) ([]byte, error) {
+	resp, err := o.client.DoReq(ctx, "GET", fmt.Sprintf("/api/blobstore/blob/%s", hash), nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -70,8 +71,8 @@ func (o *Oplog) GetBlob(hash string) ([]byte, error) {
 }
 
 // FIXME(tsileo): use a ctx and support cancelation
-func (o *Oplog) Notify(ops chan<- *Op, connCallback func()) error {
-	resp, err := o.client.DoReq("GET", "/_oplog/", nil, nil)
+func (o *Oplog) Notify(ctx context.Context, ops chan<- *Op, connCallback func()) error {
+	resp, err := o.client.DoReq(ctx, "GET", "/_oplog/", nil, nil)
 	if err != nil {
 		return err
 	}

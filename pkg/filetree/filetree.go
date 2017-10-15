@@ -101,8 +101,8 @@ func (bs *BlobStore) Stat(hash string) (bool, error) {
 	return bs.blobStore.Stat(bs.ctx, hash)
 }
 
-func (bs *BlobStore) Put(hash string, data []byte) error {
-	return bs.blobStore.Put(bs.ctx, &blob.Blob{Hash: hash, Data: data})
+func (bs *BlobStore) Put(ctx context.Context, hash string, data []byte) error {
+	return bs.blobStore.Put(ctx, &blob.Blob{Hash: hash, Data: data})
 }
 
 type FS struct {
@@ -296,7 +296,9 @@ func (ft *FileTree) AddChild(ctx context.Context, n *Node, newChild *rnode.RawNo
 
 	for _, c := range n.Children {
 		if c.Name == newChildNode.Name {
-			panic("duplicate file")
+			// panic("duplicate file")
+			// FIXME(tsileo): is this right?
+			continue
 		}
 		newRefs = append(newRefs, c.Hash)
 		newChildren = append(newChildren, c)

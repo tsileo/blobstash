@@ -1,6 +1,7 @@
 package writer
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -136,7 +137,7 @@ func (up *Uploader) DirWriterNode(node *node) {
 		return
 	}
 	if !mexists {
-		if err := up.bs.Put(mhash, mjs); err != nil {
+		if err := up.bs.Put(context.TODO(), mhash, mjs); err != nil {
 			node.err = err
 			return
 		}

@@ -1,5 +1,7 @@
 package writer
 
+import "context"
+
 var (
 	uploader    = 25 // concurrent upload uploaders
 	dirUploader = 12 // concurrent directory uploaders
@@ -9,7 +11,7 @@ type BlobStorer interface {
 	// Get(context.Context, string) ([]byte, error)
 	// Enumerate(chan<- string, string, string, int) error
 	Stat(string) (bool, error)
-	Put(string, []byte) error
+	Put(context.Context, string, []byte) error
 }
 
 type Uploader struct {

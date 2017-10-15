@@ -10,6 +10,8 @@ import (
 	"a4.io/blobstash/pkg/client/clientutil"
 )
 
+// FIXME(tsileo): support data contexes
+
 var defaultServerAddr = "http://localhost:8050"
 var defaultUserAgent = "BlobStore Go client v1"
 
@@ -41,7 +43,7 @@ func (bs *BlobStore) Client() *clientutil.Client {
 
 // Get fetch the given blob from the remote BlobStash instance.
 func (bs *BlobStore) Get(ctx context.Context, hash string) ([]byte, error) {
-	resp, err := bs.client.DoReq("GET", fmt.Sprintf("/api/blobstore/blob/%s", hash), nil, nil)
+	resp, err := bs.client.DoReq(ctx, "GET", fmt.Sprintf("/api/blobstore/blob/%s", hash), nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -61,8 +63,8 @@ func (bs *BlobStore) Get(ctx context.Context, hash string) ([]byte, error) {
 }
 
 // Stat check if the blob exists
-func (bs *BlobStore) Stat(hash string) (bool, error) {
-	resp, err := bs.client.DoReq("HEAD", fmt.Sprintf("/api/blobstore/blob/%s", hash), nil, nil)
+func (bs *BlobStore) Stat(ctx context.Context, hash string) (bool, error) {
+	resp, err := bs.client.DoReq(ctx, "HEAD", fmt.Sprintf("/api/blobstore/blob/%s", hash), nil, nil)
 	if err != nil {
 		return false, err
 	}
@@ -81,7 +83,7 @@ func (bs *BlobStore) Stat(hash string) (bool, error) {
 	}
 }
 
-func (bs *BlobStore) Put(hash string, blob []byte) error {
+func (bs *BlobStore) Put(ctx context.Context, hash string, blob []byte) error {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 	part, err := writer.CreateFormFile(hash, hash)
@@ -91,7 +93,7 @@ func (bs *BlobStore) Put(hash string, blob []byte) error {
 	part.Write(blob)
 	writer.Close()
 	headers := map[string]string{"Content-Type": writer.FormDataContentType()}
-	resp, err := bs.client.DoReq("POST", "/api/blobstore/upload", headers, &buf)
+	resp, err := bs.client.DoReq(ctx, "POST", "/api/blobstore/upload", headers, &buf)
 	if err != nil {
 		return err
 	}

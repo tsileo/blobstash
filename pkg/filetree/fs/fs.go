@@ -20,10 +20,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dchest/blake2b"
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 	"github.com/hanwen/go-fuse/fuse/pathfs"
 	"github.com/hashicorp/golang-lru"
+	"github.com/pkg/xattr"
 
 	bcache "a4.io/blobstash/pkg/cache"
 	"a4.io/blobstash/pkg/client/clientutil"
@@ -45,6 +47,7 @@ import (
 var kvs *kvstore.KvStore
 var cache *Cache
 var owner *fuse.Owner
+var mu sync.Mutex
 
 type FSUpdateEvent struct {
 	Name      string `json:"fs_name"`
@@ -124,6 +127,7 @@ func main() {
 			"nolocalcaches",
 			"defer_permissions",
 			"noclock",
+			"auto_xattr",
 			"noappledouble",
 			"noapplexattr",
 			"volname=BlobFS." + flag.Arg(1),
@@ -334,6 +338,8 @@ func (f *loopbackFile) Release() {
 }
 
 func (f *loopbackFile) Flush() fuse.Status {
+	mu.Lock()
+	defer mu.Unlock()
 	if status := f.File.Flush(); status != fuse.OK {
 		return status
 	}
@@ -566,6 +572,7 @@ type FileSystem struct {
 	ro         bool
 	snapshot   bool
 	liveUpdate bool
+	mu         sync.Mutex
 }
 
 func NewFileSystem(ref string, debug, rw, snapshot, liveUpdate bool) pathfs.FileSystem {
@@ -605,14 +612,35 @@ func (fs *FileSystem) Utimens(path string, a *time.Time, m *time.Time, context *
 }
 
 func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (a *fuse.Attr, code fuse.Status) {
+	mu.Lock()
+	defer mu.Unlock()
 	if fs.debug {
 		log.Printf("OP Getattr %s", name)
 	}
-	if _, ok := cache.negNodeIndex[name]; ok {
-		if _, ok2 := cache.openedFiles[name]; !ok2 {
-			return nil, fuse.ENOENT
-		}
-	}
+
+	// fullPath := fmt.Sprintf("%x", blake2b.Sum256([]byte(name)))
+
+	// var err error = nil
+	// st := syscall.Stat_t{}
+	// if name == "" {
+	// 	// When GetAttr is called for the toplevel directory, we always want
+	// 	// to look through symlinks.
+	// 	err = syscall.Stat(fullPath, &st)
+	// } else {
+	// 	err = syscall.Lstat(fullPath, &st)
+	// }
+
+	// if err == nil {
+	// 	a = &fuse.Attr{}
+	// 	a.FromStat(&st)
+	// 	return a, fuse.OK
+	// }
+
+	// if _, ok := cache.negNodeIndex[name]; ok {
+	// 	if _, ok2 := cache.openedFiles[name]; !ok2 {
+	// 		return nil, fuse.ENOENT
+	// 	}
+	// }
 	node, err := cache.getNode(fs.ref, name)
 	// fmt.Printf("node=%+v\n", node)
 	if err != nil || node.IsFile() {
@@ -621,7 +649,7 @@ func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (a *fuse.Attr,
 		cache.mu.Lock()
 		defer cache.mu.Unlock()
 		openedFile, ok := cache.openedFiles[name]
-		if ok {
+		if ok && false { // FIXME(tsileo)
 			f, err := os.Open(openedFile.tmpPath)
 			if err != nil {
 				return nil, fuse.EIO
@@ -645,25 +673,30 @@ func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (a *fuse.Attr,
 		}
 	}
 	if node.IsDir() {
-		return &fuse.Attr{
+		out := &fuse.Attr{
 			Mode:  fuse.S_IFDIR | 0755,
 			Mtime: node.Mtime(),
+			Atime: node.Mtime(),
+			Ctime: node.Mtime(),
 			Owner: *owner,
-		}, fuse.OK
+		}
+		return out, fuse.OK
 	}
 	// fmt.Printf("returning size:%d\n", node.Size)
-	return &fuse.Attr{
+	out := &fuse.Attr{
 		Mode:  fuse.S_IFREG | 0644,
 		Size:  uint64(node.Size),
 		Mtime: node.Mtime(),
+		Ctime: node.Mtime(),
+		Atime: node.Mtime(),
 		Owner: *owner,
-	}, fuse.OK
+	}
+	log.Printf("OUT=%+v\n", out)
+	return out, fuse.OK
 }
 
 func (fs *FileSystem) SetAttr(input *fuse.SetAttrIn, out *fuse.AttrOut) (code fuse.Status) {
-	if fs.ro {
-		return fuse.EROFS
-	}
+	log.Printf("OP SetAttr %+v %+v", input, out)
 	return fuse.EPERM
 }
 
@@ -696,6 +729,13 @@ func (fs *FileSystem) Open(name string, flags uint32, context *fuse.Context) (fu
 	if fs.debug {
 		log.Printf("OP Open %s write=%v\n", name, flags&fuse.O_ANYWRITE != 0)
 	}
+
+	// p := fmt.Sprintf("%x", blake2b.Sum256([]byte(name)))
+	// f, err := os.OpenFile(p, int(flags), 0)
+	// if err != nil {
+	// 	return nil, fuse.ToStatus(err)
+	// }
+	// return nodefs.NewLoopbackFile(f), fuse.OK
 	_, alreadyOpen := cache.openedFiles[name]
 
 	if flags&fuse.O_ANYWRITE != 0 || alreadyOpen {
@@ -749,7 +789,7 @@ func (fs *FileSystem) Mkdir(path string, mode uint32, context *fuse.Context) (co
 		log.Printf("OP Mkdir %s", path)
 	}
 	if fs.ro {
-		return fuse.EROFS
+		return fuse.EPERM
 	}
 
 	node := map[string]interface{}{
@@ -779,7 +819,7 @@ func (fs *FileSystem) Unlink(name string, context *fuse.Context) (code fuse.Stat
 		log.Printf("OP Unlink %s", name)
 	}
 	if fs.ro {
-		return fuse.EROFS
+		return fuse.EPERM
 	}
 
 	_, err := cache.getNode(fs.ref, name)
@@ -800,7 +840,7 @@ func (fs *FileSystem) Rmdir(name string, context *fuse.Context) (code fuse.Statu
 		log.Printf("OP Rmdir %s", name)
 	}
 	if fs.ro {
-		return fuse.EROFS
+		return fuse.EPERM
 	}
 	node, err := cache.getNode(fs.ref, name)
 	if err != nil {
@@ -824,7 +864,7 @@ func (fs *FileSystem) Rmdir(name string, context *fuse.Context) (code fuse.Statu
 
 func (fs *FileSystem) Symlink(pointedTo string, linkName string, context *fuse.Context) (code fuse.Status) {
 	if fs.ro {
-		return fuse.EROFS
+		return fuse.EPERM
 	}
 	return fuse.ENOSYS // FIXME(tsileo): return ENOSYS when needed in other calls
 }
@@ -834,7 +874,7 @@ func (fs *FileSystem) Rename(oldPath string, newPath string, context *fuse.Conte
 		log.Printf("OP Rename %s %s", oldPath, newPath)
 	}
 	if fs.ro {
-		return fuse.EROFS
+		return fuse.EPERM
 	}
 	node, err := cache.getNode(fs.ref, oldPath)
 	if err != nil {
@@ -867,7 +907,7 @@ func (fs *FileSystem) Rename(oldPath string, newPath string, context *fuse.Conte
 
 func (fs *FileSystem) Link(orig string, newName string, context *fuse.Context) (code fuse.Status) {
 	if fs.ro {
-		return fuse.EROFS
+		return fuse.EPERM
 	}
 	return fuse.ENOSYS
 }
@@ -884,16 +924,23 @@ func (fs *FileSystem) Create(path string, flags uint32, mode uint32, context *fu
 		log.Printf("OP Create %s", path)
 	}
 	if fs.ro {
-		return nil, fuse.EROFS
+		return nil, fuse.EPERM
 	}
 	if _, ok := cache.negNodeIndex[path]; ok {
 		delete(cache.negNodeIndex, path)
 	}
 
+	// f, err := os.OpenFile(fmt.Sprintf("%x", blake2b.Sum256([]byte(path))), int(flags)|os.O_CREATE, os.FileMode(mode))
+	// return nodefs.NewLoopbackFile(f), fuse.ToStatus(err)
+
 	f, err := cache.newWritableNode(fs.ref, path, mode)
 	if err != nil {
 		return nil, fuse.EIO
 	}
+	f.Flush()
+	// if err := f.Flush(); err != nil {
+	// return nil, fuse.EIO
+	// }
 	fmt.Print("before open return\n")
 	return f, fuse.OK
 }
@@ -930,6 +977,12 @@ func (fs *FileSystem) ListXAttr(name string, context *fuse.Context) ([]string, f
 	if fs.debug {
 		log.Printf("OP ListXAttr %s", name)
 	}
+
+	fullPath := fmt.Sprintf("%x", blake2b.Sum256([]byte(name)))
+	if list, err := xattr.List(fullPath); err == nil {
+		return list, fuse.OK
+	}
+
 	node, err := cache.getNode(fs.ref, name)
 	if err != nil {
 		return nil, fuse.ENOENT
@@ -946,9 +999,6 @@ func (fs *FileSystem) ListXAttr(name string, context *fuse.Context) ([]string, f
 func (fs *FileSystem) RemoveXAttr(name string, attr string, context *fuse.Context) fuse.Status {
 	if fs.debug {
 		log.Printf("OP RemoveXAttr %s", name)
-	}
-	if fs.ro {
-		return fuse.EROFS
 	}
 	return fuse.EPERM
 }
@@ -1031,6 +1081,8 @@ func (f *File) GetAttr(a *fuse.Attr) fuse.Status {
 	a.Mode = fuse.S_IFREG | 0644
 	a.Size = uint64(f.node.Size)
 	a.Mtime = f.node.Mtime()
+	a.Ctime = f.node.Mtime()
+	a.Atime = f.node.Mtime()
 	a.Owner = *owner
 	return fuse.OK
 }

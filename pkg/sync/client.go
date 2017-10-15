@@ -48,7 +48,7 @@ func NewSyncClient(logger log.Logger, st *Sync, state *StateTree, blobstore stor
 
 func (stc *SyncClient) RemoteState() (*State, error) {
 	s := &State{}
-	if err := stc.client.GetJSON("/api/sync/state", nil, s); err != nil {
+	if err := stc.client.GetJSON(context.TODO(), "/api/sync/state", nil, s); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -56,7 +56,7 @@ func (stc *SyncClient) RemoteState() (*State, error) {
 
 func (stc *SyncClient) RemoteLeaf(prefix string) (*LeafState, error) {
 	ls := &LeafState{}
-	if err := stc.client.GetJSON(fmt.Sprintf("/api/sync/state/leaf/%s", prefix), nil, ls); err != nil {
+	if err := stc.client.GetJSON(context.TODO(), fmt.Sprintf("/api/sync/state/leaf/%s", prefix), nil, ls); err != nil {
 		return nil, err
 	}
 	return ls, nil
@@ -82,7 +82,7 @@ func (stc *SyncClient) remotePutBlob(hash string, blob []byte) error {
 	part.Write(blob)
 
 	headers := map[string]string{"Content-Type": writer.FormDataContentType()}
-	resp, err := stc.client.DoReq("POST", "/api/blobstore/upload", headers, &buf)
+	resp, err := stc.client.DoReq(context.TODO(), "POST", "/api/blobstore/upload", headers, &buf)
 	if err != nil {
 		return err
 	}
@@ -101,7 +101,7 @@ func (stc *SyncClient) remotePutBlob(hash string, blob []byte) error {
 
 // Get fetch the given blob from the remote BlobStash instance.
 func (stc *SyncClient) remoteGetBlob(hash string) ([]byte, error) {
-	resp, err := stc.client.DoReq("GET", fmt.Sprintf("/api/blobstore/blob/%s", hash), nil, nil)
+	resp, err := stc.client.DoReq(context.TODO(), "GET", fmt.Sprintf("/api/blobstore/blob/%s", hash), nil, nil)
 	if err != nil {
 		return nil, err
 	}
