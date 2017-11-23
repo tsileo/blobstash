@@ -102,6 +102,14 @@ func (c *Cache) Close() error {
 	return c.db.Close()
 }
 
+func (c *Cache) Stat(key string) (bool, error) {
+	_, ok, err := c.db.Seek(buildKey(bkey, 0))
+	if err != nil {
+		return false, err
+	}
+	return ok, nil
+}
+
 func (c *Cache) Get(key string) ([]byte, bool, error) {
 	if elm, ok := c.items[key]; ok {
 		c.evict.MoveToFront(elm)
@@ -166,6 +174,7 @@ func (c *Cache) dbGet(key string) ([]byte, error) {
 		}
 		buf.Write(v)
 	}
+	// FIXME(ts): check if that can be nil for an empty blob???
 	return buf.Bytes(), nil
 }
 

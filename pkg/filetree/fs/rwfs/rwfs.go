@@ -202,7 +202,14 @@ func newCache(path string) (*Cache, error) {
 	}, nil
 }
 
-func (c *Cache) Stat(string) (bool, error) { return false, nil } // FIXME(tsileo): implements me
+func (c *Cache) Stat(ctx context.Context, hash string) (bool, error) {
+	// FIXME(tsileo): is a local check needed, when can we skip the remote check?
+	// locStat, err := c.blobsCache.Stat(hash)
+	// if err != nil {
+	// 	return false, err
+	// }
+	return bs.Stat(ctx, hash)
+}
 
 // Get implements the BlobStore interface for filereader.File
 func (c *Cache) Put(ctx context.Context, hash string, data []byte) error {
@@ -225,12 +232,13 @@ func (c *Cache) Get(ctx context.Context, hash string) ([]byte, error) {
 	if ok {
 		data = cachedBlob
 	} else {
-		resp, err := kvs.Client().DoReq(ctx, "GET", "/api/blobstore/blob/"+hash, nil, nil)
-		if err != nil {
-			return nil, err
-		}
-		defer resp.Body.Close()
-		data, err = ioutil.ReadAll(resp.Body)
+		// resp, err := kvs.Client().DoReq(ctx, "GET", "/api/blobstore/blob/"+hash, nil, nil)
+		// if err != nil {
+		// return nil, err
+		// }
+		// defer resp.Body.Close()
+		// data, err = ioutil.ReadAll(resp.Body)
+		data, err := bs.Get(ctx, hash)
 		if err != nil {
 			return nil, err
 		}
@@ -249,6 +257,9 @@ func (c *Cache) getNode(ref, path string) (*Node, error) {
 	// }
 	node := &Node{}
 	if err := kvs.Client().GetJSON(context.TODO(), "/api/filetree/fs/fs/"+ref+"/"+path, nil, &node); err != nil {
+		if err == clientutil.ErrNotFound {
+			return nil, fuse.ENOENT
+		}
 		return nil, err
 	}
 	c.nodeIndex[path] = node
@@ -336,6 +347,13 @@ func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (a *fuse.Attr,
 	// FIXME(tsileo): check err
 	node, err := cache.getNode(fs.ref, name)
 	fmt.Printf("node=%+v\nerr=%+v", node, err)
+	switch err {
+	case fuse.ENOENT:
+		return nil, err
+	case nil:
+	default:
+		return nil, fuse.EIO
+	}
 	// if err != nil {
 	// fmt.Printf("err=%+v\n", err)
 	// return nil, fuse.EIO
@@ -439,9 +457,14 @@ func (fs *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse
 
 	// Now take a look a the remote node
 	node, err := cache.getNode(fs.ref, name)
-	if err != nil && index == nil {
-		return nil, fuse.ENOENT
+	switch err {
+	case fuse.ENOENT:
+		return nil, err
+	case nil:
+	default:
+		return nil, fuse.EIO
 	}
+
 	log.Printf("OP OpenDir %s remote node=%+v", name, node)
 	if node != nil {
 		if !node.IsDir() {
@@ -489,10 +512,14 @@ func (fs *FileSystem) Open(name string, flags uint32, context *fuse.Context) (fu
 		log.Printf("OP Open %s write=%v\n", name, flags&fuse.O_ANYWRITE != 0)
 	}
 	node, err := cache.getNode(fs.ref, name)
-	// FIXME(tsileo): hadndle error
-	// if err != nil {
-	// return nil, fuse.ENOENT
-	// }
+	switch err {
+	case fuse.ENOENT:
+		return nil, err
+	case nil:
+	default:
+		return nil, fuse.EIO
+	}
+
 	rwExists, err := fs.rwExists(name)
 	if err != nil {
 		return nil, fuse.EIO
@@ -590,9 +617,32 @@ func (fs *FileSystem) Mknod(name string, mode uint32, dev uint32, context *fuse.
 	return fuse.ENOSYS
 }
 
-func (fs *FileSystem) Mkdir(path string, mode uint32, context *fuse.Context) (code fuse.Status) {
+func (fs *FileSystem) Mkdir(path string, mode uint32, _ *fuse.Context) (code fuse.Status) {
 	if fs.debug {
 		log.Printf("OP Mkdir %s", path)
+	}
+
+	if fs.ro {
+		return fuse.EPERM
+	}
+
+	node := map[string]interface{}{
+		"type":    "dir",
+		"name":    filepath.Base(path),
+		"version": "1",
+	}
+	d := filepath.Dir(path)
+	if d == "." {
+		d = ""
+	}
+	// fmt.Printf("node=%+v\n", node)
+	js, err := json.Marshal(node)
+	if err != nil {
+		return fuse.EIO
+	}
+	resp, err := kvs.Client().DoReq(context.TODO(), "PATCH", "/api/filetree/fs/fs/"+fs.ref+"/"+d, nil, bytes.NewReader(js))
+	if err != nil || resp.StatusCode != 200 {
+		return fuse.EIO
 	}
 
 	return fuse.ToStatus(os.Mkdir(filepath.Join(fs.rwLayer, path), os.FileMode(mode)))
@@ -612,38 +662,57 @@ func (fs *FileSystem) Unlink(name string, _ *fuse.Context) (code fuse.Status) {
 		return fuse.EIO
 	}
 	if rwExists {
-		return fuse.ToStatus(syscall.Unlink(filepath.Join(fs.rwLayer, name)))
-	}
-	// FIXME(tsileo): check the err when it does not exists to return ENOENT
-	if _, err := cache.getNode(fs.ref, name); err != nil {
-		log.Printf("failed to get node %s %s: %s", fs.ref, name, err)
-		return fuse.EIO
+		if err := fuse.ToStatus(syscall.Unlink(filepath.Join(fs.rwLayer, name))); err != fuse.OK && err != fuse.ENOENT {
+			// XXX(tsileo): what about ENOENT here, and no ENOENT on remote, should this be a special error?
+			return err
+		}
 	}
 
+	// XXX(tsileo): should be inside the filetree client?
 	resp, err := kvs.Client().DoReq(context.TODO(), "DELETE", "/api/filetree/fs/fs/"+fs.ref+"/"+name, nil, nil)
-	if err != nil || resp.StatusCode != 204 {
-		return fuse.EIO
+	if err == nil {
+		switch resp.StatusCode {
+		case 200, 204:
+			return fuse.OK
+		case 404:
+			return fuse.ENOENT
+		default:
+			// TODO(tsileo): log the local error too
+			return fuse.EIO
+		}
 	}
 
-	return fuse.OK
+	return fuse.EIO
 }
 
 func (fs *FileSystem) Rmdir(name string, _ *fuse.Context) (code fuse.Status) {
 	if fs.debug {
 		log.Printf("OP Rmdir %s", name)
 	}
+	if fs.ro {
+		return fuse.EPERM
+	}
+
 	rwExists, err := fs.rwExists(name)
 	if err != nil {
 		return fuse.EIO
 	}
 	if rwExists {
-		return fuse.ToStatus(syscall.Rmdir(filepath.Join(fs.rwLayer, name)))
+		// XXX(tsileo): like Unlink OP, we should check the local error `lerr`
+		if err := fuse.ToStatus(syscall.Rmdir(filepath.Join(fs.rwLayer, name))); err != fuse.ENOENT && err != fuse.OK {
+			return err
+		}
 	}
 
 	node, err := cache.getNode(fs.ref, name)
-	if err != nil {
-		return fuse.ENOENT
+	switch err {
+	case fuse.ENOENT:
+		return nil, err
+	case nil:
+	default:
+		return nil, fuse.EIO
 	}
+
 	if !node.IsDir() {
 		return fuse.ENOTDIR
 	}

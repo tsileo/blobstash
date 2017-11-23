@@ -824,7 +824,7 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 
 		case "PATCH":
 			// Add a node (from its JSON representation) to a directory
-			node, _, _, err := fs.Path(ctx, path, false)
+			node, _, _, err := fs.Path(ctx, path, true)
 			if err != nil {
 				if err == blobsfile.ErrBlobNotFound {
 					w.WriteHeader(http.StatusNotFound)
