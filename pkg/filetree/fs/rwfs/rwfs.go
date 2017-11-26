@@ -9,7 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
+	_ "io/ioutil"
 	"log"
 	"os"
 	"os/signal"
@@ -27,6 +27,7 @@ import (
 
 	bcache "a4.io/blobstash/pkg/cache"
 	"a4.io/blobstash/pkg/client/blobstore"
+	"a4.io/blobstash/pkg/client/clientutil"
 	"a4.io/blobstash/pkg/client/kvstore"
 	rnode "a4.io/blobstash/pkg/filetree/filetreeutil/node"
 	"a4.io/blobstash/pkg/filetree/reader/filereader"
@@ -83,18 +84,18 @@ func main() {
 	mountOpts := fuse.MountOptions{
 		// AllowOther: true,
 		Options: []string{
-			// FIXME(tsileo): no more nolocalcaches and use notify instead for linux
-			"allow_root",
-			"allow_other",
-			"nolocalcaches",
-			// "defer_permissions",
-			// "noclock",
-			//"auto_xattr",
-			// "noappledouble",
-			// "noapplexattr",
-			"volname=BlobFS." + flag.Arg(1),
+		// FIXME(tsileo): no more nolocalcaches and use notify instead for linux
+		//"allow_root",
+		//"allow_other",
+		// macOS "nolocalcaches",
+		// "defer_permissions",
+		// "noclock",
+		//"auto_xattr",
+		// "noappledouble",
+		// "noapplexattr",
+		// macOS "volname=BlobFS." + flag.Arg(1),
 		},
-		FsName: "blobfs",
+		//FsName: "blobfs",
 	}
 	if opts != nil && opts.Debug {
 		mountOpts.Debug = opts.Debug
@@ -202,13 +203,14 @@ func newCache(path string) (*Cache, error) {
 	}, nil
 }
 
-func (c *Cache) Stat(ctx context.Context, hash string) (bool, error) {
+//func (c *Cache) Stat(ctx context.Context, hash string) (bool, error) {
+func (c *Cache) Stat(hash string) (bool, error) {
 	// FIXME(tsileo): is a local check needed, when can we skip the remote check?
 	// locStat, err := c.blobsCache.Stat(hash)
 	// if err != nil {
 	// 	return false, err
 	// }
-	return bs.Stat(ctx, hash)
+	return bs.Stat(context.TODO(), hash)
 }
 
 // Get implements the BlobStore interface for filereader.File
@@ -249,7 +251,7 @@ func (c *Cache) Get(ctx context.Context, hash string) ([]byte, error) {
 	return data, nil
 }
 
-func (c *Cache) getNode(ref, path string) (*Node, error) {
+func (c *Cache) getNode(ref, path string) (*Node, fuse.Status) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// if n, ok := c.nodeIndex[path]; ok {
@@ -260,20 +262,22 @@ func (c *Cache) getNode(ref, path string) (*Node, error) {
 		if err == clientutil.ErrNotFound {
 			return nil, fuse.ENOENT
 		}
-		return nil, err
+		// TODO(tsileo): log error
+		return nil, fuse.EIO
 	}
 	c.nodeIndex[path] = node
-	return node, nil
+	return node, fuse.OK
 
 }
 
 type FileSystem struct {
-	ref     string
-	debug   bool
-	rwLayer string
-	up      *writer.Uploader
-	mu      sync.Mutex
-	ro      bool
+	ref         string
+	debug       bool
+	rwLayer     string
+	up          *writer.Uploader
+	mu          sync.Mutex
+	ro          bool
+	justCreated bool
 }
 
 func NewFileSystem(ref string, debug bool) pathfs.FileSystem {
@@ -345,15 +349,21 @@ func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (a *fuse.Attr,
 	// return nil, fuse.ENOENT
 	// }
 	// FIXME(tsileo): check err
-	node, err := cache.getNode(fs.ref, name)
-	fmt.Printf("node=%+v\nerr=%+v", node, err)
-	switch err {
-	case fuse.ENOENT:
-		return nil, err
-	case nil:
-	default:
-		return nil, fuse.EIO
+	node, status := cache.getNode(fs.ref, name)
+	fmt.Printf("node=%+v\nerr=%+v", node, status)
+
+	if name == "" && node == nil && fs.justCreated && status == fuse.ENOENT {
+		log.Printf("return justCreated attr")
+		return &fuse.Attr{
+			Mode:  fuse.S_IFDIR | 0755,
+			Owner: *owner,
+		}, fuse.OK
 	}
+
+	if status != fuse.OK {
+		return nil, status
+	}
+
 	// if err != nil {
 	// fmt.Printf("err=%+v\n", err)
 	// return nil, fuse.EIO
@@ -456,16 +466,17 @@ func (fs *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse
 	}
 
 	// Now take a look a the remote node
-	node, err := cache.getNode(fs.ref, name)
-	switch err {
+	node, status := cache.getNode(fs.ref, name)
+	log.Printf("OP OpenDir %s remote node=%+v status=%+v %+v", name, node, status)
+	switch status {
+	case fuse.OK:
 	case fuse.ENOENT:
-		return nil, err
-	case nil:
+		if name == "" {
+			fs.justCreated = true
+		}
 	default:
-		return nil, fuse.EIO
+		return nil, status
 	}
-
-	log.Printf("OP OpenDir %s remote node=%+v", name, node)
 	if node != nil {
 		if !node.IsDir() {
 			return nil, fuse.ENOTDIR
@@ -494,6 +505,7 @@ func (fs *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse
 	for _, dirEntry := range index {
 		output = append(output, dirEntry)
 	}
+	log.Printf("OpenDir OK %d children", len(output))
 	return output, fuse.OK
 }
 
@@ -511,15 +523,10 @@ func (fs *FileSystem) Open(name string, flags uint32, context *fuse.Context) (fu
 	if fs.debug {
 		log.Printf("OP Open %s write=%v\n", name, flags&fuse.O_ANYWRITE != 0)
 	}
-	node, err := cache.getNode(fs.ref, name)
-	switch err {
-	case fuse.ENOENT:
-		return nil, err
-	case nil:
-	default:
-		return nil, fuse.EIO
+	node, status := cache.getNode(fs.ref, name)
+	if status != fuse.OK {
+		return nil, status
 	}
-
 	rwExists, err := fs.rwExists(name)
 	if err != nil {
 		return nil, fuse.EIO
@@ -587,6 +594,10 @@ func (fs *FileSystem) Open(name string, flags uint32, context *fuse.Context) (fu
 	}
 
 	return f, fuse.OK
+}
+
+func (fs *FileSystem) Utimens(path string, a *time.Time, m *time.Time, context *fuse.Context) (code fuse.Status) {
+	return fuse.EPERM
 }
 
 func (fs *FileSystem) Chmod(path string, mode uint32, context *fuse.Context) (code fuse.Status) {
@@ -704,13 +715,9 @@ func (fs *FileSystem) Rmdir(name string, _ *fuse.Context) (code fuse.Status) {
 		}
 	}
 
-	node, err := cache.getNode(fs.ref, name)
-	switch err {
-	case fuse.ENOENT:
-		return nil, err
-	case nil:
-	default:
-		return nil, fuse.EIO
+	node, status := cache.getNode(fs.ref, name)
+	if status != fuse.OK {
+		return status
 	}
 
 	if !node.IsDir() {
@@ -751,9 +758,9 @@ func (fs *FileSystem) Rename(oldPath string, newPath string, _ *fuse.Context) (c
 		return fuse.ToStatus(os.Rename(filepath.Join(fs.rwLayer, oldPath), filepath.Join(fs.rwLayer, newPath)))
 	}
 
-	node, err := cache.getNode(fs.ref, oldPath)
-	if err != nil {
-		return fuse.EIO
+	node, status := cache.getNode(fs.ref, oldPath)
+	if status != fuse.OK {
+		return status
 	}
 
 	// First, we remove the old path
@@ -797,6 +804,7 @@ func (fs *FileSystem) Create(path string, flags uint32, mode uint32, context *fu
 		log.Printf("OP Create %s", path)
 	}
 	f, err := NewRWFile(fs, path, flags, mode, nil)
+	log.Printf("rwfile=%+v %+v", f, err)
 	return f, fuse.ToStatus(err)
 
 	// 	fullPath := filepath.Join(fs.rwLayer, path)
@@ -819,8 +827,8 @@ func (fs *FileSystem) GetXAttr(name string, attr string, context *fuse.Context) 
 		log.Printf("OP GetXAttr %s", name)
 	}
 	node, err := cache.getNode(fs.ref, name)
-	if err != nil {
-		return nil, fuse.ENOENT
+	if err != fuse.OK {
+		return nil, err
 	}
 	if attr == "node.ref" {
 		return []byte(node.Ref), fuse.OK
@@ -857,9 +865,9 @@ func (fs *FileSystem) ListXAttr(name string, context *fuse.Context) ([]string, f
 		}
 	}
 
-	node, err := cache.getNode(fs.ref, name)
-	if err != nil {
-		return nil, fuse.ENOENT
+	node, status := cache.getNode(fs.ref, name)
+	if status != fuse.OK {
+		return nil, status
 	}
 	out := []string{"node.ref"}
 	if node.Metadata != nil {

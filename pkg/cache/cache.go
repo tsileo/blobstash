@@ -103,6 +103,7 @@ func (c *Cache) Close() error {
 }
 
 func (c *Cache) Stat(key string) (bool, error) {
+	bkey := append([]byte(key), []byte(":")...)
 	_, ok, err := c.db.Seek(buildKey(bkey, 0))
 	if err != nil {
 		return false, err
