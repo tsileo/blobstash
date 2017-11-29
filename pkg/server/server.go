@@ -37,6 +37,10 @@ import (
 	log "github.com/inconshreveable/log15"
 )
 
+func pingHandler(w http.ResponseWriter, r *http.Request) {
+	httputil.WriteJSON(w, map[string]interface{}{"ping": "pong"})
+}
+
 type App interface {
 	Register(*mux.Router, func(http.Handler) http.Handler)
 }
@@ -68,6 +72,8 @@ func New(conf *config.Config) (*Server, error) {
 		shutdown:      make(chan struct{}),
 	}
 	authFunc, basicAuth := middleware.NewBasicAuth(conf)
+	s.router.Handle("/api/ping", basicAuth(http.HandlerFunc(pingHandler)))
+
 	hub := hub.New(logger.New("app", "hub"))
 	// Load the blobstore
 	rootBlobstore, err := blobstore.New(logger.New("app", "blobstore"), conf.VarDir(), conf, hub)
