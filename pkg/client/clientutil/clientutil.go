@@ -136,6 +136,22 @@ func (client *Client) DoReq(ctx context.Context, method, path string, headers ma
 	return client.client.Do(request)
 }
 
+func (client *Client) CheckAuth(ctx context.Context) (bool, error) {
+	resp, err := client.DoReq(ctx, "GET", "/api/ping", nil, nil)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case 200:
+		return true, nil
+	case 401:
+		return false, nil
+	default:
+		return false, fmt.Errorf("API call failed with status %d", resp.StatusCode)
+	}
+}
+
 func (client *Client) GetJSON(ctx context.Context, path string, headers map[string]string, out interface{}) error {
 	resp, err := client.DoReq(ctx, "GET", path, headers, nil)
 	if err != nil {
