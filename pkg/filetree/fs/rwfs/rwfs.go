@@ -65,10 +65,22 @@ func main() {
 		fmt.Printf("failed to setup cache: %v\n", err)
 		os.Exit(1)
 	}
+	defer cache.Close()
 	kvopts := kvstore.DefaultOpts().SetHost(os.Getenv("BLOBS_API_HOST"), os.Getenv("BLOBS_API_KEY"))
 	kvopts.SnappyCompression = false
 	kvs = kvstore.New(kvopts)
 	bs = blobstore.New(kvopts)
+
+	authOk, err := kvs.Client().CheckAuth(context.TODO())
+	if err != nil {
+		fmt.Printf("failed to contact BlobStash: %v\n", err)
+		os.Exit(1)
+	}
+
+	if !authOk {
+		fmt.Printf("bad API key\n")
+		os.Exit(1)
+	}
 
 	root := NewFileSystem(flag.Arg(1), *debug)
 
@@ -201,6 +213,10 @@ func newCache(path string) (*Cache, error) {
 		path:         path,
 		blobsCache:   blobsCache,
 	}, nil
+}
+
+func (c *Cache) Close() error {
+	return c.blobsCache.Close()
 }
 
 //func (c *Cache) Stat(ctx context.Context, hash string) (bool, error) {
