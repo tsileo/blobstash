@@ -23,7 +23,7 @@ import (
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 	"github.com/hanwen/go-fuse/fuse/pathfs"
 	"github.com/hashicorp/golang-lru"
-	"github.com/pkg/xattr"
+	_ "github.com/pkg/xattr"
 
 	bcache "a4.io/blobstash/pkg/cache"
 	"a4.io/blobstash/pkg/client/blobstore"
@@ -82,7 +82,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	root := NewFileSystem(flag.Arg(1), *debug)
+	root, err := NewFileSystem(flag.Arg(1), flag.Arg(0), *debug)
+	if err != nil {
+		fmt.Printf("failed to initialize filesystem: %v\n", err)
+		os.Exit(1)
+	}
 
 	opts := &nodefs.Options{
 		Debug: false, // *debug,
@@ -96,16 +100,17 @@ func main() {
 	mountOpts := fuse.MountOptions{
 		// AllowOther: true,
 		Options: []string{
-		// FIXME(tsileo): no more nolocalcaches and use notify instead for linux
-		//"allow_root",
-		//"allow_other",
-		// macOS "nolocalcaches",
-		// "defer_permissions",
-		// "noclock",
-		//"auto_xattr",
-		// "noappledouble",
-		// "noapplexattr",
-		// macOS "volname=BlobFS." + flag.Arg(1),
+			// FIXME(tsileo): no more nolocalcaches and use notify instead for linux
+			"noatime",
+			//"allow_root",
+			//"allow_other",
+			// macOS "nolocalcaches",
+			// "defer_permissions",
+			// "noclock",
+			//"auto_xattr",
+			// "noappledouble",
+			// "noapplexattr",
+			// macOS "volname=BlobFS." + flag.Arg(1),
 		},
 		//FsName: "blobfs",
 	}
@@ -140,6 +145,112 @@ func main() {
 		os.Exit(1)
 	}
 	os.Exit(0)
+}
+
+type rwLayer struct {
+	path  string
+	cache map[string]*Node
+}
+
+func (rl *rwLayer) Exists(name string) (string, bool, error) {
+	path := filepath.Join(rl.path, name)
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return path, false, nil
+		}
+		return "", false, err
+	}
+	return path, true, nil
+}
+
+func (rl *rwLayer) GetAttr(name string, context *fuse.Context) (a *fuse.Attr, code fuse.Status, err error) {
+	path, rwExists, err := rl.Exists(name)
+	if err != nil {
+		log.Printf("OP GetAttr %s rwExists err=%+v", name, err)
+		return nil, fuse.EIO, err
+	}
+	if !rwExists {
+		return nil, fuse.ENOENT, nil
+	}
+	st := syscall.Stat_t{}
+	if name == "" {
+		// When GetAttr is called for the toplevel directory, we always want
+		// to look through symlinks.
+		err = syscall.Stat(path, &st)
+	} else {
+		err = syscall.Lstat(path, &st)
+	}
+
+	if err != nil {
+		return nil, fuse.ToStatus(err), err
+	}
+	a = &fuse.Attr{}
+	a.FromStat(&st)
+	log.Printf("OUT rwlayer=%+v\n", a)
+	return a, fuse.OK, nil
+}
+
+func (rl *rwLayer) OpenDir(name string, context *fuse.Context) (map[string]fuse.DirEntry, fuse.Status, error) {
+	path, rwExists, err := rl.Exists(name)
+	if err != nil {
+		log.Printf("OP GetAttr %s rwExists err=%+v", name, err)
+		return nil, fuse.EIO, err
+	}
+	if !rwExists {
+		return nil, fuse.ENOENT, nil
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fuse.EIO, err
+	}
+	output := map[string]fuse.DirEntry{}
+	want := 500
+	// output := make([]fuse.DirEntry, 0, want)
+	for {
+		infos, err := f.Readdir(want)
+		for i := range infos {
+			// workaround for https://code.google.com/p/go/issues/detail?id=5960
+			if infos[i] == nil {
+				continue
+			}
+			n := infos[i].Name()
+			d := fuse.DirEntry{
+				Name: n,
+			}
+			if s := fuse.ToStatT(infos[i]); s != nil {
+				d.Mode = uint32(s.Mode)
+				d.Ino = s.Ino
+			} else {
+				log.Printf("ReadDir entry %q for %q has no stat info", n, name)
+			}
+			output[n] = d
+			// output = append(output, d)
+		}
+		if len(infos) < want || err == io.EOF {
+			// if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Println("Readdir() returned err:", err)
+			break
+		}
+	}
+	f.Close()
+	return output, fuse.OK, nil
+}
+
+func newRWLayer(path string) (*rwLayer, error) {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		if err := os.MkdirAll(path, 0700); err != nil {
+			return nil, fmt.Errorf("failed to create rw layer dir: %v", err)
+		}
+	}
+
+	return &rwLayer{
+		path:  path,
+		cache: map[string]*Node{},
+	}, nil
 }
 
 type Node struct {
@@ -232,6 +343,7 @@ func (c *Cache) Stat(hash string) (bool, error) {
 // Get implements the BlobStore interface for filereader.File
 func (c *Cache) Put(ctx context.Context, hash string, data []byte) error {
 	if err := c.blobsCache.Add(hash, data); err != nil {
+		return err
 	}
 	// FIXME(tsileo): add a stat/exist check once the data contexes is implemented
 	if err := bs.Put(ctx, hash, data); err != nil {
@@ -289,20 +401,27 @@ func (c *Cache) getNode(ref, path string) (*Node, fuse.Status) {
 type FileSystem struct {
 	ref         string
 	debug       bool
-	rwLayer     string
 	up          *writer.Uploader
 	mu          sync.Mutex
 	ro          bool
 	justCreated bool
+	rwLayer     *rwLayer
 }
 
-func NewFileSystem(ref string, debug bool) pathfs.FileSystem {
-	return &FileSystem{
+func NewFileSystem(ref, mountpoint string, debug bool) (pathfs.FileSystem, error) {
+	fs := &FileSystem{
 		ref:     ref,
 		debug:   debug,
-		rwLayer: "rw",
+		rwLayer: nil,
 		up:      writer.NewUploader(cache),
 	}
+	var err error
+	fs.rwLayer, err = newRWLayer(fmt.Sprintf("rw_%s_%s", ref, mountpoint))
+	if err != nil {
+		return nil, fmt.Errorf("failed to init rwLayer: %v", err)
+	}
+
+	return fs, nil
 }
 
 func (fs *FileSystem) String() string {
@@ -334,37 +453,18 @@ func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (a *fuse.Attr,
 		log.Printf("OP Getattr %s", name)
 	}
 
-	rwExists, err := fs.rwExists(name)
-	if err != nil {
-		log.Printf("OP GetAttr %s rwExists err=%+v", name, err)
+	rwAttr, rwStatus, err := fs.rwLayer.GetAttr(name, context)
+	switch rwStatus {
+	case fuse.OK:
+		return rwAttr, rwStatus
+	case fuse.ENOENT:
+		// do nothing
+	default:
+		log.Printf("failed to call rwLayer.GetAttr: %v\n", err)
 		return nil, fuse.EIO
 	}
-	if rwExists {
-		fullPath := filepath.Join(fs.rwLayer, name)
-		var err error = nil
-		st := syscall.Stat_t{}
-		if name == "" {
-			// When GetAttr is called for the toplevel directory, we always want
-			// to look through symlinks.
-			err = syscall.Stat(fullPath, &st)
-		} else {
-			err = syscall.Lstat(fullPath, &st)
-		}
 
-		if err != nil {
-			return nil, fuse.ToStatus(err)
-		}
-		a = &fuse.Attr{}
-		a.FromStat(&st)
-		log.Printf("OUT rwlayer=%+v\n", a)
-		return a, fuse.OK
-	}
-	// return nil, fuse.ToStatus(err)
-
-	// if _, ok := cache.negNodeIndex[name]; ok {
-	// return nil, fuse.ENOENT
-	// }
-	// FIXME(tsileo): check err
+	// FIXME(tsileo): check the node first, and compare with metadata for invalidation
 	node, status := cache.getNode(fs.ref, name)
 	fmt.Printf("node=%+v\nerr=%+v", node, status)
 
@@ -417,50 +517,6 @@ func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (a *fuse.Attr,
 // return fuse.EPERM
 // }
 
-func (fs *FileSystem) openRwDir(name string) (map[string]fuse.DirEntry, error) {
-	f, err := os.Open(filepath.Join(fs.rwLayer, name))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	output := map[string]fuse.DirEntry{}
-	want := 500
-	// output := make([]fuse.DirEntry, 0, want)
-	for {
-		infos, err := f.Readdir(want)
-		for i := range infos {
-			// workaround for https://code.google.com/p/go/issues/detail?id=5960
-			if infos[i] == nil {
-				continue
-			}
-			n := infos[i].Name()
-			d := fuse.DirEntry{
-				Name: n,
-			}
-			if s := fuse.ToStatT(infos[i]); s != nil {
-				d.Mode = uint32(s.Mode)
-				d.Ino = s.Ino
-			} else {
-				log.Printf("ReadDir entry %q for %q has no stat info", n, name)
-			}
-			output[n] = d
-			// output = append(output, d)
-		}
-		if len(infos) < want || err == io.EOF {
-			// if err == io.EOF {
-			break
-		}
-		if err != nil {
-			log.Println("Readdir() returned err:", err)
-			break
-		}
-	}
-	f.Close()
-	return output, nil
-}
-
 func (fs *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse.DirEntry, status fuse.Status) {
 	if fs.debug {
 		log.Printf("OP OpenDir %s", name)
@@ -468,22 +524,23 @@ func (fs *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse
 
 	var err error
 	var index map[string]fuse.DirEntry
-	if !fs.ro {
-		// The real directory is the 1st layer, if a file exists locally as a file it will show up instead of the remote version
-		index, err = fs.openRwDir(name)
-		if err != nil {
-			log.Printf("rw layer failed=%+v\n", err)
-			return nil, fuse.EIO
-		}
-		log.Printf("OP OpenDir %s index=%+v", name, index)
+	// The real directory is the 1st layer, if a file exists locally as a file it will show up instead of the remote version
+	//if !fs.ro {
+	index, status, err = fs.rwLayer.OpenDir(name, context)
+	switch status {
+	case fuse.OK, fuse.ENOENT:
+	default:
+		log.Printf("failed to call rwLayer.OpenDir: %v\n", err)
+		return nil, fuse.EIO
 	}
+
 	if index == nil {
 		index = map[string]fuse.DirEntry{}
 	}
 
 	// Now take a look a the remote node
 	node, status := cache.getNode(fs.ref, name)
-	log.Printf("OP OpenDir %s remote node=%+v status=%+v %+v", name, node, status)
+	log.Printf("OP OpenDir %s remote node=%+v status=%+v", name, node, status)
 	switch status {
 	case fuse.OK:
 	case fuse.ENOENT:
@@ -525,16 +582,6 @@ func (fs *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse
 	return output, fuse.OK
 }
 
-func (fs *FileSystem) rwExists(name string) (bool, error) {
-	if _, err := os.Stat(filepath.Join(fs.rwLayer, name)); err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
-}
-
 func (fs *FileSystem) Open(name string, flags uint32, context *fuse.Context) (fuseFile nodefs.File, status fuse.Status) {
 	if fs.debug {
 		log.Printf("OP Open %s write=%v\n", name, flags&fuse.O_ANYWRITE != 0)
@@ -543,7 +590,7 @@ func (fs *FileSystem) Open(name string, flags uint32, context *fuse.Context) (fu
 	if status != fuse.OK {
 		return nil, status
 	}
-	rwExists, err := fs.rwExists(name)
+	rwPath, rwExists, err := fs.rwLayer.Exists(name)
 	if err != nil {
 		return nil, fuse.EIO
 	}
@@ -553,57 +600,13 @@ func (fs *FileSystem) Open(name string, flags uint32, context *fuse.Context) (fu
 			// XXX(tsileo): is EROFS the right error code
 			return nil, fuse.EROFS
 		}
-		f, err := NewRWFile(fs, name, flags, 0, node)
+		f, err := NewRWFile(fs, name, rwPath, flags, 0, node)
 		return f, fuse.ToStatus(err)
 
-		// 		fh, err := os.OpenFile(filepath.Join(fs.rwLayer, name), int(flags), 0)
-		// 		if err != nil {
-		// 			return nil, fuse.ToStatus(err)
-		// 		}
-		// 		if node != nil && os.IsNotExist(err) {
-		// 			fullPath := filepath.Join(fs.rwLayer, name)
-		// 			if _, err := os.Stat(filepath.Dir(fullPath)); err != nil {
-		// 				if os.IsNotExist(err) {
-		// 					if err := os.MkdirAll(filepath.Dir(fullPath), 0744); err != nil {
-		// 						return nil, fuse.EIO
-		// 					}
-		// 				} else {
-		// 					return nil, fuse.EIO
-		// 				}
-		// 			}
-		// 			fh, err = os.OpenFile(filepath.Join(fs.rwLayer, name), int(flags)|os.O_CREATE, os.FileMode(0644))
-		// 			if err != nil {
-		// 				return nil, fuse.EIO
-		// 			}
-
-		// 			tmtime := time.Unix(int64(node.Mtime()), 0)
-		// 			if err := os.Chtimes(filepath.Join(fs.rwLayer, name), tmtime, tmtime); err != nil {
-		// 				return nil, fuse.EIO
-		// 			}
-		// 			if err := node.Copy(fh); err != nil {
-		// 				return nil, fuse.EIO
-		// 			}
-		// 			if err := fh.Sync(); err != nil {
-		// 				return nil, fuse.EIO
-		// 			}
-		// 			if _, err := fh.Seek(0, os.SEEK_SET); err != nil {
-		// 				return nil, fuse.EIO
-		// 			}
-		// 		}
-		// 		return nodefs.NewLoopbackFile(fh), fuse.OK
 	}
 	if node == nil {
 		return nil, fuse.ENOENT
 	}
-	// f, err := NewFile(fs, name, node)
-	// if err != nil {
-	// 	return nil, fuse.EIO
-	// }
-
-	// node, err := cache.getNode(fs.ref, name)
-	// if err != nil {
-	// return nil, fuse.ENOENT
-	// }
 	f, err := NewFile(fs, name, node)
 	if err != nil {
 		return nil, fuse.EIO
@@ -653,6 +656,16 @@ func (fs *FileSystem) Mkdir(path string, mode uint32, _ *fuse.Context) (code fus
 		return fuse.EPERM
 	}
 
+	rwPath, rwExists, err := fs.rwLayer.Exists(path)
+	if err != nil {
+		return fuse.EIO
+	}
+
+	// XXX(tsileo): mkdir on a already existing dir should be a no-op
+	if rwExists {
+		return fuse.OK
+	}
+
 	node := map[string]interface{}{
 		"type":    "dir",
 		"name":    filepath.Base(path),
@@ -672,7 +685,7 @@ func (fs *FileSystem) Mkdir(path string, mode uint32, _ *fuse.Context) (code fus
 		return fuse.EIO
 	}
 
-	return fuse.ToStatus(os.Mkdir(filepath.Join(fs.rwLayer, path), os.FileMode(mode)))
+	return fuse.ToStatus(os.Mkdir(rwPath, os.FileMode(mode)))
 	// return fuse.EPERM
 }
 
@@ -684,12 +697,12 @@ func (fs *FileSystem) Unlink(name string, _ *fuse.Context) (code fuse.Status) {
 	if fs.ro {
 		return fuse.EPERM
 	}
-	rwExists, err := fs.rwExists(name)
+	rwPath, rwExists, err := fs.rwLayer.Exists(name)
 	if err != nil {
 		return fuse.EIO
 	}
 	if rwExists {
-		if err := fuse.ToStatus(syscall.Unlink(filepath.Join(fs.rwLayer, name))); err != fuse.OK && err != fuse.ENOENT {
+		if err := fuse.ToStatus(syscall.Unlink(rwPath)); err != fuse.OK && err != fuse.ENOENT {
 			// XXX(tsileo): what about ENOENT here, and no ENOENT on remote, should this be a special error?
 			return err
 		}
@@ -720,13 +733,13 @@ func (fs *FileSystem) Rmdir(name string, _ *fuse.Context) (code fuse.Status) {
 		return fuse.EPERM
 	}
 
-	rwExists, err := fs.rwExists(name)
+	rwPath, rwExists, err := fs.rwLayer.Exists(name)
 	if err != nil {
 		return fuse.EIO
 	}
 	if rwExists {
 		// XXX(tsileo): like Unlink OP, we should check the local error `lerr`
-		if err := fuse.ToStatus(syscall.Rmdir(filepath.Join(fs.rwLayer, name))); err != fuse.ENOENT && err != fuse.OK {
+		if err := fuse.ToStatus(syscall.Rmdir(rwPath)); err != fuse.ENOENT && err != fuse.OK {
 			return err
 		}
 	}
@@ -766,12 +779,12 @@ func (fs *FileSystem) Rename(oldPath string, newPath string, _ *fuse.Context) (c
 	if fs.ro {
 		return fuse.EPERM
 	}
-	rwExists, err := fs.rwExists(oldPath)
+	rwPath, rwExists, err := fs.rwLayer.Exists(oldPath)
 	if err != nil {
 		return fuse.EIO
 	}
 	if rwExists {
-		return fuse.ToStatus(os.Rename(filepath.Join(fs.rwLayer, oldPath), filepath.Join(fs.rwLayer, newPath)))
+		return fuse.ToStatus(os.Rename(rwPath, filepath.Join(fs.rwLayer.path, newPath)))
 	}
 
 	node, status := cache.getNode(fs.ref, oldPath)
@@ -819,7 +832,8 @@ func (fs *FileSystem) Create(path string, flags uint32, mode uint32, context *fu
 	if fs.debug {
 		log.Printf("OP Create %s", path)
 	}
-	f, err := NewRWFile(fs, path, flags, mode, nil)
+	// TODO(tsileo): check if it exists first?
+	f, err := NewRWFile(fs, path, filepath.Join(fs.rwLayer.path, path), flags, mode, nil)
 	log.Printf("rwfile=%+v %+v", f, err)
 	return f, fuse.ToStatus(err)
 
@@ -871,15 +885,16 @@ func (fs *FileSystem) ListXAttr(name string, context *fuse.Context) ([]string, f
 		log.Printf("OP ListXAttr %s", name)
 	}
 
-	rwExists, err := fs.rwExists(name)
-	if err != nil {
-		return nil, fuse.EIO
-	}
-	if rwExists {
-		if list, err := xattr.List(filepath.Join(fs.rwLayer, name)); err == nil {
-			return list, fuse.OK
-		}
-	}
+	// TODO(tsileo): is this really needed?
+	//rwPath, rwExists, err := fs.rwExists(name)
+	//if err != nil {
+	//return nil, fuse.EIO
+	//}
+	//if rwExists {
+	//if list, err := xattr.List(filepath.Join(fs.rwLayer, name)); err == nil {
+	//return list, fuse.OK
+	//}
+	//}
 
 	node, status := cache.getNode(fs.ref, name)
 	if status != fuse.OK {
@@ -909,9 +924,7 @@ type RWFile struct {
 	fs      *FileSystem
 }
 
-func NewRWFile(fs *FileSystem, path string, flags, mode uint32, node *Node) (*RWFile, error) {
-	fullPath := filepath.Join(fs.rwLayer, path)
-
+func NewRWFile(fs *FileSystem, path, fullPath string, flags, mode uint32, node *Node) (*RWFile, error) {
 	fh, err := os.OpenFile(fullPath, int(flags), os.FileMode(mode))
 	if err != nil {
 		return nil, err
@@ -959,7 +972,7 @@ func (f *RWFile) Flush() fuse.Status {
 	if f.fs.debug {
 		log.Printf("OP Flush %+s", f)
 	}
-	fullPath := filepath.Join(f.fs.rwLayer, f.path)
+	fullPath := filepath.Join(f.fs.rwLayer.path, f.path)
 	rawNode, err := f.fs.up.PutFile(fullPath)
 	if err != nil {
 		log.Printf("failed to upload: %v", err)
