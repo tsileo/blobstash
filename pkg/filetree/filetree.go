@@ -204,7 +204,7 @@ type Node struct {
 
 // Update the given node with the given meta, the updated/new node is assumed to be already saved
 func (ft *FileTree) Update(ctx context.Context, n *Node, m *rnode.RawNode, prefixFmt string, first bool) (*Node, error) {
-	newNode, err := metaToNode(m)
+	newNode, err := MetaToNode(m)
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +284,7 @@ func (ft *FileTree) AddChild(ctx context.Context, n *Node, newChild *rnode.RawNo
 	if err := ft.blobStore.Put(ctx, &blob.Blob{Hash: newChildRef, Data: data}); err != nil {
 		return nil, err
 	}
-	newChildNode, err := metaToNode(newChild)
+	newChildNode, err := MetaToNode(newChild)
 	if err != nil {
 		return nil, err
 	}
@@ -357,7 +357,7 @@ func (s byName) Len() int           { return len(s) }
 func (s byName) Less(i, j int) bool { return s[i].Name < s[j].Name }
 func (s byName) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
-func metaToNode(m *rnode.RawNode) (*Node, error) {
+func MetaToNode(m *rnode.RawNode) (*Node, error) {
 	n := &Node{
 		Name: m.Name,
 		Type: m.Type,
@@ -445,7 +445,7 @@ func (fs *FS) Root(ctx context.Context, create bool) (*Node, error) {
 			Type: "dir",
 			Name: "_root",
 		}
-		node, err = metaToNode(meta)
+		node, err = MetaToNode(meta)
 		if err != nil {
 			return nil, err
 		}
@@ -511,7 +511,7 @@ func (fs *FS) Path(ctx context.Context, path string, create bool) (*Node, *rnode
 				cmeta.Type = "file"
 			}
 			//  we don't set the meta type, it will be set on Update if it doesn't exist
-			node, err = metaToNode(cmeta)
+			node, err = MetaToNode(cmeta)
 			if err != nil {
 				return nil, nil, found, err
 			}
@@ -607,7 +607,7 @@ func (ft *FileTree) uploadHandler() func(http.ResponseWriter, *http.Request) {
 		if err != nil {
 			panic(err)
 		}
-		node, err := metaToNode(meta)
+		node, err := MetaToNode(meta)
 		if err != nil {
 			panic(err)
 		}
@@ -1098,7 +1098,7 @@ func (ft *FileTree) nodeByRef(ctx context.Context, hash string) (*Node, error) {
 		return nil, err
 	}
 
-	n, err := metaToNode(m)
+	n, err := MetaToNode(m)
 	if err != nil {
 		return nil, err
 	}
