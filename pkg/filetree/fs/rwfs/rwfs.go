@@ -87,12 +87,16 @@ func main() {
 		fmt.Printf("failed to initialize filesystem: %v\n", err)
 		os.Exit(1)
 	}
-
 	opts := &nodefs.Options{
-		Debug: false, // *debug,
+		Debug:           false, // *debug,
+		EntryTimeout:    0 * time.Second,
+		AttrTimeout:     0 * time.Second,
+		NegativeTimeout: 0 * time.Second,
 	}
 	nfs := pathfs.NewPathNodeFs(root, nil)
 	// state, _, err := nodefs.MountRoot(flag.Arg(0), nfs.Root(), opts)
+
+	nfs.ForgetClientInodes()
 
 	conn := nodefs.NewFileSystemConnector(nfs.Root(), opts)
 
@@ -102,8 +106,10 @@ func main() {
 		Options: []string{
 			// FIXME(tsileo): no more nolocalcaches and use notify instead for linux
 			"noatime",
-			//"allow_root",
+			//"default_permissions",
 			//"allow_other",
+			//"direct_io",
+			//"allow_root",
 			// macOS "nolocalcaches",
 			// "defer_permissions",
 			// "noclock",
@@ -112,7 +118,8 @@ func main() {
 			// "noapplexattr",
 			// macOS "volname=BlobFS." + flag.Arg(1),
 		},
-		//FsName: "blobfs",
+		FsName: "blobfs",
+		Name:   "test",
 	}
 	if opts != nil && opts.Debug {
 		mountOpts.Debug = opts.Debug
@@ -130,7 +137,7 @@ func main() {
 
 	owner = fuse.CurrentOwner()
 	go state.Serve()
-	log.Printf("mounted successfully")
+	log.Println("mounted successfully")
 
 	// Be ready to cleanup if we receive a kill signal
 	cs := make(chan os.Signal, 1)
@@ -166,7 +173,7 @@ func (rl *rwLayer) Exists(name string) (string, bool, error) {
 func (rl *rwLayer) GetAttr(name string, context *fuse.Context) (a *fuse.Attr, code fuse.Status, err error) {
 	path, rwExists, err := rl.Exists(name)
 	if err != nil {
-		log.Printf("OP GetAttr %s rwExists err=%+v", name, err)
+		log.Printf("OP GetAttr %s rwExists err=%+v\n", name, err)
 		return nil, fuse.EIO, err
 	}
 	if !rwExists {
@@ -186,14 +193,26 @@ func (rl *rwLayer) GetAttr(name string, context *fuse.Context) (a *fuse.Attr, co
 	}
 	a = &fuse.Attr{}
 	a.FromStat(&st)
-	log.Printf("OUT rwlayer=%+v\n", a)
+	a.Ino = 0
+	a.Blocks = 0
+	a.Atime = 0
+	a.Atimensec = 0
+	a.Mtimensec = 0
+	a.Ctimensec = 0
+	a.Nlink = 0
+	a.Uid = 0
+	a.Gid = 0
+	a.Rdev = 0
+	a.Blksize = 0
+
+	//log.Printf("OUT rwlayer=%+v\n", a)
 	return a, fuse.OK, nil
 }
 
 func (rl *rwLayer) OpenDir(name string, context *fuse.Context) (map[string]fuse.DirEntry, fuse.Status, error) {
 	path, rwExists, err := rl.Exists(name)
 	if err != nil {
-		log.Printf("OP GetAttr %s rwExists err=%+v", name, err)
+		log.Printf("OP GetAttr %s rwExists err=%+v\n", name, err)
 		return nil, fuse.EIO, err
 	}
 	if !rwExists {
@@ -222,7 +241,7 @@ func (rl *rwLayer) OpenDir(name string, context *fuse.Context) (map[string]fuse.
 				d.Mode = uint32(s.Mode)
 				d.Ino = s.Ino
 			} else {
-				log.Printf("ReadDir entry %q for %q has no stat info", n, name)
+				log.Printf("ReadDir entry %q for %q has no stat info\n", n, name)
 			}
 			output[n] = d
 			// output = append(output, d)
@@ -263,6 +282,10 @@ type Node struct {
 	ModTime  string                 `json:"mtime"`
 }
 
+func (n *Node) Hash() string {
+	return n.Metadata["blake2b-hash"].(string)
+}
+
 func (n *Node) IsDir() bool {
 	return n.Type == "dir"
 }
@@ -289,9 +312,9 @@ func (n *Node) Copy(dst io.Writer) error {
 		return err
 	}
 	defer resp.Body.Close()
-	fmt.Printf("resp=%+v\n", resp)
+	log.Printf("resp=%+v\n", resp)
 	n2, err := io.Copy(dst, resp.Body)
-	fmt.Printf("copied %s bytes (Node.Copy)\n", n2)
+	log.Printf("copied %s bytes (Node.Copy)\n", n2)
 	if err != nil {
 		return err
 	}
@@ -354,9 +377,10 @@ func (c *Cache) Put(ctx context.Context, hash string, data []byte) error {
 
 // Get implements the BlobStore interface for filereader.File
 func (c *Cache) Get(ctx context.Context, hash string) ([]byte, error) {
+	var err error
 	cachedBlob, ok, err := c.blobsCache.Get(hash)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cache failed: %v", err)
 	}
 	var data []byte
 	if ok {
@@ -368,12 +392,12 @@ func (c *Cache) Get(ctx context.Context, hash string) ([]byte, error) {
 		// }
 		// defer resp.Body.Close()
 		// data, err = ioutil.ReadAll(resp.Body)
-		data, err := bs.Get(ctx, hash)
+		data, err = bs.Get(ctx, hash)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to call blobstore: %v", err)
 		}
 		if err := c.blobsCache.Add(hash, data); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to add to cache: %v", err)
 		}
 	}
 	return data, nil
@@ -433,13 +457,14 @@ func (fs *FileSystem) SetDebug(debug bool) {
 }
 
 func (*FileSystem) StatFs(name string) *fuse.StatfsOut {
-	blocks := uint64(9999999999)
-	return &fuse.StatfsOut{
-		Bfree:  blocks,
-		Ffree:  blocks,
-		Bavail: blocks,
-		Blocks: blocks,
-	}
+	//blocks := uint64(9999999)
+	log.Println("OP StatFs")
+	return &fuse.StatfsOut{}
+	//	Bfree:  blocks,
+	//	Ffree:  blocks,
+	//	Bavail: blocks,
+	//	Blocks: blocks,
+	//}
 }
 
 func (*FileSystem) OnMount(nodeFs *pathfs.PathNodeFs) {}
@@ -449,9 +474,9 @@ func (*FileSystem) OnUnmount() {}
 func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (a *fuse.Attr, code fuse.Status) {
 	mu.Lock()
 	defer mu.Unlock()
-	if fs.debug {
-		log.Printf("OP Getattr %s", name)
-	}
+	log.Printf("OP Getattr %s\n", name)
+
+	// FIXME(tsileo): fix Attr.Ino/inode
 
 	rwAttr, rwStatus, err := fs.rwLayer.GetAttr(name, context)
 	switch rwStatus {
@@ -466,10 +491,10 @@ func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (a *fuse.Attr,
 
 	// FIXME(tsileo): check the node first, and compare with metadata for invalidation
 	node, status := cache.getNode(fs.ref, name)
-	fmt.Printf("node=%+v\nerr=%+v", node, status)
+	log.Printf("remote node=%+v status=%+v\n", node, status)
 
 	if name == "" && node == nil && fs.justCreated && status == fuse.ENOENT {
-		log.Printf("return justCreated attr")
+		log.Printf("return justCreated attr\n")
 		return &fuse.Attr{
 			Mode:  fuse.S_IFDIR | 0755,
 			Owner: *owner,
@@ -492,7 +517,6 @@ func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (a *fuse.Attr,
 	if node.IsDir() {
 		out := &fuse.Attr{
 			Mode:  fuse.S_IFDIR | 0755,
-			Atime: node.Mtime(),
 			Ctime: node.Mtime(),
 			Mtime: node.Mtime(),
 			Owner: *owner,
@@ -503,7 +527,6 @@ func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (a *fuse.Attr,
 	out := &fuse.Attr{
 		Mode:  fuse.S_IFREG | 0644,
 		Size:  uint64(node.Size),
-		Atime: node.Mtime(),
 		Ctime: node.Mtime(),
 		Mtime: node.Mtime(),
 		Owner: *owner,
@@ -518,9 +541,7 @@ func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (a *fuse.Attr,
 // }
 
 func (fs *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse.DirEntry, status fuse.Status) {
-	if fs.debug {
-		log.Printf("OP OpenDir %s", name)
-	}
+	log.Printf("OP OpenDir %s\n", name)
 
 	var err error
 	var index map[string]fuse.DirEntry
@@ -540,7 +561,7 @@ func (fs *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse
 
 	// Now take a look a the remote node
 	node, status := cache.getNode(fs.ref, name)
-	log.Printf("OP OpenDir %s remote node=%+v status=%+v", name, node, status)
+	log.Printf("OP OpenDir %s remote node=%+v status=%+v\n", name, node, status)
 	switch status {
 	case fuse.OK:
 	case fuse.ENOENT:
@@ -578,16 +599,17 @@ func (fs *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse
 	for _, dirEntry := range index {
 		output = append(output, dirEntry)
 	}
-	log.Printf("OpenDir OK %d children", len(output))
+	log.Printf("OpenDir OK %d children\n", len(output))
 	return output, fuse.OK
 }
 
 func (fs *FileSystem) Open(name string, flags uint32, context *fuse.Context) (fuseFile nodefs.File, status fuse.Status) {
-	if fs.debug {
-		log.Printf("OP Open %s write=%v\n", name, flags&fuse.O_ANYWRITE != 0)
-	}
+	log.Printf("OP Open %s write=%v\n", name, flags&fuse.O_ANYWRITE != 0)
 	node, status := cache.getNode(fs.ref, name)
-	if status != fuse.OK {
+	switch status {
+	case fuse.OK:
+	case fuse.ENOENT:
+	default:
 		return nil, status
 	}
 	rwPath, rwExists, err := fs.rwLayer.Exists(name)
@@ -596,19 +618,25 @@ func (fs *FileSystem) Open(name string, flags uint32, context *fuse.Context) (fu
 	}
 
 	if flags&fuse.O_ANYWRITE != 0 || rwExists {
+		log.Printf("OP Open write mode")
 		if flags&fuse.O_ANYWRITE != 0 && fs.ro {
 			// XXX(tsileo): is EROFS the right error code
 			return nil, fuse.EROFS
 		}
+		// FIXME(tsileo): ensure the hash of the RWFile match the one in the node
 		f, err := NewRWFile(fs, name, rwPath, flags, 0, node)
+		log.Printf("RWFile result: %+v %+v\n", f, err)
 		return f, fuse.ToStatus(err)
 
 	}
-	if node == nil {
+	if status == fuse.ENOENT {
 		return nil, fuse.ENOENT
 	}
+
+	log.Printf("OPEN read mode\n")
 	f, err := NewFile(fs, name, node)
 	if err != nil {
+		log.Printf("failed to open file for read-only: %v\n", err)
 		return nil, fuse.EIO
 	}
 
@@ -620,16 +648,12 @@ func (fs *FileSystem) Utimens(path string, a *time.Time, m *time.Time, context *
 }
 
 func (fs *FileSystem) Chmod(path string, mode uint32, context *fuse.Context) (code fuse.Status) {
-	if fs.debug {
-		log.Printf("OP Chmod %s", path)
-	}
+	log.Printf("OP Chmod %s\n", path)
 	return fuse.EPERM
 }
 
 func (fs *FileSystem) Chown(path string, uid uint32, gid uint32, context *fuse.Context) (code fuse.Status) {
-	if fs.debug {
-		log.Printf("OP Chown %s", path)
-	}
+	log.Printf("OP Chown %s\n", path)
 	return fuse.EPERM
 }
 
@@ -649,7 +673,7 @@ func (fs *FileSystem) Mknod(name string, mode uint32, dev uint32, context *fuse.
 
 func (fs *FileSystem) Mkdir(path string, mode uint32, _ *fuse.Context) (code fuse.Status) {
 	if fs.debug {
-		log.Printf("OP Mkdir %s", path)
+		log.Printf("OP Mkdir %s\n", path)
 	}
 
 	if fs.ro {
@@ -691,9 +715,7 @@ func (fs *FileSystem) Mkdir(path string, mode uint32, _ *fuse.Context) (code fus
 
 // Don't use os.Remove, it removes twice (unlink followed by rmdir).
 func (fs *FileSystem) Unlink(name string, _ *fuse.Context) (code fuse.Status) {
-	if fs.debug {
-		log.Printf("OP Unlink %s", name)
-	}
+	log.Printf("OP Unlink %s\n", name)
 	if fs.ro {
 		return fuse.EPERM
 	}
@@ -726,9 +748,7 @@ func (fs *FileSystem) Unlink(name string, _ *fuse.Context) (code fuse.Status) {
 }
 
 func (fs *FileSystem) Rmdir(name string, _ *fuse.Context) (code fuse.Status) {
-	if fs.debug {
-		log.Printf("OP Rmdir %s", name)
-	}
+	log.Printf("OP Rmdir %s\n", name)
 	if fs.ro {
 		return fuse.EPERM
 	}
@@ -773,9 +793,7 @@ func (fs *FileSystem) Symlink(pointedTo string, linkName string, context *fuse.C
 }
 
 func (fs *FileSystem) Rename(oldPath string, newPath string, _ *fuse.Context) (codee fuse.Status) {
-	if fs.debug {
-		log.Printf("OP Rename %s %s", oldPath, newPath)
-	}
+	log.Printf("OP Rename %s %s\n", oldPath, newPath)
 	if fs.ro {
 		return fuse.EPERM
 	}
@@ -822,19 +840,15 @@ func (fs *FileSystem) Link(orig string, newName string, context *fuse.Context) (
 }
 
 func (fs *FileSystem) Access(name string, mode uint32, context *fuse.Context) (code fuse.Status) {
-	if fs.debug {
-		log.Printf("OP Access %s", name)
-	}
+	log.Printf("OP Access %s\n", name)
 	return fuse.OK
 }
 
 func (fs *FileSystem) Create(path string, flags uint32, mode uint32, context *fuse.Context) (fuseFile nodefs.File, code fuse.Status) {
-	if fs.debug {
-		log.Printf("OP Create %s", path)
-	}
+	log.Printf("OP Create %s\n", path)
 	// TODO(tsileo): check if it exists first?
 	f, err := NewRWFile(fs, path, filepath.Join(fs.rwLayer.path, path), flags, mode, nil)
-	log.Printf("rwfile=%+v %+v", f, err)
+	log.Printf("rwfile=%+v %+v\n", f, err)
 	return f, fuse.ToStatus(err)
 
 	// 	fullPath := filepath.Join(fs.rwLayer, path)
@@ -853,9 +867,7 @@ func (fs *FileSystem) Create(path string, flags uint32, mode uint32, context *fu
 }
 
 func (fs *FileSystem) GetXAttr(name string, attr string, context *fuse.Context) ([]byte, fuse.Status) {
-	if fs.debug {
-		log.Printf("OP GetXAttr %s", name)
-	}
+	log.Printf("OP GetXAttr %s\n", name)
 	node, err := cache.getNode(fs.ref, name)
 	if err != fuse.OK {
 		return nil, err
@@ -874,16 +886,12 @@ func (fs *FileSystem) GetXAttr(name string, attr string, context *fuse.Context) 
 }
 
 func (fs *FileSystem) SetXAttr(name string, attr string, data []byte, flags int, context *fuse.Context) fuse.Status {
-	if fs.debug {
-		log.Printf("OP SetXAttr %s", name)
-	}
+	log.Printf("OP SetXAttr %s\n", name)
 	return fuse.EPERM
 }
 
 func (fs *FileSystem) ListXAttr(name string, context *fuse.Context) ([]string, fuse.Status) {
-	if fs.debug {
-		log.Printf("OP ListXAttr %s", name)
-	}
+	log.Printf("OP ListXAttr %s\n", name)
 
 	// TODO(tsileo): is this really needed?
 	//rwPath, rwExists, err := fs.rwExists(name)
@@ -926,9 +934,6 @@ type RWFile struct {
 
 func NewRWFile(fs *FileSystem, path, fullPath string, flags, mode uint32, node *Node) (*RWFile, error) {
 	fh, err := os.OpenFile(fullPath, int(flags), os.FileMode(mode))
-	if err != nil {
-		return nil, err
-	}
 	if os.IsNotExist(err) {
 		if _, err := os.Stat(filepath.Dir(fullPath)); err != nil {
 			if os.IsNotExist(err) {
@@ -939,7 +944,7 @@ func NewRWFile(fs *FileSystem, path, fullPath string, flags, mode uint32, node *
 				return nil, err
 			}
 		}
-		fh, err = os.OpenFile(fullPath, int(flags)|os.O_CREATE, os.FileMode(mode))
+		fh, err = os.OpenFile(fullPath, int(flags)|os.O_CREATE, os.FileMode(mode)|0644)
 		if err != nil {
 			return nil, err
 		}
@@ -959,6 +964,9 @@ func NewRWFile(fs *FileSystem, path, fullPath string, flags, mode uint32, node *
 			}
 		}
 	}
+	if err != nil {
+		return nil, err
+	}
 	lf := nodefs.NewLoopbackFile(fh)
 	return &RWFile{
 		fs:   fs,
@@ -969,13 +977,15 @@ func NewRWFile(fs *FileSystem, path, fullPath string, flags, mode uint32, node *
 }
 
 func (f *RWFile) Flush() fuse.Status {
-	if f.fs.debug {
-		log.Printf("OP Flush %+s", f)
-	}
+	log.Printf("OP Flush %+s\n", f)
 	fullPath := filepath.Join(f.fs.rwLayer.path, f.path)
 	rawNode, err := f.fs.up.PutFile(fullPath)
 	if err != nil {
 		log.Printf("failed to upload: %v", err)
+		if os.IsNotExist(err) {
+			// This means the file has been removed
+			return f.File.Flush()
+		}
 		return fuse.EIO
 	}
 	js, err := json.Marshal(rawNode)
@@ -989,29 +999,28 @@ func (f *RWFile) Flush() fuse.Status {
 
 	resp, err := kvs.Client().DoReq(context.TODO(), "PATCH", "/api/filetree/fs/fs/"+f.fs.ref+"/"+d, nil, bytes.NewReader(js))
 	if err != nil || resp.StatusCode != 200 {
-		log.Printf("upload failed with resp %+v/%+v", resp, err)
+		log.Printf("upload failed with resp %+v/%+v\n", resp, err)
 		return fuse.EIO
 	}
 	return f.File.Flush()
 }
 
 func (f *RWFile) Release() {
-	if f.fs.debug {
-		log.Printf("OP Release %+s", f)
-	}
+	log.Printf("OP Release %+s\n", f)
 	// FIXME(tsileo): remove file on rwLayer
 	f.File.Release()
 }
 
 func NewFile(fs *FileSystem, path string, node *Node) (*File, error) {
+	log.Printf("NewFile %s\n", path)
 	ctx := context.TODO()
 	blob, err := cache.Get(ctx, node.Ref)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch blob from cache: %v", err)
 	}
 	meta, err := rnode.NewNodeFromBlob(node.Ref, blob)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to build node from blob \"%s\": %v", blob, err)
 	}
 
 	// If the file is too big, we don't want to fill the whole local blob cache with blob of a single file,
@@ -1042,6 +1051,7 @@ type File struct {
 }
 
 func (f *File) SetInode(inode *nodefs.Inode) {
+	log.Printf("File.SetInode %+v\n", inode)
 	f.inode = inode
 }
 
@@ -1054,9 +1064,7 @@ func (f *File) Write(data []byte, off int64) (uint32, fuse.Status) {
 }
 
 func (f *File) Read(buf []byte, off int64) (res fuse.ReadResult, code fuse.Status) {
-	if f.fs.debug {
-		log.Printf("OP Read %v", f)
-	}
+	log.Printf("OP Read %v\n", f)
 	if _, err := f.r.ReadAt(buf, off); err != nil {
 		return nil, fuse.EIO
 	}
@@ -1064,9 +1072,7 @@ func (f *File) Read(buf []byte, off int64) (res fuse.ReadResult, code fuse.Statu
 }
 
 func (f *File) Release() {
-	if f.fs.debug {
-		log.Printf("OP Release %v", f)
-	}
+	log.Printf("OP Release %v\n", f)
 	f.r.Close()
 }
 
@@ -1075,13 +1081,10 @@ func (f *File) Flush() fuse.Status {
 }
 
 func (f *File) GetAttr(a *fuse.Attr) fuse.Status {
-	if f.fs.debug {
-		log.Printf("OP Getattr %v", f)
-	}
+	log.Printf("OP File.GetAttr %v %+v\n", f, f.r)
 	a.Mode = fuse.S_IFREG | 0644
 	a.Size = uint64(f.node.Size)
 	a.Ctime = f.node.Mtime()
-	a.Atime = f.node.Mtime()
 	a.Mtime = f.node.Mtime()
 	a.Owner = *owner
 	return fuse.OK
