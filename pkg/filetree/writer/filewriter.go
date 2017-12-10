@@ -68,14 +68,22 @@ func (up *Uploader) writeReader(f io.Reader, meta *rnode.RawNode) error { // (*W
 	// return writeResult, nil
 }
 
+func (up *Uploader) PutAndRenameFile(path, filename string) (*rnode.RawNode, error) { // , *WriteResult, error) {
+	return up.putFile(path, filename)
+}
+
 func (up *Uploader) PutFile(path string) (*rnode.RawNode, error) { // , *WriteResult, error) {
+	_, filename := filepath.Split(path)
+	return up.putFile(path, filename)
+}
+
+func (up *Uploader) putFile(path, filename string) (*rnode.RawNode, error) { // , *WriteResult, error) {
 	up.StartUpload()
 	defer up.UploadDone()
 	fstat, err := os.Stat(path)
 	if os.IsNotExist(err) {
 		return nil, err
 	}
-	_, filename := filepath.Split(path)
 	//sha, err := FullHash(path)
 	//if err != nil {
 	//	return nil, nil, fmt.Errorf("failed to compute fulle hash %v: %v", path, err)

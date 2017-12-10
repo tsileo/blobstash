@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dchest/blake2b"
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 	"github.com/hanwen/go-fuse/fuse/pathfs"
@@ -178,9 +179,14 @@ type rwLayer struct {
 	cache map[string]*Node
 }
 
-func (rl *rwLayer) Exists(name string) (string, bool, error) {
+func (rl *rwLayer) Path(name string) string {
 	name = fmt.Sprintf("%x", sha1.Sum([]byte(name)))
-	path := filepath.Join(rl.path, name)
+	return filepath.Join(rl.path, name)
+
+}
+
+func (rl *rwLayer) Exists(name string) (string, bool, error) {
+	path := rl.Path(name)
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
 			return path, false, nil
@@ -281,10 +287,18 @@ func (rl *rwLayer) OpenDir(name string, context *fuse.Context) (map[string]fuse.
 
 func newRWLayer(path string) (*rwLayer, error) {
 	// TODO(tsileo): remove everything at startup?
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		if err := os.MkdirAll(path, 0700); err != nil {
-			return nil, fmt.Errorf("failed to create rw layer dir: %v", err)
+	_, err := os.Stat(path)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("failed to init rw layer: %v", err)
+	}
+	if err == nil {
+		// Reset any rw files still here as they may be stale
+		if err := os.RemoveAll(path); err != nil {
+			return nil, fmt.Errorf("failed to remove/reset the rw layer dir: %v", err)
 		}
+	}
+	if err := os.MkdirAll(path, 0700); err != nil {
+		return nil, fmt.Errorf("failed to create rw layer dir: %v", err)
 	}
 
 	return &rwLayer{
@@ -942,11 +956,13 @@ func (fs *FileSystem) RemoveXAttr(name string, attr string, context *fuse.Contex
 
 type RWFile struct {
 	nodefs.File
-	node        *Node
-	encodedPath string
-	path        string
-	oldPath     string // FIXME(tsileo): set it on remove
-	fs          *FileSystem
+	node     *Node
+	inode    *nodefs.Inode
+	path     string
+	oldPath  string // FIXME(tsileo): set it on remove
+	filename string
+	fs       *FileSystem
+	flags    uint32
 }
 
 type RWFileMeta struct {
@@ -955,6 +971,7 @@ type RWFileMeta struct {
 }
 
 func NewRWFile(fs *FileSystem, path, fullPath string, flags, mode uint32, node *Node) (*RWFile, error) {
+	_, filename := filepath.Split(path)
 	fh, err := os.OpenFile(fullPath, int(flags), os.FileMode(mode))
 	if os.IsNotExist(err) {
 		if _, err := os.Stat(filepath.Dir(fullPath)); err != nil {
@@ -1013,45 +1030,93 @@ func NewRWFile(fs *FileSystem, path, fullPath string, flags, mode uint32, node *
 	}
 	lf := nodefs.NewLoopbackFile(fh)
 	return &RWFile{
-		fs:   fs,
-		path: path,
-		node: node,
-		File: lf,
+		fs:       fs,
+		path:     path,
+		node:     node,
+		filename: filename,
+		File:     lf,
+		flags:    flags,
 	}, nil
+}
+
+func (f *RWFile) Hash() string {
+	rwf, err := os.Open(f.fs.rwLayer.Path(f.path))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rwf.Close()
+
+	h := blake2b.New256()
+	if _, err := io.Copy(h, rwf); err != nil {
+		panic(fmt.Errorf("failed to compute rwfile hash %+v: %v", f, err))
+	}
+
+	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
 func (f *RWFile) Flush() fuse.Status {
 	log.Printf("OP Flush %+s\n", f)
-	fullPath := filepath.Join(f.fs.rwLayer.path, f.path)
-	rawNode, err := f.fs.up.PutFile(fullPath)
-	if err != nil {
-		log.Printf("failed to upload: %v", err)
-		if os.IsNotExist(err) {
-			// This means the file has been removed
-			return f.File.Flush()
-		}
-		return fuse.EIO
-	}
-	js, err := json.Marshal(rawNode)
-	if err != nil {
-		return fuse.EIO
-	}
-	d := filepath.Dir(f.path)
-	if d == "." {
-		d = ""
+	if status := f.File.Flush(); status != fuse.OK {
+		log.Printf("loopback file %+v failed with status %v\n", status)
+		return status
 	}
 
-	resp, err := kvs.Client().DoReq(context.TODO(), "PATCH", "/api/filetree/fs/fs/"+f.fs.ref+"/"+d, nil, bytes.NewReader(js))
-	if err != nil || resp.StatusCode != 200 {
-		log.Printf("upload failed with resp %+v/%+v\n", resp, err)
-		return fuse.EIO
+	// Sometimes the RWFile can still be a file opened in RO mode (if there's another opened file in RW mode)
+	if f.flags&fuse.O_ANYWRITE != 0 && f.Hash() != f.node.Hash() {
+		fullPath := f.fs.rwLayer.Path(f.path)
+		rawNode, err := f.fs.up.PutAndRenameFile(fullPath, f.filename)
+		if err != nil {
+			log.Printf("failed to upload: %v", err)
+			if os.IsNotExist(err) {
+				// This means the file has been removed
+				return f.File.Flush()
+			}
+			return fuse.EIO
+		}
+		js, err := json.Marshal(rawNode)
+		if err != nil {
+			return fuse.EIO
+		}
+		d := filepath.Dir(f.path)
+		if d == "." {
+			d = ""
+		}
+
+		resp, err := kvs.Client().DoReq(context.TODO(), "PATCH", "/api/filetree/fs/fs/"+f.fs.ref+"/"+d, nil, bytes.NewReader(js))
+		if err != nil || resp.StatusCode != 200 {
+			log.Printf("upload failed with resp %+v/%+v\n", resp, err)
+			return fuse.EIO
+		}
 	}
-	return f.File.Flush()
+	return fuse.OK
+}
+
+func (f *RWFile) SetInode(inode *nodefs.Inode) {
+	log.Printf("RWFile.SetInode %+v\n", inode)
+	f.inode = inode
+	f.File.SetInode(inode)
 }
 
 func (f *RWFile) Release() {
-	log.Printf("OP Release %+s\n", f)
-	// FIXME(tsileo): remove file on rwLayer
+	var last bool
+	if f.inode.AnyFile() == nil {
+		last = true
+	}
+	log.Printf("OP Release %v (is_last_opened=%s)\n", f, last)
+
+	// XXX(tsileo): We cannot returns an error here, but it's about deleting the cache, cannot see a better place
+	// as we cannot detect the last flush
+	if last {
+		// If there's no other opened file, delete the rwfile cache
+		rwPath := f.fs.rwLayer.Path(f.path)
+		if err := os.Remove(rwPath); err != nil {
+			panic(fmt.Errorf("failed to release rwfile: %v", err))
+		}
+		if err := os.Remove(rwPath + ".json"); err != nil {
+			panic(fmt.Errorf("failed to release rwfile (json): %v", err))
+		}
+	}
+
 	f.File.Release()
 }
 
