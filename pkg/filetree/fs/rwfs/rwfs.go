@@ -111,7 +111,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	root, err := NewFileSystem(flag.Arg(1), flag.Arg(0), *debug)
+	root, err := NewFileSystem(flag.Arg(1), flag.Arg(0), *debug, cacheDir)
 	if err != nil {
 		fmt.Printf("failed to initialize filesystem: %v\n", err)
 		os.Exit(1)
@@ -125,8 +125,6 @@ func main() {
 	nfs := pathfs.NewPathNodeFs(root, nil)
 	// state, _, err := nodefs.MountRoot(flag.Arg(0), nfs.Root(), opts)
 
-	nfs.ForgetClientInodes()
-
 	conn := nodefs.NewFileSystemConnector(nfs.Root(), opts)
 
 	// XXX(tsileo): different options on READ ONLY mode
@@ -135,20 +133,9 @@ func main() {
 		Options: []string{
 			// FIXME(tsileo): no more nolocalcaches and use notify instead for linux
 			"noatime",
-			//"default_permissions",
-			//"allow_other",
-			//"direct_io",
-			//"allow_root",
-			// macOS "nolocalcaches",
-			// "defer_permissions",
-			// "noclock",
-			//"auto_xattr",
-			// "noappledouble",
-			// "noapplexattr",
-			// macOS "volname=BlobFS." + flag.Arg(1),
 		},
 		FsName: "blobfs",
-		Name:   "test",
+		Name:   ref,
 	}
 	if opts != nil && opts.Debug {
 		mountOpts.Debug = opts.Debug
@@ -291,6 +278,7 @@ func (rl *rwLayer) OpenDir(name string, context *fuse.Context) (map[string]fuse.
 }
 
 func newRWLayer(path string) (*rwLayer, error) {
+	// TODO(tsileo): remove everything at startup?
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		if err := os.MkdirAll(path, 0700); err != nil {
 			return nil, fmt.Errorf("failed to create rw layer dir: %v", err)
@@ -336,19 +324,22 @@ func (n *Node) Mtime() uint64 {
 	return 0
 }
 
-func (n *Node) Copy(dst io.Writer) error {
-	// FIXME(tsileo): use filetree download to use the cache/blobstore
-	resp, err := kvs.Client().DoReq(context.TODO(), "GET", "/api/filetree/file/"+n.Ref, nil, nil)
-	if err != nil {
-		return err
+func (n *Node) Copy(dst io.Writer, meta *rnode.RawNode) error {
+	ctx := context.TODO()
+	// If the file is too big, we don't want to fill the whole local blob cache with blob of a single file,
+	// so we create a tiny in-memory cache just for the lifetime of the file
+	var err error
+	var fcache *lru.Cache
+	if len(meta.Refs) > 3 {
+		fcache, err = lru.New(5)
+		if err != nil {
+			return err
+		}
 	}
-	defer resp.Body.Close()
-	log.Printf("resp=%+v\n", resp)
-	n2, err := io.Copy(dst, resp.Body)
-	log.Printf("copied %s bytes (Node.Copy)\n", n2)
-	if err != nil {
-		return err
-	}
+
+	fileReader := filereader.NewFile(ctx, cache, meta, fcache)
+	defer fileReader.Close()
+	io.Copy(dst, fileReader)
 	return nil
 }
 
@@ -455,7 +446,7 @@ type FileSystem struct {
 	rwLayer     *rwLayer
 }
 
-func NewFileSystem(ref, mountpoint string, debug bool) (pathfs.FileSystem, error) {
+func NewFileSystem(ref, mountpoint string, debug bool, cacheDir string) (pathfs.FileSystem, error) {
 	fs := &FileSystem{
 		ref:     ref,
 		debug:   debug,
@@ -463,7 +454,7 @@ func NewFileSystem(ref, mountpoint string, debug bool) (pathfs.FileSystem, error
 		up:      writer.NewUploader(cache),
 	}
 	var err error
-	fs.rwLayer, err = newRWLayer(fmt.Sprintf("rw_%s_%s", ref, mountpoint))
+	fs.rwLayer, err = newRWLayer(filepath.Join(cacheDir, "rw_layer"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to init rwLayer: %v", err)
 	}
@@ -950,6 +941,7 @@ func (fs *FileSystem) RemoveXAttr(name string, attr string, context *fuse.Contex
 type RWFile struct {
 	nodefs.File
 	node    *Node
+	f       string
 	path    string
 	oldPath string // FIXME(tsileo): set it on remove
 	fs      *FileSystem
@@ -972,11 +964,22 @@ func NewRWFile(fs *FileSystem, path, fullPath string, flags, mode uint32, node *
 			return nil, err
 		}
 		if node != nil {
+			// Fetch the "raw node" (the raw json desc of the node that contains the list of data blobs)
+			ctx := context.TODO()
+			blob, err := cache.Get(ctx, node.Ref)
+			if err != nil {
+				return nil, fmt.Errorf("failed to fetch blob from cache: %v", err)
+			}
+			meta, err := rnode.NewNodeFromBlob(node.Ref, blob)
+			if err != nil {
+				return nil, fmt.Errorf("failed to build node from blob \"%s\": %v", blob, err)
+			}
+
 			tmtime := time.Unix(int64(node.Mtime()), 0)
 			if err := os.Chtimes(fullPath, tmtime, tmtime); err != nil {
 				return nil, err
 			}
-			if err := node.Copy(fh); err != nil {
+			if err := node.Copy(fh, meta); err != nil {
 				return nil, err
 			}
 			if err := fh.Sync(); err != nil {
