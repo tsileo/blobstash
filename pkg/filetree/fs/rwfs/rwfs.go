@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/dchest/blake2b"
+	"github.com/dustin/go-humanize"
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 	"github.com/hanwen/go-fuse/fuse/pathfs"
@@ -124,6 +125,13 @@ func main() {
 		AttrTimeout:     0 * time.Second,
 		NegativeTimeout: 0 * time.Second,
 	}
+
+	ticker := time.NewTicker(5 * time.Second)
+	go func() {
+		for _ = range ticker.C {
+			log.Printf("DEBUG: cache.hits=%d cache.reqs=%d cache.cached=%d cache.size=\"%v\" fs.fds=%d fs.rw_files=%d\n", cache.hits, cache.reqs, cache.cached, humanize.Bytes(uint64(cache.blobsCache.Size())), root.openedFds, len(root.rwLayer.cache))
+		}
+	}()
 	nfs := pathfs.NewPathNodeFs(root, nil)
 	// state, _, err := nodefs.MountRoot(flag.Arg(0), nfs.Root(), opts)
 
@@ -170,13 +178,15 @@ func main() {
 		os.Exit(1)
 	}
 	cache.Close()
+	ticker.Stop()
 	log.Println("unmounted")
 	os.Exit(0)
 }
 
 type rwLayer struct {
 	path  string
-	cache map[string]*Node
+	cache map[string]*RWFileMeta
+	index map[string][]*RWFileMeta
 }
 
 func (rl *rwLayer) Path(name string) string {
@@ -303,7 +313,8 @@ func newRWLayer(path string) (*rwLayer, error) {
 
 	return &rwLayer{
 		path:  path,
-		cache: map[string]*Node{},
+		cache: map[string]*RWFileMeta{},
+		index: map[string][]*RWFileMeta{},
 	}, nil
 }
 
@@ -364,6 +375,10 @@ type Cache struct {
 	negNodeIndex map[string]struct{}
 	mu           sync.Mutex
 	blobsCache   *bcache.Cache
+
+	hits   int64
+	reqs   int64
+	cached int64
 }
 
 func newCache(path string) (*Cache, error) {
@@ -395,6 +410,10 @@ func (c *Cache) Stat(hash string) (bool, error) {
 
 // Get implements the BlobStore interface for filereader.File
 func (c *Cache) Put(ctx context.Context, hash string, data []byte) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cached++
+
 	if err := c.blobsCache.Add(hash, data); err != nil {
 		return err
 	}
@@ -407,6 +426,9 @@ func (c *Cache) Put(ctx context.Context, hash string, data []byte) error {
 
 // Get implements the BlobStore interface for filereader.File
 func (c *Cache) Get(ctx context.Context, hash string) ([]byte, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.reqs++
 	var err error
 	cachedBlob, ok, err := c.blobsCache.Get(hash)
 	if err != nil {
@@ -414,8 +436,10 @@ func (c *Cache) Get(ctx context.Context, hash string) ([]byte, error) {
 	}
 	var data []byte
 	if ok {
+		c.hits++
 		data = cachedBlob
 	} else {
+		c.cached++
 		// resp, err := kvs.Client().DoReq(ctx, "GET", "/api/blobstore/blob/"+hash, nil, nil)
 		// if err != nil {
 		// return nil, err
@@ -452,6 +476,8 @@ func (c *Cache) getNode(ref, path string) (*Node, fuse.Status) {
 
 }
 
+// TODO(tsileo): TODO ticker
+
 type FileSystem struct {
 	ref         string
 	debug       bool
@@ -460,9 +486,11 @@ type FileSystem struct {
 	ro          bool
 	justCreated bool
 	rwLayer     *rwLayer
+
+	openedFds int64
 }
 
-func NewFileSystem(ref, mountpoint string, debug bool, cacheDir string) (pathfs.FileSystem, error) {
+func NewFileSystem(ref, mountpoint string, debug bool, cacheDir string) (*FileSystem, error) {
 	fs := &FileSystem{
 		ref:     ref,
 		debug:   debug,
@@ -487,14 +515,8 @@ func (fs *FileSystem) SetDebug(debug bool) {
 }
 
 func (*FileSystem) StatFs(name string) *fuse.StatfsOut {
-	//blocks := uint64(9999999)
 	log.Println("OP StatFs")
 	return &fuse.StatfsOut{}
-	//	Bfree:  blocks,
-	//	Ffree:  blocks,
-	//	Bavail: blocks,
-	//	Blocks: blocks,
-	//}
 }
 
 func (*FileSystem) OnMount(nodeFs *pathfs.PathNodeFs) {}
@@ -617,11 +639,6 @@ func (fs *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse
 					mode = fuse.S_IFREG
 				}
 				index[child.Name] = fuse.DirEntry{Name: child.Name, Mode: uint32(mode)}
-				// if child.IsFile() {
-				// 	output = append(output, fuse.DirEntry{Name: child.Name, Mode: fuse.S_IFREG})
-				// } else {
-				// 	output = append(output, fuse.DirEntry{Name: child.Name, Mode: fuse.S_IFDIR})
-				// }
 			}
 		}
 	}
@@ -633,7 +650,44 @@ func (fs *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse
 	return output, fuse.OK
 }
 
+func (fs *FileSystem) removePathFromIndex(path string) {
+	parent := filepath.Base(path)
+	if i, ok := fs.rwLayer.index[parent]; ok {
+		newIndex := []*RWFileMeta{}
+		for _, m := range i {
+			if m.Path == path {
+				continue
+			}
+			newIndex = append(newIndex, m)
+		}
+		fs.rwLayer.index[parent] = newIndex
+		delete(fs.rwLayer.cache, path)
+	}
+}
+
+func (fs *FileSystem) rwIndex(f *RWFile) {
+	parent := filepath.Base(f.path)
+	meta := &RWFileMeta{Node: f.node, Path: f.path}
+	if i, ok := fs.rwLayer.index[parent]; ok {
+		var found bool
+		for _, m := range i {
+			if m.Path == meta.Path {
+				found = true
+			}
+		}
+		if !found {
+			i = append(i, meta)
+			fs.rwLayer.cache[f.path] = meta
+		}
+	} else {
+		fs.rwLayer.index[parent] = []*RWFileMeta{meta}
+		fs.rwLayer.cache[f.path] = meta
+	}
+}
+
 func (fs *FileSystem) Open(name string, flags uint32, context *fuse.Context) (fuseFile nodefs.File, status fuse.Status) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
 	log.Printf("OP Open %s write=%v\n", name, flags&fuse.O_ANYWRITE != 0)
 	node, status := cache.getNode(fs.ref, name)
 	switch status {
@@ -656,8 +710,11 @@ func (fs *FileSystem) Open(name string, flags uint32, context *fuse.Context) (fu
 		// FIXME(tsileo): ensure the hash of the RWFile match the one in the node
 		f, err := NewRWFile(fs, name, rwPath, flags, 0, node)
 		log.Printf("RWFile result: %+v %+v\n", f, err)
-		return f, fuse.ToStatus(err)
 
+		// There's no other file currently opened, add the file to the rw index
+		fs.rwIndex(f)
+		fs.openedFds++
+		return f, fuse.OK
 	}
 	if status == fuse.ENOENT {
 		return nil, fuse.ENOENT
@@ -670,6 +727,7 @@ func (fs *FileSystem) Open(name string, flags uint32, context *fuse.Context) (fu
 		return nil, fuse.EIO
 	}
 
+	fs.openedFds++
 	return f, fuse.OK
 }
 
@@ -702,24 +760,18 @@ func (fs *FileSystem) Mknod(name string, mode uint32, dev uint32, context *fuse.
 }
 
 func (fs *FileSystem) Mkdir(path string, mode uint32, _ *fuse.Context) (code fuse.Status) {
-	if fs.debug {
-		log.Printf("OP Mkdir %s\n", path)
-	}
+	log.Printf("OP Mkdir %s\n", path)
 
 	if fs.ro {
 		return fuse.EPERM
 	}
 
-	rwPath, rwExists, err := fs.rwLayer.Exists(path)
-	if err != nil {
-		return fuse.EIO
+	// Only continue if the file don't already exist
+	_, status := cache.getNode(fs.ref, path)
+	if status != fuse.ENOENT {
+		// XXX(tsileo): check behavior here
+		return status
 	}
-
-	// XXX(tsileo): mkdir on a already existing dir should be a no-op
-	if rwExists {
-		return fuse.OK
-	}
-
 	node := map[string]interface{}{
 		"type":    "dir",
 		"name":    filepath.Base(path),
@@ -739,8 +791,7 @@ func (fs *FileSystem) Mkdir(path string, mode uint32, _ *fuse.Context) (code fus
 		return fuse.EIO
 	}
 
-	return fuse.ToStatus(os.Mkdir(rwPath, os.FileMode(mode)))
-	// return fuse.EPERM
+	return fuse.OK
 }
 
 // Don't use os.Remove, it removes twice (unlink followed by rmdir).
@@ -758,6 +809,7 @@ func (fs *FileSystem) Unlink(name string, _ *fuse.Context) (code fuse.Status) {
 			// XXX(tsileo): what about ENOENT here, and no ENOENT on remote, should this be a special error?
 			return err
 		}
+		// FIXME(tsileo): also delete the JSON file for file
 	}
 
 	// XXX(tsileo): should be inside the filetree client?
@@ -781,17 +833,6 @@ func (fs *FileSystem) Rmdir(name string, _ *fuse.Context) (code fuse.Status) {
 	log.Printf("OP Rmdir %s\n", name)
 	if fs.ro {
 		return fuse.EPERM
-	}
-
-	rwPath, rwExists, err := fs.rwLayer.Exists(name)
-	if err != nil {
-		return fuse.EIO
-	}
-	if rwExists {
-		// XXX(tsileo): like Unlink OP, we should check the local error `lerr`
-		if err := fuse.ToStatus(syscall.Rmdir(rwPath)); err != fuse.ENOENT && err != fuse.OK {
-			return err
-		}
 	}
 
 	node, status := cache.getNode(fs.ref, name)
@@ -879,6 +920,7 @@ func (fs *FileSystem) Create(path string, flags uint32, mode uint32, context *fu
 	// TODO(tsileo): check if it exists first?
 	f, err := NewRWFile(fs, path, filepath.Join(fs.rwLayer.path, path), flags, mode, nil)
 	log.Printf("rwfile=%+v %+v\n", f, err)
+	fs.rwIndex(f)
 	return f, fuse.ToStatus(err)
 
 	// 	fullPath := filepath.Join(fs.rwLayer, path)
@@ -970,19 +1012,12 @@ type RWFileMeta struct {
 	Path string `json:"path"`
 }
 
+// FIXME(tsileo): GetAttr for RWFile, that only take the size from the file, find a way to handle mtime
+
 func NewRWFile(fs *FileSystem, path, fullPath string, flags, mode uint32, node *Node) (*RWFile, error) {
 	_, filename := filepath.Split(path)
 	fh, err := os.OpenFile(fullPath, int(flags), os.FileMode(mode))
 	if os.IsNotExist(err) {
-		if _, err := os.Stat(filepath.Dir(fullPath)); err != nil {
-			if os.IsNotExist(err) {
-				if err := os.MkdirAll(filepath.Dir(fullPath), 0744); err != nil {
-					return nil, err
-				}
-			} else {
-				return nil, err
-			}
-		}
 		fh, err = os.OpenFile(fullPath, int(flags)|os.O_CREATE, os.FileMode(mode)|0644)
 		if err != nil {
 			return nil, err
@@ -1098,6 +1133,9 @@ func (f *RWFile) SetInode(inode *nodefs.Inode) {
 }
 
 func (f *RWFile) Release() {
+	f.fs.mu.Lock()
+	f.fs.openedFds--
+	f.fs.mu.Unlock()
 	var last bool
 	if f.inode.AnyFile() == nil {
 		last = true
@@ -1115,6 +1153,8 @@ func (f *RWFile) Release() {
 		if err := os.Remove(rwPath + ".json"); err != nil {
 			panic(fmt.Errorf("failed to release rwfile (json): %v", err))
 		}
+		// Remove from the rwIndex
+		f.fs.removePathFromIndex(f.path)
 	}
 
 	f.File.Release()
@@ -1181,6 +1221,10 @@ func (f *File) Read(buf []byte, off int64) (res fuse.ReadResult, code fuse.Statu
 }
 
 func (f *File) Release() {
+	f.fs.mu.Lock()
+	f.fs.openedFds--
+	f.fs.mu.Unlock()
+
 	log.Printf("OP Release %v\n", f)
 	f.r.Close()
 }

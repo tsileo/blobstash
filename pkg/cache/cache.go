@@ -252,3 +252,7 @@ func (c *Cache) doEviction() error {
 	}
 	return nil
 }
+
+func (c *Cache) Size() int {
+	return c.currentSize
+}
