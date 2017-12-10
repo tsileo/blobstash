@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -178,6 +179,7 @@ type rwLayer struct {
 }
 
 func (rl *rwLayer) Exists(name string) (string, bool, error) {
+	name = fmt.Sprintf("%x", sha1.Sum([]byte(name)))
 	path := filepath.Join(rl.path, name)
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
@@ -940,11 +942,16 @@ func (fs *FileSystem) RemoveXAttr(name string, attr string, context *fuse.Contex
 
 type RWFile struct {
 	nodefs.File
-	node    *Node
-	f       string
-	path    string
-	oldPath string // FIXME(tsileo): set it on remove
-	fs      *FileSystem
+	node        *Node
+	encodedPath string
+	path        string
+	oldPath     string // FIXME(tsileo): set it on remove
+	fs          *FileSystem
+}
+
+type RWFileMeta struct {
+	Node *Node  `json:"node"`
+	Path string `json:"path"`
 }
 
 func NewRWFile(fs *FileSystem, path, fullPath string, flags, mode uint32, node *Node) (*RWFile, error) {
@@ -986,6 +993,17 @@ func NewRWFile(fs *FileSystem, path, fullPath string, flags, mode uint32, node *
 				return nil, err
 			}
 			if _, err := fh.Seek(0, os.SEEK_SET); err != nil {
+				return nil, err
+			}
+
+			// Create a JSON-encoded meta file to help debugging in case of crashes
+			m := &RWFileMeta{Node: node, Path: path}
+			mf, err := os.Create(fullPath + ".json")
+			if err != nil {
+				return nil, err
+			}
+			defer mf.Close()
+			if err := json.NewEncoder(mf).Encode(m); err != nil {
 				return nil, err
 			}
 		}
