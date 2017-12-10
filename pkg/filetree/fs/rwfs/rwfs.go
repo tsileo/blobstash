@@ -29,6 +29,7 @@ import (
 	"a4.io/blobstash/pkg/client/blobstore"
 	"a4.io/blobstash/pkg/client/clientutil"
 	"a4.io/blobstash/pkg/client/kvstore"
+	"a4.io/blobstash/pkg/config/pathutil"
 	rnode "a4.io/blobstash/pkg/filetree/filetreeutil/node"
 	"a4.io/blobstash/pkg/filetree/reader/filereader"
 	"a4.io/blobstash/pkg/filetree/writer"
@@ -52,20 +53,48 @@ var mu sync.Mutex
 func main() {
 	// Scans the arg list and sets up flags
 	debug := flag.Bool("debug", false, "print debugging messages.")
+	resetCache := flag.Bool("reset-cache", false, "remove the local cache before starting.")
 	flag.Parse()
 	if flag.NArg() < 2 {
 		fmt.Fprintf(os.Stderr, "usage: %s MOUNTPOINT REF\n", os.Args[0])
 		flag.PrintDefaults()
 		os.Exit(2)
 	}
+	mountpoint := flag.Arg(0)
+	ref := flag.Arg(1)
+
+	// Cache setup, follow XDG spec
+	cacheDir := filepath.Join(pathutil.CacheDir(), "fs", fmt.Sprintf("%s_%s", mountpoint, ref))
+
+	if _, err := os.Stat(cacheDir); err != nil {
+		if os.IsNotExist(err) {
+			if err := os.MkdirAll(cacheDir, 0700); err != nil {
+				fmt.Printf("failed to create cache dir: %v\n", err)
+				os.Exit(1)
+			}
+		}
+
+	} else {
+		if *resetCache {
+			if err := os.RemoveAll(cacheDir); err != nil {
+				fmt.Printf("failed to reset cache: %v\n", err)
+				os.Exit(1)
+			}
+			if err := os.MkdirAll(cacheDir, 0700); err != nil {
+				fmt.Printf("failed to re-create cache dir: %v\n", err)
+				os.Exit(1)
+			}
+		}
+	}
 
 	var err error
-	cache, err = newCache("fs_cache")
+	cache, err = newCache(cacheDir)
 	if err != nil {
-		fmt.Printf("failed to setup cache: %v\n", err)
+		fmt.Printf("failed to setup cache at %s: %v\n", cacheDir, err)
 		os.Exit(1)
 	}
-	defer cache.Close()
+
+	// Setup the clients for BlobStash
 	kvopts := kvstore.DefaultOpts().SetHost(os.Getenv("BLOBS_API_HOST"), os.Getenv("BLOBS_API_KEY"))
 	kvopts.SnappyCompression = false
 	kvs = kvstore.New(kvopts)
@@ -151,6 +180,8 @@ func main() {
 		fmt.Printf("failed to unmount: %s", err)
 		os.Exit(1)
 	}
+	cache.Close()
+	log.Println("unmounted")
 	os.Exit(0)
 }
 
@@ -325,18 +356,11 @@ type Cache struct {
 	nodeIndex    map[string]*Node
 	negNodeIndex map[string]struct{}
 	mu           sync.Mutex
-	path         string
 	blobsCache   *bcache.Cache
 }
 
 func newCache(path string) (*Cache, error) {
-	if err := os.RemoveAll(path); err != nil {
-		return nil, err
-	}
-	if err := os.Mkdir(path, 0700); err != nil {
-		return nil, err
-	}
-	blobsCache, err := bcache.New(".", "blobs.cache", 256<<20) // 256MB on-disk LRU cache
+	blobsCache, err := bcache.New(path, "blobs.cache", 256<<20) // 256MB on-disk LRU cache
 	if err != nil {
 		return nil, err
 	}
@@ -344,7 +368,6 @@ func newCache(path string) (*Cache, error) {
 	return &Cache{
 		nodeIndex:    map[string]*Node{},
 		negNodeIndex: map[string]struct{}{},
-		path:         path,
 		blobsCache:   blobsCache,
 	}, nil
 }
