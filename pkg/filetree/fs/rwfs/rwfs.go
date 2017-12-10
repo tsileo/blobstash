@@ -252,52 +252,14 @@ func (rl *rwLayer) GetAttr(name string, context *fuse.Context) (a *fuse.Attr, co
 }
 
 func (rl *rwLayer) OpenDir(name string, context *fuse.Context) (map[string]fuse.DirEntry, fuse.Status, error) {
-	path, rwExists, err := rl.Exists(name)
-	if err != nil {
-		log.Printf("OP GetAttr %s rwExists err=%+v\n", name, err)
-		return nil, fuse.EIO, err
-	}
-	if !rwExists {
-		return nil, fuse.ENOENT, nil
+	// Check the rw index
+	output := map[string]fuse.DirEntry{}
+	if idx, ok := rl.index[name]; ok {
+		for _, meta := range idx {
+			output[meta.Node.Name] = fuse.DirEntry{Name: meta.Node.Name, Mode: uint32(fuse.S_IFREG)}
+		}
 	}
 
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fuse.EIO, err
-	}
-	output := map[string]fuse.DirEntry{}
-	want := 500
-	// output := make([]fuse.DirEntry, 0, want)
-	for {
-		infos, err := f.Readdir(want)
-		for i := range infos {
-			// workaround for https://code.google.com/p/go/issues/detail?id=5960
-			if infos[i] == nil {
-				continue
-			}
-			n := infos[i].Name()
-			d := fuse.DirEntry{
-				Name: n,
-			}
-			if s := fuse.ToStatT(infos[i]); s != nil {
-				d.Mode = uint32(s.Mode)
-				d.Ino = s.Ino
-			} else {
-				log.Printf("ReadDir entry %q for %q has no stat info\n", n, name)
-			}
-			output[n] = d
-			// output = append(output, d)
-		}
-		if len(infos) < want || err == io.EOF {
-			// if err == io.EOF {
-			break
-		}
-		if err != nil {
-			log.Println("Readdir() returned err:", err)
-			break
-		}
-	}
-	f.Close()
 	return output, fuse.OK, nil
 }
 
@@ -335,6 +297,11 @@ type Node struct {
 }
 
 func (n *Node) Hash() string {
+	fmt.Printf("node=%+v\n", n)
+	if len(n.Metadata) == 0 {
+		// It happens for empty file
+		return "69217a3079908094e11121d042354a7c1f55b6482ca1a51e1b250dfd1ed0eef9"
+	}
 	return n.Metadata["blake2b-hash"].(string)
 }
 
@@ -500,7 +467,9 @@ type FileSystem struct {
 	openedFds       int64
 	uploadedFiles   int64
 	blobstashErrors int64
-	eioCount        int64
+
+	// FIXME(tsileo): implement it
+	eioCount int64
 }
 
 func NewFileSystem(ref, mountpoint string, debug bool, cacheDir string) (*FileSystem, error) {
@@ -933,9 +902,12 @@ func (fs *FileSystem) Access(name string, mode uint32, context *fuse.Context) (c
 func (fs *FileSystem) Create(path string, flags uint32, mode uint32, context *fuse.Context) (fuseFile nodefs.File, code fuse.Status) {
 	log.Printf("OP Create %s\n", path)
 	// TODO(tsileo): check if it exists first?
-	f, err := NewRWFile(fs, path, filepath.Join(fs.rwLayer.path, path), flags, mode, nil)
+	f, err := NewRWFile(fs, path, fs.rwLayer.Path(path), flags, mode, nil)
 	log.Printf("rwfile=%+v %+v\n", f, err)
 	fs.rwIndex(f)
+	fs.mu.Lock()
+	fs.openedFds++
+	fs.mu.Unlock()
 	return f, fuse.ToStatus(err)
 
 	// 	fullPath := filepath.Join(fs.rwLayer, path)
@@ -1030,12 +1002,13 @@ type RWFileMeta struct {
 // FIXME(tsileo): GetAttr for RWFile, that only take the size from the file, find a way to handle mtime
 
 func NewRWFile(fs *FileSystem, path, fullPath string, flags, mode uint32, node *Node) (*RWFile, error) {
+	fmt.Printf("FLAG TEST %+v\n", int(flags)&os.O_CREATE)
 	_, filename := filepath.Split(path)
-	fh, err := os.OpenFile(fullPath, int(flags), os.FileMode(mode))
-	if os.IsNotExist(err) {
-		fh, err = os.OpenFile(fullPath, int(flags)|os.O_CREATE, os.FileMode(mode)|0644)
-		if err != nil {
-			return nil, err
+	fh, ferr := os.OpenFile(fullPath, int(flags), os.FileMode(mode))
+	if os.IsNotExist(ferr) {
+		fh, ferr = os.OpenFile(fullPath, int(flags)|os.O_CREATE, os.FileMode(mode)|0644)
+		if ferr != nil {
+			return nil, ferr
 		}
 		if node != nil {
 			// Fetch the "raw node" (the raw json desc of the node that contains the list of data blobs)
@@ -1062,21 +1035,25 @@ func NewRWFile(fs *FileSystem, path, fullPath string, flags, mode uint32, node *
 			if _, err := fh.Seek(0, os.SEEK_SET); err != nil {
 				return nil, err
 			}
-
-			// Create a JSON-encoded meta file to help debugging in case of crashes
-			m := &RWFileMeta{Node: node, Path: path}
-			mf, err := os.Create(fullPath + ".json")
-			if err != nil {
-				return nil, err
-			}
-			defer mf.Close()
-			if err := json.NewEncoder(mf).Encode(m); err != nil {
-				return nil, err
-			}
 		}
+
 	}
+
+	// FIXME(tsileo): make a stat
+	// Create a JSON-encoded meta file to help debugging in case of crashes
+	m := &RWFileMeta{Node: node, Path: path}
+	log.Printf("creating rwfile: %+v\n", m)
+	mf, err := os.Create(fullPath + ".json")
 	if err != nil {
 		return nil, err
+	}
+	defer mf.Close()
+	if err := json.NewEncoder(mf).Encode(m); err != nil {
+		return nil, err
+	}
+
+	if ferr != nil {
+		return nil, ferr
 	}
 	lf := nodefs.NewLoopbackFile(fh)
 	return &RWFile{
@@ -1112,7 +1089,7 @@ func (f *RWFile) Flush() fuse.Status {
 	}
 
 	// Sometimes the RWFile can still be a file opened in RO mode (if there's another opened file in RW mode)
-	if f.flags&fuse.O_ANYWRITE != 0 && f.Hash() != f.node.Hash() {
+	if f.flags&fuse.O_ANYWRITE != 0 && (f.node == nil || f.node.Hash() != f.Hash()) {
 		fullPath := f.fs.rwLayer.Path(f.path)
 		rawNode, err := f.fs.up.PutAndRenameFile(fullPath, f.filename)
 		if err != nil {
