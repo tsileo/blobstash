@@ -56,6 +56,7 @@ var mu sync.Mutex
 func main() {
 	// Scans the arg list and sets up flags
 	debug := flag.Bool("debug", false, "print debugging messages.")
+	debugTicker := flag.Int("debug-ticker", 0, "dump stats every x seconds in the logs.")
 	resetCache := flag.Bool("reset-cache", false, "remove the local cache before starting.")
 	flag.Parse()
 	if flag.NArg() < 2 {
@@ -126,12 +127,18 @@ func main() {
 		NegativeTimeout: 0 * time.Second,
 	}
 
-	ticker := time.NewTicker(5 * time.Second)
-	go func() {
-		for _ = range ticker.C {
-			log.Printf("DEBUG: cache.hits=%d cache.reqs=%d cache.cached=%d cache.size=\"%v\" fs.fds=%d fs.rw_files=%d\n", cache.hits, cache.reqs, cache.cached, humanize.Bytes(uint64(cache.blobsCache.Size())), root.openedFds, len(root.rwLayer.cache))
-		}
-	}()
+	// Optional periodic dump of the stats, enabled via -debug-ticker x, where x is the interval in seconds between the dumps
+	if *debugTicker > 0 {
+		ticker := time.NewTicker(time.Duration(*debugTicker) * time.Second)
+		go func() {
+			for _ = range ticker.C {
+				log.Printf("DEBUG:\n[cache]\ncache.hits=%d cache.hits_pct=%.2f cache.reqs=%d cache.cached=%d cache.size=%v", cache.hits, float64(cache.hits)*100.0/float64(cache.reqs), cache.reqs, cache.cached, humanize.Bytes(uint64(cache.blobsCache.Size())))
+				fmt.Printf("[fs]\nfs.fds=%d fs.rw_files=%d fs.eio=%d fs.uptime=%v\n", root.openedFds, len(root.rwLayer.cache), root.eioCount, time.Since(root.startedAt))
+				fmt.Printf("[blobstash]\nblobstash.file_uploaded=%d blobstash.errors=%d blobstash.fs_reqs=%d\n", root.uploadedFiles, root.blobstashErrors, cache.blobstashFSreqs)
+			}
+		}()
+	}
+
 	nfs := pathfs.NewPathNodeFs(root, nil)
 	// state, _, err := nodefs.MountRoot(flag.Arg(0), nfs.Root(), opts)
 
@@ -178,7 +185,6 @@ func main() {
 		os.Exit(1)
 	}
 	cache.Close()
-	ticker.Stop()
 	log.Println("unmounted")
 	os.Exit(0)
 }
@@ -376,9 +382,10 @@ type Cache struct {
 	mu           sync.Mutex
 	blobsCache   *bcache.Cache
 
-	hits   int64
-	reqs   int64
-	cached int64
+	hits            int64
+	reqs            int64
+	cached          int64
+	blobstashFSreqs int64
 }
 
 func newCache(path string) (*Cache, error) {
@@ -460,6 +467,7 @@ func (c *Cache) Get(ctx context.Context, hash string) ([]byte, error) {
 func (c *Cache) getNode(ref, path string) (*Node, fuse.Status) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.blobstashFSreqs++
 	// if n, ok := c.nodeIndex[path]; ok {
 	// return n, nil
 	// }
@@ -487,15 +495,21 @@ type FileSystem struct {
 	justCreated bool
 	rwLayer     *rwLayer
 
-	openedFds int64
+	startedAt time.Time
+
+	openedFds       int64
+	uploadedFiles   int64
+	blobstashErrors int64
+	eioCount        int64
 }
 
 func NewFileSystem(ref, mountpoint string, debug bool, cacheDir string) (*FileSystem, error) {
 	fs := &FileSystem{
-		ref:     ref,
-		debug:   debug,
-		rwLayer: nil,
-		up:      writer.NewUploader(cache),
+		startedAt: time.Now(),
+		ref:       ref,
+		debug:     debug,
+		rwLayer:   nil,
+		up:        writer.NewUploader(cache),
 	}
 	var err error
 	fs.rwLayer, err = newRWLayer(filepath.Join(cacheDir, "rw_layer"))
@@ -543,7 +557,7 @@ func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (a *fuse.Attr,
 
 	// FIXME(tsileo): check the node first, and compare with metadata for invalidation
 	node, status := cache.getNode(fs.ref, name)
-	log.Printf("remote node=%+v status=%+v\n", node, status)
+	//log.Printf("remote node=%+v status=%+v\n", node, status)
 
 	if name == "" && node == nil && fs.justCreated && status == fuse.ENOENT {
 		log.Printf("return justCreated attr\n")
@@ -583,7 +597,6 @@ func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (a *fuse.Attr,
 		Mtime: node.Mtime(),
 		Owner: *owner,
 	}
-	log.Printf("OUT=%+v\n", out)
 	return out, fuse.OK
 }
 
@@ -686,8 +699,6 @@ func (fs *FileSystem) rwIndex(f *RWFile) {
 }
 
 func (fs *FileSystem) Open(name string, flags uint32, context *fuse.Context) (fuseFile nodefs.File, status fuse.Status) {
-	fs.mu.Lock()
-	defer fs.mu.Unlock()
 	log.Printf("OP Open %s write=%v\n", name, flags&fuse.O_ANYWRITE != 0)
 	node, status := cache.getNode(fs.ref, name)
 	switch status {
@@ -713,7 +724,9 @@ func (fs *FileSystem) Open(name string, flags uint32, context *fuse.Context) (fu
 
 		// There's no other file currently opened, add the file to the rw index
 		fs.rwIndex(f)
+		fs.mu.Lock()
 		fs.openedFds++
+		fs.mu.Unlock()
 		return f, fuse.OK
 	}
 	if status == fuse.ENOENT {
@@ -727,7 +740,9 @@ func (fs *FileSystem) Open(name string, flags uint32, context *fuse.Context) (fu
 		return nil, fuse.EIO
 	}
 
+	fs.mu.Lock()
 	fs.openedFds++
+	fs.mu.Unlock()
 	return f, fuse.OK
 }
 
@@ -1122,6 +1137,11 @@ func (f *RWFile) Flush() fuse.Status {
 			log.Printf("upload failed with resp %+v/%+v\n", resp, err)
 			return fuse.EIO
 		}
+
+		f.fs.mu.Lock()
+		f.fs.uploadedFiles++
+		f.fs.mu.Unlock()
+
 	}
 	return fuse.OK
 }
