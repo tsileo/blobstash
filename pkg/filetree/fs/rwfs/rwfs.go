@@ -26,6 +26,7 @@ import (
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 	"github.com/hanwen/go-fuse/fuse/pathfs"
 	"github.com/hashicorp/golang-lru"
+	"github.com/mitchellh/go-ps"
 	_ "github.com/pkg/xattr"
 
 	bcache "a4.io/blobstash/pkg/cache"
@@ -39,19 +40,14 @@ import (
 )
 
 // TODO(tsileo):
-// - [X] default to RO mode
 // - support file@<date> ; e.g.: file.txt@2017-5-4T21:30 ???
 // - [/] `-snapshot` mode that lock to the current version, very efficient, can specify a snapshot version `-at`
 // - [X] `-rw` mode that support mutation, will query BlobStah a lot (without `-live-update`)
 // - [X] `-live-update` (or `-ro`?) mode to receive update via SSE (e.g. serve static over fuse, or Dropbox infinite like), allow caching and to invalidate cache on remote changes (need to be able to discard its own generated event via the hostname)
 // - [ ] support data context (add timeout server-side), and merge the data context on unmount
-// - [ ] Fake the file that disable MacOS Finder to crawl it
 
 var kvs *kvstore.KvStore
 var bs *blobstore.BlobStore
-var cache *Cache
-var owner *fuse.Owner
-var mu sync.Mutex
 
 func main() {
 	// Scans the arg list and sets up flags
@@ -91,8 +87,7 @@ func main() {
 		}
 	}
 
-	var err error
-	cache, err = newCache(cacheDir)
+	cache, err := newCache(cacheDir)
 	if err != nil {
 		fmt.Printf("failed to setup cache at %s: %v\n", cacheDir, err)
 		os.Exit(1)
@@ -115,7 +110,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	root, err := NewFileSystem(flag.Arg(1), flag.Arg(0), *debug, cacheDir)
+	root, err := NewFileSystem(flag.Arg(1), flag.Arg(0), *debug, cache, cacheDir)
 	if err != nil {
 		fmt.Printf("failed to initialize filesystem: %v\n", err)
 		os.Exit(1)
@@ -132,9 +127,22 @@ func main() {
 		ticker := time.NewTicker(time.Duration(*debugTicker) * time.Second)
 		go func() {
 			for _ = range ticker.C {
-				log.Printf("DEBUG:\n[cache]\ncache.hits=%d cache.hits_pct=%.2f cache.reqs=%d cache.cached=%d cache.size=%v", cache.hits, float64(cache.hits)*100.0/float64(cache.reqs), cache.reqs, cache.cached, humanize.Bytes(uint64(cache.blobsCache.Size())))
-				fmt.Printf("[fs]\nfs.fds=%d fs.rw_files=%d fs.eio=%d fs.uptime=%v\n", root.openedFds, len(root.rwLayer.cache), root.eioCount, time.Since(root.startedAt))
-				fmt.Printf("[blobstash]\nblobstash.file_uploaded=%d blobstash.errors=%d blobstash.fs_reqs=%d\n", root.uploadedFiles, root.blobstashErrors, cache.blobstashFSreqs)
+				log.Printf("DEBUG:\n")
+				fmt.Printf("[fs]\nfs.ops=%d fs.fds=%d fs.fds_rw=%d fs.eio=%d fs.uptime=%v\n", root.stats.ops, root.stats.openedFds, root.stats.rwOpenedFds, root.stats.eios, time.Since(root.stats.startedAt))
+				fmt.Printf("[cache]\ncache.hits=%d cache.hits_pct=%.2f cache.reqs=%d cache.added=%d cache.len=%d cache.size=%v\n", root.cache.hits, float64(root.cache.hits)*100.0/float64(root.cache.reqs), root.cache.reqs, root.cache.cached, root.cache.blobsCache.Len(), humanize.Bytes(uint64(root.cache.blobsCache.Size())))
+				fmt.Printf("[blobstash]\nblobstash.file_uploaded=%d blobstash.errors=%d blobstash.fs_reqs=%d\n", -1, -1, root.stats.remoteStats)
+				//fmt.Printf("[rw cache]rwlayer cached: %+v %+v\n", root.rwLayer.cache, root.rwLayer.index)
+				fmt.Printf("[fds]\n")
+				if len(root.stats.fdIndex) == 0 {
+					fmt.Printf("no fds\n")
+				}
+				for _, fdi := range root.stats.fdIndex {
+					ro := " [rw]"
+					if !fdi.Writable {
+						ro = " [ro]"
+					}
+					fmt.Printf("/%s%s [%d %s] [%s]\n", fdi.Path, ro, fdi.Pid, fdi.Executable, fdi.CreatedAt.Format(time.RFC3339))
+				}
 			}
 		}()
 	}
@@ -150,6 +158,8 @@ func main() {
 		Options: []string{
 			// FIXME(tsileo): no more nolocalcaches and use notify instead for linux
 			"noatime",
+			"default_permissions",
+			"allow_other",
 		},
 		FsName: "blobfs",
 		Name:   ref,
@@ -168,7 +178,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	owner = fuse.CurrentOwner()
 	go state.Serve()
 	log.Println("mounted successfully")
 
@@ -190,77 +199,166 @@ func main() {
 }
 
 type rwLayer struct {
-	path  string
+	path string
+
 	cache map[string]*RWFileMeta
 	index map[string][]*RWFileMeta
+
+	mu sync.Mutex
 }
 
-func (rl *rwLayer) Path(name string) string {
-	name = fmt.Sprintf("%x", sha1.Sum([]byte(name)))
-	return filepath.Join(rl.path, name)
-
-}
-
-func (rl *rwLayer) Exists(name string) (string, bool, error) {
-	path := rl.Path(name)
-	if _, err := os.Stat(path); err != nil {
-		if os.IsNotExist(err) {
-			return path, false, nil
-		}
-		return "", false, err
+func (rl *rwLayer) GetAttr(name string, context *fuse.Context) (*fuse.Attr, error) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	rwmeta, ok := rl.cache[name]
+	if !ok {
+		// Return nil as a ENOENT
+		return nil, nil
 	}
-	return path, true, nil
-}
 
-func (rl *rwLayer) GetAttr(name string, context *fuse.Context) (a *fuse.Attr, code fuse.Status, err error) {
-	path, rwExists, err := rl.Exists(name)
-	if err != nil {
-		log.Printf("OP GetAttr %s rwExists err=%+v\n", name, err)
-		return nil, fuse.EIO, err
-	}
-	if !rwExists {
-		return nil, fuse.ENOENT, nil
-	}
+	var err error
 	st := syscall.Stat_t{}
 	if name == "" {
 		// When GetAttr is called for the toplevel directory, we always want
 		// to look through symlinks.
-		err = syscall.Stat(path, &st)
+		err = syscall.Stat(rwmeta.loopbackPath, &st)
 	} else {
-		err = syscall.Lstat(path, &st)
+		err = syscall.Lstat(rwmeta.loopbackPath, &st)
 	}
 
 	if err != nil {
-		return nil, fuse.ToStatus(err), err
+		return nil, err
 	}
-	a = &fuse.Attr{}
-	a.FromStat(&st)
-	a.Ino = 0
-	a.Blocks = 0
-	a.Atime = 0
-	a.Atimensec = 0
-	a.Mtimensec = 0
-	a.Ctimensec = 0
-	a.Nlink = 0
-	a.Uid = 0
-	a.Gid = 0
-	a.Rdev = 0
-	a.Blksize = 0
 
-	//log.Printf("OUT rwlayer=%+v\n", a)
-	return a, fuse.OK, nil
+	ctime, _ := st.Ctim.Unix()
+	mtime, _ := st.Mtim.Unix()
+	return &fuse.Attr{
+		Mode:  fuse.S_IFREG | 0644,
+		Size:  uint64(st.Size),
+		Ctime: uint64(ctime),
+		Mtime: uint64(mtime),
+		Owner: *fuse.CurrentOwner(),
+	}, nil
 }
 
-func (rl *rwLayer) OpenDir(name string, context *fuse.Context) (map[string]fuse.DirEntry, fuse.Status, error) {
-	// Check the rw index
+func (rl *rwLayer) OpenDir(name string, context *fuse.Context) map[string]fuse.DirEntry {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	// Check the rw index by looking at the parent index
 	output := map[string]fuse.DirEntry{}
 	if idx, ok := rl.index[name]; ok {
 		for _, meta := range idx {
-			output[meta.Node.Name] = fuse.DirEntry{Name: meta.Node.Name, Mode: uint32(fuse.S_IFREG)}
+			output[meta.filename] = fuse.DirEntry{Name: meta.filename, Mode: uint32(fuse.S_IFREG)}
 		}
 	}
 
-	return output, fuse.OK, nil
+	return output
+}
+
+func (rl *rwLayer) Unlink(name string) error {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	rwmeta, ok := rl.cache[name]
+	if !ok {
+		return nil
+	}
+
+	// Don't use os.Remove, it removes twice (unlink followed by rmdir).
+	return syscall.Unlink(rwmeta.loopbackPath)
+}
+
+func (rl *rwLayer) Release(meta *RWFileMeta) error {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	// If there's no other opened file, delete the rwfile cache
+	if err := os.Remove(meta.loopbackPath); err != nil {
+		return fmt.Errorf("failed to release rwfile: %v", err)
+	}
+	if err := os.Remove(meta.loopbackPath + ".json"); err != nil {
+		return fmt.Errorf("failed to release rwfile (json): %v", err)
+	}
+
+	delete(rl.cache, meta.Path)
+
+	// FIXME(tsileo): Remove from the rwIndex
+	oldParentIdx := rl.index[meta.parent]
+	newParentIdx := []*RWFileMeta{}
+
+	for _, m := range oldParentIdx {
+		if m.filename == meta.filename {
+			continue
+		}
+		newParentIdx = append(newParentIdx, m)
+	}
+
+	rl.index[meta.parent] = newParentIdx
+
+	return nil
+}
+
+func (rl *rwLayer) Rename(oldPath, newPath string) error {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	rwmeta, ok := rl.cache[oldPath]
+	if !ok {
+		// The file is not currently opened for writing
+		return nil
+	}
+
+	oldParent := rwmeta.parent
+	oldFilename := rwmeta.filename
+
+	// Update the RW meta
+	newParent, newFilename := filepath.Split(newPath)
+	rwmeta.filename = newFilename
+	rwmeta.parent = newParent
+	rwmeta.Path = newPath
+
+	// Re-create the JSON file for debug
+	mf, err := os.Create(rwmeta.loopbackPath + ".json")
+	if err != nil {
+		return err
+	}
+	defer mf.Close()
+	if err := json.NewEncoder(mf).Encode(rwmeta); err != nil {
+		return err
+	}
+
+	// Update the caches/indexes
+	delete(rl.cache, oldPath)
+	rl.cache[newPath] = rwmeta
+
+	// Remove index entry for the old path
+	oldParentIdx := rl.index[oldParent]
+	newOldParentIdx := []*RWFileMeta{}
+	for _, m := range oldParentIdx {
+		if m.filename == oldFilename {
+			continue
+		}
+		newOldParentIdx = append(newOldParentIdx, m)
+	}
+	rl.index[oldParent] = newOldParentIdx
+
+	if _, ok := rl.index[newParent]; !ok {
+		rl.index[newParent] = []*RWFileMeta{}
+	}
+
+	// Setup the parent index for the new path
+	newParentIndex := rl.index[newParent]
+	newNewParentIdx := []*RWFileMeta{rwmeta}
+	for _, m := range newParentIndex {
+		if m.filename == rwmeta.filename {
+			continue
+		}
+		newNewParentIdx = append(newNewParentIdx, m)
+	}
+	rl.index[newParent] = newParentIndex
+
+	return nil
 }
 
 func newRWLayer(path string) (*rwLayer, error) {
@@ -324,7 +422,7 @@ func (n *Node) Mtime() uint64 {
 	return 0
 }
 
-func (n *Node) Copy(dst io.Writer, meta *rnode.RawNode) error {
+func (n *Node) Copy(dst io.Writer, fs *FileSystem, meta *rnode.RawNode) error {
 	ctx := context.TODO()
 	// If the file is too big, we don't want to fill the whole local blob cache with blob of a single file,
 	// so we create a tiny in-memory cache just for the lifetime of the file
@@ -337,7 +435,7 @@ func (n *Node) Copy(dst io.Writer, meta *rnode.RawNode) error {
 		}
 	}
 
-	fileReader := filereader.NewFile(ctx, cache, meta, fcache)
+	fileReader := filereader.NewFile(ctx, fs.cache, meta, fcache)
 	defer fileReader.Close()
 	io.Copy(dst, fileReader)
 	return nil
@@ -349,10 +447,11 @@ type Cache struct {
 	mu           sync.Mutex
 	blobsCache   *bcache.Cache
 
-	hits            int64
-	reqs            int64
-	cached          int64
-	blobstashFSreqs int64
+	procCache map[int]string
+
+	hits   int64
+	reqs   int64
+	cached int64
 }
 
 func newCache(path string) (*Cache, error) {
@@ -365,11 +464,29 @@ func newCache(path string) (*Cache, error) {
 		nodeIndex:    map[string]*Node{},
 		negNodeIndex: map[string]struct{}{},
 		blobsCache:   blobsCache,
+		procCache:    map[int]string{},
 	}, nil
 }
 
 func (c *Cache) Close() error {
 	return c.blobsCache.Close()
+}
+
+func (c *Cache) findProcExec(context *fuse.Context) string {
+	pid := int(context.Pid)
+	if exec, ok := c.procCache[pid]; ok {
+		return exec
+	}
+	p, err := ps.FindProcess(int(context.Pid))
+	if err != nil {
+		panic(err)
+	}
+	if p == nil {
+		return "<unk>"
+	}
+	exec := p.Executable()
+	c.procCache[pid] = exec
+	return exec
 }
 
 //func (c *Cache) Stat(ctx context.Context, hash string) (bool, error) {
@@ -431,29 +548,8 @@ func (c *Cache) Get(ctx context.Context, hash string) ([]byte, error) {
 	return data, nil
 }
 
-func (c *Cache) getNode(ref, path string) (*Node, fuse.Status) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.blobstashFSreqs++
-	// if n, ok := c.nodeIndex[path]; ok {
-	// return n, nil
-	// }
-	node := &Node{}
-	if err := kvs.Client().GetJSON(context.TODO(), "/api/filetree/fs/fs/"+ref+"/"+path, nil, &node); err != nil {
-		if err == clientutil.ErrNotFound {
-			return nil, fuse.ENOENT
-		}
-		// TODO(tsileo): log error
-		return nil, fuse.EIO
-	}
-	c.nodeIndex[path] = node
-	return node, fuse.OK
-
-}
-
-// TODO(tsileo): TODO ticker
-
 type FileSystem struct {
+	cache       *Cache
 	ref         string
 	debug       bool
 	up          *writer.Uploader
@@ -462,23 +558,40 @@ type FileSystem struct {
 	justCreated bool
 	rwLayer     *rwLayer
 
-	startedAt time.Time
-
-	openedFds       int64
-	uploadedFiles   int64
-	blobstashErrors int64
-
-	// FIXME(tsileo): implement it
-	eioCount int64
+	stats *FSStats
 }
 
-func NewFileSystem(ref, mountpoint string, debug bool, cacheDir string) (*FileSystem, error) {
+type FSStats struct {
+	sync.Mutex
+	startedAt   time.Time
+	ops         int64
+	eios        int64
+	openedFds   int64
+	rwOpenedFds int64
+	remoteStats int64
+
+	fdIndex map[string]*FDInfo
+}
+
+type FDInfo struct {
+	Pid        int
+	Executable string
+	Path       string
+	Writable   bool
+	CreatedAt  time.Time
+}
+
+func NewFileSystem(ref, mountpoint string, debug bool, cache *Cache, cacheDir string) (*FileSystem, error) {
 	fs := &FileSystem{
-		startedAt: time.Now(),
-		ref:       ref,
-		debug:     debug,
-		rwLayer:   nil,
-		up:        writer.NewUploader(cache),
+		cache:   cache,
+		ref:     ref,
+		debug:   debug,
+		rwLayer: nil,
+		up:      writer.NewUploader(cache),
+		stats: &FSStats{
+			startedAt: time.Now(),
+			fdIndex:   map[string]*FDInfo{},
+		},
 	}
 	var err error
 	fs.rwLayer, err = newRWLayer(filepath.Join(cacheDir, "rw_layer"))
@@ -487,6 +600,21 @@ func NewFileSystem(ref, mountpoint string, debug bool, cacheDir string) (*FileSy
 	}
 
 	return fs, nil
+}
+
+func (fs *FileSystem) getNode(path string) (*Node, error) {
+	fs.stats.Lock()
+	fs.stats.remoteStats++
+	fs.stats.Unlock()
+
+	node := &Node{}
+	if err := kvs.Client().GetJSON(context.TODO(), "/api/filetree/fs/fs/"+fs.ref+"/"+path, nil, &node); err != nil {
+		if err == clientutil.ErrNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return node, nil
 }
 
 func (fs *FileSystem) String() string {
@@ -506,104 +634,116 @@ func (*FileSystem) OnMount(nodeFs *pathfs.PathNodeFs) {}
 
 func (*FileSystem) OnUnmount() {}
 
-func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (a *fuse.Attr, code fuse.Status) {
-	mu.Lock()
-	defer mu.Unlock()
-	log.Printf("OP Getattr %s\n", name)
+func (fs *FileSystem) logEIO(err error) {
+	log.Printf("EIO error: %+v\n", err)
+	fs.stats.Lock()
+	defer fs.stats.Unlock()
+	fs.stats.eios++
+}
 
-	// FIXME(tsileo): fix Attr.Ino/inode
+func (fs *FileSystem) logOP(opCode, path string, context *fuse.Context) {
+	// TODO(tsileo): only if fs.debug
+	fs.stats.Lock()
+	fs.stats.ops++
+	fs.stats.Unlock()
+	exec := fs.cache.findProcExec(context)
+	log.Printf("OP %s path=/%s pid=%d %s\n", opCode, path, context.Pid, exec)
+}
 
-	rwAttr, rwStatus, err := fs.rwLayer.GetAttr(name, context)
-	switch rwStatus {
-	case fuse.OK:
-		return rwAttr, rwStatus
-	case fuse.ENOENT:
-		// do nothing
-	default:
-		log.Printf("failed to call rwLayer.GetAttr: %v\n", err)
-		return nil, fuse.EIO
-	}
+// TODO(tsileo): track the PID of each FDs and show it in debug ticker
 
-	// FIXME(tsileo): check the node first, and compare with metadata for invalidation
-	node, status := cache.getNode(fs.ref, name)
-	//log.Printf("remote node=%+v status=%+v\n", node, status)
+func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (*fuse.Attr, fuse.Status) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
 
-	if name == "" && node == nil && fs.justCreated && status == fuse.ENOENT {
-		log.Printf("return justCreated attr\n")
+	fs.logOP("Stat", name, context)
+
+	// First, check if a debug/fake data file is requested
+	if name == ".fs_infos" {
 		return &fuse.Attr{
-			Mode:  fuse.S_IFDIR | 0755,
-			Owner: *owner,
+			Mode: fuse.S_IFREG | 0777,
 		}, fuse.OK
 	}
 
-	if status != fuse.OK {
-		return nil, status
+	// Check if the requested path is a file already opened for writing
+	rwAttr, err := fs.rwLayer.GetAttr(name, context)
+	if err != nil {
+		fs.logEIO(err)
+		return nil, fuse.EIO
 	}
 
-	// if err != nil {
-	// fmt.Printf("err=%+v\n", err)
-	// return nil, fuse.EIO
+	// The file is already opened for writing, return the stat result
+	if rwAttr != nil {
+		return rwAttr, fuse.OK
+	}
+
+	// The is not already opened for writing, contact BlobStash
+	node, err := fs.getNode(name)
+
+	// Quick hack, this happen when an empty root was just initialized and not saved yet
+	if name == "" && node == nil && fs.justCreated {
+		return &fuse.Attr{
+			Mode:  fuse.S_IFDIR | 0755,
+			Owner: *fuse.CurrentOwner(),
+		}, fuse.OK
+	}
+
+	if err != nil {
+		fs.logEIO(err)
+		return nil, fuse.EIO
+	}
 
 	if node == nil {
-		cache.negNodeIndex[name] = struct{}{}
+		log.Printf("returning ENOENT\n")
 		return nil, fuse.ENOENT
 	}
 
 	if node.IsDir() {
-		out := &fuse.Attr{
+		return &fuse.Attr{
 			Mode:  fuse.S_IFDIR | 0755,
 			Ctime: node.Mtime(),
 			Mtime: node.Mtime(),
-			Owner: *owner,
-		}
-		return out, fuse.OK
+			Owner: *fuse.CurrentOwner(),
+		}, fuse.OK
 	}
-	// fmt.Printf("returning size:%d\n", node.Size)
-	out := &fuse.Attr{
+
+	a := &fuse.Attr{
 		Mode:  fuse.S_IFREG | 0644,
 		Size:  uint64(node.Size),
 		Ctime: node.Mtime(),
 		Mtime: node.Mtime(),
-		Owner: *owner,
+		Owner: *fuse.CurrentOwner(),
 	}
-	return out, fuse.OK
+	return a, fuse.OK
 }
 
+// FIXME(tsileo): needed?
 // func (fs *FileSystem) SetAttr(input *fuse.SetAttrIn, out *fuse.AttrOut) (code fuse.Status) {
 // log.Printf("OP SetAttr %+v %+v", input, out)
 // return fuse.EPERM
 // }
 
 func (fs *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse.DirEntry, status fuse.Status) {
-	log.Printf("OP OpenDir %s\n", name)
+	fs.logOP("OpenDir", name, context)
 
 	var err error
-	var index map[string]fuse.DirEntry
 	// The real directory is the 1st layer, if a file exists locally as a file it will show up instead of the remote version
 	//if !fs.ro {
-	index, status, err = fs.rwLayer.OpenDir(name, context)
-	switch status {
-	case fuse.OK, fuse.ENOENT:
-	default:
-		log.Printf("failed to call rwLayer.OpenDir: %v\n", err)
-		return nil, fuse.EIO
-	}
-
+	index := fs.rwLayer.OpenDir(name, context)
 	if index == nil {
 		index = map[string]fuse.DirEntry{}
 	}
 
 	// Now take a look a the remote node
-	node, status := cache.getNode(fs.ref, name)
-	log.Printf("OP OpenDir %s remote node=%+v status=%+v\n", name, node, status)
-	switch status {
-	case fuse.OK:
-	case fuse.ENOENT:
-		if name == "" {
-			fs.justCreated = true
-		}
-	default:
-		return nil, status
+	node, err := fs.getNode(name)
+
+	if err != nil {
+		fs.logEIO(err)
+		return nil, fuse.EIO
+	}
+
+	if node == nil && name == "" {
+		fs.justCreated = true
 	}
 	if node != nil {
 		if !node.IsDir() {
@@ -628,58 +768,37 @@ func (fs *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse
 	for _, dirEntry := range index {
 		output = append(output, dirEntry)
 	}
-	log.Printf("OpenDir OK %d children\n", len(output))
+
 	return output, fuse.OK
 }
 
-func (fs *FileSystem) removePathFromIndex(path string) {
-	parent := filepath.Base(path)
-	if i, ok := fs.rwLayer.index[parent]; ok {
-		newIndex := []*RWFileMeta{}
-		for _, m := range i {
-			if m.Path == path {
-				continue
-			}
-			newIndex = append(newIndex, m)
-		}
-		fs.rwLayer.index[parent] = newIndex
-		delete(fs.rwLayer.cache, path)
-	}
-}
+func (fs *FileSystem) Open(name string, flags uint32, fctx *fuse.Context) (fuseFile nodefs.File, status fuse.Status) {
+	fs.logOP("Open", name, fctx)
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
 
-func (fs *FileSystem) rwIndex(f *RWFile) {
-	parent := filepath.Base(f.path)
-	meta := &RWFileMeta{Node: f.node, Path: f.path}
-	if i, ok := fs.rwLayer.index[parent]; ok {
-		var found bool
-		for _, m := range i {
-			if m.Path == meta.Path {
-				found = true
-			}
+	// Check if ti's a debug/fake data dile
+	if name == ".fs_infos" {
+		// FIXME(tsileo): set the debug infos
+		i := map[string]interface{}{
+			"ref": fs.ref,
 		}
-		if !found {
-			i = append(i, meta)
-			fs.rwLayer.cache[f.path] = meta
+		js, err := json.Marshal(&i)
+		if err != nil {
+			return nil, fuse.EIO
 		}
-	} else {
-		fs.rwLayer.index[parent] = []*RWFileMeta{meta}
-		fs.rwLayer.cache[f.path] = meta
+		return nodefs.NewDataFile(js), fuse.OK
 	}
-}
 
-func (fs *FileSystem) Open(name string, flags uint32, context *fuse.Context) (fuseFile nodefs.File, status fuse.Status) {
-	log.Printf("OP Open %s write=%v\n", name, flags&fuse.O_ANYWRITE != 0)
-	node, status := cache.getNode(fs.ref, name)
-	switch status {
-	case fuse.OK:
-	case fuse.ENOENT:
-	default:
-		return nil, status
-	}
-	rwPath, rwExists, err := fs.rwLayer.Exists(name)
+	node, err := fs.getNode(name)
 	if err != nil {
+		fs.logEIO(err)
 		return nil, fuse.EIO
 	}
+
+	fs.rwLayer.mu.Lock()
+	_, rwExists := fs.rwLayer.cache[name]
+	fs.rwLayer.mu.Unlock()
 
 	if flags&fuse.O_ANYWRITE != 0 || rwExists {
 		log.Printf("OP Open write mode")
@@ -688,30 +807,25 @@ func (fs *FileSystem) Open(name string, flags uint32, context *fuse.Context) (fu
 			return nil, fuse.EROFS
 		}
 		// FIXME(tsileo): ensure the hash of the RWFile match the one in the node
-		f, err := NewRWFile(fs, name, rwPath, flags, 0, node)
-		log.Printf("RWFile result: %+v %+v\n", f, err)
+		f, err := NewRWFile(context.TODO(), fctx, fs, name, flags, 0, node)
+		if err != nil {
+			fs.logEIO(err)
+			return nil, fuse.EIO
+		}
 
-		// There's no other file currently opened, add the file to the rw index
-		fs.rwIndex(f)
-		fs.mu.Lock()
-		fs.openedFds++
-		fs.mu.Unlock()
 		return f, fuse.OK
 	}
-	if status == fuse.ENOENT {
+	if node == nil {
+		log.Printf("NOENT\n")
 		return nil, fuse.ENOENT
 	}
 
-	log.Printf("OPEN read mode\n")
-	f, err := NewFile(fs, name, node)
+	f, err := NewFile(fctx, fs, name, node)
 	if err != nil {
-		log.Printf("failed to open file for read-only: %v\n", err)
+		fs.logEIO(fmt.Errorf("failed to open file for read-only: %v\n", err))
 		return nil, fuse.EIO
 	}
 
-	fs.mu.Lock()
-	fs.openedFds++
-	fs.mu.Unlock()
 	return f, fuse.OK
 }
 
@@ -720,12 +834,12 @@ func (fs *FileSystem) Utimens(path string, a *time.Time, m *time.Time, context *
 }
 
 func (fs *FileSystem) Chmod(path string, mode uint32, context *fuse.Context) (code fuse.Status) {
-	log.Printf("OP Chmod %s\n", path)
+	fs.logOP("Chmod", path, context)
 	return fuse.EPERM
 }
 
 func (fs *FileSystem) Chown(path string, uid uint32, gid uint32, context *fuse.Context) (code fuse.Status) {
-	log.Printf("OP Chown %s\n", path)
+	fs.logOP("Chown", path, context)
 	return fuse.EPERM
 }
 
@@ -743,19 +857,25 @@ func (fs *FileSystem) Mknod(name string, mode uint32, dev uint32, context *fuse.
 	return fuse.ENOSYS
 }
 
-func (fs *FileSystem) Mkdir(path string, mode uint32, _ *fuse.Context) (code fuse.Status) {
-	log.Printf("OP Mkdir %s\n", path)
+func (fs *FileSystem) Mkdir(path string, mode uint32, fctx *fuse.Context) (code fuse.Status) {
+	fs.logOP("Mkdir", path, fctx)
 
 	if fs.ro {
 		return fuse.EPERM
 	}
 
 	// Only continue if the file don't already exist
-	_, status := cache.getNode(fs.ref, path)
-	if status != fuse.ENOENT {
-		// XXX(tsileo): check behavior here
-		return status
+	rnode, err := fs.getNode(path)
+	if err != nil {
+		fs.logEIO(err)
+		return fuse.EIO
 	}
+
+	if rnode != nil {
+		// FIXME(tsileo): what is the right behavior if the dir already exists? short circuit the call for now.
+		return fuse.OK
+	}
+
 	node := map[string]interface{}{
 		"type":    "dir",
 		"name":    filepath.Base(path),
@@ -772,56 +892,52 @@ func (fs *FileSystem) Mkdir(path string, mode uint32, _ *fuse.Context) (code fus
 	}
 	resp, err := kvs.Client().DoReq(context.TODO(), "PATCH", "/api/filetree/fs/fs/"+fs.ref+"/"+d, nil, bytes.NewReader(js))
 	if err != nil || resp.StatusCode != 200 {
+		fs.logEIO(fmt.Errorf("patch failed with status=%d and err=%v", resp.StatusCode, err))
 		return fuse.EIO
 	}
 
 	return fuse.OK
 }
 
-// Don't use os.Remove, it removes twice (unlink followed by rmdir).
-func (fs *FileSystem) Unlink(name string, _ *fuse.Context) (code fuse.Status) {
-	log.Printf("OP Unlink %s\n", name)
+func (fs *FileSystem) Unlink(name string, fctx *fuse.Context) (code fuse.Status) {
+	fs.logOP("Unlink", name, fctx)
 	if fs.ro {
 		return fuse.EPERM
 	}
-	rwPath, rwExists, err := fs.rwLayer.Exists(name)
-	if err != nil {
+
+	if err := fs.rwLayer.Unlink(name); err != nil {
+		fs.logEIO(err)
 		return fuse.EIO
-	}
-	if rwExists {
-		if err := fuse.ToStatus(syscall.Unlink(rwPath)); err != fuse.OK && err != fuse.ENOENT {
-			// XXX(tsileo): what about ENOENT here, and no ENOENT on remote, should this be a special error?
-			return err
-		}
-		// FIXME(tsileo): also delete the JSON file for file
 	}
 
 	// XXX(tsileo): should be inside the filetree client?
 	resp, err := kvs.Client().DoReq(context.TODO(), "DELETE", "/api/filetree/fs/fs/"+fs.ref+"/"+name, nil, nil)
-	if err == nil {
-		switch resp.StatusCode {
-		case 200, 204:
-			return fuse.OK
-		case 404:
-			return fuse.ENOENT
-		default:
-			// TODO(tsileo): log the local error too
-			return fuse.EIO
-		}
+	if err != nil {
+		fs.logEIO(err)
+		return fuse.EIO
 	}
 
-	return fuse.EIO
+	switch resp.StatusCode {
+	case 200, 204:
+		return fuse.OK
+	case 404:
+		return fuse.ENOENT
+	default:
+		fs.logEIO(fmt.Errorf("request failed with status=%d", resp.StatusCode))
+		return fuse.EIO
+	}
 }
 
-func (fs *FileSystem) Rmdir(name string, _ *fuse.Context) (code fuse.Status) {
-	log.Printf("OP Rmdir %s\n", name)
+func (fs *FileSystem) Rmdir(name string, fctx *fuse.Context) (code fuse.Status) {
+	fs.logOP("Rmdir", name, fctx)
 	if fs.ro {
 		return fuse.EPERM
 	}
 
-	node, status := cache.getNode(fs.ref, name)
-	if status != fuse.OK {
-		return status
+	node, err := fs.getNode(name)
+	if err != nil {
+		fs.logEIO(err)
+		return fuse.EIO
 	}
 
 	if !node.IsDir() {
@@ -834,40 +950,45 @@ func (fs *FileSystem) Rmdir(name string, _ *fuse.Context) (code fuse.Status) {
 
 	resp, err := kvs.Client().DoReq(context.TODO(), "DELETE", "/api/filetree/fs/fs/"+fs.ref+"/"+name, nil, nil)
 	if err != nil || resp.StatusCode != 204 {
+		fs.logEIO(fmt.Errorf("request failed with status=%d and err=%v", resp.StatusCode, err))
 		return fuse.EIO
 	}
 
 	return fuse.OK
-
-	// FIXME(tsileo): handle RO mode
-	// return fuse.EPERM
 }
 
-func (fs *FileSystem) Symlink(pointedTo string, linkName string, context *fuse.Context) (code fuse.Status) {
+func (fs *FileSystem) Symlink(pointedTo string, linkName string, context *fuse.Context) fuse.Status {
 	return fuse.EPERM
 }
 
-func (fs *FileSystem) Rename(oldPath string, newPath string, _ *fuse.Context) (codee fuse.Status) {
-	log.Printf("OP Rename %s %s\n", oldPath, newPath)
+func (fs *FileSystem) Rename(oldPath string, newPath string, fctx *fuse.Context) fuse.Status {
+	fs.logOP("Rename", fmt.Sprintf("%s new=%s", oldPath, newPath), fctx)
+
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
 	if fs.ro {
 		return fuse.EPERM
 	}
-	rwPath, rwExists, err := fs.rwLayer.Exists(oldPath)
-	if err != nil {
+
+	if err := fs.rwLayer.Rename(oldPath, newPath); err != nil {
+		fs.logEIO(err)
 		return fuse.EIO
 	}
-	if rwExists {
-		return fuse.ToStatus(os.Rename(rwPath, filepath.Join(fs.rwLayer.path, newPath)))
+
+	node, err := fs.getNode(oldPath)
+	if err != nil {
+		fs.logEIO(err)
+		return fuse.EIO
 	}
 
-	node, status := cache.getNode(fs.ref, oldPath)
-	if status != fuse.OK {
-		return status
+	if node == nil {
+		return fuse.ENOENT
 	}
 
 	// First, we remove the old path
 	resp, err := kvs.Client().DoReq(context.TODO(), "DELETE", "/api/filetree/fs/fs/"+fs.ref+"/"+oldPath, nil, nil)
 	if err != nil || resp.StatusCode != 204 {
+		fs.logEIO(fmt.Errorf("request failed with status=%d and err=%v", resp.StatusCode, err))
 		return fuse.EIO
 	}
 
@@ -883,6 +1004,7 @@ func (fs *FileSystem) Rename(oldPath string, newPath string, _ *fuse.Context) (c
 
 	resp, err = kvs.Client().DoReq(context.TODO(), "PATCH", "/api/filetree/fs/fs/"+fs.ref+"/"+dest, h, nil)
 	if err != nil || resp.StatusCode != 200 {
+		fs.logEIO(fmt.Errorf("request failed with status=%d and err=%v", resp.StatusCode, err))
 		return fuse.EIO
 	}
 
@@ -895,42 +1017,34 @@ func (fs *FileSystem) Link(orig string, newName string, context *fuse.Context) (
 }
 
 func (fs *FileSystem) Access(name string, mode uint32, context *fuse.Context) (code fuse.Status) {
-	log.Printf("OP Access %s\n", name)
+	fs.logOP("Access", name, context)
 	return fuse.OK
 }
 
-func (fs *FileSystem) Create(path string, flags uint32, mode uint32, context *fuse.Context) (fuseFile nodefs.File, code fuse.Status) {
-	log.Printf("OP Create %s\n", path)
-	// TODO(tsileo): check if it exists first?
-	f, err := NewRWFile(fs, path, fs.rwLayer.Path(path), flags, mode, nil)
-	log.Printf("rwfile=%+v %+v\n", f, err)
-	fs.rwIndex(f)
-	fs.mu.Lock()
-	fs.openedFds++
-	fs.mu.Unlock()
-	return f, fuse.ToStatus(err)
+func (fs *FileSystem) Create(path string, flags uint32, mode uint32, fctx *fuse.Context) (fuseFile nodefs.File, code fuse.Status) {
+	fs.logOP("Create", path, fctx)
 
-	// 	fullPath := filepath.Join(fs.rwLayer, path)
-	// 	if _, err := os.Stat(filepath.Dir(fullPath)); err != nil {
-	// 		if os.IsNotExist(err) {
-	// 			if err := os.MkdirAll(filepath.Dir(fullPath), 0744); err != nil {
-	// 				return nil, fuse.EIO
-	// 			}
-	// 		} else {
-	// 			return nil, fuse.EIO
-	// 		}
-	// 	}
-	// 	f, err := os.OpenFile(filepath.Join(fs.rwLayer, path), int(flags)|os.O_CREATE, os.FileMode(mode))
-	// 	return nodefs.NewLoopbackFile(f), fuse.ToStatus(err)
-	// return nil, fuse.EPERM
+	f, err := NewRWFile(context.TODO(), fctx, fs, path, flags, mode, nil)
+	if err != nil {
+		fs.logEIO(err)
+		return nil, fuse.EIO
+	}
+
+	return f, fuse.OK
 }
 
 func (fs *FileSystem) GetXAttr(name string, attr string, context *fuse.Context) ([]byte, fuse.Status) {
-	log.Printf("OP GetXAttr %s\n", name)
-	node, err := cache.getNode(fs.ref, name)
-	if err != fuse.OK {
-		return nil, err
+	fs.logOP("GetXAttr", name, context)
+	node, err := fs.getNode(name)
+	if err != nil {
+		fs.logEIO(err)
+		return nil, fuse.EIO
 	}
+
+	if node == nil {
+		return nil, fuse.ENOATTR // FIXME(tsileo): better error?
+	}
+
 	if attr == "node.ref" {
 		return []byte(node.Ref), fuse.OK
 	}
@@ -945,28 +1059,25 @@ func (fs *FileSystem) GetXAttr(name string, attr string, context *fuse.Context) 
 }
 
 func (fs *FileSystem) SetXAttr(name string, attr string, data []byte, flags int, context *fuse.Context) fuse.Status {
-	log.Printf("OP SetXAttr %s\n", name)
+	fs.logOP("SetXAttr", name, context)
 	return fuse.EPERM
 }
 
 func (fs *FileSystem) ListXAttr(name string, context *fuse.Context) ([]string, fuse.Status) {
-	log.Printf("OP ListXAttr %s\n", name)
+	fs.logOP("ListXAttr", name, context)
 
-	// TODO(tsileo): is this really needed?
-	//rwPath, rwExists, err := fs.rwExists(name)
-	//if err != nil {
-	//return nil, fuse.EIO
-	//}
-	//if rwExists {
-	//if list, err := xattr.List(filepath.Join(fs.rwLayer, name)); err == nil {
-	//return list, fuse.OK
-	//}
-	//}
+	// FIXME(tsileo): what to do about Xattr for opened rwfile?
 
-	node, status := cache.getNode(fs.ref, name)
-	if status != fuse.OK {
-		return nil, status
+	node, err := fs.getNode(name)
+	if err != nil {
+		fs.logEIO(err)
+		return nil, fuse.EIO
 	}
+
+	if node == nil {
+		return nil, fuse.ENOENT // FIXME(tsileo): is this the right code?
+	}
+
 	out := []string{"node.ref"}
 	if node.Metadata != nil {
 		for k, _ := range node.Metadata {
@@ -977,97 +1088,146 @@ func (fs *FileSystem) ListXAttr(name string, context *fuse.Context) ([]string, f
 }
 
 func (fs *FileSystem) RemoveXAttr(name string, attr string, context *fuse.Context) fuse.Status {
-	if fs.debug {
-		log.Printf("OP RemoveXAttr %s", name)
-	}
+	fs.logOP("RemoveXAttr", name, context)
 	return fuse.OK
 }
 
 type RWFile struct {
 	nodefs.File
-	node     *Node
-	inode    *nodefs.Inode
-	path     string
-	oldPath  string // FIXME(tsileo): set it on remove
-	filename string
-	fs       *FileSystem
-	flags    uint32
+	meta  *RWFileMeta
+	node  *Node
+	inode *nodefs.Inode
+	fs    *FileSystem
+	flags uint32
+	fctx  *fuse.Context
+	fid   string
 }
 
 type RWFileMeta struct {
 	Node *Node  `json:"node"`
 	Path string `json:"path"`
+
+	loopbackPath string
+	filename     string
+	parent       string
 }
 
 // FIXME(tsileo): GetAttr for RWFile, that only take the size from the file, find a way to handle mtime
+func newRWFileMeta(fs *FileSystem, node *Node, path string) *RWFileMeta {
+	parent, filename := filepath.Split(path)
 
-func NewRWFile(fs *FileSystem, path, fullPath string, flags, mode uint32, node *Node) (*RWFile, error) {
-	fmt.Printf("FLAG TEST %+v\n", int(flags)&os.O_CREATE)
-	_, filename := filepath.Split(path)
-	fh, ferr := os.OpenFile(fullPath, int(flags), os.FileMode(mode))
-	if os.IsNotExist(ferr) {
-		fh, ferr = os.OpenFile(fullPath, int(flags)|os.O_CREATE, os.FileMode(mode)|0644)
-		if ferr != nil {
-			return nil, ferr
-		}
-		if node != nil {
-			// Fetch the "raw node" (the raw json desc of the node that contains the list of data blobs)
-			ctx := context.TODO()
-			blob, err := cache.Get(ctx, node.Ref)
-			if err != nil {
-				return nil, fmt.Errorf("failed to fetch blob from cache: %v", err)
-			}
-			meta, err := rnode.NewNodeFromBlob(node.Ref, blob)
-			if err != nil {
-				return nil, fmt.Errorf("failed to build node from blob \"%s\": %v", blob, err)
-			}
+	// Generate a random filename for the loopback file
+	rnd := fmt.Sprintf("%s:%d", path, time.Now().UnixNano())
+	loopbackFilename := fmt.Sprintf("%x", sha1.Sum([]byte(rnd)))
 
-			tmtime := time.Unix(int64(node.Mtime()), 0)
-			if err := os.Chtimes(fullPath, tmtime, tmtime); err != nil {
-				return nil, err
-			}
-			if err := node.Copy(fh, meta); err != nil {
-				return nil, err
-			}
-			if err := fh.Sync(); err != nil {
-				return nil, err
-			}
-			if _, err := fh.Seek(0, os.SEEK_SET); err != nil {
-				return nil, err
-			}
-		}
-
+	return &RWFileMeta{
+		Node:         node, // Store the orignal node (for debug purpose only)
+		Path:         path, // The path (for debug purpose)
+		loopbackPath: filepath.Join(fs.rwLayer.path, loopbackFilename),
+		filename:     filename,
+		parent:       parent,
 	}
+}
 
-	// FIXME(tsileo): make a stat
-	// Create a JSON-encoded meta file to help debugging in case of crashes
-	m := &RWFileMeta{Node: node, Path: path}
-	log.Printf("creating rwfile: %+v\n", m)
-	mf, err := os.Create(fullPath + ".json")
+func NewRWFile(ctx context.Context, fctx *fuse.Context, fs *FileSystem, path string, flags, mode uint32, node *Node) (*RWFile, error) {
+	fs.rwLayer.mu.Lock()
+	defer fs.rwLayer.mu.Unlock()
+
+	var meta *RWFileMeta
+	var lflags int
+	var lmode os.FileMode
+	var initialLoad bool
+
+	if existingMeta, ok := fs.rwLayer.cache[path]; ok {
+		meta = existingMeta
+		lflags = int(flags)
+		lmode = os.FileMode(mode)
+	} else {
+		// This is the first fd for this node
+		meta = newRWFileMeta(fs, node, path)
+		fmt.Printf("first meta=%+v\n", meta)
+		fs.rwLayer.cache[path] = meta
+		if i, ok := fs.rwLayer.index[meta.parent]; ok {
+			i = append(i, meta)
+		} else {
+			fs.rwLayer.index[meta.parent] = []*RWFileMeta{meta}
+		}
+
+		lflags = int(flags) | os.O_CREATE
+		lmode = os.FileMode(mode) | 0644 // XXX(tsileo): is this needed?
+		initialLoad = true
+
+		// Create a JSON file for debug
+		mf, err := os.Create(meta.loopbackPath + ".json")
+		if err != nil {
+			return nil, err
+		}
+		defer mf.Close()
+		if err := json.NewEncoder(mf).Encode(meta); err != nil {
+			return nil, err
+		}
+	}
+	fh, err := os.OpenFile(meta.loopbackPath, lflags, lmode)
 	if err != nil {
 		return nil, err
 	}
-	defer mf.Close()
-	if err := json.NewEncoder(mf).Encode(m); err != nil {
-		return nil, err
+	if initialLoad && node != nil {
+		// Fetch the "raw node" (the raw json desc of the node that contains the list of data blobs)
+		blob, err := fs.cache.Get(ctx, node.Ref)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch blob from cache: %v", err)
+		}
+		nodeMeta, err := rnode.NewNodeFromBlob(node.Ref, blob)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build node from blob \"%s\": %v", blob, err)
+		}
+
+		tmtime := time.Unix(int64(node.Mtime()), 0)
+		if err := os.Chtimes(meta.loopbackPath, tmtime, tmtime); err != nil {
+			return nil, err
+		}
+		if err := node.Copy(fh, fs, nodeMeta); err != nil {
+			return nil, err
+		}
+		if err := fh.Sync(); err != nil {
+			return nil, err
+		}
+		if _, err := fh.Seek(0, os.SEEK_SET); err != nil {
+			return nil, err
+		}
 	}
 
-	if ferr != nil {
-		return nil, ferr
-	}
+	// Create the loopback file (provided by go-fuse)
 	lf := nodefs.NewLoopbackFile(fh)
+
+	rnd := fmt.Sprintf("%s:%d:%d", path, fctx.Pid, time.Now().UnixNano())
+	fid := fmt.Sprintf("%x", sha1.Sum([]byte(rnd)))[:6]
+
+	fs.stats.Lock()
+	fs.stats.openedFds++
+	fs.stats.rwOpenedFds++
+	fs.stats.fdIndex[fid] = &FDInfo{
+		Path:       path,
+		Pid:        int(fctx.Pid),
+		Executable: fs.cache.findProcExec(fctx),
+		Writable:   true,
+		CreatedAt:  time.Now(),
+	}
+	fs.stats.Unlock()
+
 	return &RWFile{
-		fs:       fs,
-		path:     path,
-		node:     node,
-		filename: filename,
-		File:     lf,
-		flags:    flags,
+		meta:  meta,
+		fs:    fs,
+		node:  node,
+		File:  lf,
+		flags: flags,
+		fctx:  fctx,
+		fid:   fid,
 	}, nil
 }
 
 func (f *RWFile) Hash() string {
-	rwf, err := os.Open(f.fs.rwLayer.Path(f.path))
+	rwf, err := os.Open(f.meta.loopbackPath)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1075,6 +1235,7 @@ func (f *RWFile) Hash() string {
 
 	h := blake2b.New256()
 	if _, err := io.Copy(h, rwf); err != nil {
+		// TODO(tsileo): return an error?
 		panic(fmt.Errorf("failed to compute rwfile hash %+v: %v", f, err))
 	}
 
@@ -1082,7 +1243,11 @@ func (f *RWFile) Hash() string {
 }
 
 func (f *RWFile) Flush() fuse.Status {
-	log.Printf("OP Flush %+s\n", f)
+	f.fs.logOP("Flush", f.meta.Path, f.fctx)
+
+	f.fs.mu.Lock()
+	defer f.fs.mu.Unlock()
+
 	if status := f.File.Flush(); status != fuse.OK {
 		log.Printf("loopback file %+v failed with status %v\n", status)
 		return status
@@ -1090,8 +1255,8 @@ func (f *RWFile) Flush() fuse.Status {
 
 	// Sometimes the RWFile can still be a file opened in RO mode (if there's another opened file in RW mode)
 	if f.flags&fuse.O_ANYWRITE != 0 && (f.node == nil || f.node.Hash() != f.Hash()) {
-		fullPath := f.fs.rwLayer.Path(f.path)
-		rawNode, err := f.fs.up.PutAndRenameFile(fullPath, f.filename)
+		log.Printf("change has been modified\n")
+		rawNode, err := f.fs.up.PutAndRenameFile(f.meta.loopbackPath, f.meta.filename)
 		if err != nil {
 			log.Printf("failed to upload: %v", err)
 			if os.IsNotExist(err) {
@@ -1104,7 +1269,7 @@ func (f *RWFile) Flush() fuse.Status {
 		if err != nil {
 			return fuse.EIO
 		}
-		d := filepath.Dir(f.path)
+		d := filepath.Dir(f.meta.Path)
 		if d == "." {
 			d = ""
 		}
@@ -1114,53 +1279,50 @@ func (f *RWFile) Flush() fuse.Status {
 			log.Printf("upload failed with resp %+v/%+v\n", resp, err)
 			return fuse.EIO
 		}
-
-		f.fs.mu.Lock()
-		f.fs.uploadedFiles++
-		f.fs.mu.Unlock()
-
+	} else {
+		fmt.Println("no changes")
 	}
 	return fuse.OK
 }
 
 func (f *RWFile) SetInode(inode *nodefs.Inode) {
-	log.Printf("RWFile.SetInode %+v\n", inode)
 	f.inode = inode
 	f.File.SetInode(inode)
 }
 
 func (f *RWFile) Release() {
 	f.fs.mu.Lock()
-	f.fs.openedFds--
-	f.fs.mu.Unlock()
+	defer f.fs.mu.Unlock()
+
+	f.fs.stats.Lock()
+	f.fs.stats.openedFds--
+	f.fs.stats.rwOpenedFds--
+	delete(f.fs.stats.fdIndex, f.fid)
+	f.fs.stats.Unlock()
+
 	var last bool
 	if f.inode.AnyFile() == nil {
 		last = true
 	}
-	log.Printf("OP Release %v (is_last_opened=%s)\n", f, last)
+	f.fs.logOP("Release", f.meta.Path, f.fctx)
 
 	// XXX(tsileo): We cannot returns an error here, but it's about deleting the cache, cannot see a better place
 	// as we cannot detect the last flush
+	//if last {
 	if last {
-		// If there's no other opened file, delete the rwfile cache
-		rwPath := f.fs.rwLayer.Path(f.path)
-		if err := os.Remove(rwPath); err != nil {
-			panic(fmt.Errorf("failed to release rwfile: %v", err))
+		if err := f.fs.rwLayer.Release(f.meta); err != nil {
+			f.fs.logEIO(err)
+			panic(err)
 		}
-		if err := os.Remove(rwPath + ".json"); err != nil {
-			panic(fmt.Errorf("failed to release rwfile (json): %v", err))
-		}
-		// Remove from the rwIndex
-		f.fs.removePathFromIndex(f.path)
 	}
 
 	f.File.Release()
 }
 
-func NewFile(fs *FileSystem, path string, node *Node) (*File, error) {
+func NewFile(fctx *fuse.Context, fs *FileSystem, path string, node *Node) (*File, error) {
 	log.Printf("NewFile %s\n", path)
 	ctx := context.TODO()
-	blob, err := cache.Get(ctx, node.Ref)
+	blob, err := fs.cache.Get(ctx, node.Ref)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch blob from cache: %v", err)
 	}
@@ -1178,26 +1340,47 @@ func NewFile(fs *FileSystem, path string, node *Node) (*File, error) {
 			return nil, err
 		}
 	}
-	r := filereader.NewFile(ctx, cache, meta, fcache)
+	r := filereader.NewFile(ctx, fs.cache, meta, fcache)
+
+	rnd := fmt.Sprintf("%s:%d:%d", path, fctx.Pid, time.Now().UnixNano())
+	fid := fmt.Sprintf("%x", sha1.Sum([]byte(rnd)))[:6]
+
+	fs.stats.Lock()
+	fs.stats.openedFds++
+	fs.stats.fdIndex[fid] = &FDInfo{
+		Path:       path,
+		Pid:        int(fctx.Pid),
+		Executable: fs.cache.findProcExec(fctx),
+		Writable:   false,
+		CreatedAt:  time.Now(),
+	}
+	fs.stats.Unlock()
+
 	return &File{
 		node: node,
 		fs:   fs,
 		path: path,
 		r:    r,
+		fctx: fctx,
+		fid:  fid,
 	}, nil
 }
 
 type File struct {
 	nodefs.File
-	node  *Node
-	r     *filereader.File
 	inode *nodefs.Inode
-	path  string
-	fs    *FileSystem
+
+	path string
+	node *Node
+
+	r *filereader.File
+
+	fid  string
+	fctx *fuse.Context
+	fs   *FileSystem
 }
 
 func (f *File) SetInode(inode *nodefs.Inode) {
-	log.Printf("File.SetInode %+v\n", inode)
 	f.inode = inode
 }
 
@@ -1210,7 +1393,7 @@ func (f *File) Write(data []byte, off int64) (uint32, fuse.Status) {
 }
 
 func (f *File) Read(buf []byte, off int64) (res fuse.ReadResult, code fuse.Status) {
-	log.Printf("OP Read %v\n", f)
+	f.fs.logOP("Read [ro]", f.path, f.fctx)
 	if _, err := f.r.ReadAt(buf, off); err != nil {
 		return nil, fuse.EIO
 	}
@@ -1218,11 +1401,13 @@ func (f *File) Read(buf []byte, off int64) (res fuse.ReadResult, code fuse.Statu
 }
 
 func (f *File) Release() {
-	f.fs.mu.Lock()
-	f.fs.openedFds--
-	f.fs.mu.Unlock()
+	f.fs.logOP("Release [ro]", f.path, f.fctx)
 
-	log.Printf("OP Release %v\n", f)
+	f.fs.stats.Lock()
+	f.fs.stats.openedFds--
+	delete(f.fs.stats.fdIndex, f.fid)
+	f.fs.stats.Unlock()
+
 	f.r.Close()
 }
 
@@ -1231,11 +1416,11 @@ func (f *File) Flush() fuse.Status {
 }
 
 func (f *File) GetAttr(a *fuse.Attr) fuse.Status {
-	log.Printf("OP File.GetAttr %v %+v\n", f, f.r)
+	f.fs.logOP("FStat [ro]", f.path, f.fctx)
 	a.Mode = fuse.S_IFREG | 0644
 	a.Size = uint64(f.node.Size)
 	a.Ctime = f.node.Mtime()
 	a.Mtime = f.node.Mtime()
-	a.Owner = *owner
+	a.Owner = *fuse.CurrentOwner()
 	return fuse.OK
 }

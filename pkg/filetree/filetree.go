@@ -278,7 +278,7 @@ func (ft *FileTree) Update(ctx context.Context, n *Node, m *rnode.RawNode, prefi
 // Update the given node with the given meta, the updated/new node is assumed to be already saved
 func (ft *FileTree) AddChild(ctx context.Context, n *Node, newChild *rnode.RawNode, prefixFmt string) (*Node, error) {
 	// Save the new child meta
-	newChild.ModTime = time.Now().UTC().Unix()
+	//newChild.ModTime = time.Now().UTC().Unix()
 	newChildRef, data := newChild.Encode()
 	newChild.Hash = newChildRef
 	if err := ft.blobStore.Put(ctx, &blob.Blob{Hash: newChildRef, Data: data}); err != nil {
