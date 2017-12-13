@@ -46,9 +46,6 @@ import (
 // - [X] `-live-update` (or `-ro`?) mode to receive update via SSE (e.g. serve static over fuse, or Dropbox infinite like), allow caching and to invalidate cache on remote changes (need to be able to discard its own generated event via the hostname)
 // - [ ] support data context (add timeout server-side), and merge the data context on unmount
 
-var kvs *kvstore.KvStore
-var bs *blobstore.BlobStore
-
 func main() {
 	// Scans the arg list and sets up flags
 	debug := flag.Bool("debug", false, "print debugging messages.")
@@ -96,8 +93,8 @@ func main() {
 	// Setup the clients for BlobStash
 	kvopts := kvstore.DefaultOpts().SetHost(os.Getenv("BLOBS_API_HOST"), os.Getenv("BLOBS_API_KEY"))
 	kvopts.SnappyCompression = false
-	kvs = kvstore.New(kvopts)
-	bs = blobstore.New(kvopts)
+	kvs := kvstore.New(kvopts)
+	bs := blobstore.New(kvopts)
 
 	authOk, err := kvs.Client().CheckAuth(context.TODO())
 	if err != nil {
@@ -110,7 +107,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	root, err := NewFileSystem(flag.Arg(1), flag.Arg(0), *debug, cache, cacheDir)
+	root, err := NewFileSystem(flag.Arg(1), flag.Arg(0), *debug, cache, cacheDir, bs, kvs)
 	if err != nil {
 		fmt.Printf("failed to initialize filesystem: %v\n", err)
 		os.Exit(1)
@@ -128,15 +125,15 @@ func main() {
 		go func() {
 			for _ = range ticker.C {
 				log.Printf("DEBUG:\n")
-				fmt.Printf("[fs]\nfs.ops=%d fs.fds=%d fs.fds_rw=%d fs.eio=%d fs.uptime=%v\n", root.stats.ops, root.stats.openedFds, root.stats.rwOpenedFds, root.stats.eios, time.Since(root.stats.startedAt))
-				fmt.Printf("[cache]\ncache.hits=%d cache.hits_pct=%.2f cache.reqs=%d cache.added=%d cache.len=%d cache.size=%v\n", root.cache.hits, float64(root.cache.hits)*100.0/float64(root.cache.reqs), root.cache.reqs, root.cache.cached, root.cache.blobsCache.Len(), humanize.Bytes(uint64(root.cache.blobsCache.Size())))
-				fmt.Printf("[blobstash]\nblobstash.file_uploaded=%d blobstash.errors=%d blobstash.fs_reqs=%d\n", -1, -1, root.stats.remoteStats)
+				fmt.Printf("[fs]\nfs.ref=%s fs.ops=%d fs.fds=%d fs.fds_rw=%d fs.eio=%d fs.uptime=%v\n", root.stats.Ref, root.stats.Ops, root.stats.OpenedFds, root.stats.RWOpenedFds, root.stats.Eios, time.Since(root.stats.startedAt))
+				fmt.Printf("[cache]\ncache.hits=%d cache.hits_pct=%.2f cache.reqs=%d cache.added=%d cache.len=%d cache.size=%v\n", root.stats.CacheHits, float64(root.stats.CacheHits)*100.0/float64(root.stats.CacheReqs), root.stats.CacheReqs, root.stats.CacheAdded, root.cache.blobsCache.Len(), humanize.Bytes(uint64(root.cache.blobsCache.Size())))
+				fmt.Printf("[blobstash]\nblobstash.uploaded_files=%d blobstash.uploaded_files_size=%s blobstash.remote_stat=%d\n", root.stats.UploadedFiles, humanize.Bytes(uint64(root.stats.UploadedFilesSize)), root.stats.RemoteStats)
 				//fmt.Printf("[rw cache]rwlayer cached: %+v %+v\n", root.rwLayer.cache, root.rwLayer.index)
 				fmt.Printf("[fds]\n")
-				if len(root.stats.fdIndex) == 0 {
+				if len(root.stats.FDIndex) == 0 {
 					fmt.Printf("no fds\n")
 				}
-				for _, fdi := range root.stats.fdIndex {
+				for _, fdi := range root.stats.FDIndex {
 					ro := " [rw]"
 					if !fdi.Writable {
 						ro = " [ro]"
@@ -241,6 +238,7 @@ func (rl *rwLayer) GetAttr(name string, context *fuse.Context) (*fuse.Attr, erro
 	}, nil
 }
 
+// OpenDir returns a map of the currently opened RW files for the given parent directory
 func (rl *rwLayer) OpenDir(name string, context *fuse.Context) map[string]fuse.DirEntry {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
@@ -266,6 +264,10 @@ func (rl *rwLayer) Unlink(name string) error {
 	}
 
 	// Don't use os.Remove, it removes twice (unlink followed by rmdir).
+	if err := syscall.Unlink(rwmeta.loopbackPath + ".json"); err != nil {
+		return err
+	}
+
 	return syscall.Unlink(rwmeta.loopbackPath)
 }
 
@@ -442,16 +444,14 @@ func (n *Node) Copy(dst io.Writer, fs *FileSystem, meta *rnode.RawNode) error {
 }
 
 type Cache struct {
+	fs *FileSystem
+	mu sync.Mutex
+
+	blobsCache *bcache.Cache
+
 	nodeIndex    map[string]*Node
 	negNodeIndex map[string]struct{}
-	mu           sync.Mutex
-	blobsCache   *bcache.Cache
-
-	procCache map[int]string
-
-	hits   int64
-	reqs   int64
-	cached int64
+	procCache    map[int]string
 }
 
 func newCache(path string) (*Cache, error) {
@@ -496,20 +496,23 @@ func (c *Cache) Stat(hash string) (bool, error) {
 	// if err != nil {
 	// 	return false, err
 	// }
-	return bs.Stat(context.TODO(), hash)
+	return c.fs.bs.Stat(context.TODO(), hash)
 }
 
 // Get implements the BlobStore interface for filereader.File
 func (c *Cache) Put(ctx context.Context, hash string, data []byte) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.cached++
+
+	c.fs.stats.Lock()
+	c.fs.stats.CacheAdded++
+	c.fs.stats.Unlock()
 
 	if err := c.blobsCache.Add(hash, data); err != nil {
 		return err
 	}
 	// FIXME(tsileo): add a stat/exist check once the data contexes is implemented
-	if err := bs.Put(ctx, hash, data); err != nil {
+	if err := c.fs.bs.Put(ctx, hash, data); err != nil {
 		return nil
 	}
 	return nil
@@ -519,7 +522,6 @@ func (c *Cache) Put(ctx context.Context, hash string, data []byte) error {
 func (c *Cache) Get(ctx context.Context, hash string) ([]byte, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.reqs++
 	var err error
 	cachedBlob, ok, err := c.blobsCache.Get(hash)
 	if err != nil {
@@ -527,17 +529,23 @@ func (c *Cache) Get(ctx context.Context, hash string) ([]byte, error) {
 	}
 	var data []byte
 	if ok {
-		c.hits++
+		c.fs.stats.Lock()
+		c.fs.stats.CacheHits++
+		c.fs.stats.CacheReqs++
+		c.fs.stats.Unlock()
 		data = cachedBlob
 	} else {
-		c.cached++
+		c.fs.stats.Lock()
+		c.fs.stats.CacheAdded++
+		c.fs.stats.CacheReqs++
+		c.fs.stats.Unlock()
 		// resp, err := kvs.Client().DoReq(ctx, "GET", "/api/blobstore/blob/"+hash, nil, nil)
 		// if err != nil {
 		// return nil, err
 		// }
 		// defer resp.Body.Close()
 		// data, err = ioutil.ReadAll(resp.Body)
-		data, err = bs.Get(ctx, hash)
+		data, err = c.fs.bs.Get(ctx, hash)
 		if err != nil {
 			return nil, fmt.Errorf("failed to call blobstore: %v", err)
 		}
@@ -558,19 +566,33 @@ type FileSystem struct {
 	justCreated bool
 	rwLayer     *rwLayer
 
+	kvs *kvstore.KvStore
+	bs  *blobstore.BlobStore
+
 	stats *FSStats
 }
 
 type FSStats struct {
 	sync.Mutex
-	startedAt   time.Time
-	ops         int64
-	eios        int64
-	openedFds   int64
-	rwOpenedFds int64
-	remoteStats int64
+	startedAt time.Time
 
-	fdIndex map[string]*FDInfo
+	Ref        string `json:"fs_ref"`
+	Mountpoint string `json:"fs_mountpoint"`
+
+	Ops         int64 `json:"fs_ops"`
+	Eios        int64 `json:"fs_eios"`
+	OpenedFds   int64 `json:"fs_fds"`
+	RWOpenedFds int64 `json:"fs_rw_fds"`
+
+	RemoteStats       int64 `json:"blobstash_remote_stat"`
+	UploadedFiles     int64 `json:"blobstash_uploaded_files"`
+	UploadedFilesSize int64 `json:"blobstash_uploaded_files_size"`
+
+	CacheHits  int64 `json:"cache_hits"`
+	CacheReqs  int64 `json:"cache_reqs"`
+	CacheAdded int64 `json:"cache_added"`
+
+	FDIndex map[string]*FDInfo `json:"fs_fds_infos"`
 }
 
 type FDInfo struct {
@@ -581,16 +603,20 @@ type FDInfo struct {
 	CreatedAt  time.Time
 }
 
-func NewFileSystem(ref, mountpoint string, debug bool, cache *Cache, cacheDir string) (*FileSystem, error) {
+func NewFileSystem(ref, mountpoint string, debug bool, cache *Cache, cacheDir string, bs *blobstore.BlobStore, kvs *kvstore.KvStore) (*FileSystem, error) {
 	fs := &FileSystem{
 		cache:   cache,
+		bs:      bs,
+		kvs:     kvs,
 		ref:     ref,
 		debug:   debug,
 		rwLayer: nil,
 		up:      writer.NewUploader(cache),
 		stats: &FSStats{
-			startedAt: time.Now(),
-			fdIndex:   map[string]*FDInfo{},
+			Ref:        ref,
+			Mountpoint: mountpoint,
+			startedAt:  time.Now(),
+			FDIndex:    map[string]*FDInfo{},
 		},
 	}
 	var err error
@@ -599,16 +625,18 @@ func NewFileSystem(ref, mountpoint string, debug bool, cache *Cache, cacheDir st
 		return nil, fmt.Errorf("failed to init rwLayer: %v", err)
 	}
 
+	cache.fs = fs
+
 	return fs, nil
 }
 
 func (fs *FileSystem) getNode(path string) (*Node, error) {
 	fs.stats.Lock()
-	fs.stats.remoteStats++
+	fs.stats.RemoteStats++
 	fs.stats.Unlock()
 
 	node := &Node{}
-	if err := kvs.Client().GetJSON(context.TODO(), "/api/filetree/fs/fs/"+fs.ref+"/"+path, nil, &node); err != nil {
+	if err := fs.kvs.Client().GetJSON(context.TODO(), "/api/filetree/fs/fs/"+fs.ref+"/"+path, nil, &node); err != nil {
 		if err == clientutil.ErrNotFound {
 			return nil, nil
 		}
@@ -638,19 +666,17 @@ func (fs *FileSystem) logEIO(err error) {
 	log.Printf("EIO error: %+v\n", err)
 	fs.stats.Lock()
 	defer fs.stats.Unlock()
-	fs.stats.eios++
+	fs.stats.Eios++
 }
 
 func (fs *FileSystem) logOP(opCode, path string, context *fuse.Context) {
 	// TODO(tsileo): only if fs.debug
 	fs.stats.Lock()
-	fs.stats.ops++
+	fs.stats.Ops++
 	fs.stats.Unlock()
 	exec := fs.cache.findProcExec(context)
 	log.Printf("OP %s path=/%s pid=%d %s\n", opCode, path, context.Pid, exec)
 }
-
-// TODO(tsileo): track the PID of each FDs and show it in debug ticker
 
 func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (*fuse.Attr, fuse.Status) {
 	fs.mu.Lock()
@@ -694,7 +720,6 @@ func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (*fuse.Attr, f
 	}
 
 	if node == nil {
-		log.Printf("returning ENOENT\n")
 		return nil, fuse.ENOENT
 	}
 
@@ -707,14 +732,13 @@ func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (*fuse.Attr, f
 		}, fuse.OK
 	}
 
-	a := &fuse.Attr{
+	return &fuse.Attr{
 		Mode:  fuse.S_IFREG | 0644,
 		Size:  uint64(node.Size),
 		Ctime: node.Mtime(),
 		Mtime: node.Mtime(),
 		Owner: *fuse.CurrentOwner(),
-	}
-	return a, fuse.OK
+	}, fuse.OK
 }
 
 // FIXME(tsileo): needed?
@@ -779,12 +803,9 @@ func (fs *FileSystem) Open(name string, flags uint32, fctx *fuse.Context) (fuseF
 
 	// Check if ti's a debug/fake data dile
 	if name == ".fs_infos" {
-		// FIXME(tsileo): set the debug infos
-		i := map[string]interface{}{
-			"ref": fs.ref,
-		}
-		js, err := json.Marshal(&i)
+		js, err := json.Marshal(&fs.stats)
 		if err != nil {
+			fs.logEIO(err)
 			return nil, fuse.EIO
 		}
 		return nodefs.NewDataFile(js), fuse.OK
@@ -806,7 +827,6 @@ func (fs *FileSystem) Open(name string, flags uint32, fctx *fuse.Context) (fuseF
 			// XXX(tsileo): is EROFS the right error code
 			return nil, fuse.EROFS
 		}
-		// FIXME(tsileo): ensure the hash of the RWFile match the one in the node
 		f, err := NewRWFile(context.TODO(), fctx, fs, name, flags, 0, node)
 		if err != nil {
 			fs.logEIO(err)
@@ -885,12 +905,12 @@ func (fs *FileSystem) Mkdir(path string, mode uint32, fctx *fuse.Context) (code 
 	if d == "." {
 		d = ""
 	}
-	// fmt.Printf("node=%+v\n", node)
 	js, err := json.Marshal(node)
 	if err != nil {
+		fs.logEIO(err)
 		return fuse.EIO
 	}
-	resp, err := kvs.Client().DoReq(context.TODO(), "PATCH", "/api/filetree/fs/fs/"+fs.ref+"/"+d, nil, bytes.NewReader(js))
+	resp, err := fs.kvs.Client().DoReq(context.TODO(), "PATCH", "/api/filetree/fs/fs/"+fs.ref+"/"+d, nil, bytes.NewReader(js))
 	if err != nil || resp.StatusCode != 200 {
 		fs.logEIO(fmt.Errorf("patch failed with status=%d and err=%v", resp.StatusCode, err))
 		return fuse.EIO
@@ -911,7 +931,7 @@ func (fs *FileSystem) Unlink(name string, fctx *fuse.Context) (code fuse.Status)
 	}
 
 	// XXX(tsileo): should be inside the filetree client?
-	resp, err := kvs.Client().DoReq(context.TODO(), "DELETE", "/api/filetree/fs/fs/"+fs.ref+"/"+name, nil, nil)
+	resp, err := fs.kvs.Client().DoReq(context.TODO(), "DELETE", "/api/filetree/fs/fs/"+fs.ref+"/"+name, nil, nil)
 	if err != nil {
 		fs.logEIO(err)
 		return fuse.EIO
@@ -948,7 +968,7 @@ func (fs *FileSystem) Rmdir(name string, fctx *fuse.Context) (code fuse.Status) 
 		return fuse.Status(syscall.ENOTEMPTY)
 	}
 
-	resp, err := kvs.Client().DoReq(context.TODO(), "DELETE", "/api/filetree/fs/fs/"+fs.ref+"/"+name, nil, nil)
+	resp, err := fs.kvs.Client().DoReq(context.TODO(), "DELETE", "/api/filetree/fs/fs/"+fs.ref+"/"+name, nil, nil)
 	if err != nil || resp.StatusCode != 204 {
 		fs.logEIO(fmt.Errorf("request failed with status=%d and err=%v", resp.StatusCode, err))
 		return fuse.EIO
@@ -986,7 +1006,7 @@ func (fs *FileSystem) Rename(oldPath string, newPath string, fctx *fuse.Context)
 	}
 
 	// First, we remove the old path
-	resp, err := kvs.Client().DoReq(context.TODO(), "DELETE", "/api/filetree/fs/fs/"+fs.ref+"/"+oldPath, nil, nil)
+	resp, err := fs.kvs.Client().DoReq(context.TODO(), "DELETE", "/api/filetree/fs/fs/"+fs.ref+"/"+oldPath, nil, nil)
 	if err != nil || resp.StatusCode != 204 {
 		fs.logEIO(fmt.Errorf("request failed with status=%d and err=%v", resp.StatusCode, err))
 		return fuse.EIO
@@ -1002,7 +1022,7 @@ func (fs *FileSystem) Rename(oldPath string, newPath string, fctx *fuse.Context)
 		dest = ""
 	}
 
-	resp, err = kvs.Client().DoReq(context.TODO(), "PATCH", "/api/filetree/fs/fs/"+fs.ref+"/"+dest, h, nil)
+	resp, err = fs.kvs.Client().DoReq(context.TODO(), "PATCH", "/api/filetree/fs/fs/"+fs.ref+"/"+dest, h, nil)
 	if err != nil || resp.StatusCode != 200 {
 		fs.logEIO(fmt.Errorf("request failed with status=%d and err=%v", resp.StatusCode, err))
 		return fuse.EIO
@@ -1145,7 +1165,6 @@ func NewRWFile(ctx context.Context, fctx *fuse.Context, fs *FileSystem, path str
 	} else {
 		// This is the first fd for this node
 		meta = newRWFileMeta(fs, node, path)
-		fmt.Printf("first meta=%+v\n", meta)
 		fs.rwLayer.cache[path] = meta
 		if i, ok := fs.rwLayer.index[meta.parent]; ok {
 			i = append(i, meta)
@@ -1204,9 +1223,9 @@ func NewRWFile(ctx context.Context, fctx *fuse.Context, fs *FileSystem, path str
 	fid := fmt.Sprintf("%x", sha1.Sum([]byte(rnd)))[:6]
 
 	fs.stats.Lock()
-	fs.stats.openedFds++
-	fs.stats.rwOpenedFds++
-	fs.stats.fdIndex[fid] = &FDInfo{
+	fs.stats.OpenedFds++
+	fs.stats.RWOpenedFds++
+	fs.stats.FDIndex[fid] = &FDInfo{
 		Path:       path,
 		Pid:        int(fctx.Pid),
 		Executable: fs.cache.findProcExec(fctx),
@@ -1249,7 +1268,9 @@ func (f *RWFile) Flush() fuse.Status {
 	defer f.fs.mu.Unlock()
 
 	if status := f.File.Flush(); status != fuse.OK {
-		log.Printf("loopback file %+v failed with status %v\n", status)
+		if status == fuse.EIO {
+			f.fs.logEIO(fmt.Errorf("loopback file %+v failed with status %v", status))
+		}
 		return status
 	}
 
@@ -1258,15 +1279,16 @@ func (f *RWFile) Flush() fuse.Status {
 		log.Printf("change has been modified\n")
 		rawNode, err := f.fs.up.PutAndRenameFile(f.meta.loopbackPath, f.meta.filename)
 		if err != nil {
-			log.Printf("failed to upload: %v", err)
 			if os.IsNotExist(err) {
 				// This means the file has been removed
 				return f.File.Flush()
 			}
+			f.fs.logEIO(fmt.Errorf("failed to upload: %v", err))
 			return fuse.EIO
 		}
 		js, err := json.Marshal(rawNode)
 		if err != nil {
+			f.fs.logEIO(err)
 			return fuse.EIO
 		}
 		d := filepath.Dir(f.meta.Path)
@@ -1274,11 +1296,16 @@ func (f *RWFile) Flush() fuse.Status {
 			d = ""
 		}
 
-		resp, err := kvs.Client().DoReq(context.TODO(), "PATCH", "/api/filetree/fs/fs/"+f.fs.ref+"/"+d, nil, bytes.NewReader(js))
+		resp, err := f.fs.kvs.Client().DoReq(context.TODO(), "PATCH", "/api/filetree/fs/fs/"+f.fs.ref+"/"+d, nil, bytes.NewReader(js))
 		if err != nil || resp.StatusCode != 200 {
-			log.Printf("upload failed with resp %+v/%+v\n", resp, err)
+			f.fs.logEIO(fmt.Errorf("upload failed with resp %s/%+v", resp, err))
 			return fuse.EIO
 		}
+
+		f.fs.stats.Lock()
+		f.fs.stats.UploadedFiles++
+		f.fs.stats.UploadedFilesSize += int64(rawNode.Size)
+		f.fs.stats.Unlock()
 	} else {
 		fmt.Println("no changes")
 	}
@@ -1295,9 +1322,9 @@ func (f *RWFile) Release() {
 	defer f.fs.mu.Unlock()
 
 	f.fs.stats.Lock()
-	f.fs.stats.openedFds--
-	f.fs.stats.rwOpenedFds--
-	delete(f.fs.stats.fdIndex, f.fid)
+	f.fs.stats.OpenedFds--
+	f.fs.stats.RWOpenedFds--
+	delete(f.fs.stats.FDIndex, f.fid)
 	f.fs.stats.Unlock()
 
 	var last bool
@@ -1320,7 +1347,6 @@ func (f *RWFile) Release() {
 }
 
 func NewFile(fctx *fuse.Context, fs *FileSystem, path string, node *Node) (*File, error) {
-	log.Printf("NewFile %s\n", path)
 	ctx := context.TODO()
 	blob, err := fs.cache.Get(ctx, node.Ref)
 	if err != nil {
@@ -1346,8 +1372,8 @@ func NewFile(fctx *fuse.Context, fs *FileSystem, path string, node *Node) (*File
 	fid := fmt.Sprintf("%x", sha1.Sum([]byte(rnd)))[:6]
 
 	fs.stats.Lock()
-	fs.stats.openedFds++
-	fs.stats.fdIndex[fid] = &FDInfo{
+	fs.stats.OpenedFds++
+	fs.stats.FDIndex[fid] = &FDInfo{
 		Path:       path,
 		Pid:        int(fctx.Pid),
 		Executable: fs.cache.findProcExec(fctx),
@@ -1395,6 +1421,7 @@ func (f *File) Write(data []byte, off int64) (uint32, fuse.Status) {
 func (f *File) Read(buf []byte, off int64) (res fuse.ReadResult, code fuse.Status) {
 	f.fs.logOP("Read [ro]", f.path, f.fctx)
 	if _, err := f.r.ReadAt(buf, off); err != nil {
+		f.fs.logEIO(err)
 		return nil, fuse.EIO
 	}
 	return fuse.ReadResultData(buf), fuse.OK
@@ -1404,14 +1431,15 @@ func (f *File) Release() {
 	f.fs.logOP("Release [ro]", f.path, f.fctx)
 
 	f.fs.stats.Lock()
-	f.fs.stats.openedFds--
-	delete(f.fs.stats.fdIndex, f.fid)
+	f.fs.stats.OpenedFds--
+	delete(f.fs.stats.FDIndex, f.fid)
 	f.fs.stats.Unlock()
 
 	f.r.Close()
 }
 
 func (f *File) Flush() fuse.Status {
+	f.fs.logOP("Flush [ro]", f.path, f.fctx)
 	return fuse.OK
 }
 
