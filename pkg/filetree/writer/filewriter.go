@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/dchest/blake2b"
@@ -92,7 +93,19 @@ func (up *Uploader) putFile(path, filename string) (*rnode.RawNode, error) { // 
 	meta.Name = filename
 	meta.Size = int(fstat.Size())
 	meta.Type = "file"
+
+	// Only set the mode if it's not the default one
+	mode := uint32(fstat.Mode())
+	if mode != 0644 {
+		meta.Mode = mode
+	}
+
+	// Mtime/Ctime handling
 	meta.ModTime = fstat.ModTime().Unix()
+	if stat, ok := fstat.Sys().(*syscall.Stat_t); ok {
+		meta.ChangeTime = stat.Ctim.Sec
+	}
+
 	// wr := NewWriteResult()
 	if fstat.Size() > 0 {
 		f, err := os.Open(path)

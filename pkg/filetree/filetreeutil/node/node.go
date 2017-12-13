@@ -19,14 +19,16 @@ var (
 )
 
 type RawNode struct {
-	ModTime  int64                  `msgpack:"mt,omitempty"` // Only set for file, for dir, it can be the most recent mtime of children
-	Name     string                 `msgpack:"n"`
-	Type     string                 `msgpack:"t"`
-	Size     int                    `msgpack:"s"`
-	Refs     []interface{}          `msgpack:"r"`
-	Version  string                 `msgpack:"v"`
-	Metadata map[string]interface{} `msgpack:"m,omitempty"`
-	Hash     string                 `msgpack:"-"`
+	ModTime    int64                  `msgpack:"mt,omitempty"`
+	ChangeTime int64                  `msgpack:"ct,omitempty"`
+	Mode       uint32                 `msgpack:"m,omitempty"`
+	Name       string                 `msgpack:"n"`
+	Type       string                 `msgpack:"t"`
+	Size       int                    `msgpack:"s"`
+	Refs       []interface{}          `msgpack:"r"`
+	Version    string                 `msgpack:"v"`
+	Metadata   map[string]interface{} `msgpack:"m,omitempty"`
+	Hash       string                 `msgpack:"-"`
 }
 
 // AddData insert a new meta data in the Data field

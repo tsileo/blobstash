@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -145,18 +146,14 @@ func main() {
 	}
 
 	nfs := pathfs.NewPathNodeFs(root, nil)
-	// state, _, err := nodefs.MountRoot(flag.Arg(0), nfs.Root(), opts)
 
 	conn := nodefs.NewFileSystemConnector(nfs.Root(), opts)
 
-	// XXX(tsileo): different options on READ ONLY mode
 	mountOpts := fuse.MountOptions{
+		// FIXME(tsileo): -o allow_other as a CLI flag
 		// AllowOther: true,
 		Options: []string{
-			// FIXME(tsileo): no more nolocalcaches and use notify instead for linux
 			"noatime",
-			"default_permissions",
-			"allow_other",
 		},
 		FsName: "blobfs",
 		Name:   ref,
@@ -387,13 +384,14 @@ func newRWLayer(path string) (*rwLayer, error) {
 }
 
 type Node struct {
-	Name     string                 `json:"name"`
-	Ref      string                 `json:"ref"`
-	Size     int                    `json:"size"`
-	Type     string                 `json:"type"`
-	Children []*Node                `json:"children"`
-	Metadata map[string]interface{} `json:"metadata"`
-	ModTime  string                 `json:"mtime"`
+	Name       string                 `json:"name"`
+	Ref        string                 `json:"ref"`
+	Size       int                    `json:"size"`
+	Type       string                 `json:"type"`
+	Children   []*Node                `json:"children"`
+	Metadata   map[string]interface{} `json:"metadata"`
+	ModTime    string                 `json:"mtime"`
+	ChangeTime string                 `json:"ctime"`
 }
 
 func (n *Node) Hash() string {
@@ -416,6 +414,17 @@ func (n *Node) IsFile() bool {
 func (n *Node) Mtime() uint64 {
 	if n.ModTime != "" {
 		t, err := time.Parse(time.RFC3339, n.ModTime)
+		if err != nil {
+			panic(err)
+		}
+		return uint64(t.Unix())
+	}
+	return 0
+}
+
+func (n *Node) Ctime() uint64 {
+	if n.ChangeTime != "" {
+		t, err := time.Parse(time.RFC3339, n.ChangeTime)
 		if err != nil {
 			panic(err)
 		}
@@ -449,8 +458,9 @@ type Cache struct {
 
 	blobsCache *bcache.Cache
 
-	nodeIndex    map[string]*Node
-	negNodeIndex map[string]struct{}
+	nodeIndex       map[string]*Node
+	negNodeIndex    map[string]struct{}
+	remoteStatCache map[string]bool
 
 	procCache map[int]string
 }
@@ -462,10 +472,11 @@ func newCache(path string) (*Cache, error) {
 	}
 
 	return &Cache{
-		nodeIndex:    map[string]*Node{},
-		negNodeIndex: map[string]struct{}{},
-		blobsCache:   blobsCache,
-		procCache:    map[int]string{},
+		nodeIndex:       map[string]*Node{},
+		negNodeIndex:    map[string]struct{}{},
+		blobsCache:      blobsCache,
+		procCache:       map[int]string{},
+		remoteStatCache: map[string]bool{},
 	}, nil
 }
 
@@ -492,12 +503,28 @@ func (c *Cache) findProcExec(context *fuse.Context) string {
 
 //func (c *Cache) Stat(ctx context.Context, hash string) (bool, error) {
 func (c *Cache) Stat(hash string) (bool, error) {
-	// FIXME(tsileo): is a local check needed, when can we skip the remote check?
-	// locStat, err := c.blobsCache.Stat(hash)
-	// if err != nil {
-	// 	return false, err
-	// }
-	return c.fs.bs.Stat(context.TODO(), hash)
+	locStat, err := c.blobsCache.Stat(hash)
+	if err != nil {
+		return false, err
+	}
+	if locStat {
+		return true, nil
+	}
+
+	if val, ok := c.remoteStatCache[hash]; ok && val {
+		return true, nil
+	}
+
+	stat, err := c.fs.bs.Stat(context.TODO(), hash)
+	if err != nil {
+		return false, err
+	}
+
+	if stat {
+		c.remoteStatCache[hash] = stat
+	}
+
+	return stat, nil
 }
 
 // Get implements the BlobStore interface for filereader.File
@@ -554,10 +581,9 @@ func (c *Cache) Get(ctx context.Context, hash string) ([]byte, error) {
 }
 
 type FileSystem struct {
-	ref         string
-	debug       bool
-	ro          bool
-	justCreated bool
+	ref   string
+	debug bool
+	ro    bool
 
 	rwLayer *rwLayer
 	cache   *Cache
@@ -674,8 +700,8 @@ func (fs *FileSystem) logOP(opCode, path string, fctx *fuse.Context) {
 	// TODO(tsileo): only if fs.debug
 	fs.stats.Lock()
 	fs.stats.Ops++
-	fs.stats.Unlock()
 	exec := fs.cache.findProcExec(fctx)
+	fs.stats.Unlock()
 	log.Printf("OP %s path=/%s pid=%d %s\n", opCode, path, fctx.Pid, exec)
 }
 
@@ -708,10 +734,12 @@ func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse
 	node, err := fs.getNode(name)
 
 	// Quick hack, this happen when an empty root was just initialized and not saved yet
-	if name == "" && node == nil && fs.justCreated {
+	if name == "" && node == nil {
 		return &fuse.Attr{
 			Mode:  fuse.S_IFDIR | 0755,
 			Owner: *fuse.CurrentOwner(),
+			Mtime: uint64(fs.stats.startedAt.Unix()),
+			Ctime: uint64(fs.stats.startedAt.Unix()),
 		}, fuse.OK
 	}
 
@@ -727,7 +755,7 @@ func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse
 	if node.IsDir() {
 		return &fuse.Attr{
 			Mode:  fuse.S_IFDIR | 0755,
-			Ctime: node.Mtime(),
+			Ctime: node.Ctime(),
 			Mtime: node.Mtime(),
 			Owner: *fuse.CurrentOwner(),
 		}, fuse.OK
@@ -736,7 +764,7 @@ func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse
 	return &fuse.Attr{
 		Mode:  fuse.S_IFREG | 0644,
 		Size:  uint64(node.Size),
-		Ctime: node.Mtime(),
+		Ctime: node.Ctime(),
 		Mtime: node.Mtime(),
 		Owner: *fuse.CurrentOwner(),
 	}, fuse.OK
@@ -767,9 +795,6 @@ func (fs *FileSystem) OpenDir(name string, fctx *fuse.Context) ([]fuse.DirEntry,
 		return nil, fuse.EIO
 	}
 
-	if node == nil && name == "" {
-		fs.justCreated = true
-	}
 	if node != nil {
 		if !node.IsDir() {
 			return nil, fuse.ENOTDIR
@@ -885,7 +910,7 @@ func (fs *FileSystem) Mkdir(path string, mode uint32, fctx *fuse.Context) fuse.S
 		return fuse.EPERM
 	}
 
-	// Only continue if the file don't already exist
+	// Only continue if the node don't already exist
 	rnode, err := fs.getNode(path)
 	if err != nil {
 		fs.logEIO(err)
@@ -897,10 +922,12 @@ func (fs *FileSystem) Mkdir(path string, mode uint32, fctx *fuse.Context) fuse.S
 		return fuse.OK
 	}
 
+	mtime := time.Now().Unix()
 	node := map[string]interface{}{
 		"type":    "dir",
 		"name":    filepath.Base(path),
 		"version": "1",
+		"mtime":   mtime,
 	}
 	d := filepath.Dir(path)
 	if d == "." {
@@ -911,7 +938,12 @@ func (fs *FileSystem) Mkdir(path string, mode uint32, fctx *fuse.Context) fuse.S
 		fs.logEIO(err)
 		return fuse.EIO
 	}
-	resp, err := fs.kvs.Client().DoReq(context.TODO(), "PATCH", "/api/filetree/fs/fs/"+fs.ref+"/"+d, nil, bytes.NewReader(js))
+	resp, err := fs.kvs.Client().DoReqWithQuery(
+		context.TODO(), "PATCH", "/api/filetree/fs/fs/"+fs.ref+"/"+d,
+		map[string]string{
+			"mtime": strconv.Itoa(int(mtime)),
+		},
+		nil, bytes.NewReader(js))
 	if err != nil || resp.StatusCode != 200 {
 		fs.logEIO(fmt.Errorf("patch failed with status=%d and err=%v", resp.StatusCode, err))
 		return fuse.EIO
@@ -931,8 +963,13 @@ func (fs *FileSystem) Unlink(name string, fctx *fuse.Context) fuse.Status {
 		return fuse.EIO
 	}
 
+	mtime := time.Now().Unix()
 	// XXX(tsileo): should be inside the filetree client?
-	resp, err := fs.kvs.Client().DoReq(context.TODO(), "DELETE", "/api/filetree/fs/fs/"+fs.ref+"/"+name, nil, nil)
+	resp, err := fs.kvs.Client().DoReqWithQuery(
+		context.TODO(), "DELETE", "/api/filetree/fs/fs/"+fs.ref+"/"+name,
+		map[string]string{
+			"mtime": strconv.Itoa(int(mtime)),
+		}, nil, nil)
 	if err != nil {
 		fs.logEIO(err)
 		return fuse.EIO
@@ -969,7 +1006,12 @@ func (fs *FileSystem) Rmdir(name string, fctx *fuse.Context) fuse.Status {
 		return fuse.Status(syscall.ENOTEMPTY)
 	}
 
-	resp, err := fs.kvs.Client().DoReq(context.TODO(), "DELETE", "/api/filetree/fs/fs/"+fs.ref+"/"+name, nil, nil)
+	mtime := time.Now().Unix()
+	resp, err := fs.kvs.Client().DoReqWithQuery(
+		context.TODO(), "DELETE", "/api/filetree/fs/fs/"+fs.ref+"/"+name,
+		map[string]string{
+			"mtime": strconv.Itoa(int(mtime)),
+		}, nil, nil)
 	if err != nil || resp.StatusCode != 204 {
 		fs.logEIO(fmt.Errorf("request failed with status=%d and err=%v", resp.StatusCode, err))
 		return fuse.EIO
@@ -996,6 +1038,8 @@ func (fs *FileSystem) Rename(oldPath string, newPath string, fctx *fuse.Context)
 		return fuse.EIO
 	}
 
+	mtime := time.Now().Unix()
+
 	node, err := fs.getNode(oldPath)
 	if err != nil {
 		fs.logEIO(err)
@@ -1007,7 +1051,11 @@ func (fs *FileSystem) Rename(oldPath string, newPath string, fctx *fuse.Context)
 	}
 
 	// First, we remove the old path
-	resp, err := fs.kvs.Client().DoReq(context.TODO(), "DELETE", "/api/filetree/fs/fs/"+fs.ref+"/"+oldPath, nil, nil)
+	resp, err := fs.kvs.Client().DoReqWithQuery(
+		context.TODO(), "DELETE", "/api/filetree/fs/fs/"+fs.ref+"/"+oldPath,
+		map[string]string{
+			"mtime": strconv.Itoa(int(mtime)),
+		}, nil, nil)
 	if err != nil || resp.StatusCode != 204 {
 		fs.logEIO(fmt.Errorf("request failed with status=%d and err=%v", resp.StatusCode, err))
 		return fuse.EIO
@@ -1023,7 +1071,13 @@ func (fs *FileSystem) Rename(oldPath string, newPath string, fctx *fuse.Context)
 		dest = ""
 	}
 
-	resp, err = fs.kvs.Client().DoReq(context.TODO(), "PATCH", "/api/filetree/fs/fs/"+fs.ref+"/"+dest, h, nil)
+	// TODO(tsileo): set the mtime and rename=true
+	resp, err = fs.kvs.Client().DoReqWithQuery(
+		context.TODO(), "PATCH", "/api/filetree/fs/fs/"+fs.ref+"/"+dest,
+		map[string]string{
+			"rename": strconv.FormatBool(true),
+			"mtime":  strconv.Itoa(int(mtime)),
+		}, h, nil)
 	if err != nil || resp.StatusCode != 200 {
 		fs.logEIO(fmt.Errorf("request failed with status=%d and err=%v", resp.StatusCode, err))
 		return fuse.EIO
@@ -1297,7 +1351,7 @@ func (f *RWFile) Flush() fuse.Status {
 			d = ""
 		}
 
-		resp, err := f.fs.kvs.Client().DoReq(context.TODO(), "PATCH", "/api/filetree/fs/fs/"+f.fs.ref+"/"+d, nil, bytes.NewReader(js))
+		resp, err := f.fs.kvs.Client().DoReq(context.TODO(), "PATCH", "/api/filetree/fs/fs/"+f.fs.ref+"/"+d+fmt.Sprintf("?mtime=%d", rawNode.ModTime), nil, bytes.NewReader(js))
 		if err != nil || resp.StatusCode != 200 {
 			f.fs.logEIO(fmt.Errorf("upload failed with resp %s/%+v", resp, err))
 			return fuse.EIO
@@ -1448,7 +1502,7 @@ func (f *File) GetAttr(a *fuse.Attr) fuse.Status {
 	f.fs.logOP("FStat [ro]", f.path, f.fctx)
 	a.Mode = fuse.S_IFREG | 0644
 	a.Size = uint64(f.node.Size)
-	a.Ctime = f.node.Mtime()
+	a.Ctime = f.node.Ctime()
 	a.Mtime = f.node.Mtime()
 	a.Owner = *fuse.CurrentOwner()
 	return fuse.OK

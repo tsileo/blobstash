@@ -136,6 +136,50 @@ func (client *Client) DoReq(ctx context.Context, method, path string, headers ma
 	return client.client.Do(request)
 }
 
+// DoReq "do" the request and returns the `*http.Response`
+func (client *Client) DoReqWithQuery(ctx context.Context, method, path string, query map[string]string, headers map[string]string, body io.Reader) (*http.Response, error) {
+	request, err := http.NewRequest(method, fmt.Sprintf("%s%s", client.opts.Host, path), body)
+	if err != nil {
+		return nil, err
+	}
+
+	q := request.URL.Query()
+	for k, v := range query {
+		q.Set(k, v)
+	}
+	request.URL.RawQuery = q.Encode()
+
+	request = request.WithContext(ctx)
+
+	request.Header.Set("BlobStash-Session-ID", client.SessionID())
+	if client.opts.APIKey != "" {
+		request.SetBasicAuth("", client.opts.APIKey)
+	}
+
+	// Set our custom user agent
+	if client.opts.UserAgent != "" {
+		request.Header.Set("User-Agent", client.opts.UserAgent)
+	}
+
+	if client.opts.Namespace != "" {
+		request.Header.Set("BlobStash-Namespace", client.opts.Namespace)
+	}
+
+	// Check if we should request compressed data
+	if client.opts.SnappyCompression {
+		request.Header.Set("Accept-Encoding", "snappy")
+	}
+
+	// Add custom headers
+	for header, val := range client.opts.Headers {
+		request.Header.Set(header, val)
+	}
+	for header, val := range headers {
+		request.Header.Set(header, val)
+	}
+	return client.client.Do(request)
+}
+
 func (client *Client) CheckAuth(ctx context.Context) (bool, error) {
 	resp, err := client.DoReq(ctx, "GET", "/api/ping", nil, nil)
 	if err != nil {
