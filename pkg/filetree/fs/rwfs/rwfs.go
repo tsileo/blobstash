@@ -451,7 +451,8 @@ type Cache struct {
 
 	nodeIndex    map[string]*Node
 	negNodeIndex map[string]struct{}
-	procCache    map[int]string
+
+	procCache map[int]string
 }
 
 func newCache(path string) (*Cache, error) {
@@ -533,18 +534,14 @@ func (c *Cache) Get(ctx context.Context, hash string) ([]byte, error) {
 		c.fs.stats.CacheHits++
 		c.fs.stats.CacheReqs++
 		c.fs.stats.Unlock()
+
 		data = cachedBlob
 	} else {
 		c.fs.stats.Lock()
 		c.fs.stats.CacheAdded++
 		c.fs.stats.CacheReqs++
 		c.fs.stats.Unlock()
-		// resp, err := kvs.Client().DoReq(ctx, "GET", "/api/blobstore/blob/"+hash, nil, nil)
-		// if err != nil {
-		// return nil, err
-		// }
-		// defer resp.Body.Close()
-		// data, err = ioutil.ReadAll(resp.Body)
+
 		data, err = c.fs.bs.Get(ctx, hash)
 		if err != nil {
 			return nil, fmt.Errorf("failed to call blobstore: %v", err)
@@ -557,21 +554,23 @@ func (c *Cache) Get(ctx context.Context, hash string) ([]byte, error) {
 }
 
 type FileSystem struct {
-	cache       *Cache
 	ref         string
 	debug       bool
-	up          *writer.Uploader
-	mu          sync.Mutex
 	ro          bool
 	justCreated bool
-	rwLayer     *rwLayer
 
+	rwLayer *rwLayer
+	cache   *Cache
+	stats   *FSStats
+
+	up  *writer.Uploader
 	kvs *kvstore.KvStore
 	bs  *blobstore.BlobStore
 
-	stats *FSStats
+	mu sync.Mutex
 }
 
+// FSStats holds some stats about the mounted FS
 type FSStats struct {
 	sync.Mutex
 	startedAt time.Time
@@ -595,10 +594,11 @@ type FSStats struct {
 	FDIndex map[string]*FDInfo `json:"fs_fds_infos"`
 }
 
+// FDInfo holds informations about an opened file descriptor
 type FDInfo struct {
 	Pid        int
-	Executable string
-	Path       string
+	Executable string // Executable name from the PID
+	Path       string // Path of the opened file on the FS
 	Writable   bool
 	CreatedAt  time.Time
 }
@@ -630,6 +630,7 @@ func NewFileSystem(ref, mountpoint string, debug bool, cache *Cache, cacheDir st
 	return fs, nil
 }
 
+// getNode fetches the node at path from BlobStash, like a "remote stat".
 func (fs *FileSystem) getNode(path string) (*Node, error) {
 	fs.stats.Lock()
 	fs.stats.RemoteStats++
@@ -658,7 +659,7 @@ func (*FileSystem) StatFs(name string) *fuse.StatfsOut {
 	return &fuse.StatfsOut{}
 }
 
-func (*FileSystem) OnMount(nodeFs *pathfs.PathNodeFs) {}
+func (*FileSystem) OnMount(*pathfs.PathNodeFs) {}
 
 func (*FileSystem) OnUnmount() {}
 
@@ -669,20 +670,20 @@ func (fs *FileSystem) logEIO(err error) {
 	fs.stats.Eios++
 }
 
-func (fs *FileSystem) logOP(opCode, path string, context *fuse.Context) {
+func (fs *FileSystem) logOP(opCode, path string, fctx *fuse.Context) {
 	// TODO(tsileo): only if fs.debug
 	fs.stats.Lock()
 	fs.stats.Ops++
 	fs.stats.Unlock()
-	exec := fs.cache.findProcExec(context)
-	log.Printf("OP %s path=/%s pid=%d %s\n", opCode, path, context.Pid, exec)
+	exec := fs.cache.findProcExec(fctx)
+	log.Printf("OP %s path=/%s pid=%d %s\n", opCode, path, fctx.Pid, exec)
 }
 
-func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (*fuse.Attr, fuse.Status) {
+func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse.Status) {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 
-	fs.logOP("Stat", name, context)
+	fs.logOP("Stat", name, fctx)
 
 	// First, check if a debug/fake data file is requested
 	if name == ".fs_infos" {
@@ -692,7 +693,7 @@ func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (*fuse.Attr, f
 	}
 
 	// Check if the requested path is a file already opened for writing
-	rwAttr, err := fs.rwLayer.GetAttr(name, context)
+	rwAttr, err := fs.rwLayer.GetAttr(name, fctx)
 	if err != nil {
 		fs.logEIO(err)
 		return nil, fuse.EIO
@@ -747,13 +748,13 @@ func (fs *FileSystem) GetAttr(name string, context *fuse.Context) (*fuse.Attr, f
 // return fuse.EPERM
 // }
 
-func (fs *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse.DirEntry, status fuse.Status) {
-	fs.logOP("OpenDir", name, context)
+func (fs *FileSystem) OpenDir(name string, fctx *fuse.Context) ([]fuse.DirEntry, fuse.Status) {
+	fs.logOP("OpenDir", name, fctx)
 
 	var err error
 	// The real directory is the 1st layer, if a file exists locally as a file it will show up instead of the remote version
 	//if !fs.ro {
-	index := fs.rwLayer.OpenDir(name, context)
+	index := fs.rwLayer.OpenDir(name, fctx)
 	if index == nil {
 		index = map[string]fuse.DirEntry{}
 	}
@@ -796,7 +797,7 @@ func (fs *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse
 	return output, fuse.OK
 }
 
-func (fs *FileSystem) Open(name string, flags uint32, fctx *fuse.Context) (fuseFile nodefs.File, status fuse.Status) {
+func (fs *FileSystem) Open(name string, flags uint32, fctx *fuse.Context) (nodefs.File, fuse.Status) {
 	fs.logOP("Open", name, fctx)
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
@@ -836,7 +837,6 @@ func (fs *FileSystem) Open(name string, flags uint32, fctx *fuse.Context) (fuseF
 		return f, fuse.OK
 	}
 	if node == nil {
-		log.Printf("NOENT\n")
 		return nil, fuse.ENOENT
 	}
 
@@ -849,35 +849,36 @@ func (fs *FileSystem) Open(name string, flags uint32, fctx *fuse.Context) (fuseF
 	return f, fuse.OK
 }
 
-func (fs *FileSystem) Utimens(path string, a *time.Time, m *time.Time, context *fuse.Context) (code fuse.Status) {
+func (fs *FileSystem) Utimens(path string, a *time.Time, m *time.Time, fctx *fuse.Context) fuse.Status {
+	fs.logOP("Utimens", path, fctx)
 	return fuse.EPERM
 }
 
-func (fs *FileSystem) Chmod(path string, mode uint32, context *fuse.Context) (code fuse.Status) {
-	fs.logOP("Chmod", path, context)
+func (fs *FileSystem) Chmod(path string, mode uint32, fctx *fuse.Context) fuse.Status {
+	fs.logOP("Chmod", path, fctx)
 	return fuse.EPERM
 }
 
-func (fs *FileSystem) Chown(path string, uid uint32, gid uint32, context *fuse.Context) (code fuse.Status) {
-	fs.logOP("Chown", path, context)
+func (fs *FileSystem) Chown(path string, uid uint32, gid uint32, fctx *fuse.Context) fuse.Status {
+	fs.logOP("Chown", path, fctx)
 	return fuse.EPERM
 }
 
-func (fs *FileSystem) Truncate(path string, offset uint64, context *fuse.Context) (code fuse.Status) {
+func (fs *FileSystem) Truncate(path string, offset uint64, fctx *fuse.Context) fuse.Status {
 	// Will be called on the File instead
 	panic("should never be called")
 	return fuse.EPERM
 }
 
-func (fs *FileSystem) Readlink(name string, context *fuse.Context) (out string, code fuse.Status) {
+func (fs *FileSystem) Readlink(name string, fctx *fuse.Context) (string, fuse.Status) {
 	return "", fuse.ENOSYS
 }
 
-func (fs *FileSystem) Mknod(name string, mode uint32, dev uint32, context *fuse.Context) (code fuse.Status) {
+func (fs *FileSystem) Mknod(name string, mode uint32, dev uint32, fctx *fuse.Context) fuse.Status {
 	return fuse.ENOSYS
 }
 
-func (fs *FileSystem) Mkdir(path string, mode uint32, fctx *fuse.Context) (code fuse.Status) {
+func (fs *FileSystem) Mkdir(path string, mode uint32, fctx *fuse.Context) fuse.Status {
 	fs.logOP("Mkdir", path, fctx)
 
 	if fs.ro {
@@ -919,7 +920,7 @@ func (fs *FileSystem) Mkdir(path string, mode uint32, fctx *fuse.Context) (code 
 	return fuse.OK
 }
 
-func (fs *FileSystem) Unlink(name string, fctx *fuse.Context) (code fuse.Status) {
+func (fs *FileSystem) Unlink(name string, fctx *fuse.Context) fuse.Status {
 	fs.logOP("Unlink", name, fctx)
 	if fs.ro {
 		return fuse.EPERM
@@ -948,7 +949,7 @@ func (fs *FileSystem) Unlink(name string, fctx *fuse.Context) (code fuse.Status)
 	}
 }
 
-func (fs *FileSystem) Rmdir(name string, fctx *fuse.Context) (code fuse.Status) {
+func (fs *FileSystem) Rmdir(name string, fctx *fuse.Context) fuse.Status {
 	fs.logOP("Rmdir", name, fctx)
 	if fs.ro {
 		return fuse.EPERM
@@ -977,7 +978,7 @@ func (fs *FileSystem) Rmdir(name string, fctx *fuse.Context) (code fuse.Status) 
 	return fuse.OK
 }
 
-func (fs *FileSystem) Symlink(pointedTo string, linkName string, context *fuse.Context) fuse.Status {
+func (fs *FileSystem) Symlink(pointedTo string, linkName string, fctx *fuse.Context) fuse.Status {
 	return fuse.EPERM
 }
 
@@ -1031,17 +1032,17 @@ func (fs *FileSystem) Rename(oldPath string, newPath string, fctx *fuse.Context)
 	return fuse.OK
 }
 
-func (fs *FileSystem) Link(orig string, newName string, context *fuse.Context) (code fuse.Status) {
+func (fs *FileSystem) Link(orig string, newName string, fctx *fuse.Context) fuse.Status {
 	// TODO(tsileo): to ENOSYS?
 	return fuse.EPERM
 }
 
-func (fs *FileSystem) Access(name string, mode uint32, context *fuse.Context) (code fuse.Status) {
-	fs.logOP("Access", name, context)
+func (fs *FileSystem) Access(name string, mode uint32, fctx *fuse.Context) fuse.Status {
+	fs.logOP("Access", name, fctx)
 	return fuse.OK
 }
 
-func (fs *FileSystem) Create(path string, flags uint32, mode uint32, fctx *fuse.Context) (fuseFile nodefs.File, code fuse.Status) {
+func (fs *FileSystem) Create(path string, flags uint32, mode uint32, fctx *fuse.Context) (nodefs.File, fuse.Status) {
 	fs.logOP("Create", path, fctx)
 
 	f, err := NewRWFile(context.TODO(), fctx, fs, path, flags, mode, nil)
@@ -1053,8 +1054,8 @@ func (fs *FileSystem) Create(path string, flags uint32, mode uint32, fctx *fuse.
 	return f, fuse.OK
 }
 
-func (fs *FileSystem) GetXAttr(name string, attr string, context *fuse.Context) ([]byte, fuse.Status) {
-	fs.logOP("GetXAttr", name, context)
+func (fs *FileSystem) GetXAttr(name string, attr string, fctx *fuse.Context) ([]byte, fuse.Status) {
+	fs.logOP("GetXAttr", name, fctx)
 	node, err := fs.getNode(name)
 	if err != nil {
 		fs.logEIO(err)
@@ -1083,8 +1084,8 @@ func (fs *FileSystem) SetXAttr(name string, attr string, data []byte, flags int,
 	return fuse.EPERM
 }
 
-func (fs *FileSystem) ListXAttr(name string, context *fuse.Context) ([]string, fuse.Status) {
-	fs.logOP("ListXAttr", name, context)
+func (fs *FileSystem) ListXAttr(name string, fctx *fuse.Context) ([]string, fuse.Status) {
+	fs.logOP("ListXAttr", name, fctx)
 
 	// FIXME(tsileo): what to do about Xattr for opened rwfile?
 
@@ -1107,8 +1108,8 @@ func (fs *FileSystem) ListXAttr(name string, context *fuse.Context) ([]string, f
 	return out, fuse.OK
 }
 
-func (fs *FileSystem) RemoveXAttr(name string, attr string, context *fuse.Context) fuse.Status {
-	fs.logOP("RemoveXAttr", name, context)
+func (fs *FileSystem) RemoveXAttr(name string, attr string, fctx *fuse.Context) fuse.Status {
+	fs.logOP("RemoveXAttr", name, fctx)
 	return fuse.OK
 }
 
