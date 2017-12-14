@@ -21,7 +21,7 @@ var (
 type RawNode struct {
 	ModTime    int64                  `msgpack:"mt,omitempty"`
 	ChangeTime int64                  `msgpack:"ct,omitempty"`
-	Mode       uint32                 `msgpack:"m,omitempty"`
+	Mode       uint32                 `msgpack:"mo,omitempty"`
 	Name       string                 `msgpack:"n"`
 	Type       string                 `msgpack:"t"`
 	Size       int                    `msgpack:"s"`

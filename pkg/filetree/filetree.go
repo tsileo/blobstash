@@ -375,6 +375,7 @@ func MetaToNode(m *rnode.RawNode) (*Node, error) {
 		Size: m.Size,
 		Data: m.Metadata,
 		Hash: m.Hash,
+		Mode: int(m.Mode),
 		Meta: m,
 	}
 	if m.ModTime > 0 {
@@ -859,6 +860,7 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 		case "PATCH":
 			// Add a node (from its JSON representation) to a directory
 			var err error
+			// FIXME(tsileo): s/rename/change/ ? for the special ctime handling
 			var rename bool
 			if r := r.URL.Query().Get("rename"); r != "" {
 				rename, err = strconv.ParseBool(r)
@@ -887,7 +889,6 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 			var newChild *rnode.RawNode
 
 			if newRef := r.Header.Get("BlobStash-Filetree-Patch-Ref"); newRef != "" {
-				newName := r.Header.Get("BlobStash-Filetree-Patch-Name")
 
 				blob, err := ft.blobStore.Get(ctx, newRef)
 				if err != nil {
@@ -895,10 +896,27 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 				}
 
 				newChild, err = rnode.NewNodeFromBlob(newRef, blob)
-				if newChild != nil && newName != "" {
-					newChild.Name = newName
-
+				if err != nil {
+					panic(err)
 				}
+
+				if newChild == nil {
+					// FIXME(tsileo): return a 404
+					panic("cannot find node for patching")
+				}
+
+				if newName := r.Header.Get("BlobStash-Filetree-Patch-Name"); newName != "" {
+					newChild.Name = newName
+				}
+
+				if smode := r.Header.Get("BlobStash-Filetree-Patch-Mode"); smode != "" {
+					newMode, err := strconv.ParseInt(smode, 10, 0)
+					if err != nil {
+						panic(err)
+					}
+					newChild.Mode = uint32(newMode)
+				}
+
 			} else {
 				// Decode the raw node from the request body
 				newChild = &rnode.RawNode{}

@@ -227,7 +227,7 @@ func (rl *rwLayer) GetAttr(name string, context *fuse.Context) (*fuse.Attr, erro
 	ctime, _ := st.Ctim.Unix()
 	mtime, _ := st.Mtim.Unix()
 	return &fuse.Attr{
-		Mode:  fuse.S_IFREG | 0644,
+		Mode:  fuse.S_IFREG | st.Mode,
 		Size:  uint64(st.Size),
 		Ctime: uint64(ctime),
 		Mtime: uint64(mtime),
@@ -392,6 +392,18 @@ type Node struct {
 	Metadata   map[string]interface{} `json:"metadata"`
 	ModTime    string                 `json:"mtime"`
 	ChangeTime string                 `json:"ctime"`
+	RawMode    int                    `json:"mode"`
+}
+
+func (n *Node) Mode() uint32 {
+	if n.RawMode > 0 {
+		return uint32(n.RawMode)
+	}
+	if n.Type == "file" {
+		return 0644
+	} else {
+		return 0755
+	}
 }
 
 func (n *Node) Hash() string {
@@ -736,7 +748,7 @@ func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse
 	// Quick hack, this happen when an empty root was just initialized and not saved yet
 	if name == "" && node == nil {
 		return &fuse.Attr{
-			Mode:  fuse.S_IFDIR | 0755,
+			Mode:  fuse.S_IFDIR | node.Mode(),
 			Owner: *fuse.CurrentOwner(),
 			Mtime: uint64(fs.stats.startedAt.Unix()),
 			Ctime: uint64(fs.stats.startedAt.Unix()),
@@ -754,7 +766,7 @@ func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse
 
 	if node.IsDir() {
 		return &fuse.Attr{
-			Mode:  fuse.S_IFDIR | 0755,
+			Mode:  fuse.S_IFDIR | node.Mode(),
 			Ctime: node.Ctime(),
 			Mtime: node.Mtime(),
 			Owner: *fuse.CurrentOwner(),
@@ -762,7 +774,7 @@ func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse
 	}
 
 	return &fuse.Attr{
-		Mode:  fuse.S_IFREG | 0644,
+		Mode:  fuse.S_IFREG | node.Mode(),
 		Size:  uint64(node.Size),
 		Ctime: node.Ctime(),
 		Mtime: node.Mtime(),
@@ -806,16 +818,20 @@ func (fs *FileSystem) OpenDir(name string, fctx *fuse.Context) ([]fuse.DirEntry,
 				if _, ok := index[child.Name]; ok {
 					continue
 				}
-				mode := fuse.S_IFDIR
+				mode := fuse.S_IFDIR | int(child.Mode())
 				if child.IsFile() {
-					mode = fuse.S_IFREG
+					mode = fuse.S_IFREG | int(child.Mode())
 				}
-				index[child.Name] = fuse.DirEntry{Name: child.Name, Mode: uint32(mode)}
+				index[child.Name] = fuse.DirEntry{
+					Name: child.Name,
+					Mode: uint32(mode),
+				}
 			}
 		}
 	}
 	output := []fuse.DirEntry{}
 	for _, dirEntry := range index {
+		fmt.Printf("mode=%s %o %d\n", dirEntry.Name, dirEntry.Mode, dirEntry.Mode)
 		output = append(output, dirEntry)
 	}
 
@@ -881,12 +897,49 @@ func (fs *FileSystem) Utimens(path string, a *time.Time, m *time.Time, fctx *fus
 
 func (fs *FileSystem) Chmod(path string, mode uint32, fctx *fuse.Context) fuse.Status {
 	fs.logOP("Chmod", path, fctx)
-	return fuse.EPERM
+
+	mtime := time.Now().Unix()
+
+	// Now take a look a the remote node
+	node, err := fs.getNode(path)
+
+	if err != nil {
+		fs.logEIO(err)
+		return fuse.EIO
+	}
+
+	if node == nil {
+		return fuse.ENOENT
+	}
+
+	// Next, we re-add it to its dest
+	h := map[string]string{
+		"BlobStash-Filetree-Patch-Ref":  node.Ref,
+		"BlobStash-Filetree-Patch-Mode": strconv.Itoa(int(mode)),
+	}
+
+	dest := filepath.Dir(path)
+	if dest == "." {
+		dest = ""
+	}
+
+	resp, err := fs.kvs.Client().DoReqWithQuery(
+		context.TODO(), "PATCH", "/api/filetree/fs/fs/"+fs.ref+"/"+dest,
+		map[string]string{
+			"mtime":  strconv.Itoa(int(mtime)),
+			"rename": strconv.FormatBool(true),
+		}, h, nil)
+	if err != nil || resp.StatusCode != 200 {
+		fs.logEIO(fmt.Errorf("upload failed with resp %s/%+v", resp, err))
+		return fuse.EIO
+	}
+
+	return fuse.OK
 }
 
 func (fs *FileSystem) Chown(path string, uid uint32, gid uint32, fctx *fuse.Context) fuse.Status {
 	fs.logOP("Chown", path, fctx)
-	return fuse.EPERM
+	return fuse.ENOSYS
 }
 
 func (fs *FileSystem) Truncate(path string, offset uint64, fctx *fuse.Context) fuse.Status {
@@ -1075,6 +1128,7 @@ func (fs *FileSystem) Rename(oldPath string, newPath string, fctx *fuse.Context)
 	resp, err = fs.kvs.Client().DoReqWithQuery(
 		context.TODO(), "PATCH", "/api/filetree/fs/fs/"+fs.ref+"/"+dest,
 		map[string]string{
+			// FIXME(tsileo): s/rename/change/ ?
 			"rename": strconv.FormatBool(true),
 			"mtime":  strconv.Itoa(int(mtime)),
 		}, h, nil)
@@ -1351,7 +1405,11 @@ func (f *RWFile) Flush() fuse.Status {
 			d = ""
 		}
 
-		resp, err := f.fs.kvs.Client().DoReq(context.TODO(), "PATCH", "/api/filetree/fs/fs/"+f.fs.ref+"/"+d+fmt.Sprintf("?mtime=%d", rawNode.ModTime), nil, bytes.NewReader(js))
+		resp, err := f.fs.kvs.Client().DoReqWithQuery(
+			context.TODO(), "PATCH", "/api/filetree/fs/fs/"+f.fs.ref+"/"+d,
+			map[string]string{
+				"mtime": strconv.Itoa(int(rawNode.ModTime)),
+			}, nil, bytes.NewReader(js))
 		if err != nil || resp.StatusCode != 200 {
 			f.fs.logEIO(fmt.Errorf("upload failed with resp %s/%+v", resp, err))
 			return fuse.EIO
@@ -1500,7 +1558,7 @@ func (f *File) Flush() fuse.Status {
 
 func (f *File) GetAttr(a *fuse.Attr) fuse.Status {
 	f.fs.logOP("FStat [ro]", f.path, f.fctx)
-	a.Mode = fuse.S_IFREG | 0644
+	a.Mode = fuse.S_IFREG | f.node.Mode()
 	a.Size = uint64(f.node.Size)
 	a.Ctime = f.node.Ctime()
 	a.Mtime = f.node.Mtime()
