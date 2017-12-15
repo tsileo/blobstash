@@ -110,6 +110,7 @@ func New(conf *config.Config) (*Server, error) {
 	stashAPI.New(cstash).Register(s.router.PathPrefix("/api/stash").Subrouter(), basicAuth)
 
 	blobstore := cstash.BlobStore()
+	// FIXME(tsileo): test the stash with kvstore
 	kvstore := rootKvstore
 
 	kvStoreAPI.New(kvstore).Register(s.router.PathPrefix("/api/kvstore").Subrouter(), basicAuth)

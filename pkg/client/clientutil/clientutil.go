@@ -136,6 +136,87 @@ func (client *Client) DoReq(ctx context.Context, method, path string, headers ma
 	return client.client.Do(request)
 }
 
+func WithHeaders(headers map[string]string) func(*http.Request) error {
+	return func(request *http.Request) error {
+		for header, val := range headers {
+			request.Header.Set(header, val)
+		}
+		return nil
+	}
+}
+
+func WithQueryArgs(query map[string]string) func(*http.Request) error {
+	return func(request *http.Request) error {
+		q := request.URL.Query()
+		for k, v := range query {
+			q.Set(k, v)
+		}
+		request.URL.RawQuery = q.Encode()
+		return nil
+	}
+}
+
+func WithAPIKey(apiKey string) func(*http.Request) error {
+	return func(request *http.Request) error {
+		request.SetBasicAuth("", apiKey)
+		return nil
+	}
+}
+
+func WithUserAgent(ua string) func(*http.Request) error {
+	return func(request *http.Request) error {
+		request.Header.Set("User-Agent", ua)
+		return nil
+	}
+}
+
+func WithHeader(name, value string) func(*http.Request) error {
+	return func(request *http.Request) error {
+		request.Header.Set(name, value)
+		return nil
+	}
+}
+
+type ClientUtil struct {
+	host    string
+	client  *http.Client
+	options []func(*http.Request) error
+}
+
+// New initializes an HTTP client
+func NewClientUtil(host string, options ...func(*http.Request) error) *ClientUtil {
+	client := &http.Client{
+		Transport: transport,
+	}
+	return &ClientUtil{
+		host:    host,
+		client:  client,
+		options: options,
+	}
+}
+
+// DoReq "do" the request and returns the `*http.Response`
+func (client *ClientUtil) Do(ctx context.Context, method, path string, body io.Reader, options ...func(*http.Request) error) (*http.Response, error) {
+	request, err := http.NewRequest(method, fmt.Sprintf("%s%s", client.host, path), body)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, option := range client.options {
+		if err := option(request); err != nil {
+			return nil, fmt.Errorf("failed to set client option %v: %v", option, err)
+		}
+	}
+
+	for _, option := range options {
+		if err := option(request); err != nil {
+			return nil, fmt.Errorf("failed to set request option %v: %v", option, err)
+		}
+	}
+
+	return client.client.Do(request)
+}
+
 // DoReq "do" the request and returns the `*http.Response`
 func (client *Client) DoReqWithQuery(ctx context.Context, method, path string, query map[string]string, headers map[string]string, body io.Reader) (*http.Response, error) {
 	request, err := http.NewRequest(method, fmt.Sprintf("%s%s", client.opts.Host, path), body)

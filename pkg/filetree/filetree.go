@@ -19,6 +19,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/hashicorp/golang-lru"
 	log "github.com/inconshreveable/log15"
+	"github.com/vmihailenco/msgpack"
 
 	"a4.io/blobsfile"
 	"a4.io/blobstash/pkg/blob"
@@ -106,6 +107,16 @@ func (bs *BlobStore) Put(ctx context.Context, hash string, data []byte) error {
 	return bs.blobStore.Put(ctx, &blob.Blob{Hash: hash, Data: data})
 }
 
+// TODO(tsileo): a way to create a snapchat without modifying anything (and forcing the datactx before)
+type Snapshot struct {
+	Ref       string `msgpack:"-"`
+	CreatedAt int64  `msgpack:"-"`
+
+	Version  string `msgpack:"v"`
+	Hostname string `msgpack:"h"`
+	Message  string `msgpack:"m,omitempty"`
+}
+
 type FS struct {
 	Name string `json:"-"`
 	Ref  string `json:"ref"`
@@ -187,8 +198,8 @@ func (ft *FileTree) Register(r *mux.Router, root *mux.Router, basicAuth func(htt
 type Node struct {
 	Name       string  `json:"name"`
 	Type       string  `json:"type"`
-	Size       int     `json:"size"`
-	Mode       int     `json:"mode"`
+	Size       int     `json:"size,omitempty"`
+	Mode       int     `json:"mode,omitempty"`
 	ModTime    string  `json:"mtime"`
 	ChangeTime string  `json:"ctime"`
 	Hash       string  `json:"ref"`
@@ -202,7 +213,7 @@ type Node struct {
 	parent *Node          `json:"-"`
 	fs     *FS            `json:"-"`
 
-	URL string `json:"url",omitempty`
+	URL string `json:"url,omitempty"`
 }
 
 // Update the given node with the given meta, the updated/new node is assumed to be already saved
@@ -224,7 +235,15 @@ func (ft *FileTree) Update(ctx context.Context, n *Node, m *rnode.RawNode, prefi
 		// if err != nil {
 		// return nil, err
 		// }
-		if ft.kvStore.Put(ctx, fmt.Sprintf(prefixFmt, n.fs.Name), newNode.Hash, nil, -1); err != nil {
+		snap := &Snapshot{}
+		if h, ok := ctxutil.FileTreeHostname(ctx); ok {
+			snap.Hostname = h
+		}
+		snapEncoded, err := msgpack.Marshal(snap)
+		if err != nil {
+			return nil, err
+		}
+		if ft.kvStore.Put(ctx, fmt.Sprintf(prefixFmt, n.fs.Name), newNode.Hash, snapEncoded, -1); err != nil {
 			return nil, err
 		}
 		return newNode, nil
@@ -739,7 +758,9 @@ func fixPath(p string) string {
 
 func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
+		ctx := ctxutil.WithFileTreeHostname(r.Context(), r.Header.Get(ctxutil.FileTreeHostnameHeader))
+		// FIXME(tsileo): handle mtime in the context too, and make it optional
+
 		vars := mux.Vars(r)
 		fsName := vars["name"]
 		path := "/" + vars["path"]

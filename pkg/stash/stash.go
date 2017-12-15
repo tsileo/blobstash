@@ -195,6 +195,7 @@ func (s *Stash) Root() store.DataContext {
 
 func (s *Stash) dataContext(ctx context.Context) (*dataContext, error) {
 	// TODO(tsileo): handle destroyed context
+	// FIXME(tsileo): add a BlobStash-Stash-Name header
 	return s.rootDataContext, nil
 }
 

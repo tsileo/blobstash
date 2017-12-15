@@ -35,6 +35,7 @@ import (
 	"a4.io/blobstash/pkg/client/clientutil"
 	"a4.io/blobstash/pkg/client/kvstore"
 	"a4.io/blobstash/pkg/config/pathutil"
+	"a4.io/blobstash/pkg/ctxutil"
 	rnode "a4.io/blobstash/pkg/filetree/filetreeutil/node"
 	"a4.io/blobstash/pkg/filetree/reader/filereader"
 	"a4.io/blobstash/pkg/filetree/writer"
@@ -92,10 +93,23 @@ func main() {
 	}
 
 	// Setup the clients for BlobStash
+	host := os.Getenv("BLOBS_API_HOST")
+	apiKey := os.Getenv("BLOBS_API_KEY")
 	kvopts := kvstore.DefaultOpts().SetHost(os.Getenv("BLOBS_API_HOST"), os.Getenv("BLOBS_API_KEY"))
 	kvopts.SnappyCompression = false
 	kvs := kvstore.New(kvopts)
 	bs := blobstore.New(kvopts)
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		fmt.Printf("failed to get hostname: %v\n", err)
+		os.Exit(1)
+	}
+
+	clientUtil := clientutil.NewClientUtil(host,
+		clientutil.WithAPIKey(apiKey),
+		clientutil.WithHeader(ctxutil.FileTreeHostnameHeader, hostname),
+	)
 
 	authOk, err := kvs.Client().CheckAuth(context.TODO())
 	if err != nil {
@@ -108,7 +122,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	root, err := NewFileSystem(flag.Arg(1), flag.Arg(0), *debug, cache, cacheDir, bs, kvs)
+	root, err := NewFileSystem(flag.Arg(1), flag.Arg(0), *debug, cache, cacheDir, bs, kvs, clientUtil)
 	if err != nil {
 		fmt.Printf("failed to initialize filesystem: %v\n", err)
 		os.Exit(1)
@@ -193,6 +207,8 @@ func main() {
 }
 
 type rwLayer struct {
+	fs *FileSystem
+
 	path string
 
 	cache map[string]*RWFileMeta
@@ -249,6 +265,106 @@ func (rl *rwLayer) OpenDir(name string, context *fuse.Context) map[string]fuse.D
 	}
 
 	return output
+}
+
+func (rl *rwLayer) Chmod(path string, mode uint32, mtime int64, fctx *fuse.Context) error {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	// Now take a look a the remote node
+	node, err := rl.fs.getNode(path)
+	if err != nil {
+		return nil
+	}
+
+	if node == nil {
+		// FIXME(tsileo): RWFile.Chown should return fuse.EBADF in this case
+		return fmt.Errorf("a remote note should exist")
+	}
+
+	// Next, we re-add it to its dest
+	h := map[string]string{
+		"BlobStash-Filetree-Patch-Ref":  node.Ref,
+		"BlobStash-Filetree-Patch-Mode": strconv.Itoa(int(mode)),
+	}
+
+	dest := filepath.Dir(path)
+	if dest == "." {
+		dest = ""
+	}
+
+	resp, err := rl.fs.kvs.Client().DoReqWithQuery(
+		context.TODO(), "PATCH", "/api/filetree/fs/fs/"+rl.fs.ref+"/"+dest,
+		map[string]string{
+			"mtime":  strconv.Itoa(int(mtime)),
+			"rename": strconv.FormatBool(true),
+		}, h, nil)
+	if err != nil || resp.StatusCode != 200 {
+		return fmt.Errorf("upload failed with resp %s/%+v", resp, err)
+	}
+
+	rwmeta, ok := rl.cache[path]
+	if ok {
+		// Update the rw meta ref if needed
+		newNode := &Node{}
+		defer resp.Body.Close()
+		if err := json.NewDecoder(resp.Body).Decode(newNode); err != nil {
+			return fmt.Errorf("failed to decode PATCH resp: %v", err)
+		}
+		rwmeta.Node = newNode
+		rwmeta.ref = newNode.Ref
+	}
+
+	return nil
+}
+
+func (rl *rwLayer) Utimens(path string, m *time.Time, fctx *fuse.Context) error {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	// Fetch the remote node
+	node, err := rl.fs.getNode(path)
+	if err != nil {
+		return err
+	}
+
+	if node == nil {
+		// FIXME(tsileo): RWFile.Utimens should return fuse.EBADF in this case
+		return fmt.Errorf("a remote node should exists for %s", path)
+	}
+
+	// We PATCH the node, just for updating its mtime
+	h := map[string]string{
+		"BlobStash-Filetree-Patch-Ref": node.Ref,
+	}
+
+	dest := filepath.Dir(path)
+	if dest == "." {
+		dest = ""
+	}
+
+	resp, err := rl.fs.kvs.Client().DoReqWithQuery(
+		context.TODO(), "PATCH", "/api/filetree/fs/fs/"+rl.fs.ref+"/"+dest,
+		map[string]string{
+			"mtime": strconv.Itoa(int(m.Unix())),
+		}, h, nil)
+	if err != nil || resp.StatusCode != 200 {
+		return fmt.Errorf("upload failed with resp %s/%+v", resp, err)
+	}
+
+	rwmeta, ok := rl.cache[path]
+	if ok {
+		// Update the rw meta ref if needed
+		newNode := &Node{}
+		defer resp.Body.Close()
+		if err := json.NewDecoder(resp.Body).Decode(newNode); err != nil {
+			return fmt.Errorf("failed to decode PATCH resp: %v", err)
+		}
+		rwmeta.Node = newNode
+		rwmeta.ref = newNode.Ref
+	}
+
+	return nil
 }
 
 func (rl *rwLayer) Unlink(name string) error {
@@ -496,7 +612,11 @@ func (c *Cache) Close() error {
 	return c.blobsCache.Close()
 }
 
+// Find a cache the executable name for the PID stored in the context
 func (c *Cache) findProcExec(context *fuse.Context) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	pid := int(context.Pid)
 	if exec, ok := c.procCache[pid]; ok {
 		return exec
@@ -515,6 +635,9 @@ func (c *Cache) findProcExec(context *fuse.Context) string {
 
 //func (c *Cache) Stat(ctx context.Context, hash string) (bool, error) {
 func (c *Cache) Stat(hash string) (bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	locStat, err := c.blobsCache.Stat(hash)
 	if err != nil {
 		return false, err
@@ -547,13 +670,13 @@ func (c *Cache) Put(ctx context.Context, hash string, data []byte) error {
 	c.fs.stats.Lock()
 	c.fs.stats.CacheAdded++
 	c.fs.stats.Unlock()
+	// FIXME(tsileo): add a stat/exist check once the data contexes is implemented
+	if err := c.fs.bs.Put(ctx, hash, data); err != nil {
+		return err
+	}
 
 	if err := c.blobsCache.Add(hash, data); err != nil {
 		return err
-	}
-	// FIXME(tsileo): add a stat/exist check once the data contexes is implemented
-	if err := c.fs.bs.Put(ctx, hash, data); err != nil {
-		return nil
 	}
 	return nil
 }
@@ -601,9 +724,10 @@ type FileSystem struct {
 	cache   *Cache
 	stats   *FSStats
 
-	up  *writer.Uploader
-	kvs *kvstore.KvStore
-	bs  *blobstore.BlobStore
+	up         *writer.Uploader
+	kvs        *kvstore.KvStore
+	bs         *blobstore.BlobStore
+	clientUtil *clientutil.ClientUtil
 
 	mu sync.Mutex
 }
@@ -630,6 +754,7 @@ type FSStats struct {
 	CacheAdded int64 `json:"cache_added"`
 
 	FDIndex map[string]*FDInfo `json:"fs_fds_infos"`
+	// TODO(tsileo): store LastEIOs []*EIOInfo{Err, Path, OP}
 }
 
 // FDInfo holds informations about an opened file descriptor
@@ -641,15 +766,16 @@ type FDInfo struct {
 	CreatedAt  time.Time
 }
 
-func NewFileSystem(ref, mountpoint string, debug bool, cache *Cache, cacheDir string, bs *blobstore.BlobStore, kvs *kvstore.KvStore) (*FileSystem, error) {
+func NewFileSystem(ref, mountpoint string, debug bool, cache *Cache, cacheDir string, bs *blobstore.BlobStore, kvs *kvstore.KvStore, cu *clientutil.ClientUtil) (*FileSystem, error) {
 	fs := &FileSystem{
-		cache:   cache,
-		bs:      bs,
-		kvs:     kvs,
-		ref:     ref,
-		debug:   debug,
-		rwLayer: nil,
-		up:      writer.NewUploader(cache),
+		cache:      cache,
+		bs:         bs,
+		kvs:        kvs,
+		clientUtil: cu,
+		ref:        ref,
+		debug:      debug,
+		rwLayer:    nil,
+		up:         writer.NewUploader(cache),
 		stats: &FSStats{
 			Ref:        ref,
 			Mountpoint: mountpoint,
@@ -663,6 +789,7 @@ func NewFileSystem(ref, mountpoint string, debug bool, cache *Cache, cacheDir st
 		return nil, fmt.Errorf("failed to init rwLayer: %v", err)
 	}
 
+	fs.rwLayer.fs = fs
 	cache.fs = fs
 
 	return fs, nil
@@ -712,8 +839,8 @@ func (fs *FileSystem) logOP(opCode, path string, fctx *fuse.Context) {
 	// TODO(tsileo): only if fs.debug
 	fs.stats.Lock()
 	fs.stats.Ops++
-	exec := fs.cache.findProcExec(fctx)
 	fs.stats.Unlock()
+	exec := fs.cache.findProcExec(fctx)
 	log.Printf("OP %s path=/%s pid=%d %s\n", opCode, path, fctx.Pid, exec)
 }
 
@@ -748,7 +875,7 @@ func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse
 	// Quick hack, this happen when an empty root was just initialized and not saved yet
 	if name == "" && node == nil {
 		return &fuse.Attr{
-			Mode:  fuse.S_IFDIR | node.Mode(),
+			Mode:  fuse.S_IFDIR | 0755,
 			Owner: *fuse.CurrentOwner(),
 			Mtime: uint64(fs.stats.startedAt.Unix()),
 			Ctime: uint64(fs.stats.startedAt.Unix()),
@@ -831,7 +958,6 @@ func (fs *FileSystem) OpenDir(name string, fctx *fuse.Context) ([]fuse.DirEntry,
 	}
 	output := []fuse.DirEntry{}
 	for _, dirEntry := range index {
-		fmt.Printf("mode=%s %o %d\n", dirEntry.Name, dirEntry.Mode, dirEntry.Mode)
 		output = append(output, dirEntry)
 	}
 
@@ -869,7 +995,7 @@ func (fs *FileSystem) Open(name string, flags uint32, fctx *fuse.Context) (nodef
 			// XXX(tsileo): is EROFS the right error code
 			return nil, fuse.EROFS
 		}
-		f, err := NewRWFile(context.TODO(), fctx, fs, name, flags, 0, node)
+		f, err := NewRWFile(context.TODO(), fctx, fs, name, flags, 0644, node)
 		if err != nil {
 			fs.logEIO(err)
 			return nil, fuse.EIO
@@ -892,7 +1018,13 @@ func (fs *FileSystem) Open(name string, flags uint32, fctx *fuse.Context) (nodef
 
 func (fs *FileSystem) Utimens(path string, a *time.Time, m *time.Time, fctx *fuse.Context) fuse.Status {
 	fs.logOP("Utimens", path, fctx)
-	return fuse.EPERM
+
+	if err := fs.rwLayer.Utimens(path, m, fctx); err != nil {
+		fs.logEIO(err)
+		return fuse.EIO
+	}
+
+	return fuse.OK
 }
 
 func (fs *FileSystem) Chmod(path string, mode uint32, fctx *fuse.Context) fuse.Status {
@@ -900,37 +1032,8 @@ func (fs *FileSystem) Chmod(path string, mode uint32, fctx *fuse.Context) fuse.S
 
 	mtime := time.Now().Unix()
 
-	// Now take a look a the remote node
-	node, err := fs.getNode(path)
-
-	if err != nil {
+	if err := fs.rwLayer.Chmod(path, mode, mtime, fctx); err != nil {
 		fs.logEIO(err)
-		return fuse.EIO
-	}
-
-	if node == nil {
-		return fuse.ENOENT
-	}
-
-	// Next, we re-add it to its dest
-	h := map[string]string{
-		"BlobStash-Filetree-Patch-Ref":  node.Ref,
-		"BlobStash-Filetree-Patch-Mode": strconv.Itoa(int(mode)),
-	}
-
-	dest := filepath.Dir(path)
-	if dest == "." {
-		dest = ""
-	}
-
-	resp, err := fs.kvs.Client().DoReqWithQuery(
-		context.TODO(), "PATCH", "/api/filetree/fs/fs/"+fs.ref+"/"+dest,
-		map[string]string{
-			"mtime":  strconv.Itoa(int(mtime)),
-			"rename": strconv.FormatBool(true),
-		}, h, nil)
-	if err != nil || resp.StatusCode != 200 {
-		fs.logEIO(fmt.Errorf("upload failed with resp %s/%+v", resp, err))
 		return fuse.EIO
 	}
 
@@ -943,16 +1046,17 @@ func (fs *FileSystem) Chown(path string, uid uint32, gid uint32, fctx *fuse.Cont
 }
 
 func (fs *FileSystem) Truncate(path string, offset uint64, fctx *fuse.Context) fuse.Status {
-	// Will be called on the File instead
-	panic("should never be called")
-	return fuse.EPERM
+	fs.logOP("Truncate", path, fctx)
+	return fuse.ENOSYS
 }
 
 func (fs *FileSystem) Readlink(name string, fctx *fuse.Context) (string, fuse.Status) {
+	fs.logOP("Readlink", name, fctx)
 	return "", fuse.ENOSYS
 }
 
 func (fs *FileSystem) Mknod(name string, mode uint32, dev uint32, fctx *fuse.Context) fuse.Status {
+	fs.logOP("Mknod", name, fctx)
 	return fuse.ENOSYS
 }
 
@@ -1007,6 +1111,7 @@ func (fs *FileSystem) Mkdir(path string, mode uint32, fctx *fuse.Context) fuse.S
 
 func (fs *FileSystem) Unlink(name string, fctx *fuse.Context) fuse.Status {
 	fs.logOP("Unlink", name, fctx)
+	// FIXME(tsileo): lock the fs here
 	if fs.ro {
 		return fuse.EPERM
 	}
@@ -1017,7 +1122,6 @@ func (fs *FileSystem) Unlink(name string, fctx *fuse.Context) fuse.Status {
 	}
 
 	mtime := time.Now().Unix()
-	// XXX(tsileo): should be inside the filetree client?
 	resp, err := fs.kvs.Client().DoReqWithQuery(
 		context.TODO(), "DELETE", "/api/filetree/fs/fs/"+fs.ref+"/"+name,
 		map[string]string{
@@ -1074,6 +1178,7 @@ func (fs *FileSystem) Rmdir(name string, fctx *fuse.Context) fuse.Status {
 }
 
 func (fs *FileSystem) Symlink(pointedTo string, linkName string, fctx *fuse.Context) fuse.Status {
+	fs.logOP("Symlink", fmt.Sprintf("pointed_to=%s link_name=%s", pointedTo, linkName), fctx)
 	return fuse.EPERM
 }
 
@@ -1141,19 +1246,70 @@ func (fs *FileSystem) Rename(oldPath string, newPath string, fctx *fuse.Context)
 }
 
 func (fs *FileSystem) Link(orig string, newName string, fctx *fuse.Context) fuse.Status {
-	// TODO(tsileo): to ENOSYS?
-	return fuse.EPERM
+	fs.logOP("Link", fmt.Sprintf("orig=%s new_name=%s", orig, newName), fctx)
+	return fuse.ENOSYS
 }
 
 func (fs *FileSystem) Access(name string, mode uint32, fctx *fuse.Context) fuse.Status {
 	fs.logOP("Access", name, fctx)
+	// FIXME(tsileo): better impl
 	return fuse.OK
 }
 
 func (fs *FileSystem) Create(path string, flags uint32, mode uint32, fctx *fuse.Context) (nodefs.File, fuse.Status) {
 	fs.logOP("Create", path, fctx)
 
-	f, err := NewRWFile(context.TODO(), fctx, fs, path, flags, mode, nil)
+	mtime := time.Now().Unix()
+
+	// XXX(tsileo): this should be in the rw layer
+	// Only continue if the node don't already exist
+	rnode, err := fs.getNode(path)
+	if err != nil {
+		fs.logEIO(err)
+		return nil, fuse.EIO
+	}
+	if rnode != nil {
+		fs.logEIO(fmt.Errorf("a node already exist at %s", path))
+		return nil, fuse.EIO
+	}
+
+	node := map[string]interface{}{
+		"type":    "file",
+		"name":    filepath.Base(path),
+		"version": "1",
+		"mtime":   mtime,
+		"mode":    mode,
+	}
+
+	d := filepath.Dir(path)
+	if d == "." {
+		d = ""
+	}
+	js, err := json.Marshal(node)
+	if err != nil {
+		fs.logEIO(err)
+		return nil, fuse.EIO
+	}
+	resp, err := fs.kvs.Client().DoReqWithQuery(
+		context.TODO(), "PATCH", "/api/filetree/fs/fs/"+fs.ref+"/"+d,
+		map[string]string{
+			"mtime": strconv.Itoa(int(mtime)),
+		},
+		nil, bytes.NewReader(js))
+	if err != nil || resp.StatusCode != 200 {
+		fs.logEIO(fmt.Errorf("patch failed with status=%d and err=%v", resp.StatusCode, err))
+		return nil, fuse.EIO
+	}
+
+	// Update the rw meta ref
+	newNode := &Node{}
+	defer resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(newNode); err != nil {
+		fs.logEIO(fmt.Errorf("failed to decode PATCH resp: %v", err))
+		return nil, fuse.EIO
+	}
+
+	f, err := NewRWFile(context.TODO(), fctx, fs, path, flags, mode, newNode)
 	if err != nil {
 		fs.logEIO(err)
 		return nil, fuse.EIO
@@ -1236,6 +1392,7 @@ type RWFileMeta struct {
 	Node *Node  `json:"node"`
 	Path string `json:"path"`
 
+	ref          string
 	loopbackPath string
 	filename     string
 	parent       string
@@ -1252,6 +1409,7 @@ func newRWFileMeta(fs *FileSystem, node *Node, path string) *RWFileMeta {
 	return &RWFileMeta{
 		Node:         node, // Store the orignal node (for debug purpose only)
 		Path:         path, // The path (for debug purpose)
+		ref:          node.Ref,
 		loopbackPath: filepath.Join(fs.rwLayer.path, loopbackFilename),
 		filename:     filename,
 		parent:       parent,
@@ -1295,6 +1453,7 @@ func NewRWFile(ctx context.Context, fctx *fuse.Context, fs *FileSystem, path str
 			return nil, err
 		}
 	}
+
 	fh, err := os.OpenFile(meta.loopbackPath, lflags, lmode)
 	if err != nil {
 		return nil, err
@@ -1314,6 +1473,10 @@ func NewRWFile(ctx context.Context, fctx *fuse.Context, fs *FileSystem, path str
 		if err := os.Chtimes(meta.loopbackPath, tmtime, tmtime); err != nil {
 			return nil, err
 		}
+		if err := os.Chmod(meta.loopbackPath, os.FileMode(mode)); err != nil {
+			return nil, err
+		}
+
 		if err := node.Copy(fh, fs, nodeMeta); err != nil {
 			return nil, err
 		}
@@ -1354,6 +1517,13 @@ func NewRWFile(ctx context.Context, fctx *fuse.Context, fs *FileSystem, path str
 	}, nil
 }
 
+func (f *RWFile) logOP(op, extra string) {
+	if extra != "" {
+		extra = " " + extra
+	}
+	f.fs.logOP(fmt.Sprintf("RWFile.%s", op), f.meta.Path+extra, f.fctx)
+}
+
 func (f *RWFile) Hash() string {
 	rwf, err := os.Open(f.meta.loopbackPath)
 	if err != nil {
@@ -1370,8 +1540,71 @@ func (f *RWFile) Hash() string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
+func (f *RWFile) Read(dest []byte, off int64) (fuse.ReadResult, fuse.Status) {
+	f.logOP("Read", fmt.Sprintf("size=%d offset=%d", len(dest), off))
+
+	return f.File.Read(dest, off)
+}
+
+func (f *RWFile) Write(data []byte, off int64) (uint32, fuse.Status) {
+	f.logOP("Write", fmt.Sprintf("size=%d offset=%d", len(data), off))
+	return f.File.Write(data, off)
+}
+
+func (f *RWFile) Chmod(perms uint32) fuse.Status {
+	f.logOP("Chmod", "")
+
+	mtime := time.Now().Unix()
+
+	if err := f.fs.rwLayer.Chmod(f.meta.Path, perms, mtime, f.fctx); err != nil {
+		f.fs.logEIO(err)
+		return fuse.EIO
+	}
+
+	return f.File.Chmod(perms)
+}
+
+func (f *RWFile) Utimens(atime *time.Time, mtime *time.Time) fuse.Status {
+	f.logOP("Utimens", "")
+
+	if err := f.fs.rwLayer.Utimens(f.meta.Path, mtime, f.fctx); err != nil {
+		f.fs.logEIO(err)
+		return fuse.EIO
+	}
+
+	return f.File.Utimens(atime, mtime)
+}
+
+func (f *RWFile) GetAttr(out *fuse.Attr) fuse.Status {
+	f.logOP("Stat", "")
+	attr, err := f.fs.rwLayer.GetAttr(f.meta.Path, f.fctx)
+	if err != nil {
+		f.fs.logEIO(err)
+		return fuse.EIO
+	}
+
+	// if attr is nil, it means the file is already closed
+	if attr == nil {
+		return fuse.EBADF
+	}
+
+	*out = *attr
+
+	return fuse.OK
+}
+
+func (f *RWFile) Chown(uid uint32, gid uint32) fuse.Status {
+	f.logOP("Chown", "")
+	return fuse.ENOSYS
+}
+
+func (f *RWFile) Allocate(off uint64, size uint64, mode uint32) fuse.Status {
+	f.logOP("Allocate", "")
+	return fuse.ENOSYS
+}
+
 func (f *RWFile) Flush() fuse.Status {
-	f.fs.logOP("Flush", f.meta.Path, f.fctx)
+	f.logOP("Flush", "")
 
 	f.fs.mu.Lock()
 	defer f.fs.mu.Unlock()
@@ -1385,7 +1618,6 @@ func (f *RWFile) Flush() fuse.Status {
 
 	// Sometimes the RWFile can still be a file opened in RO mode (if there's another opened file in RW mode)
 	if f.flags&fuse.O_ANYWRITE != 0 && (f.node == nil || f.node.Hash() != f.Hash()) {
-		log.Printf("change has been modified\n")
 		rawNode, err := f.fs.up.PutAndRenameFile(f.meta.loopbackPath, f.meta.filename)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -1415,12 +1647,20 @@ func (f *RWFile) Flush() fuse.Status {
 			return fuse.EIO
 		}
 
+		// Update the rw meta ref
+		newNode := &Node{}
+		defer resp.Body.Close()
+		if err := json.NewDecoder(resp.Body).Decode(newNode); err != nil {
+			f.fs.logEIO(fmt.Errorf("failed to decode PATCH resp: %v", err))
+			return fuse.EIO
+		}
+
+		f.meta.ref = newNode.Ref
+
 		f.fs.stats.Lock()
 		f.fs.stats.UploadedFiles++
 		f.fs.stats.UploadedFilesSize += int64(rawNode.Size)
 		f.fs.stats.Unlock()
-	} else {
-		fmt.Println("no changes")
 	}
 	return fuse.OK
 }
@@ -1431,6 +1671,7 @@ func (f *RWFile) SetInode(inode *nodefs.Inode) {
 }
 
 func (f *RWFile) Release() {
+	f.logOP("Release", "")
 	f.fs.mu.Lock()
 	defer f.fs.mu.Unlock()
 
@@ -1444,7 +1685,6 @@ func (f *RWFile) Release() {
 	if f.inode.AnyFile() == nil {
 		last = true
 	}
-	f.fs.logOP("Release", f.meta.Path, f.fctx)
 
 	// XXX(tsileo): We cannot returns an error here, but it's about deleting the cache, cannot see a better place
 	// as we cannot detect the last flush
@@ -1519,6 +1759,13 @@ type File struct {
 	fs   *FileSystem
 }
 
+func (f *File) logOP(op, extra string) {
+	if extra != "" {
+		extra = " " + extra
+	}
+	f.fs.logOP(fmt.Sprintf("File.%s [ro] %s", op, f.fid), f.path+extra, f.fctx)
+}
+
 func (f *File) SetInode(inode *nodefs.Inode) {
 	f.inode = inode
 }
@@ -1528,11 +1775,13 @@ func (f *File) String() string {
 }
 
 func (f *File) Write(data []byte, off int64) (uint32, fuse.Status) {
+	f.logOP("Write", fmt.Sprintf("size=%d offset=%d", len(data), off))
 	return 0, fuse.EROFS
 }
 
 func (f *File) Read(buf []byte, off int64) (res fuse.ReadResult, code fuse.Status) {
-	f.fs.logOP("Read [ro]", f.path, f.fctx)
+	f.logOP("Read", fmt.Sprintf("size=%d offset=%d", len(buf), off))
+
 	if _, err := f.r.ReadAt(buf, off); err != nil {
 		f.fs.logEIO(err)
 		return nil, fuse.EIO
@@ -1541,7 +1790,7 @@ func (f *File) Read(buf []byte, off int64) (res fuse.ReadResult, code fuse.Statu
 }
 
 func (f *File) Release() {
-	f.fs.logOP("Release [ro]", f.path, f.fctx)
+	f.logOP("Release", "")
 
 	f.fs.stats.Lock()
 	f.fs.stats.OpenedFds--
@@ -1552,12 +1801,12 @@ func (f *File) Release() {
 }
 
 func (f *File) Flush() fuse.Status {
-	f.fs.logOP("Flush [ro]", f.path, f.fctx)
+	f.logOP("Flush", "")
 	return fuse.OK
 }
 
 func (f *File) GetAttr(a *fuse.Attr) fuse.Status {
-	f.fs.logOP("FStat [ro]", f.path, f.fctx)
+	f.logOP("FStat", "")
 	a.Mode = fuse.S_IFREG | f.node.Mode()
 	a.Size = uint64(f.node.Size)
 	a.Ctime = f.node.Ctime()
