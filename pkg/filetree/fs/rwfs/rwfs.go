@@ -206,6 +206,66 @@ func main() {
 	os.Exit(0)
 }
 
+type DebugVFS struct {
+	fs    *FileSystem
+	Path  string
+	attr  *fuse.Attr
+	index map[string]func(string, *fuse.Context) (nodefs.File, error)
+}
+
+func newDebugVFS(fs *FileSystem) *DebugVFS {
+	return &DebugVFS{
+		fs:   fs,
+		Path: ".fs",
+		attr: &fuse.Attr{
+			Mode:  fuse.S_IFDIR | 0755,
+			Owner: *fuse.CurrentOwner(),
+			Mtime: uint64(fs.stats.startedAt.Unix()),
+			Ctime: uint64(fs.stats.startedAt.Unix()),
+		},
+		index: map[string]func(string, *fuse.Context) (nodefs.File, error){
+			"hello": func(name string, _ *fuse.Context) (nodefs.File, error) {
+				return nodefs.NewDataFile([]byte("world")), nil
+			},
+		},
+	}
+}
+
+func (dvfs *DebugVFS) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, bool) {
+	if name == dvfs.Path {
+		return dvfs.attr, true
+	}
+	if _, ok := dvfs.index[filepath.Base(name)]; ok {
+		return &fuse.Attr{
+			Mode:  fuse.S_IFREG | 0444,
+			Mtime: uint64(dvfs.fs.stats.startedAt.Unix()),
+			Ctime: uint64(dvfs.fs.stats.startedAt.Unix()),
+		}, true
+	}
+	return nil, false
+}
+
+func (dvfs *DebugVFS) Open(name string, fctx *fuse.Context) (nodefs.File, error) {
+	if f, ok := dvfs.index[filepath.Base(name)]; ok {
+		return f(name, fctx)
+	}
+	return nil, nil
+}
+
+func (dvfs *DebugVFS) OpenDir(name string, fctx *fuse.Context) ([]fuse.DirEntry, bool) {
+	if name != dvfs.Path {
+		return nil, false
+	}
+	output := []fuse.DirEntry{}
+	for k, _ := range dvfs.index {
+		output = append(output, fuse.DirEntry{
+			Name: k,
+			Mode: fuse.S_IFREG | 0444,
+		})
+	}
+	return output, true
+}
+
 type rwLayer struct {
 	fs *FileSystem
 
@@ -720,6 +780,8 @@ type FileSystem struct {
 	debug bool
 	ro    bool
 
+	debugVFS *DebugVFS
+
 	rwLayer *rwLayer
 	cache   *Cache
 	stats   *FSStats
@@ -789,6 +851,8 @@ func NewFileSystem(ref, mountpoint string, debug bool, cache *Cache, cacheDir st
 		return nil, fmt.Errorf("failed to init rwLayer: %v", err)
 	}
 
+	fs.debugVFS = newDebugVFS(fs)
+
 	fs.rwLayer.fs = fs
 	cache.fs = fs
 
@@ -857,6 +921,10 @@ func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse
 		}, fuse.OK
 	}
 
+	if a, ok := fs.debugVFS.GetAttr(name, fctx); ok {
+		return a, fuse.OK
+	}
+
 	// Check if the requested path is a file already opened for writing
 	rwAttr, err := fs.rwLayer.GetAttr(name, fctx)
 	if err != nil {
@@ -918,6 +986,11 @@ func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse
 func (fs *FileSystem) OpenDir(name string, fctx *fuse.Context) ([]fuse.DirEntry, fuse.Status) {
 	fs.logOP("OpenDir", name, fctx)
 
+	debugDir, ok := fs.debugVFS.OpenDir(name, fctx)
+	if ok {
+		return debugDir, fuse.OK
+	}
+
 	var err error
 	// The real directory is the 1st layer, if a file exists locally as a file it will show up instead of the remote version
 	//if !fs.ro {
@@ -977,6 +1050,15 @@ func (fs *FileSystem) Open(name string, flags uint32, fctx *fuse.Context) (nodef
 			return nil, fuse.EIO
 		}
 		return nodefs.NewDataFile(js), fuse.OK
+	}
+
+	debugFile, err := fs.debugVFS.Open(name, fctx)
+	if err != nil {
+		fs.logEIO(err)
+		return nil, fuse.EIO
+	}
+	if debugFile != nil {
+		return debugFile, fuse.OK
 	}
 
 	node, err := fs.getNode(name)
