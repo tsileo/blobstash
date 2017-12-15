@@ -855,8 +855,7 @@ type FSStats struct {
 	lastMod   time.Time
 	updated   bool
 
-	Ref        string `json:"fs_ref"`
-	Mountpoint string `json:"fs_mountpoint"`
+	Ref string `json:"fs_ref"`
 
 	Ops         int64 `json:"fs_ops"`
 	Eios        int64 `json:"fs_eios"`
@@ -895,10 +894,9 @@ func NewFileSystem(ref, mountpoint string, debug bool, cache *Cache, cacheDir st
 		rwLayer:    nil,
 		up:         writer.NewUploader(cache),
 		stats: &FSStats{
-			Ref:        ref,
-			Mountpoint: mountpoint,
-			startedAt:  time.Now(),
-			FDIndex:    map[string]*FDInfo{},
+			Ref:       ref,
+			startedAt: time.Now(),
+			FDIndex:   map[string]*FDInfo{},
 		},
 	}
 	var err error
