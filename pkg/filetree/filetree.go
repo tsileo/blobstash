@@ -196,24 +196,24 @@ func (ft *FileTree) Register(r *mux.Router, root *mux.Router, basicAuth func(htt
 
 // Node holds the data about the file node (either file/dir), analog to a Meta
 type Node struct {
-	Name       string  `json:"name"`
-	Type       string  `json:"type"`
-	Size       int     `json:"size,omitempty"`
-	Mode       int     `json:"mode,omitempty"`
-	ModTime    string  `json:"mtime"`
-	ChangeTime string  `json:"ctime"`
-	Hash       string  `json:"ref"`
-	Children   []*Node `json:"children,omitempty"`
+	Name       string  `json:"name" msgpack:"n"`
+	Type       string  `json:"type" msgpack:"t"`
+	Size       int     `json:"size,omitempty" msgpack:"s,omitempty"`
+	Mode       int     `json:"mode,omitempty" msgpack:"mo,omitempty"`
+	ModTime    string  `json:"mtime" msgpack:"mt"`
+	ChangeTime string  `json:"ctime" msgpack:"ct"`
+	Hash       string  `json:"ref" msgpack:"r"`
+	Children   []*Node `json:"children,omitempty" msgpack:"c,omitempty"`
 
 	// FIXME(ts): rename to Metadata
-	Data map[string]interface{} `json:"metadata,omitempty"`
-	Info *Info                  `json:"info,omitempty"`
+	Data map[string]interface{} `json:"metadata,omitempty" msgpack:"md,omitempty"`
+	Info *Info                  `json:"info,omitempty" msgpack:"i,omitempty"`
 
-	Meta   *rnode.RawNode `json:"-"`
-	parent *Node          `json:"-"`
-	fs     *FS            `json:"-"`
+	Meta   *rnode.RawNode `json:"-" msgpack:"-"`
+	parent *Node          `json:"-" msgpack:"-"`
+	fs     *FS            `json:"-" msgpack:"-"`
 
-	URL string `json:"url,omitempty"`
+	URL string `json:"url,omitempty" msgpack:"u,omitempty"`
 }
 
 // Update the given node with the given meta, the updated/new node is assumed to be already saved
@@ -452,7 +452,7 @@ func (ft *FileTree) FS(ctx context.Context, name, prefixFmt string, newState boo
 			}
 		} else {
 			// Set the existing ref
-			kvv, _, err := ft.kvStore.Versions(ctx, fmt.Sprintf(prefixFmt, name), asOf, 1)
+			kvv, _, err := ft.kvStore.Versions(ctx, fmt.Sprintf(prefixFmt, name), strconv.Itoa(asOf), 1)
 			switch err {
 			case nil:
 				if len(kvv.Versions) > 0 {
@@ -817,7 +817,7 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 			}
 
 			// Returns the Node as JSON
-			httputil.WriteJSON(w, node)
+			httputil.MarshalAndWrite(r, w, node)
 
 		case "POST":
 			// FIXME(tsileo): add a way to upload a file as public ? like AWS S3 public-read canned ACL

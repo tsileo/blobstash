@@ -9,9 +9,51 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/vmihailenco/msgpack"
+
 	"a4.io/blobstash/pkg/logger"
 	// "github.com/tsileo/blobstash/permissions"
 )
+
+const ResponseFormatHeader = "BlobStash-API-Response-Format"
+const (
+	jsonMimeType    = "application/json"
+	msgpackMimeType = "application/msgpack"
+)
+
+// FIXME(tsileo): a EncodeAndWrite  for []byte that support plain-text, snappy or lz4?
+
+func MarshalAndWrite(r *http.Request, w http.ResponseWriter, data interface{}) bool {
+	responseFormat := jsonMimeType
+	if f := r.Header.Get("Accept"); f != "" && f != "*/*" {
+		responseFormat = f
+	}
+
+	w.Header().Set("Content-Type", responseFormat)
+
+	var out []byte
+	var err error
+
+	switch responseFormat {
+	case jsonMimeType:
+		out, err = json.Marshal(data)
+	case msgpackMimeType:
+		out, err = msgpack.Marshal(data)
+	default:
+		// Return a 406
+		msg := fmt.Sprintf("Requested encoding \"%s\" (via Accept) is not supported, try: application/json", responseFormat)
+		http.Error(w, msg, http.StatusNotAcceptable) // 406
+		return false
+	}
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return false
+	}
+
+	w.Write(out)
+	return true
+}
 
 // WriteJSON marshal and output the data as JSON with the right content-type
 func WriteJSON(w http.ResponseWriter, data interface{}) {

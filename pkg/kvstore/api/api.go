@@ -49,11 +49,22 @@ func (kv *KvStoreAPI) keysHandler() func(http.ResponseWriter, *http.Request) {
 			if err != nil {
 				panic(err)
 			}
-			keys := []*keyValue{}
-			rawKeys, cursor, err := kv.kv.Keys(ctx, start, "\xff", limit)
+			reverse, err := q.GetBoolDefault("reverse", false)
 			if err != nil {
 				panic(err)
 			}
+			keys := []*keyValue{}
+			var rawKeys []*vkv.KeyValue
+			var cursor string
+			if reverse {
+				rawKeys, cursor, err = kv.kv.ReverseKeys(ctx, start, "\xff", limit)
+			} else {
+				rawKeys, cursor, err = kv.kv.Keys(ctx, start, "\xff", limit)
+			}
+			if err != nil {
+				panic(err)
+			}
+
 			for _, kv := range rawKeys {
 				keys = append(keys, toKeyValue(kv))
 			}
@@ -87,10 +98,7 @@ func (kv *KvStoreAPI) versionsHandler() func(http.ResponseWriter, *http.Request)
 			if err != nil {
 				panic(err)
 			}
-			start, err := q.GetIntDefault("cursor", -1)
-			if err != nil {
-				panic(err)
-			}
+			start := q.GetDefault("cursor", "0")
 			var out []*keyValue
 			resp, cursor, err := kv.kv.Versions(ctx, key, start, limit)
 			for _, v := range resp.Versions {

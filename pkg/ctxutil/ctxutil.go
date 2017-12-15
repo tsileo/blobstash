@@ -4,16 +4,28 @@ import (
 	"context"
 )
 
-const NamespaceHeader = "BlobStash-Namespace"
-
-const FileTreeHostnameHeader = "BlobStash-FileTree-Hostname"
+const (
+	StashNameHeader        = "BlobStash-Stash-Name"
+	FileTreeHostnameHeader = "BlobStash-FileTree-Hostname"
+	NamespaceHeader        = "BlobStash-Namespace"
+)
 
 type key int
 
 const (
-	namespaceKey        key = 0
-	filetreeHostnameKey key = 1
+	stashNamekey = iota
+	filetreeHostnameKey
+	namespaceKey
 )
+
+func WithStashName(ctx context.Context, name string) context.Context {
+	return context.WithValue(ctx, stashNamekey, name)
+}
+
+func StashName(ctx context.Context) (string, bool) {
+	h, ok := ctx.Value(stashNamekey).(string)
+	return h, ok
+}
 
 func WithFileTreeHostname(ctx context.Context, hostname string) context.Context {
 	return context.WithValue(ctx, filetreeHostnameKey, hostname)

@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/vmihailenco/msgpack"
 )
 
 var ErrBlobNotFound = errors.New("blob not found")
@@ -163,18 +165,19 @@ func WithAPIKey(apiKey string) func(*http.Request) error {
 	}
 }
 
-func WithUserAgent(ua string) func(*http.Request) error {
-	return func(request *http.Request) error {
-		request.Header.Set("User-Agent", ua)
-		return nil
-	}
-}
-
 func WithHeader(name, value string) func(*http.Request) error {
 	return func(request *http.Request) error {
 		request.Header.Set(name, value)
 		return nil
 	}
+}
+
+func WithUserAgent(ua string) func(*http.Request) error {
+	return WithHeader("User-Agent", ua)
+}
+
+func EnableMsgpack() func(*http.Request) error {
+	return WithHeader("Accept", "application/msgpack")
 }
 
 type ClientUtil struct {
@@ -195,8 +198,82 @@ func NewClientUtil(host string, options ...func(*http.Request) error) *ClientUti
 	}
 }
 
+type BadStatusCodeError struct {
+	Expected           int
+	ResponseStatusCode int
+	ResponseBody       []byte
+	RequestMethod      string
+	RequestURL         string
+
+	// In case it failed before getting the response
+	Err error
+}
+
+func (e *BadStatusCodeError) IsNotFound() bool {
+	if e.ResponseStatusCode == http.StatusNotFound {
+		return true
+	}
+	return false
+}
+
+func (e *BadStatusCodeError) Error() string {
+	if e.Err != nil {
+		return e.Err.Error()
+	}
+
+	return fmt.Sprintf("got status %d (expected %d) for %s request for %s: %s",
+		e.ResponseStatusCode, e.Expected, e.RequestMethod, e.RequestURL, e.ResponseBody)
+}
+
+func ExpectStatusCode(resp *http.Response, status int) *BadStatusCodeError {
+	if resp.StatusCode == status {
+		return nil
+	}
+
+	// Not the expected status
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return &BadStatusCodeError{Err: err}
+	}
+
+	return &BadStatusCodeError{
+		Expected:           status,
+		ResponseStatusCode: resp.StatusCode,
+		ResponseBody:       body,
+		RequestURL:         resp.Request.URL.String(),
+		RequestMethod:      resp.Request.Method,
+	}
+}
+
+func Unmarshal(resp *http.Response, out interface{}) error {
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	switch contentType {
+	case "application/json":
+		if err := json.Unmarshal(body, out); err != nil {
+			return err
+		}
+		return nil
+	case "application/msgpack":
+		if err := msgpack.Unmarshal(body, out); err != nil {
+			return err
+		}
+		return nil
+	}
+	return fmt.Errorf("unsupported \"%s\" content type", contentType)
+}
+
+func (client *ClientUtil) Get(path string, options ...func(*http.Request) error) (*http.Response, error) {
+	return client.Do("GET", path, nil, options...)
+}
+
 // DoReq "do" the request and returns the `*http.Response`
-func (client *ClientUtil) Do(ctx context.Context, method, path string, body io.Reader, options ...func(*http.Request) error) (*http.Response, error) {
+func (client *ClientUtil) Do(method, path string, body io.Reader, options ...func(*http.Request) error) (*http.Response, error) {
+	// TODO(tsileo): a special/helper error for bad status code in Do that can return a BadStatusCodeError?
 	request, err := http.NewRequest(method, fmt.Sprintf("%s%s", client.host, path), body)
 	if err != nil {
 		return nil, err

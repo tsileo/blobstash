@@ -10,11 +10,12 @@ import (
 
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/blobstore"
-	_ "a4.io/blobstash/pkg/ctxutil"
+	"a4.io/blobstash/pkg/ctxutil"
 	"a4.io/blobstash/pkg/hub"
 	"a4.io/blobstash/pkg/kvstore"
 	"a4.io/blobstash/pkg/meta"
 	"a4.io/blobstash/pkg/stash/store"
+	"a4.io/blobstash/pkg/vkv"
 )
 
 type dataContext struct {
@@ -195,7 +196,10 @@ func (s *Stash) Root() store.DataContext {
 
 func (s *Stash) dataContext(ctx context.Context) (*dataContext, error) {
 	// TODO(tsileo): handle destroyed context
-	// FIXME(tsileo): add a BlobStash-Stash-Name header
+	name, _ := ctxutil.Namespace(ctx)
+	if ctx, ok := s.DataContextByName(name); ok {
+		return ctx, nil
+	}
 	return s.rootDataContext, nil
 }
 
@@ -225,11 +229,15 @@ func (s *Stash) BlobStore() *BlobStore {
 	return &BlobStore{s}
 }
 
+func (s *Stash) KvStore() *KvStore {
+	return &KvStore{s}
+}
+
 type BlobStore struct {
 	s *Stash
 }
 
-func (bs *BlobStore) Close() error { return nil }
+func (bs *BlobStore) Close() error { return nil } // TODO(tsileo): check if no closing is needed?
 
 func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
 	dataContext, err := bs.s.dataContext(ctx)
@@ -262,4 +270,58 @@ func (bs *BlobStore) Enumerate(ctx context.Context, start, end string, limit int
 		return nil, "", err
 	}
 	return dataContext.BlobStoreProxy().Enumerate(ctx, start, end, limit)
+}
+
+type KvStore struct {
+	s *Stash
+}
+
+func (kv *KvStore) Close() error { return nil }
+
+func (kv *KvStore) Put(ctx context.Context, key, ref string, data []byte, version int) (*vkv.KeyValue, error) {
+	dataContext, err := kv.s.dataContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return dataContext.KvStoreProxy().Put(ctx, key, ref, data, version)
+}
+
+func (kv *KvStore) Get(ctx context.Context, key string, version int) (*vkv.KeyValue, error) {
+	dataContext, err := kv.s.dataContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return dataContext.KvStoreProxy().Get(ctx, key, version)
+}
+
+func (kv *KvStore) GetMetaBlob(ctx context.Context, key string, version int) (string, error) {
+	dataContext, err := kv.s.dataContext(ctx)
+	if err != nil {
+		return "", err
+	}
+	return dataContext.KvStoreProxy().GetMetaBlob(ctx, key, version)
+}
+
+func (kv *KvStore) Versions(ctx context.Context, key, start string, limit int) (*vkv.KeyValueVersions, string, error) {
+	dataContext, err := kv.s.dataContext(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	return dataContext.KvStoreProxy().Versions(ctx, key, start, limit)
+}
+
+func (kv *KvStore) Keys(ctx context.Context, start, end string, limit int) ([]*vkv.KeyValue, string, error) {
+	dataContext, err := kv.s.dataContext(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	return dataContext.KvStoreProxy().Keys(ctx, start, end, limit)
+}
+
+func (kv *KvStore) ReverseKeys(ctx context.Context, start, end string, limit int) ([]*vkv.KeyValue, string, error) {
+	dataContext, err := kv.s.dataContext(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	return dataContext.KvStoreProxy().ReverseKeys(ctx, start, end, limit)
 }

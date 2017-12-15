@@ -111,7 +111,8 @@ func New(conf *config.Config) (*Server, error) {
 
 	blobstore := cstash.BlobStore()
 	// FIXME(tsileo): test the stash with kvstore
-	kvstore := rootKvstore
+	//kvstore := rootKvstore
+	kvstore := cstash.KvStore()
 
 	kvStoreAPI.New(kvstore).Register(s.router.PathPrefix("/api/kvstore").Subrouter(), basicAuth)
 	// FIXME(tsileo): handle middleware in the `Register` interface

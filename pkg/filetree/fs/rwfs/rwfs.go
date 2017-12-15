@@ -142,7 +142,7 @@ func main() {
 				log.Printf("DEBUG:\n")
 				fmt.Printf("[fs]\nfs.ref=%s fs.ops=%d fs.fds=%d fs.fds_rw=%d fs.eio=%d fs.uptime=%v\n", root.stats.Ref, root.stats.Ops, root.stats.OpenedFds, root.stats.RWOpenedFds, root.stats.Eios, time.Since(root.stats.startedAt))
 				fmt.Printf("[cache]\ncache.hits=%d cache.hits_pct=%.2f cache.reqs=%d cache.added=%d cache.len=%d cache.size=%v\n", root.stats.CacheHits, float64(root.stats.CacheHits)*100.0/float64(root.stats.CacheReqs), root.stats.CacheReqs, root.stats.CacheAdded, root.cache.blobsCache.Len(), humanize.Bytes(uint64(root.cache.blobsCache.Size())))
-				fmt.Printf("[blobstash]\nblobstash.uploaded_files=%d blobstash.uploaded_files_size=%s blobstash.remote_stat=%d\n", root.stats.UploadedFiles, humanize.Bytes(uint64(root.stats.UploadedFilesSize)), root.stats.RemoteStats)
+				fmt.Printf("[blobstash]\nblobstash.uploaded_files=%d blobstash.uploaded_files_size=%s blobstash.remote_stat=%d\n", root.stats.UploadedFiles, humanize.Bytes(uint64(root.stats.UploadedFilesSize)), root.stats.RemoteStat)
 				//fmt.Printf("[rw cache]rwlayer cached: %+v %+v\n", root.rwLayer.cache, root.rwLayer.index)
 				fmt.Printf("[fds]\n")
 				if len(root.stats.FDIndex) == 0 {
@@ -189,6 +189,25 @@ func main() {
 	go state.Serve()
 	log.Println("mounted successfully")
 
+	// Start a loop to make a GC 10 minutes after the last modification (if any)
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		for tick := range ticker.C {
+			fmt.Printf("tick: %v\n", tick)
+			root.stats.Lock()
+			if !root.stats.lastMod.IsZero() && root.stats.updated {
+				// FIXME(tsileo): make the delay configurable
+				if tick.Sub(root.stats.lastMod) > 300*time.Second {
+					root.stats.updated = false
+					// FIXME(tsileo): GC the stash
+					// FIXME(tsileo): when reset (i.e. destroy) the stash,
+					// it should be re-created automatically at the first request.
+				}
+			}
+			root.stats.Unlock()
+		}
+	}()
+
 	// Be ready to cleanup if we receive a kill signal
 	cs := make(chan os.Signal, 1)
 	signal.Notify(cs, os.Interrupt,
@@ -213,20 +232,55 @@ type DebugVFS struct {
 	index map[string]func(string, *fuse.Context) (nodefs.File, error)
 }
 
+func newVFSEntry(content func() interface{}) func(string, *fuse.Context) (nodefs.File, error) {
+	return func(name string, _ *fuse.Context) (nodefs.File, error) {
+		return nodefs.NewDataFile([]byte(fmt.Sprintf("%v", content()))), nil
+	}
+}
+
 func newDebugVFS(fs *FileSystem) *DebugVFS {
 	return &DebugVFS{
 		fs:   fs,
-		Path: ".fs",
+		Path: "fs",
 		attr: &fuse.Attr{
 			Mode:  fuse.S_IFDIR | 0755,
 			Owner: *fuse.CurrentOwner(),
 			Mtime: uint64(fs.stats.startedAt.Unix()),
 			Ctime: uint64(fs.stats.startedAt.Unix()),
 		},
+		// FIXME(tsileo): more fine grained directory a la /proc on Linux,
+		// also find a way to handle the /fs/new_snapshot file (write a comment in it and it snapshot+sync the stash
+		// TODO(tsileo): find a way to list info about the opened FDs (one file per FD with the PID,
+		// path...)
 		index: map[string]func(string, *fuse.Context) (nodefs.File, error){
-			"hello": func(name string, _ *fuse.Context) (nodefs.File, error) {
-				return nodefs.NewDataFile([]byte("world")), nil
+			"debug.json": func(name string, _ *fuse.Context) (nodefs.File, error) {
+				js, err := json.Marshal(&fs.stats)
+				if err != nil {
+					return nil, err
+				}
+				return nodefs.NewDataFile(js), nil
 			},
+			"ref": newVFSEntry(func() interface{} {
+				return fs.stats.Ref
+			}),
+			"eios": newVFSEntry(func() interface{} {
+				return fs.stats.Eios
+			}),
+			"fds": newVFSEntry(func() interface{} {
+				return fs.stats.OpenedFds
+			}),
+			"fds_rw": newVFSEntry(func() interface{} {
+				return fs.stats.RWOpenedFds
+			}),
+			"ops": newVFSEntry(func() interface{} {
+				return fs.stats.Ops
+			}),
+			"synced": newVFSEntry(func() interface{} {
+				return !fs.stats.updated
+			}),
+			"last_mod": newVFSEntry(func() interface{} {
+				return fs.stats.lastMod.Unix()
+			}),
 		},
 	}
 }
@@ -560,15 +614,15 @@ func newRWLayer(path string) (*rwLayer, error) {
 }
 
 type Node struct {
-	Name       string                 `json:"name"`
-	Ref        string                 `json:"ref"`
-	Size       int                    `json:"size"`
-	Type       string                 `json:"type"`
-	Children   []*Node                `json:"children"`
-	Metadata   map[string]interface{} `json:"metadata"`
-	ModTime    string                 `json:"mtime"`
-	ChangeTime string                 `json:"ctime"`
-	RawMode    int                    `json:"mode"`
+	Name       string                 `json:"name" msgpack:"n"`
+	Ref        string                 `json:"ref" msgpack:"r"`
+	Size       int                    `json:"size" msgpack:"s,omitempty"`
+	Type       string                 `json:"type" msgpack:"t"`
+	Children   []*Node                `json:"children" msgpack:"c,omitempty"`
+	Metadata   map[string]interface{} `json:"metadata" msgpack:"md,omitempty"`
+	ModTime    string                 `json:"mtime" msgpack:"mt"`
+	ChangeTime string                 `json:"ctime" msgpack:"ct"`
+	RawMode    int                    `json:"mode" msgpack:"mo"`
 }
 
 func (n *Node) Mode() uint32 {
@@ -798,6 +852,8 @@ type FileSystem struct {
 type FSStats struct {
 	sync.Mutex
 	startedAt time.Time
+	lastMod   time.Time
+	updated   bool
 
 	Ref        string `json:"fs_ref"`
 	Mountpoint string `json:"fs_mountpoint"`
@@ -807,7 +863,7 @@ type FSStats struct {
 	OpenedFds   int64 `json:"fs_fds"`
 	RWOpenedFds int64 `json:"fs_rw_fds"`
 
-	RemoteStats       int64 `json:"blobstash_remote_stat"`
+	RemoteStat        int64 `json:"blobstash_remote_stat"`
 	UploadedFiles     int64 `json:"blobstash_uploaded_files"`
 	UploadedFilesSize int64 `json:"blobstash_uploaded_files_size"`
 
@@ -862,21 +918,36 @@ func NewFileSystem(ref, mountpoint string, debug bool, cache *Cache, cacheDir st
 // getNode fetches the node at path from BlobStash, like a "remote stat".
 func (fs *FileSystem) getNode(path string) (*Node, error) {
 	fs.stats.Lock()
-	fs.stats.RemoteStats++
+	fs.stats.RemoteStat++
 	fs.stats.Unlock()
 
 	node := &Node{}
-	if err := fs.kvs.Client().GetJSON(context.TODO(), "/api/filetree/fs/fs/"+fs.ref+"/"+path, nil, &node); err != nil {
-		if err == clientutil.ErrNotFound {
+	// TODO(tsileo): enable msgpack on the client, not on each request
+	resp, err := fs.clientUtil.Get("/api/filetree/fs/fs/"+fs.ref+"/"+path,
+		clientutil.EnableMsgpack())
+	if err != nil {
+		return nil, err
+	}
+	// TODO(tsileo): ensure all resp body are closed
+	defer resp.Body.Close()
+
+	if err := clientutil.ExpectStatusCode(resp, 200); err != nil {
+		if err.IsNotFound() {
+			// Return nil as ENOENT
 			return nil, nil
 		}
 		return nil, err
 	}
+
+	if err := clientutil.Unmarshal(resp, node); err != nil {
+		return nil, err
+	}
+
 	return node, nil
 }
 
 func (fs *FileSystem) String() string {
-	return fmt.Sprintf("FileSystem(%s)", fs.ref)
+	return fmt.Sprintf("BlobFS(%s)", fs.ref)
 }
 
 func (fs *FileSystem) SetDebug(debug bool) {
@@ -884,7 +955,6 @@ func (fs *FileSystem) SetDebug(debug bool) {
 }
 
 func (*FileSystem) StatFs(name string) *fuse.StatfsOut {
-	log.Println("OP StatFs")
 	return &fuse.StatfsOut{}
 }
 
@@ -899,28 +969,25 @@ func (fs *FileSystem) logEIO(err error) {
 	fs.stats.Eios++
 }
 
-func (fs *FileSystem) logOP(opCode, path string, fctx *fuse.Context) {
-	// TODO(tsileo): only if fs.debug
+func (fs *FileSystem) logOP(opCode, path string, write bool, fctx *fuse.Context) {
 	fs.stats.Lock()
 	fs.stats.Ops++
+	if write {
+		fs.stats.updated = true
+		fs.stats.lastMod = time.Now()
+	}
 	fs.stats.Unlock()
+	// TODO(tsileo): only if fs.debug
 	exec := fs.cache.findProcExec(fctx)
 	log.Printf("OP %s path=/%s pid=%d %s\n", opCode, path, fctx.Pid, exec)
 }
 
 func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse.Status) {
+	fs.logOP("Stat", name, false, fctx)
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 
-	fs.logOP("Stat", name, fctx)
-
 	// First, check if a debug/fake data file is requested
-	if name == ".fs_infos" {
-		return &fuse.Attr{
-			Mode: fuse.S_IFREG | 0777,
-		}, fuse.OK
-	}
-
 	if a, ok := fs.debugVFS.GetAttr(name, fctx); ok {
 		return a, fuse.OK
 	}
@@ -939,6 +1006,10 @@ func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse
 
 	// The is not already opened for writing, contact BlobStash
 	node, err := fs.getNode(name)
+	if err != nil {
+		fs.logEIO(err)
+		return nil, fuse.EIO
+	}
 
 	// Quick hack, this happen when an empty root was just initialized and not saved yet
 	if name == "" && node == nil {
@@ -948,11 +1019,6 @@ func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse
 			Mtime: uint64(fs.stats.startedAt.Unix()),
 			Ctime: uint64(fs.stats.startedAt.Unix()),
 		}, fuse.OK
-	}
-
-	if err != nil {
-		fs.logEIO(err)
-		return nil, fuse.EIO
 	}
 
 	if node == nil {
@@ -968,6 +1034,7 @@ func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse
 		}, fuse.OK
 	}
 
+	// The node is a file
 	return &fuse.Attr{
 		Mode:  fuse.S_IFREG | node.Mode(),
 		Size:  uint64(node.Size),
@@ -977,14 +1044,8 @@ func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse
 	}, fuse.OK
 }
 
-// FIXME(tsileo): needed?
-// func (fs *FileSystem) SetAttr(input *fuse.SetAttrIn, out *fuse.AttrOut) (code fuse.Status) {
-// log.Printf("OP SetAttr %+v %+v", input, out)
-// return fuse.EPERM
-// }
-
 func (fs *FileSystem) OpenDir(name string, fctx *fuse.Context) ([]fuse.DirEntry, fuse.Status) {
-	fs.logOP("OpenDir", name, fctx)
+	fs.logOP("OpenDir", name, false, fctx)
 
 	debugDir, ok := fs.debugVFS.OpenDir(name, fctx)
 	if ok {
@@ -999,9 +1060,17 @@ func (fs *FileSystem) OpenDir(name string, fctx *fuse.Context) ([]fuse.DirEntry,
 		index = map[string]fuse.DirEntry{}
 	}
 
+	// Quick hack to add the magic "/fs" directory
+	if name == "" {
+		// The root is requested, we want to show the ".fs" dir
+		index["fs"] = fuse.DirEntry{
+			Name: "fs",
+			Mode: uint32(fuse.S_IFDIR | 0755),
+		}
+	}
+
 	// Now take a look a the remote node
 	node, err := fs.getNode(name)
-
 	if err != nil {
 		fs.logEIO(err)
 		return nil, fuse.EIO
@@ -1038,19 +1107,9 @@ func (fs *FileSystem) OpenDir(name string, fctx *fuse.Context) ([]fuse.DirEntry,
 }
 
 func (fs *FileSystem) Open(name string, flags uint32, fctx *fuse.Context) (nodefs.File, fuse.Status) {
-	fs.logOP("Open", name, fctx)
+	fs.logOP("Open", name, false, fctx)
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
-
-	// Check if ti's a debug/fake data dile
-	if name == ".fs_infos" {
-		js, err := json.Marshal(&fs.stats)
-		if err != nil {
-			fs.logEIO(err)
-			return nil, fuse.EIO
-		}
-		return nodefs.NewDataFile(js), fuse.OK
-	}
 
 	debugFile, err := fs.debugVFS.Open(name, fctx)
 	if err != nil {
@@ -1072,7 +1131,6 @@ func (fs *FileSystem) Open(name string, flags uint32, fctx *fuse.Context) (nodef
 	fs.rwLayer.mu.Unlock()
 
 	if flags&fuse.O_ANYWRITE != 0 || rwExists {
-		log.Printf("OP Open write mode")
 		if flags&fuse.O_ANYWRITE != 0 && fs.ro {
 			// XXX(tsileo): is EROFS the right error code
 			return nil, fuse.EROFS
@@ -1099,7 +1157,7 @@ func (fs *FileSystem) Open(name string, flags uint32, fctx *fuse.Context) (nodef
 }
 
 func (fs *FileSystem) Utimens(path string, a *time.Time, m *time.Time, fctx *fuse.Context) fuse.Status {
-	fs.logOP("Utimens", path, fctx)
+	fs.logOP("Utimens", path, true, fctx)
 
 	if err := fs.rwLayer.Utimens(path, m, fctx); err != nil {
 		fs.logEIO(err)
@@ -1110,7 +1168,7 @@ func (fs *FileSystem) Utimens(path string, a *time.Time, m *time.Time, fctx *fus
 }
 
 func (fs *FileSystem) Chmod(path string, mode uint32, fctx *fuse.Context) fuse.Status {
-	fs.logOP("Chmod", path, fctx)
+	fs.logOP("Chmod", path, true, fctx)
 
 	mtime := time.Now().Unix()
 
@@ -1123,27 +1181,27 @@ func (fs *FileSystem) Chmod(path string, mode uint32, fctx *fuse.Context) fuse.S
 }
 
 func (fs *FileSystem) Chown(path string, uid uint32, gid uint32, fctx *fuse.Context) fuse.Status {
-	fs.logOP("Chown", path, fctx)
+	fs.logOP("Chown", path, false, fctx)
 	return fuse.ENOSYS
 }
 
 func (fs *FileSystem) Truncate(path string, offset uint64, fctx *fuse.Context) fuse.Status {
-	fs.logOP("Truncate", path, fctx)
+	fs.logOP("Truncate", path, false, fctx)
 	return fuse.ENOSYS
 }
 
 func (fs *FileSystem) Readlink(name string, fctx *fuse.Context) (string, fuse.Status) {
-	fs.logOP("Readlink", name, fctx)
+	fs.logOP("Readlink", name, false, fctx)
 	return "", fuse.ENOSYS
 }
 
 func (fs *FileSystem) Mknod(name string, mode uint32, dev uint32, fctx *fuse.Context) fuse.Status {
-	fs.logOP("Mknod", name, fctx)
+	fs.logOP("Mknod", name, false, fctx)
 	return fuse.ENOSYS
 }
 
 func (fs *FileSystem) Mkdir(path string, mode uint32, fctx *fuse.Context) fuse.Status {
-	fs.logOP("Mkdir", path, fctx)
+	fs.logOP("Mkdir", path, true, fctx)
 
 	if fs.ro {
 		return fuse.EPERM
@@ -1192,7 +1250,7 @@ func (fs *FileSystem) Mkdir(path string, mode uint32, fctx *fuse.Context) fuse.S
 }
 
 func (fs *FileSystem) Unlink(name string, fctx *fuse.Context) fuse.Status {
-	fs.logOP("Unlink", name, fctx)
+	fs.logOP("Unlink", name, true, fctx)
 	// FIXME(tsileo): lock the fs here
 	if fs.ro {
 		return fuse.EPERM
@@ -1226,7 +1284,7 @@ func (fs *FileSystem) Unlink(name string, fctx *fuse.Context) fuse.Status {
 }
 
 func (fs *FileSystem) Rmdir(name string, fctx *fuse.Context) fuse.Status {
-	fs.logOP("Rmdir", name, fctx)
+	fs.logOP("Rmdir", name, true, fctx)
 	if fs.ro {
 		return fuse.EPERM
 	}
@@ -1260,12 +1318,12 @@ func (fs *FileSystem) Rmdir(name string, fctx *fuse.Context) fuse.Status {
 }
 
 func (fs *FileSystem) Symlink(pointedTo string, linkName string, fctx *fuse.Context) fuse.Status {
-	fs.logOP("Symlink", fmt.Sprintf("pointed_to=%s link_name=%s", pointedTo, linkName), fctx)
+	fs.logOP("Symlink", fmt.Sprintf("pointed_to=%s link_name=%s", pointedTo, linkName), false, fctx)
 	return fuse.EPERM
 }
 
 func (fs *FileSystem) Rename(oldPath string, newPath string, fctx *fuse.Context) fuse.Status {
-	fs.logOP("Rename", fmt.Sprintf("%s new=%s", oldPath, newPath), fctx)
+	fs.logOP("Rename", fmt.Sprintf("%s new=%s", oldPath, newPath), true, fctx)
 
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
@@ -1328,18 +1386,18 @@ func (fs *FileSystem) Rename(oldPath string, newPath string, fctx *fuse.Context)
 }
 
 func (fs *FileSystem) Link(orig string, newName string, fctx *fuse.Context) fuse.Status {
-	fs.logOP("Link", fmt.Sprintf("orig=%s new_name=%s", orig, newName), fctx)
+	fs.logOP("Link", fmt.Sprintf("orig=%s new_name=%s", orig, newName), false, fctx)
 	return fuse.ENOSYS
 }
 
 func (fs *FileSystem) Access(name string, mode uint32, fctx *fuse.Context) fuse.Status {
-	fs.logOP("Access", name, fctx)
+	fs.logOP("Access", name, false, fctx)
 	// FIXME(tsileo): better impl
 	return fuse.OK
 }
 
 func (fs *FileSystem) Create(path string, flags uint32, mode uint32, fctx *fuse.Context) (nodefs.File, fuse.Status) {
-	fs.logOP("Create", path, fctx)
+	fs.logOP("Create", path, true, fctx)
 
 	mtime := time.Now().Unix()
 
@@ -1401,7 +1459,7 @@ func (fs *FileSystem) Create(path string, flags uint32, mode uint32, fctx *fuse.
 }
 
 func (fs *FileSystem) GetXAttr(name string, attr string, fctx *fuse.Context) ([]byte, fuse.Status) {
-	fs.logOP("GetXAttr", name, fctx)
+	fs.logOP("GetXAttr", name, false, fctx)
 	node, err := fs.getNode(name)
 	if err != nil {
 		fs.logEIO(err)
@@ -1426,12 +1484,12 @@ func (fs *FileSystem) GetXAttr(name string, attr string, fctx *fuse.Context) ([]
 }
 
 func (fs *FileSystem) SetXAttr(name string, attr string, data []byte, flags int, context *fuse.Context) fuse.Status {
-	fs.logOP("SetXAttr", name, context)
+	fs.logOP("SetXAttr", name, false, context)
 	return fuse.EPERM
 }
 
 func (fs *FileSystem) ListXAttr(name string, fctx *fuse.Context) ([]string, fuse.Status) {
-	fs.logOP("ListXAttr", name, fctx)
+	fs.logOP("ListXAttr", name, false, fctx)
 
 	// FIXME(tsileo): what to do about Xattr for opened rwfile?
 
@@ -1455,7 +1513,7 @@ func (fs *FileSystem) ListXAttr(name string, fctx *fuse.Context) ([]string, fuse
 }
 
 func (fs *FileSystem) RemoveXAttr(name string, attr string, fctx *fuse.Context) fuse.Status {
-	fs.logOP("RemoveXAttr", name, fctx)
+	fs.logOP("RemoveXAttr", name, false, fctx)
 	return fuse.OK
 }
 
@@ -1599,11 +1657,11 @@ func NewRWFile(ctx context.Context, fctx *fuse.Context, fs *FileSystem, path str
 	}, nil
 }
 
-func (f *RWFile) logOP(op, extra string) {
+func (f *RWFile) logOP(op, extra string, write bool) {
 	if extra != "" {
 		extra = " " + extra
 	}
-	f.fs.logOP(fmt.Sprintf("RWFile.%s", op), f.meta.Path+extra, f.fctx)
+	f.fs.logOP(fmt.Sprintf("RWFile.%s", op), f.meta.Path+extra, write, f.fctx)
 }
 
 func (f *RWFile) Hash() string {
@@ -1623,18 +1681,18 @@ func (f *RWFile) Hash() string {
 }
 
 func (f *RWFile) Read(dest []byte, off int64) (fuse.ReadResult, fuse.Status) {
-	f.logOP("Read", fmt.Sprintf("size=%d offset=%d", len(dest), off))
+	f.logOP("Read", fmt.Sprintf("size=%d offset=%d", len(dest), off), false)
 
 	return f.File.Read(dest, off)
 }
 
 func (f *RWFile) Write(data []byte, off int64) (uint32, fuse.Status) {
-	f.logOP("Write", fmt.Sprintf("size=%d offset=%d", len(data), off))
+	f.logOP("Write", fmt.Sprintf("size=%d offset=%d", len(data), off), true)
 	return f.File.Write(data, off)
 }
 
 func (f *RWFile) Chmod(perms uint32) fuse.Status {
-	f.logOP("Chmod", "")
+	f.logOP("Chmod", "", true)
 
 	mtime := time.Now().Unix()
 
@@ -1647,7 +1705,7 @@ func (f *RWFile) Chmod(perms uint32) fuse.Status {
 }
 
 func (f *RWFile) Utimens(atime *time.Time, mtime *time.Time) fuse.Status {
-	f.logOP("Utimens", "")
+	f.logOP("Utimens", "", true)
 
 	if err := f.fs.rwLayer.Utimens(f.meta.Path, mtime, f.fctx); err != nil {
 		f.fs.logEIO(err)
@@ -1658,7 +1716,7 @@ func (f *RWFile) Utimens(atime *time.Time, mtime *time.Time) fuse.Status {
 }
 
 func (f *RWFile) GetAttr(out *fuse.Attr) fuse.Status {
-	f.logOP("Stat", "")
+	f.logOP("Stat", "", false)
 	attr, err := f.fs.rwLayer.GetAttr(f.meta.Path, f.fctx)
 	if err != nil {
 		f.fs.logEIO(err)
@@ -1676,17 +1734,17 @@ func (f *RWFile) GetAttr(out *fuse.Attr) fuse.Status {
 }
 
 func (f *RWFile) Chown(uid uint32, gid uint32) fuse.Status {
-	f.logOP("Chown", "")
+	f.logOP("Chown", "", false)
 	return fuse.ENOSYS
 }
 
 func (f *RWFile) Allocate(off uint64, size uint64, mode uint32) fuse.Status {
-	f.logOP("Allocate", "")
+	f.logOP("Allocate", "", false)
 	return fuse.ENOSYS
 }
 
 func (f *RWFile) Flush() fuse.Status {
-	f.logOP("Flush", "")
+	f.logOP("Flush", "", true)
 
 	f.fs.mu.Lock()
 	defer f.fs.mu.Unlock()
@@ -1753,7 +1811,7 @@ func (f *RWFile) SetInode(inode *nodefs.Inode) {
 }
 
 func (f *RWFile) Release() {
-	f.logOP("Release", "")
+	f.logOP("Release", "", false)
 	f.fs.mu.Lock()
 	defer f.fs.mu.Unlock()
 
@@ -1845,7 +1903,7 @@ func (f *File) logOP(op, extra string) {
 	if extra != "" {
 		extra = " " + extra
 	}
-	f.fs.logOP(fmt.Sprintf("File.%s [ro] %s", op, f.fid), f.path+extra, f.fctx)
+	f.fs.logOP(fmt.Sprintf("File.%s [ro] %s", op, f.fid), f.path+extra, false, f.fctx)
 }
 
 func (f *File) SetInode(inode *nodefs.Inode) {

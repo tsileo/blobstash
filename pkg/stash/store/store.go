@@ -2,7 +2,9 @@ package store // import "a4.io/blobstash/pkg/stash/store"
 
 import (
 	"context"
+	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"a4.io/blobsfile"
@@ -10,6 +12,59 @@ import (
 	"a4.io/blobstash/pkg/blobstore"
 	"a4.io/blobstash/pkg/vkv"
 )
+
+var sepCandidates = []string{":", "&", "*", "^", "#", ".", "-", "_", "+", "=", "%", "@", "!"}
+
+type sortHelper struct {
+	Item       interface{}
+	IsFromRoot bool
+}
+
+type mergeCursor struct {
+	rstart, sstart   string
+	rcursor, scursor string
+}
+
+func (c *mergeCursor) Encode(nextKey func(string) string) string {
+	rcursor := nextKey(c.rcursor)
+	scursor := nextKey(c.scursor)
+
+	var sep string
+	// Find a separator that is not in the key
+	for _, c := range sepCandidates {
+		if !strings.Contains(rcursor, c) && !strings.Contains(scursor, c) {
+			sep = c
+			break
+		}
+	}
+	return fmt.Sprintf("stash:%s%s%s%s", sep, rcursor, sep, scursor)
+}
+
+func parseCursor(start string) *mergeCursor {
+	c := &mergeCursor{}
+	// Check if the cursor is a "merge cursor", i.e. in the format:
+	// "stash:<root cursor>:<stash cursor>"
+	if strings.HasPrefix(start, "stash:") {
+		sep := start[6:7]
+		cdata := strings.Split(start[7:len(start)], sep)
+		c.rstart = cdata[0]
+		c.sstart = cdata[1]
+
+		// Initialize the part of the merge cursor to the "start" cursor,
+		// as it's possible the current range will return nothing either in
+		// the root or the stash
+		c.rcursor = c.rstart
+		c.scursor = c.sstart
+	} else {
+		c.rstart = start
+		c.sstart = start
+
+		// Same here for the cursor
+		c.rcursor = start
+		c.scursor = start
+	}
+	return c
+}
 
 type DataContext interface {
 	BlobStore() BlobStore
@@ -26,7 +81,7 @@ type KvStore interface {
 	Put(ctx context.Context, key, ref string, data []byte, version int) (*vkv.KeyValue, error)
 	Get(ctx context.Context, key string, version int) (*vkv.KeyValue, error)
 	GetMetaBlob(ctx context.Context, key string, version int) (string, error)
-	Versions(ctx context.Context, key string, start, limit int) (*vkv.KeyValueVersions, int, error)
+	Versions(ctx context.Context, key, start string, limit int) (*vkv.KeyValueVersions, string, error)
 	Keys(ctx context.Context, start, end string, limit int) ([]*vkv.KeyValue, string, error)
 	ReverseKeys(ctx context.Context, start, end string, limit int) ([]*vkv.KeyValue, string, error)
 	Close() error
@@ -45,11 +100,9 @@ func (p *KvStoreProxy) Put(ctx context.Context, key, ref string, data []byte, ve
 	case nil:
 		return kv, nil
 	default:
-		return nil, err
-
 	}
 
-	return p.KvStore.Put(ctx, key, ref, data, version)
+	return nil, err
 }
 
 func (p *KvStoreProxy) Get(ctx context.Context, key string, version int) (*vkv.KeyValue, error) {
@@ -75,68 +128,157 @@ func (p *KvStoreProxy) GetMetaBlob(ctx context.Context, key string, version int)
 
 }
 
-func (p *KvStoreProxy) Versions(ctx context.Context, key string, start, limit int) (*vkv.KeyValueVersions, int, error) {
-	// FIXME(tsileo): merge the output of local and root
-	// versions, cursor, err :=
-	return p.ReadSrc.Versions(ctx, key, start, limit)
-}
-
-func (p *KvStoreProxy) Keys(ctx context.Context, start, end string, limit int) ([]*vkv.KeyValue, string, error) {
-	var cursor string
-	kvs, rootCursor, err := p.ReadSrc.Keys(ctx, start, end, limit)
-	if err != nil {
-		return nil, cursor, err
+func (p *KvStoreProxy) Versions(ctx context.Context, key, start string, limit int) (*vkv.KeyValueVersions, string, error) {
+	var tmp []*sortHelper
+	var out []*vkv.KeyValue
+	res := &vkv.KeyValueVersions{
+		Key: key,
 	}
 
-	localKvs, _, err := p.KvStore.Keys(ctx, start, end, 0)
+	mcursor := parseCursor(start)
+
+	versions, _, err := p.ReadSrc.Versions(ctx, key, mcursor.rstart, limit)
 	if err != nil {
-		return nil, cursor, err
+		return nil, "", err
 	}
 
-	for _, lkv := range localKvs {
-		if strings.Compare(lkv.Key, rootCursor) < 0 {
-			kvs = append(kvs, lkv)
+	for _, kv := range versions.Versions {
+		tmp = append(tmp, &sortHelper{kv, true})
+	}
+
+	localVersions, _, err := p.KvStore.Versions(ctx, key, mcursor.sstart, limit)
+	if err != nil {
+		return nil, "", err
+	}
+
+	for _, kv := range localVersions.Versions {
+		tmp = append(tmp, &sortHelper{kv, false})
+	}
+
+	// Sort everything
+	sort.Slice(tmp, func(i, j int) bool {
+		return tmp[i].Item.(*vkv.KeyValue).Version > tmp[j].Item.(*vkv.KeyValue).Version
+	})
+
+	// Slice it if it's too big
+	if len(tmp) > 0 && len(tmp) > limit {
+		tmp = tmp[0:limit]
+	}
+
+	// Build the final result, and compute the "merge cursor"
+	for _, sh := range tmp {
+		kv := sh.Item.(*vkv.KeyValue)
+		if sh.IsFromRoot {
+			mcursor.rcursor = strconv.Itoa(kv.Version)
+		} else {
+			mcursor.scursor = strconv.Itoa(kv.Version)
 		}
+		out = append(out, kv)
 	}
 
-	sort.Slice(kvs, func(i, j int) bool { return kvs[i].Key > kvs[j].Key })
+	res.Versions = out
 
-	if limit > 0 && len(kvs) > limit {
-		kvs = kvs[0:limit]
-	}
-
-	cursor = vkv.NextKey(kvs[len(kvs)-1].Key)
-
-	return kvs, cursor, nil
+	return res, mcursor.Encode(vkv.NextVersionCursor), nil
 }
 
 func (p *KvStoreProxy) ReverseKeys(ctx context.Context, start, end string, limit int) ([]*vkv.KeyValue, string, error) {
-	var cursor string
-	kvs, rootCursor, err := p.ReadSrc.ReverseKeys(ctx, start, end, limit)
+	var tmp []*sortHelper
+	var out []*vkv.KeyValue
+
+	mcursor := parseCursor(start)
+
+	kvs, _, err := p.ReadSrc.ReverseKeys(ctx, mcursor.rstart, end, limit)
 	if err != nil {
-		return nil, cursor, err
+		return nil, "", err
 	}
 
-	localKvs, _, err := p.KvStore.ReverseKeys(ctx, start, end, 0)
-	if err != nil {
-		return nil, cursor, err
+	for _, kv := range kvs {
+		tmp = append(tmp, &sortHelper{kv, true})
 	}
 
-	for _, lkv := range localKvs {
-		if strings.Compare(lkv.Key, rootCursor) > 0 {
-			kvs = append(kvs, lkv)
+	localKvs, _, err := p.KvStore.ReverseKeys(ctx, mcursor.sstart, end, 0)
+	if err != nil {
+		return nil, "", err
+	}
+
+	for _, kv := range localKvs {
+		tmp = append(tmp, &sortHelper{kv, false})
+	}
+
+	// Sort everything
+	sort.Slice(tmp, func(i, j int) bool {
+		return tmp[i].Item.(*vkv.KeyValue).Key > tmp[j].Item.(*vkv.KeyValue).Key
+	})
+
+	// Slice it if it's too big
+	if len(tmp) > 0 && len(tmp) > limit {
+		tmp = tmp[0:limit]
+	}
+
+	// Build the final result, and compute the "merge cursor"
+	for _, sh := range tmp {
+		kv := sh.Item.(*vkv.KeyValue)
+		if sh.IsFromRoot {
+			mcursor.rcursor = kv.Key
+		} else {
+			mcursor.scursor = kv.Key
 		}
+		out = append(out, kv)
 	}
 
-	sort.Slice(kvs, func(i, j int) bool { return kvs[i].Key < kvs[j].Key })
+	return out, mcursor.Encode(vkv.NextKey), nil
+}
+
+func (p *KvStoreProxy) Keys(ctx context.Context, start, end string, limit int) ([]*vkv.KeyValue, string, error) {
+	var tmp []*sortHelper
+	var out []*vkv.KeyValue
+
+	mcursor := parseCursor(start)
+
+	kvs, _, err := p.ReadSrc.Keys(ctx, mcursor.rstart, end, limit)
+	if err != nil {
+		return nil, "", err
+	}
+
+	for _, kv := range kvs {
+		tmp = append(tmp, &sortHelper{kv, true})
+	}
+
+	localKvs, _, err := p.KvStore.Keys(ctx, mcursor.sstart, end, 0)
+	if err != nil {
+		return nil, "", err
+	}
+
+	for _, kv := range localKvs {
+		tmp = append(tmp, &sortHelper{kv, false})
+	}
 
 	if limit > 0 && len(kvs) > limit {
 		kvs = kvs[0:limit]
 	}
 
-	cursor = vkv.PrevKey(kvs[len(kvs)-1].Key)
+	// Sort everything
+	sort.Slice(tmp, func(i, j int) bool {
+		return tmp[i].Item.(*vkv.KeyValue).Key < tmp[j].Item.(*vkv.KeyValue).Key
+	})
 
-	return kvs, cursor, nil
+	// Slice it if it's too big
+	if len(tmp) > 0 && len(tmp) > limit {
+		tmp = tmp[0:limit]
+	}
+
+	// Build the final result, and compute the "merge cursor"
+	for _, sh := range tmp {
+		kv := sh.Item.(*vkv.KeyValue)
+		if sh.IsFromRoot {
+			mcursor.rcursor = kv.Key
+		} else {
+			mcursor.scursor = kv.Key
+		}
+		out = append(out, kv)
+	}
+
+	return out, mcursor.Encode(vkv.NextKey), nil
 }
 
 type BlobStore interface {
@@ -187,34 +329,52 @@ func (p *BlobStoreProxy) Put(ctx context.Context, blob *blob.Blob) error {
 }
 
 func (p *BlobStoreProxy) Enumerate(ctx context.Context, start, end string, limit int) ([]*blob.SizedBlobRef, string, error) {
+	// Here, we will need to merge two differents "enumerate results" into one
+	var tmp []*sortHelper
 	var out []*blob.SizedBlobRef
-	var cursor string
 
-	rootBlobs, rootCursor, err := p.ReadSrc.Enumerate(ctx, start, end, limit)
+	mcursor := parseCursor(start)
+
+	// Fetch the data from the "root" blobstore
+	rootBlobs, _, err := p.ReadSrc.Enumerate(ctx, mcursor.rstart, end, limit)
 	if err != nil {
-		return nil, cursor, err
+		return nil, "", err
 	}
 
-	out = append(out, rootBlobs...)
-
-	localBlobs, _, err := p.BlobStore.Enumerate(ctx, start, end, 0)
-	if err != nil {
-		return nil, cursor, err
+	for _, blob := range rootBlobs {
+		tmp = append(tmp, &sortHelper{blob, true})
 	}
 
-	for _, lblob := range localBlobs {
-		if strings.Compare(lblob.Hash, rootCursor) < 0 {
-			out = append(out, lblob)
+	// Fetch the data from the stash
+	localBlobs, _, err := p.BlobStore.Enumerate(ctx, mcursor.sstart, end, 0)
+	if err != nil {
+		return nil, "", err
+	}
+
+	for _, blob := range localBlobs {
+		tmp = append(tmp, &sortHelper{blob, false})
+	}
+
+	// Sort everything
+	sort.Slice(tmp, func(i, j int) bool {
+		return tmp[i].Item.(*blob.SizedBlobRef).Hash > tmp[j].Item.(*blob.SizedBlobRef).Hash
+	})
+
+	// Slice it if it's too big
+	if len(tmp) > 0 && len(tmp) > limit {
+		tmp = tmp[0:limit]
+	}
+
+	// Build the final result, and compute the "merge cursor"
+	for _, sh := range tmp {
+		b := sh.Item.(*blob.SizedBlobRef)
+		if sh.IsFromRoot {
+			mcursor.rcursor = b.Hash
+		} else {
+			mcursor.scursor = b.Hash
 		}
+		out = append(out, b)
 	}
 
-	sort.Slice(out, func(i, j int) bool { return out[i].Hash > out[j].Hash })
-
-	if limit > 0 && len(out) > limit {
-		out = out[0:limit]
-	}
-
-	cursor = blobstore.NextHexKey(out[len(out)-1].Hash)
-
-	return out, cursor, nil
+	return out, mcursor.Encode(blobstore.NextHexKey), nil
 }

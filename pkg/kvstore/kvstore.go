@@ -3,9 +3,11 @@ package kvstore // import "a4.io/blobstash/pkg/kvstore"
 import (
 	"context"
 	"fmt"
-	log "github.com/inconshreveable/log15"
 	"path/filepath"
+	"strconv"
 	"time"
+
+	log "github.com/inconshreveable/log15"
 
 	"a4.io/blobstash/pkg/meta"
 	"a4.io/blobstash/pkg/stash/store"
@@ -87,18 +89,25 @@ func (kv *KvStore) Keys(ctx context.Context, start, end string, limit int) ([]*v
 	return kv.vkv.Keys(start, end, limit)
 }
 
-func (kv *KvStore) Versions(ctx context.Context, key string, start, limit int) (*vkv.KeyValueVersions, int, error) {
+func (kv *KvStore) Versions(ctx context.Context, key, start string, limit int) (*vkv.KeyValueVersions, string, error) {
 	kv.log.Info("OP Versions", "key", key, "start", start)
 	// FIXME(tsileo): decide between -1/0 for default, or introduce a constant Max/Min?? and the end only make sense for the reverse Versions?
-	if start <= 0 {
-		start = int(time.Now().UTC().UnixNano())
+	var istart int
+	var err error
+	if start == "0" {
+		istart = int(time.Now().UTC().UnixNano())
+	} else {
+		istart, err = strconv.Atoi(start)
+		if err != nil {
+			return nil, "", err
+		}
 	}
-	res, cursor, err := kv.vkv.Versions(key, 0, start, limit)
+	res, cursor, err := kv.vkv.Versions(key, 0, istart, limit)
 	if err != nil {
-		return nil, cursor, err
+		return nil, "", err
 	}
 
-	return res, cursor, nil
+	return res, strconv.Itoa(cursor), nil
 }
 
 func (kv *KvStore) ReverseKeys(ctx context.Context, start, end string, limit int) ([]*vkv.KeyValue, string, error) {

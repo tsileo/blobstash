@@ -4,7 +4,9 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
+	"strconv"
 	"sync"
 	"time"
 
@@ -70,6 +72,14 @@ type KeyValueVersions struct {
 
 	// FIXME(tsileo): turn this into a []*VkvEntry
 	Versions []*KeyValue `json:"versions"`
+}
+
+func NextVersionCursor(key string) string {
+	v, err := strconv.Atoi(key)
+	if err != nil {
+		panic(fmt.Errorf("should never happen, key=%s", key))
+	}
+	return strconv.Itoa(v - 1)
 }
 
 // NextKey returns the next key for lexigraphical (key = NextKey(lastkey))

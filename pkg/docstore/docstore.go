@@ -900,7 +900,7 @@ func (docstore *DocStore) FetchVersions(collection, sid string, start, limit int
 
 	// Fetch the KV versions entry for this _id
 	// XXX(tsileo): use int64 for start/end
-	kvv, _, err := docstore.kvStore.Versions(context.TODO(), fmt.Sprintf(KeyFmt, collection, sid), start, limit)
+	kvv, _, err := docstore.kvStore.Versions(context.TODO(), fmt.Sprintf(KeyFmt, collection, sid), strconv.Itoa(start), limit)
 	// FIXME(tsileo): return the cursor from Versions
 	if err != nil {
 		return nil, nil, cursor, err
