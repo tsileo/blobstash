@@ -123,8 +123,8 @@ func New(dir string, m *meta.Meta, bs *blobstore.BlobStore, kvs *kvstore.KvStore
 		},
 	}
 
-	// TODO(tsileo): list an load the existing stashes
-	if err := s.newDataContext("tmp"); err != nil {
+	// FIXME(tsileo): list an load the existing stashes
+	if _, err := s.newDataContext("tmp"); err != nil {
 		return nil, err
 	}
 
@@ -134,25 +134,25 @@ func New(dir string, m *meta.Meta, bs *blobstore.BlobStore, kvs *kvstore.KvStore
 
 }
 
-func (s Stash) newDataContext(name string) error {
+func (s Stash) newDataContext(name string) (*dataContext, error) {
 	s.Lock()
 	defer s.Unlock()
 	path := filepath.Join(s.path, name)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		if err := os.MkdirAll(path, 0700); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	l := s.rootDataContext.log.New("data_ctx", name)
 	h := hub.New(l.New("app", "hub"))
 	m, err := meta.New(l.New("app", "meta"), h)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// XXX(tsileo): use a dumb single file cache instead of the blobstore?
 	bsDst, err := blobstore.New(l.New("app", "blobstore"), path, nil, h)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	bs := &store.BlobStoreProxy{
 		BlobStore: bsDst,
@@ -160,7 +160,7 @@ func (s Stash) newDataContext(name string) error {
 	}
 	kvsDst, err := kvstore.New(l.New("app", "kvstore"), "", bs, m)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	kvs := &store.KvStoreProxy{
 		KvStore: kvsDst,
@@ -177,7 +177,7 @@ func (s Stash) newDataContext(name string) error {
 		dir:      path,
 	}
 	s.contexes[name] = dataCtx
-	return nil
+	return dataCtx, nil
 }
 
 func (s *Stash) Close() error {
@@ -200,7 +200,9 @@ func (s *Stash) dataContext(ctx context.Context) (*dataContext, error) {
 	if ctx, ok := s.DataContextByName(name); ok {
 		return ctx, nil
 	}
-	return s.rootDataContext, nil
+
+	// If it does not exist, create it now
+	return s.newDataContext(name)
 }
 
 func (s *Stash) ContextNames() []string {
@@ -218,6 +220,8 @@ func (s *Stash) DataContextByName(name string) (*dataContext, bool) {
 		return s.rootDataContext, true
 	}
 
+	s.Lock()
+	defer s.Unlock()
 	if dc, ok := s.contexes[name]; ok {
 		return dc, true
 	}

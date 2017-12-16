@@ -13,10 +13,6 @@ import (
 	"a4.io/blobstash/pkg/stash/store"
 )
 
-// XXX(tsileo): take store interface, and exec store Lua script that can
-// read a blob, or a key/version(/iterate keys?) and
-// can get the blob for a kv(key, version) and "mark" blob for GC
-
 type GarbageCollector struct {
 	dataContext store.DataContext
 	stash       *stash.Stash
@@ -59,7 +55,10 @@ func New(s *stash.Stash, dc store.DataContext) *GarbageCollector {
 	if err := L.DoString(`
 local msgpack = require('msgpack')
 function mark_kv (key, version)
+  print(key)
+  print(version)
   local h = blobstash.kvstore:get_meta_blob(key, version)
+  print(h)
   if h ~= nil then
     mark(h)
     local _, ref = blobstash.kvstore:get(key, version)
@@ -109,8 +108,9 @@ func (gc *GarbageCollector) GC(ctx context.Context, script string) error {
 			return err
 		}
 	}
-	return nil
-	// return gc.dataContext.Destroy()
+	// return nil
+	// FIXME(tsileo): make destroying the context optional
+	return gc.dataContext.Destroy()
 }
 
 func loadMsgpack(L *lua.LState) int {

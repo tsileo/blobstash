@@ -93,16 +93,18 @@ type KvStoreProxy struct {
 }
 
 func (p *KvStoreProxy) Put(ctx context.Context, key, ref string, data []byte, version int) (*vkv.KeyValue, error) {
-	kv, err := p.ReadSrc.Get(ctx, key, version)
-	switch err {
-	case vkv.ErrNotFound:
-		return p.KvStore.Put(ctx, key, ref, data, version)
-	case nil:
-		return kv, nil
-	default:
+	if version > 0 {
+		kv, err := p.ReadSrc.Get(ctx, key, version)
+		switch err {
+		case vkv.ErrNotFound:
+			return p.KvStore.Put(ctx, key, ref, data, version)
+		case nil:
+			return kv, nil
+		default:
+		}
 	}
 
-	return nil, err
+	return p.KvStore.Put(ctx, key, ref, data, version)
 }
 
 func (p *KvStoreProxy) Get(ctx context.Context, key string, version int) (*vkv.KeyValue, error) {
