@@ -154,12 +154,12 @@ func (kv *KvStoreAPI) getHandler() func(http.ResponseWriter, *http.Request) {
 				}
 				panic(err)
 			}
-			w.WriteHeader(http.StatusOK)
 			if r.Method == "GET" {
-				srw := httputil.NewSnappyResponseWriter(w, r)
-				httputil.WriteJSON(srw, toKeyValue(item))
-				srw.Close()
+				//srw := httputil.NewSnappyResponseWriter(w, r)
+				httputil.MarshalAndWrite(r, w, toKeyValue(item))
+				//srw.Close()
 			}
+			w.WriteHeader(http.StatusOK)
 			return
 		case "POST", "PUT":
 			ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))

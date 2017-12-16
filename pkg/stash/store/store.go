@@ -108,26 +108,36 @@ func (p *KvStoreProxy) Put(ctx context.Context, key, ref string, data []byte, ve
 }
 
 func (p *KvStoreProxy) Get(ctx context.Context, key string, version int) (*vkv.KeyValue, error) {
-	kv, err := p.KvStore.Get(ctx, key, version)
-	switch err {
-	case nil:
-	case vkv.ErrNotFound:
-		return p.ReadSrc.Get(ctx, key, version)
+	if version > 0 {
+		kv, err := p.KvStore.Get(ctx, key, version)
+		switch err {
+		case nil:
+		case vkv.ErrNotFound:
+			return p.ReadSrc.Get(ctx, key, version)
+		default:
+			return nil, err
+		}
+		return kv, nil
 	}
 
-	return kv, nil
+	// FIXME(tsileo): URGENT if version == 0 or version == -1, we need to compare the two and return the most recent
+	return nil, fmt.Errorf("not implemented yet")
 }
 
 func (p *KvStoreProxy) GetMetaBlob(ctx context.Context, key string, version int) (string, error) {
-	h, err := p.KvStore.GetMetaBlob(ctx, key, version)
-	switch err {
-	case nil:
-	case vkv.ErrNotFound:
-		return p.ReadSrc.GetMetaBlob(ctx, key, version)
+	if version > 0 {
+		h, err := p.KvStore.GetMetaBlob(ctx, key, version)
+		switch err {
+		case nil:
+		case vkv.ErrNotFound:
+			return p.ReadSrc.GetMetaBlob(ctx, key, version)
+		default:
+			return "", err
+		}
+		return h, nil
 	}
-
-	return h, nil
-
+	// FIXME(tsileo): URGENT if version == 0 or version == -1, we need to compare the two and return the most recent
+	return "", fmt.Errorf("not implemented yet")
 }
 
 func (p *KvStoreProxy) Versions(ctx context.Context, key, start string, limit int) (*vkv.KeyValueVersions, string, error) {

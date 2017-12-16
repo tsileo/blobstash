@@ -217,10 +217,10 @@ type Node struct {
 }
 
 // Update the given node with the given meta, the updated/new node is assumed to be already saved
-func (ft *FileTree) Update(ctx context.Context, n *Node, m *rnode.RawNode, prefixFmt string, first bool) (*Node, error) {
+func (ft *FileTree) Update(ctx context.Context, n *Node, m *rnode.RawNode, prefixFmt string, first bool) (*Node, int, error) {
 	newNode, err := MetaToNode(m)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	newNode.fs = n.fs
 	newNode.parent = n.parent
@@ -241,12 +241,13 @@ func (ft *FileTree) Update(ctx context.Context, n *Node, m *rnode.RawNode, prefi
 		}
 		snapEncoded, err := msgpack.Marshal(snap)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
-		if ft.kvStore.Put(ctx, fmt.Sprintf(prefixFmt, n.fs.Name), newNode.Hash, snapEncoded, -1); err != nil {
-			return nil, err
+		newRev, err := ft.kvStore.Put(ctx, fmt.Sprintf(prefixFmt, n.fs.Name), newNode.Hash, snapEncoded, -1)
+		if err != nil {
+			return nil, 0, err
 		}
-		return newNode, nil
+		return newNode, newRev.Version, nil
 	}
 
 	newRefs := []interface{}{newNode.Hash}
@@ -286,29 +287,30 @@ func (ft *FileTree) Update(ctx context.Context, n *Node, m *rnode.RawNode, prefi
 	newNode.parent.Hash = newRef
 	newNode.parent.Meta.Hash = newRef
 	if err := ft.blobStore.Put(ctx, &blob.Blob{Hash: newRef, Data: data}); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	// n.parent.Hash = newRef
 	// parentMeta.Hash = newRef
 	// Propagate the change to the parents
-	if _, err := ft.Update(ctx, newNode.parent, newNode.parent.Meta, prefixFmt, false); err != nil {
-		return nil, err
+	_, kvVersion, err := ft.Update(ctx, newNode.parent, newNode.parent.Meta, prefixFmt, false)
+	if err != nil {
+		return nil, 0, err
 	}
-	return newNode, nil
+	return newNode, kvVersion, nil
 }
 
 // Update the given node with the given meta, the updated/new node is assumed to be already saved
-func (ft *FileTree) AddChild(ctx context.Context, n *Node, newChild *rnode.RawNode, prefixFmt string, mtime int64) (*Node, error) {
+func (ft *FileTree) AddChild(ctx context.Context, n *Node, newChild *rnode.RawNode, prefixFmt string, mtime int64) (*Node, int, error) {
 	// Save the new child meta
 	//newChild.ModTime = time.Now().UTC().Unix()
 	newChildRef, data := newChild.Encode()
 	newChild.Hash = newChildRef
 	if err := ft.blobStore.Put(ctx, &blob.Blob{Hash: newChildRef, Data: data}); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	newChildNode, err := MetaToNode(newChild)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	newChildNode.Hash = newChildRef
 
@@ -340,7 +342,7 @@ func (ft *FileTree) AddChild(ctx context.Context, n *Node, newChild *rnode.RawNo
 	n.Hash = newRef
 	n.Meta.Hash = newRef
 	if err := ft.blobStore.Put(ctx, &blob.Blob{Hash: newRef, Data: data}); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	// Proagate the change up to the ~moon~ root
@@ -348,7 +350,7 @@ func (ft *FileTree) AddChild(ctx context.Context, n *Node, newChild *rnode.RawNo
 }
 
 // Delete removes the given node from its parent children
-func (ft *FileTree) Delete(ctx context.Context, n *Node, prefixFmt string, mtime int64) (*Node, error) {
+func (ft *FileTree) Delete(ctx context.Context, n *Node, prefixFmt string, mtime int64) (*Node, int, error) {
 	if n.parent == nil {
 		panic("can't delete root")
 	}
@@ -371,7 +373,7 @@ func (ft *FileTree) Delete(ctx context.Context, n *Node, prefixFmt string, mtime
 	parent.Hash = newRef
 	parent.Meta.Hash = newRef
 	if err := ft.blobStore.Put(ctx, &blob.Blob{Hash: newRef, Data: data}); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	return ft.Update(ctx, parent, parent.Meta, prefixFmt, true)
@@ -854,10 +856,12 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 
 			// Update the Node with the new Meta
 			// fmt.Printf("uploaded meta=%+v\nold node=%+v", meta, node)
-			newNode, err := ft.Update(ctx, node, meta, prefixFmt, true)
+			newNode, revision, err := ft.Update(ctx, node, meta, prefixFmt, true)
 			if err != nil {
 				panic(err)
 			}
+
+			w.Header().Add("BlobStash-Filetree-FS-Revision", strconv.Itoa(revision))
 
 			// Event handling for the oplog
 			evtType := "file-updated"
@@ -955,10 +959,12 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 				newChild.ChangeTime = 0
 			}
 
-			newNode, err := ft.AddChild(ctx, node, newChild, prefixFmt, mtime)
+			newNode, revision, err := ft.AddChild(ctx, node, newChild, prefixFmt, mtime)
 			if err != nil {
 				panic(err)
 			}
+
+			w.Header().Add("BlobStash-Filetree-FS-Revision", strconv.Itoa(revision))
 
 			updateEvent := &FSUpdateEvent{
 				Name:      fs.Name,
@@ -972,7 +978,7 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 				panic(err)
 			}
 
-			httputil.WriteJSON(w, newNode)
+			httputil.MarshalAndWrite(r, w, newNode)
 
 		case "DELETE":
 			// Delete the node
@@ -992,10 +998,12 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 				}
 			}
 
-			// FIXME(tsileo): handle mtime
-			if _, err := ft.Delete(ctx, node, prefixFmt, mtime); err != nil {
+			_, revision, err := ft.Delete(ctx, node, prefixFmt, mtime)
+			if err != nil {
 				panic(err)
 			}
+
+			w.Header().Add("BlobStash-Filetree-FS-Revision", strconv.Itoa(revision))
 
 			updateEvent := &FSUpdateEvent{
 				Name:      fs.Name,

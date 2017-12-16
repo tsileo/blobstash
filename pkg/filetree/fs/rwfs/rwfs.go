@@ -1783,6 +1783,9 @@ func (f *RWFile) Flush() fuse.Status {
 			f.fs.logEIO(fmt.Errorf("upload failed with resp %s/%+v", resp, err))
 			return fuse.EIO
 		}
+		// FIXME(tsileo): save it in *FileSystem, we'll need it when GCing the stash
+		// Also do it everywhere it's needed
+		// rev := resp.Header.Get("BlobStash-Filetree-FS-Revision")
 
 		// Update the rw meta ref
 		newNode := &Node{}
