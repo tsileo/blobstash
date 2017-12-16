@@ -345,7 +345,7 @@ func (f *loopbackFile) Flush() fuse.Status {
 	}
 	fmt.Printf("CUSTOM FLUSH")
 	// FIXME(tsileo): ensure the file has been modified!
-	// TODO(tsileo): in the future, chunk **big** files locally to prevent sending everyting (don't forget
+	// TODO(tsileo): in the future, chunk **big** files locally to prevent sending everything (don't forget
 	// the SessionID)
 
 	bodyBuf := &bytes.Buffer{}

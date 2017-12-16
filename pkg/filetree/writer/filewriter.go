@@ -53,10 +53,6 @@ func (up *Uploader) writeReader(f io.Reader, meta *rnode.RawNode) error { // (*W
 
 		// Save the location and the blob hash into a sorted list (with the offset as index)
 		meta.AddIndexedRef(int(size), chunkHash)
-
-		if err != nil {
-			return err
-		}
 	}
 	meta.Size = int(size)
 	meta.AddData("blake2b-hash", fmt.Sprintf("%x", fullHash.Sum(nil)))

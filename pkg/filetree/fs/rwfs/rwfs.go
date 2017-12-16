@@ -10,7 +10,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	_ "io/ioutil"
 	"log"
 	"os"
 	"os/signal"
