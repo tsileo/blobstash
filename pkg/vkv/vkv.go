@@ -245,6 +245,14 @@ func (db *DB) SetMetaBlob(key string, version int, hash string) error {
 }
 
 func (db *DB) GetMetaBlob(key string, version int) (string, error) {
+	if version <= 0 {
+		kv, err := db.get(key)
+		if err != nil {
+			return "", err
+		}
+		version = kv.Version
+	}
+
 	vkey := buildMetaBlobKey([]byte(key), version)
 
 	data, err := db.rdb.Get(vkey)
