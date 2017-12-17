@@ -3,6 +3,7 @@ package stash // import "a4.io/blobstash/pkg/stash"
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync"
@@ -138,12 +139,19 @@ func New(dir string, m *meta.Meta, bs *blobstore.BlobStore, kvs *kvstore.KvStore
 		},
 	}
 
-	// FIXME(tsileo): list an load the existing stashes
-	if _, err := s.newDataContext("tmp"); err != nil {
+	stashes, err := ioutil.ReadDir(dir)
+	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
+	if err == nil {
+		for _, dir := range stashes {
+			if _, err := s.newDataContext(dir.Name()); err != nil {
+				return nil, err
+			}
+		}
+	}
 
-	// FIXME(tsileo): BlobStore.Scan should be triggered here, and for all available stashes
+	// FIXME(tsileo): BlobStore.Scan should be triggered here??, and for all available stashes
 
 	return s, nil
 
