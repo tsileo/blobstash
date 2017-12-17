@@ -101,9 +101,6 @@ func (kv *KvStoreAPI) versionsHandler() func(http.ResponseWriter, *http.Request)
 			start := q.GetDefault("cursor", "0")
 			var out []*keyValue
 			resp, cursor, err := kv.kv.Versions(ctx, key, start, limit)
-			for _, v := range resp.Versions {
-				out = append(out, toKeyValue(v))
-			}
 			if err != nil {
 				if err == vkv.ErrNotFound {
 					w.WriteHeader(http.StatusNotFound)
@@ -112,8 +109,10 @@ func (kv *KvStoreAPI) versionsHandler() func(http.ResponseWriter, *http.Request)
 				}
 				panic(err)
 			}
-			srw := httputil.NewSnappyResponseWriter(w, r)
-			httputil.WriteJSON(srw, map[string]interface{}{
+			for _, v := range resp.Versions {
+				out = append(out, toKeyValue(v))
+			}
+			httputil.MarshalAndWrite(r, w, map[string]interface{}{
 				"data": out,
 				"pagination": map[string]interface{}{
 					"cursor":   cursor,
@@ -122,7 +121,6 @@ func (kv *KvStoreAPI) versionsHandler() func(http.ResponseWriter, *http.Request)
 					"per_page": limit,
 				},
 			})
-			srw.Close()
 			return
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)

@@ -354,6 +354,9 @@ func (db *DB) Versions(key string, start, end, limit int) (*KeyValueVersions, in
 		nstart = kv.Version - 1
 	}
 
+	if len(res.Versions) == 0 {
+		return nil, nstart, ErrNotFound
+	}
 	return res, nstart, nil
 }
 
