@@ -68,7 +68,7 @@ type Q map[string]interface{}
 type M map[string]interface{}
 
 type DocStore struct {
-	client *clientutil.Client
+	client *clientutil.ClientUtil
 }
 
 // Collection represents a collection of documents
@@ -78,6 +78,7 @@ type Collection struct {
 }
 
 // InsertOpts defines the options for the `Insert` operation
+// TODO(tsileo): use the same opts style as clientutil (...options)
 type InsertOpts struct {
 	Indexed bool
 }
@@ -89,21 +90,10 @@ func DefaultInsertOpts() *InsertOpts {
 	}
 }
 
-func DefaultOpts() *clientutil.Opts {
-	return &clientutil.Opts{
-		SnappyCompression: true,
-		Host:              defaultServerAddr,
-		UserAgent:         defaultUserAgent,
-	}
-}
-
 // serverAddr should't have a trailing space
-func New(opts *clientutil.Opts) *DocStore {
-	if opts == nil {
-		opts = DefaultOpts()
-	}
+func New(client *clientutil.ClientUtil) *DocStore {
 	return &DocStore{
-		client: clientutil.New(opts),
+		client: client,
 	}
 }
 
@@ -132,11 +122,11 @@ func (col *Collection) Insert(ctx context.Context, idoc interface{}, opts *Inser
 		}
 		payload = bytes.NewReader(js)
 	}
-	headers := map[string]string{}
 	// if opts.Indexed {
 	// 	headers["BlobStash-DocStore-IndexFullText"] = "1"
 	// }
-	resp, err := col.docstore.client.DoReq(ctx, "POST", fmt.Sprintf("/api/docstore/%s", col.col), headers, payload)
+
+	resp, err := col.docstore.client.Do("POST", fmt.Sprintf("/api/docstore/%s", col.col), payload)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +152,7 @@ func (col *Collection) UpdateID(ctx context.Context, id string, doc interface{})
 	if err != nil {
 		return err
 	}
-	resp, err := col.docstore.client.DoReq(ctx, "POST", fmt.Sprintf("/api/docstore/%s/%s", col.col, id), nil, bytes.NewReader(js))
+	resp, err := col.docstore.client.Do("POST", fmt.Sprintf("/api/docstore/%s/%s", col.col, id), bytes.NewReader(js))
 	if err != nil {
 		return err
 	}
@@ -179,27 +169,24 @@ func (col *Collection) UpdateID(ctx context.Context, id string, doc interface{})
 
 // Get retrieve the document, `doc` must a map[string]interface{} or a struct pointer.
 func (col *Collection) GetID(ctx context.Context, id string, doc interface{}) error {
-	resp, err := col.docstore.client.DoReq(ctx, "GET", fmt.Sprintf("/api/docstore/%s/%s", col.col, id), nil, nil)
+	resp, err := col.docstore.client.Get(fmt.Sprintf("/api/docstore/%s/%s", col.col, id))
 	if err != nil {
 		return err
 	}
 
 	defer resp.Body.Close()
-	switch resp.StatusCode {
-	case 200:
-		respBody := clientutil.NewSnappyResponseReader(resp)
-		defer respBody.Close()
-		if err := json.NewDecoder(respBody).Decode(doc); err != nil {
-			return err
+	if err := clientutil.ExpectStatusCode(resp, 200); err != nil {
+		if err.IsNotFound() {
+			return ErrIDNotFound
 		}
-		return nil
-	case 404:
-		return ErrIDNotFound
-	default:
-		var body bytes.Buffer
-		body.ReadFrom(resp.Body)
-		return fmt.Errorf("failed to insert doc: %v", body.String())
+		return err
 	}
+
+	if err := clientutil.Unmarshal(resp, doc); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 type Iter struct {
@@ -242,32 +229,28 @@ func (iter *Iter) Next(res interface{}) bool {
 	if qqs != "" {
 		u = u + "&" + qqs
 	}
-	resp, err := iter.col.docstore.client.DoReq("GET", u, nil, nil)
+	resp, err := iter.col.docstore.client.Get(u)
 	if err != nil {
 		iter.err = err
 		return false
 	}
 	defer resp.Body.Close()
-	switch {
-	case resp.StatusCode == 200:
-		respBody := clientutil.NewSnappyResponseReader(resp)
-		defer respBody.Close()
-		if err := json.NewDecoder(respBody).Decode(res); err != nil {
-			iter.err = err
-			return false
-		}
-		iter.cursor = resp.Header.Get("BlobStash-DocStore-Iter-Cursor")
-		hasMore, _ := strconv.ParseBool(resp.Header.Get("BlobStash-DocStore-Iter-Has-More"))
-		if !hasMore {
-			iter.closed = true // Next call will return false
-		}
-		return true
-	default:
-		var body bytes.Buffer
-		body.ReadFrom(resp.Body)
-		iter.err = fmt.Errorf("failed to insert doc: %v", body.String())
+	if err := clientutil.ExpectStatusCode(resp, 200); err != nil {
+		iter.err = err
 		return false
 	}
+
+	if err := clientutil.Unmarshal(resp, res); err != nil {
+		iter.err = err
+		return false
+	}
+
+	iter.cursor = resp.Header.Get("BlobStash-DocStore-Iter-Cursor")
+	hasMore, _ := strconv.ParseBool(resp.Header.Get("BlobStash-DocStore-Iter-Has-More"))
+	if !hasMore {
+		iter.closed = true // Next call will return false
+	}
+	return true
 }
 
 type IterOpts struct {
@@ -326,23 +309,20 @@ type collectionResp struct {
 
 // DownloadAttachment returns an `io.ReadCloser` with the file content for the given ref.
 func (docstore *DocStore) DownloadAttachment(ref string) (io.Reader, error) {
-	resp, err := docstore.client.DoReq("GET", "/api/filetree/file/"+ref, nil, nil)
+	resp, err := docstore.client.Get("/api/filetree/file/" + ref)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	switch resp.StatusCode {
-	case 200:
-		data, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return nil, err
-		}
-		return bytes.NewReader(data), nil
-	default:
-		var body bytes.Buffer
-		body.ReadFrom(resp.Body)
-		return nil, fmt.Errorf("failed to insert doc: %v", body.String())
+	if err := clientutil.ExpectStatusCode(resp, 200); err != nil {
+		return nil, err
 	}
+
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return bytes.NewReader(data), nil
 }
 
 func (docstore *DocStore) UploadAttachment(name string, r io.Reader, data map[string]interface{}) (string, error) {
@@ -365,45 +345,36 @@ func (docstore *DocStore) UploadAttachment(name string, r io.Reader, data map[st
 		return "", err
 	}
 	// FIXME(tsileo): make the server url.QueryUnescape the result and set it to data
-	resp, err := docstore.client.DoReq("POST", "/api/filetree/upload?data="+url.QueryEscape(string(jsData)), map[string]string{
-		"Content-Type": contentType,
-	}, bodyBuf)
+	resp, err := docstore.client.Do("POST", "/api/filetree/upload?data="+url.QueryEscape(string(jsData)), bodyBuf, clientutil.WithHeader("Content-Type", contentType))
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
-	switch resp.StatusCode {
-	case 200:
-		res := map[string]interface{}{}
-		if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
-			return "", err
-		}
-		return res["ref"].(string), nil
-	default:
-		var body bytes.Buffer
-		body.ReadFrom(resp.Body)
-		return "", fmt.Errorf("failed to insert doc: %v", body.String())
+
+	if err := clientutil.ExpectStatusCode(resp, 200); err != nil {
+		return "", err
 	}
+	res := map[string]interface{}{}
+	if err := clientutil.Unmarshal(resp, &res); err != nil {
+		return "", err
+	}
+	return res["ref"].(string), nil
 }
 
 func (docstore *DocStore) Collections() ([]string, error) {
-	resp, err := docstore.client.DoReq("GET", "/api/docstore/", nil, nil)
+	resp, err := docstore.client.Get("/api/docstore/")
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	switch {
-	case resp.StatusCode == 200:
-		respBody := clientutil.NewSnappyResponseReader(resp)
-		defer respBody.Close()
-		colResp := &collectionResp{}
-		if err := json.NewDecoder(respBody).Decode(colResp); err != nil {
-			return nil, err
-		}
-		return colResp.Collections, nil
-	default:
-		var body bytes.Buffer
-		body.ReadFrom(resp.Body)
-		return nil, fmt.Errorf("failed to insert doc: %v", body.String())
+
+	if err := clientutil.ExpectStatusCode(resp, 200); err != nil {
+		return nil, err
 	}
+
+	colResp := &collectionResp{}
+	if err := clientutil.Unmarshal(resp, colResp); err != nil {
+		return nil, err
+	}
+	return colResp.Collections, nil
 }

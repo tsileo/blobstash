@@ -63,7 +63,8 @@ func (bs *BlobStore) Get(ctx context.Context, hash string) ([]byte, error) {
 }
 
 // Stat check if the blob exists
-func (bs *BlobStore) Stat(ctx context.Context, hash string) (bool, error) {
+func (bs *BlobStore) Stat(hash string) (bool, error) {
+	ctx := context.TODO()
 	resp, err := bs.client.DoReq(ctx, "HEAD", fmt.Sprintf("/api/blobstore/blob/%s", hash), nil, nil)
 	if err != nil {
 		return false, err
