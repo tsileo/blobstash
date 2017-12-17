@@ -65,9 +65,9 @@ func TestDataContextMerge(t *testing.T) {
 		t.Errorf("root blobstore should be empty")
 	}
 
-	tmpDataContext, ok := s.DataContextByName("tmp")
-	if !ok {
-		t.Errorf("tmp data context should exists")
+	tmpDataContext, err := s.newDataContext("tmp")
+	if err != nil {
+		panic(err)
 	}
 	blobsIdx := map[string]*blob.Blob{}
 	for i := 0; i < 5; i++ {
@@ -86,7 +86,7 @@ func TestDataContextMerge(t *testing.T) {
 		t.Errorf("root blobstore should be empty")
 	}
 
-	if err := tmpDataContext.Merge(context.TODO()); err != nil {
+	if err := s.MergeAndDestroy(context.TODO(), "tmp"); err != nil {
 		panic(err)
 	}
 

@@ -145,7 +145,7 @@ func New(dir string, m *meta.Meta, bs *blobstore.BlobStore, kvs *kvstore.KvStore
 	}
 	if err == nil {
 		for _, dir := range stashes {
-			if _, err := s.newDataContext(dir.Name()); err != nil {
+			if _, err := s.NewDataContext(dir.Name()); err != nil {
 				return nil, err
 			}
 		}
@@ -157,7 +157,7 @@ func New(dir string, m *meta.Meta, bs *blobstore.BlobStore, kvs *kvstore.KvStore
 
 }
 
-func (s *Stash) newDataContext(name string) (*dataContext, error) {
+func (s *Stash) NewDataContext(name string) (*dataContext, error) {
 	s.Lock()
 	defer s.Unlock()
 	path := filepath.Join(s.path, name)
@@ -263,7 +263,7 @@ func (s *Stash) dataContext(ctx context.Context) (*dataContext, error) {
 	}
 
 	// If it does not exist, create it now
-	return s.newDataContext(name)
+	return s.NewDataContext(name)
 }
 
 func (s *Stash) ContextNames() []string {
