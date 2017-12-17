@@ -3,6 +3,7 @@ package gc // import "a4.io/blobstash/pkg/stash/gc"
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/vmihailenco/msgpack"
 	"github.com/yuin/gopher-lua"
@@ -55,13 +56,10 @@ func New(s *stash.Stash, dc store.DataContext) *GarbageCollector {
 	if err := L.DoString(`
 local msgpack = require('msgpack')
 function mark_kv (key, version)
-  print(key)
-  print(version)
   local h = blobstash.kvstore:get_meta_blob(key, version)
-  print(h)
   if h ~= nil then
     mark(h)
-    local _, ref = blobstash.kvstore:get(key, version)
+    local _, ref, _ = blobstash.kvstore:get(key, version)
     if ref ~= '' then
       mark(ref)
     end
@@ -112,6 +110,8 @@ func (gc *GarbageCollector) GC(ctx context.Context, script string) error {
 	// FIXME(tsileo): make destroying the context optional
 	return gc.dataContext.Destroy()
 }
+
+// FIXME(tsileo): have a single share "Lua lib" for all the Lua interactions (GC, document store...)
 
 func loadMsgpack(L *lua.LState) int {
 	// register functions to the table
@@ -274,7 +274,7 @@ func kvstoreGet(L *lua.LState) int {
 	version, err := strconv.Atoi(L.ToString(3))
 	if err != nil {
 		L.ArgError(3, "version must be a valid int")
-		return
+		return 0
 	}
 	fkv, err := kv.dc.KvStoreProxy().Get(context.TODO(), L.ToString(2), version)
 	if err != nil {
@@ -282,8 +282,7 @@ func kvstoreGet(L *lua.LState) int {
 	}
 	L.Push(lua.LString(fkv.Data))
 	L.Push(lua.LString(fkv.HexHash()))
-	L.Push(lua.LString(strconv.Itoa(fkv.version)))
-	// FIXME(tsileo): fix the mark_* script
+	L.Push(lua.LString(strconv.Itoa(fkv.Version)))
 	return 3
 }
 
@@ -295,7 +294,7 @@ func kvstoreGetMetaBlob(L *lua.LState) int {
 	version, err := strconv.Atoi(L.ToString(3))
 	if err != nil {
 		L.ArgError(3, "version must be a valid int")
-		return
+		return 0
 	}
 	data, err := kv.dc.KvStoreProxy().GetMetaBlob(context.TODO(), L.ToString(2), version)
 	if err != nil {

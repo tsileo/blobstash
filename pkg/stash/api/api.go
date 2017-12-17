@@ -69,14 +69,14 @@ func (s *StashAPI) dataContextHandler() func(http.ResponseWriter, *http.Request)
 func (s *StashAPI) dataContextMergeHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := mux.Vars(r)["name"]
-		dataContext, ok := s.stash.DataContextByName(name)
+		_, ok := s.stash.DataContextByName(name)
 		switch r.Method {
 		case "POST":
 			if !ok {
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
-			if err := dataContext.Merge(context.TODO()); err != nil {
+			if err := s.stash.MergeAndDestroy(context.TODO(), name); err != nil {
 				panic(err)
 			}
 			w.WriteHeader(http.StatusNoContent)

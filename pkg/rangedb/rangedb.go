@@ -90,6 +90,9 @@ func (r *Range) first() ([]byte, []byte, error) {
 		k, v, err := r.enum.Prev()
 		if err == io.EOF {
 			r.enum, err = r.db.db.SeekLast()
+			if err == io.EOF {
+				return nil, nil, io.EOF
+			}
 			k, v, err = r.enum.Prev()
 		}
 		if err != nil {

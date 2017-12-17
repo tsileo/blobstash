@@ -2,6 +2,7 @@ package stash // import "a4.io/blobstash/pkg/stash"
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -71,7 +72,7 @@ func (dc *dataContext) Merge(ctx context.Context) error {
 		}
 	}
 
-	return dc.Destroy()
+	return nil
 }
 
 func (dc *dataContext) Close() error {
@@ -107,6 +108,20 @@ type Stash struct {
 	sync.Mutex
 }
 
+func (s *Stash) destroy(dataContext *dataContext, name string) error {
+	if dataContext.root {
+		return fmt.Errorf("cannot destroy the root data context")
+	}
+
+	delete(s.contexes, name)
+
+	if err := dataContext.Destroy(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func New(dir string, m *meta.Meta, bs *blobstore.BlobStore, kvs *kvstore.KvStore, h *hub.Hub, l log.Logger) (*Stash, error) {
 	s := &Stash{
 		contexes: map[string]*dataContext{},
@@ -134,7 +149,7 @@ func New(dir string, m *meta.Meta, bs *blobstore.BlobStore, kvs *kvstore.KvStore
 
 }
 
-func (s Stash) newDataContext(name string) (*dataContext, error) {
+func (s *Stash) newDataContext(name string) (*dataContext, error) {
 	s.Lock()
 	defer s.Unlock()
 	path := filepath.Join(s.path, name)
@@ -158,7 +173,7 @@ func (s Stash) newDataContext(name string) (*dataContext, error) {
 		BlobStore: bsDst,
 		ReadSrc:   s.rootDataContext.bs,
 	}
-	kvsDst, err := kvstore.New(l.New("app", "kvstore"), "", bs, m)
+	kvsDst, err := kvstore.New(l.New("app", "kvstore"), path, bs, m)
 	if err != nil {
 		return nil, err
 	}
@@ -192,6 +207,24 @@ func (s *Stash) Close() error {
 
 func (s *Stash) Root() store.DataContext {
 	return s.rootDataContext
+}
+func (s *Stash) MergeAndDestroy(ctx context.Context, name string) error {
+	s.Lock()
+	defer s.Unlock()
+	dc, ok := s.contexes[name]
+	if !ok {
+		return fmt.Errorf("data context not found")
+	}
+
+	if err := dc.Merge(ctx); err != nil {
+		return err
+	}
+
+	if err := s.destroy(dc, name); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (s *Stash) dataContext(ctx context.Context) (*dataContext, error) {
