@@ -99,7 +99,7 @@ func (bs *BlobStore) Get(hash string) ([]byte, error) {
 	return bs.blobStore.Get(bs.ctx, hash)
 }
 
-func (bs *BlobStore) Stat(hash string) (bool, error) {
+func (bs *BlobStore) Stat(ctx context.Context, hash string) (bool, error) {
 	return bs.blobStore.Stat(bs.ctx, hash)
 }
 
