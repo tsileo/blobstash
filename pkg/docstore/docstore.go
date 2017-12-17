@@ -379,11 +379,9 @@ func (docstore *DocStore) collectionsHandler() func(http.ResponseWriter, *http.R
 				panic(err)
 			}
 
-			srw := httputil.NewSnappyResponseWriter(w, r)
-			httputil.WriteJSON(srw, map[string]interface{}{
+			httputil.MarshalAndWrite(r, w, map[string]interface{}{
 				"collections": collections,
 			})
-			srw.Close()
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -833,10 +831,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			}
 
 			// Write the JSON response (encoded if requested)
-			w.Header().Set("Content-Type", "application/json")
-			srw := httputil.NewSnappyResponseWriter(w, r)
-			srw.Write(js)
-			srw.Close()
+			httputil.MarshalAndWrite(r, w, js)
 		case "POST":
 			// permissions.CheckPerms(r, PermCollectionName, collection, PermWrite)
 			// Read the whole body
@@ -869,17 +864,15 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			w.Header().Set("BlobStash-DocStore-Doc-Id", _id.String())
 			w.Header().Set("BlobStash-DocStore-Doc-Hash", _id.Hash())
 			w.Header().Set("BlobStash-DocStore-Doc-CreatedAt", strconv.FormatInt(_id.Ts(), 10))
-			w.WriteHeader(http.StatusCreated)
-			srw := httputil.NewSnappyResponseWriter(w, r)
 
 			created := time.Unix(0, _id.Ts()).UTC().Format(time.RFC3339)
 
-			httputil.WriteJSON(srw, map[string]interface{}{
+			httputil.MarshalAndWrite(r, w, map[string]interface{}{
 				"_id":      _id.String(),
 				"_created": created,
 				"_hash":    _id.Hash(),
 			})
-			srw.Close()
+			w.WriteHeader(http.StatusCreated)
 
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -1042,8 +1035,6 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 		}
 		var _id *id.ID
 		var err error
-		srw := httputil.NewSnappyResponseWriter(w, r)
-		defer srw.Close()
 		switch r.Method {
 		case "GET", "HEAD":
 			// Serve the document JSON encoded
@@ -1080,8 +1071,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			}
 
 			if r.Method == "GET" {
-				w.Header().Set("Content-Type", "application/json")
-				srw.Write(js)
+				httputil.MarshalAndWrite(r, w, js)
 			}
 		case "PATCH":
 			// Patch the document (JSON-Patch/RFC6902)
@@ -1148,17 +1138,14 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			}
 
 			w.Header().Set("ETag", _id.Hash())
-			w.WriteHeader(http.StatusOK)
-			srw := httputil.NewSnappyResponseWriter(w, r)
 
 			created := time.Unix(0, _id.Ts()).UTC().Format(time.RFC3339)
 
-			httputil.WriteJSON(srw, map[string]interface{}{
+			httputil.MarshalAndWrite(r, w, map[string]interface{}{
 				"_id":      _id.String(),
 				"_created": created,
 				"_hash":    _id.Hash(),
 			})
-			srw.Close()
 
 			return
 		case "POST":
@@ -1226,17 +1213,14 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 				panic(err)
 			}
 			w.Header().Set("ETag", _id.Hash())
-			w.WriteHeader(http.StatusOK)
-			srw := httputil.NewSnappyResponseWriter(w, r)
 
 			created := time.Unix(0, _id.Ts()).UTC().Format(time.RFC3339)
 
-			httputil.WriteJSON(srw, map[string]interface{}{
+			httputil.MarshalAndWrite(r, w, map[string]interface{}{
 				"_id":      _id.String(),
 				"_created": created,
 				"_hash":    _id.Hash(),
 			})
-			srw.Close()
 
 			return
 		case "DELETE":
@@ -1284,8 +1268,6 @@ func (docstore *DocStore) docVersionsHandler() func(http.ResponseWriter, *http.R
 			return
 		}
 		var _id *id.ID
-		srw := httputil.NewSnappyResponseWriter(w, r)
-		defer srw.Close()
 		switch r.Method {
 		case "GET", "HEAD":
 			q := httputil.NewQuery(r.URL.Query())
@@ -1334,8 +1316,7 @@ func (docstore *DocStore) docVersionsHandler() func(http.ResponseWriter, *http.R
 			}
 
 			if r.Method == "GET" {
-				w.Header().Set("Content-Type", "application/json")
-				srw.Write(js)
+				httputil.MarshalAndWrite(r, w, js)
 			}
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
