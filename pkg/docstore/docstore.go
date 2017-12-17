@@ -1073,6 +1073,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			if r.Method == "GET" {
 				httputil.MarshalAndWrite(r, w, js)
 			}
+			return
 		case "PATCH":
 			// Patch the document (JSON-Patch/RFC6902)
 
@@ -1247,6 +1248,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 
 		}
 
+		// FIXME(tsileo): put these headers at the top as at this point, the status is already written
 		w.Header().Set("BlobStash-DocStore-Doc-Id", sid)
 		w.Header().Set("BlobStash-DocStore-Doc-Hash", _id.Hash())
 		w.Header().Set("BlobStash-DocStore-Doc-CreatedAt", strconv.FormatInt(_id.Ts(), 10))
