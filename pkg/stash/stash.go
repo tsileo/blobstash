@@ -208,6 +208,26 @@ func (s *Stash) Close() error {
 func (s *Stash) Root() store.DataContext {
 	return s.rootDataContext
 }
+
+func (s *Stash) DoAndDestroy(ctx context.Context, name string, do func(context.Context, store.DataContext) error) error {
+	s.Lock()
+	defer s.Unlock()
+	dc, ok := s.contexes[name]
+	if !ok {
+		return fmt.Errorf("data context not found")
+	}
+
+	if err := do(ctx, dc); err != nil {
+		return err
+	}
+
+	if err := s.destroy(dc, name); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (s *Stash) MergeAndDestroy(ctx context.Context, name string) error {
 	s.Lock()
 	defer s.Unlock()

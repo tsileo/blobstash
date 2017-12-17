@@ -9,6 +9,7 @@ import (
 	"a4.io/blobstash/pkg/httputil"
 	"a4.io/blobstash/pkg/stash"
 	"a4.io/blobstash/pkg/stash/gc"
+	"a4.io/blobstash/pkg/stash/store"
 )
 
 type StashAPI struct {
@@ -101,10 +102,16 @@ func (s *StashAPI) dataContextGCHandler() func(http.ResponseWriter, *http.Reques
 				panic(err)
 			}
 			defer r.Body.Close()
-			garbageCollector := gc.New(s.stash, dataContext)
-			if err := garbageCollector.GC(context.TODO(), string(script)); err != nil {
+			if err := s.stash.DoAndDestroy(context.TODO(), name, func(ctx context.Context, dc store.DataContext) error {
+				return gc.New(s.stash, dataContext).GC(ctx, string(script))
+
+			}); err != nil {
 				panic(err)
 			}
+			//garbageCollector := gc.New(s.stash, dataContext)
+			//if err := garbageCollector.GC(context.TODO(), string(script)); err != nil {
+			//	panic(err)
+			//}
 			w.WriteHeader(http.StatusNoContent)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)

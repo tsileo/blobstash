@@ -153,21 +153,27 @@ func (p *KvStoreProxy) Versions(ctx context.Context, key, start string, limit in
 	mcursor := parseCursor(start)
 
 	versions, _, err := p.ReadSrc.Versions(ctx, key, mcursor.rstart, limit)
-	if err != nil {
+	if err != nil && err != vkv.ErrNotFound {
 		return nil, "", err
 	}
 
-	for _, kv := range versions.Versions {
-		tmp = append(tmp, &sortHelper{kv, true})
+	// The key may not exist
+	if err == nil {
+		for _, kv := range versions.Versions {
+			tmp = append(tmp, &sortHelper{kv, true})
+		}
 	}
 
 	localVersions, _, err := p.KvStore.Versions(ctx, key, mcursor.sstart, limit)
-	if err != nil {
+	if err != nil && err != vkv.ErrNotFound {
 		return nil, "", err
 	}
 
-	for _, kv := range localVersions.Versions {
-		tmp = append(tmp, &sortHelper{kv, false})
+	// The key may not exist
+	if err == nil {
+		for _, kv := range localVersions.Versions {
+			tmp = append(tmp, &sortHelper{kv, false})
+		}
 	}
 
 	// Sort everything
