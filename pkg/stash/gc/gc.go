@@ -271,13 +271,20 @@ func kvstoreGet(L *lua.LState) int {
 	if kv == nil {
 		return 1
 	}
-	fkv, err := kv.dc.KvStoreProxy().Get(context.TODO(), L.ToString(2), L.ToInt(3))
+	version, err := strconv.Atoi(L.ToString(3))
+	if err != nil {
+		L.ArgError(3, "version must be a valid int")
+		return
+	}
+	fkv, err := kv.dc.KvStoreProxy().Get(context.TODO(), L.ToString(2), version)
 	if err != nil {
 		panic(err)
 	}
 	L.Push(lua.LString(fkv.Data))
 	L.Push(lua.LString(fkv.HexHash()))
-	return 2
+	L.Push(lua.LString(strconv.Itoa(fkv.version)))
+	// FIXME(tsileo): fix the mark_* script
+	return 3
 }
 
 func kvstoreGetMetaBlob(L *lua.LState) int {
@@ -285,7 +292,12 @@ func kvstoreGetMetaBlob(L *lua.LState) int {
 	if kv == nil {
 		return 1
 	}
-	data, err := kv.dc.KvStoreProxy().GetMetaBlob(context.TODO(), L.ToString(2), L.ToInt(3))
+	version, err := strconv.Atoi(L.ToString(3))
+	if err != nil {
+		L.ArgError(3, "version must be a valid int")
+		return
+	}
+	data, err := kv.dc.KvStoreProxy().GetMetaBlob(context.TODO(), L.ToString(2), version)
 	if err != nil {
 		L.Push(lua.LNil)
 		return 1

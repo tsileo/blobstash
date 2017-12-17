@@ -246,11 +246,7 @@ func (db *DB) SetMetaBlob(key string, version int, hash string) error {
 
 func (db *DB) GetMetaBlob(key string, version int) (string, error) {
 	if version <= 0 {
-		kv, err := db.get(key)
-		if err != nil {
-			return "", err
-		}
-		version = kv.Version
+		return "", fmt.Errorf("a valid version must be specified")
 	}
 
 	vkey := buildMetaBlobKey([]byte(key), version)
