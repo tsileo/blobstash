@@ -32,7 +32,7 @@ func WithStatusCode(status int) func(http.ResponseWriter) {
 func MarshalAndWrite(r *http.Request, w http.ResponseWriter, data interface{}, writeOptions ...func(http.ResponseWriter)) bool {
 	responseFormat := jsonMimeType
 	if f := r.Header.Get("Accept"); f != "" && f != "*/*" {
-		responseFormat = f
+		responseFormat = strings.TrimSpace(strings.Split(f, ",")[0])
 	}
 
 	w.Header().Set("Content-Type", responseFormat)

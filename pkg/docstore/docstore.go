@@ -819,7 +819,8 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				return
 			}
 
-			js, err := json.Marshal(&map[string]interface{}{
+			// Write the JSON response (encoded if requested)
+			httputil.MarshalAndWrite(r, w, &map[string]interface{}{
 				"pointers": pointers,
 				"data":     docs,
 				"pagination": map[string]interface{}{
@@ -829,13 +830,6 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 					"per_page": limit,
 				},
 			})
-
-			if err != nil {
-				panic(err)
-			}
-
-			// Write the JSON response (encoded if requested)
-			httputil.MarshalAndWrite(r, w, js)
 		case "POST":
 			// permissions.CheckPerms(r, PermCollectionName, collection, PermWrite)
 			// Read the whole body
@@ -1067,16 +1061,11 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			w.Header().Set("ETag", _id.Hash())
 			addSpecialFields(doc, _id)
 
-			js, err := json.Marshal(map[string]interface{}{
-				"data":     doc,
-				"pointers": pointers,
-			})
-			if err != nil {
-				panic(err)
-			}
-
 			if r.Method == "GET" {
-				httputil.MarshalAndWrite(r, w, js)
+				httputil.MarshalAndWrite(r, w, map[string]interface{}{
+					"data":     doc,
+					"pointers": pointers,
+				})
 			}
 			return
 		case "PATCH":
@@ -1308,22 +1297,17 @@ func (docstore *DocStore) docVersionsHandler() func(http.ResponseWriter, *http.R
 				panic(err)
 			}
 
-			js, err := json.Marshal(map[string]interface{}{
-				"pointers": pointers,
-				"data":     docs,
-				"pagination": map[string]interface{}{
-					"cursor":   cursor,
-					"has_more": len(docs) == limit,
-					"count":    len(docs),
-					"per_page": limit,
-				},
-			})
-			if err != nil {
-				panic(err)
-			}
-
 			if r.Method == "GET" {
-				httputil.MarshalAndWrite(r, w, js)
+				httputil.MarshalAndWrite(r, w, map[string]interface{}{
+					"pointers": pointers,
+					"data":     docs,
+					"pagination": map[string]interface{}{
+						"cursor":   cursor,
+						"has_more": len(docs) == limit,
+						"count":    len(docs),
+						"per_page": limit,
+					},
+				})
 			}
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
