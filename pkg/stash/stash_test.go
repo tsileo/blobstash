@@ -65,7 +65,7 @@ func TestDataContextMerge(t *testing.T) {
 		t.Errorf("root blobstore should be empty")
 	}
 
-	tmpDataContext, err := s.newDataContext("tmp")
+	tmpDataContext, err := s.NewDataContext("tmp")
 	if err != nil {
 		panic(err)
 	}
