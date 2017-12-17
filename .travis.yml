@@ -14,7 +14,8 @@ script:
 - cd $GOPATH/src/a4.io/blobstash
 - go test $(go list ./... | grep pkg)
 # Cross compile script
-- ./extras/cross_compile.sh
+# FIXME(tsileo): re-enable the cross compile
+# - ./extras/cross_compile.sh
 # Run the integrations tests
 - go build blobstash.go
 - pip install git+https://github.com/tsileo/blobstash-python-base.git
