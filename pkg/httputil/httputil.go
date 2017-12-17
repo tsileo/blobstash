@@ -23,7 +23,13 @@ const (
 
 // FIXME(tsileo): a EncodeAndWrite  for []byte that support plain-text, snappy or lz4?
 
-func MarshalAndWrite(r *http.Request, w http.ResponseWriter, data interface{}) bool {
+func WithStatusCode(status int) func(http.ResponseWriter) {
+	return func(w http.ResponseWriter) {
+		w.WriteHeader(status)
+	}
+}
+
+func MarshalAndWrite(r *http.Request, w http.ResponseWriter, data interface{}, writeOptions ...func(http.ResponseWriter)) bool {
 	responseFormat := jsonMimeType
 	if f := r.Header.Get("Accept"); f != "" && f != "*/*" {
 		responseFormat = f

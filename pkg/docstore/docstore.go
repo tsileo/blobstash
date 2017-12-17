@@ -360,8 +360,10 @@ func (docstore *DocStore) storedQueriesHandler() func(http.ResponseWriter, *http
 		switch r.Method {
 		case "GET":
 			httputil.WriteJSON(w, docstore.storedQueries)
+			return
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
 		}
 	}
 }
@@ -382,8 +384,10 @@ func (docstore *DocStore) collectionsHandler() func(http.ResponseWriter, *http.R
 			httputil.MarshalAndWrite(r, w, map[string]interface{}{
 				"collections": collections,
 			})
+			return
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
 		}
 	}
 }
@@ -871,11 +875,12 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				"_id":      _id.String(),
 				"_created": created,
 				"_hash":    _id.Hash(),
-			})
-			w.WriteHeader(http.StatusCreated)
-
+			},
+				httputil.WithStatusCode(http.StatusCreated))
+			return
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
 		}
 	}
 }
@@ -1322,7 +1327,7 @@ func (docstore *DocStore) docVersionsHandler() func(http.ResponseWriter, *http.R
 			}
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
-
+			return
 		}
 	}
 }

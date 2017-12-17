@@ -588,7 +588,7 @@ func (ft *FileTree) indexHandler() func(http.ResponseWriter, *http.Request) {
 			panic(err)
 		}
 		out := ft.buildIndex(ctx, "/", node)
-		httputil.WriteJSON(w, out)
+		httputil.MarshalAndWrite(r, w, out)
 	}
 }
 
@@ -660,7 +660,7 @@ func (ft *FileTree) uploadHandler() func(http.ResponseWriter, *http.Request) {
 			panic(err)
 		}
 		node.Info = info
-		httputil.WriteJSON(w, node)
+		httputil.MarshalAndWrite(r, w, node)
 	}
 }
 
@@ -747,7 +747,7 @@ func (ft *FileTree) fsRootHandler() func(http.ResponseWriter, *http.Request) {
 			}
 			nodes = append(nodes, node)
 		}
-		httputil.WriteJSON(w, nodes)
+		httputil.MarshalAndWrite(r, w, nodes)
 	}
 }
 
@@ -820,6 +820,7 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 
 			// Returns the Node as JSON
 			httputil.MarshalAndWrite(r, w, node)
+			return
 
 		case "POST":
 			// FIXME(tsileo): add a way to upload a file as public ? like AWS S3 public-read canned ACL
@@ -880,7 +881,8 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 				panic(err)
 			}
 
-			httputil.WriteJSON(w, newNode)
+			httputil.MarshalAndWrite(r, w, newNode)
+			return
 
 		case "PATCH":
 			// Add a node (from its JSON representation) to a directory
@@ -979,6 +981,7 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 			}
 
 			httputil.MarshalAndWrite(r, w, newNode)
+			return
 
 		case "DELETE":
 			// Delete the node
@@ -1018,6 +1021,7 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 			}
 
 			w.WriteHeader(http.StatusNoContent)
+			return
 
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -1166,7 +1170,7 @@ func (ft *FileTree) nodeHandler() func(http.ResponseWriter, *http.Request) {
 			}
 		}
 
-		httputil.WriteJSON(w, map[string]interface{}{
+		httputil.MarshalAndWrite(r, w, map[string]interface{}{
 			"node": n,
 		})
 	}
