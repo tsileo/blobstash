@@ -68,8 +68,7 @@ func (kv *KvStoreAPI) keysHandler() func(http.ResponseWriter, *http.Request) {
 			for _, kv := range rawKeys {
 				keys = append(keys, toKeyValue(kv))
 			}
-			srw := httputil.NewSnappyResponseWriter(w, r)
-			httputil.WriteJSON(srw, map[string]interface{}{
+			httputil.MarshalAndWrite(r, w, map[string]interface{}{
 				"data": keys,
 				"pagination": map[string]interface{}{
 					"cursor":   cursor,
@@ -78,7 +77,6 @@ func (kv *KvStoreAPI) keysHandler() func(http.ResponseWriter, *http.Request) {
 					"per_page": limit,
 				},
 			})
-			srw.Close()
 
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -153,9 +151,7 @@ func (kv *KvStoreAPI) getHandler() func(http.ResponseWriter, *http.Request) {
 				panic(err)
 			}
 			if r.Method == "GET" {
-				//srw := httputil.NewSnappyResponseWriter(w, r)
 				httputil.MarshalAndWrite(r, w, toKeyValue(item))
-				//srw.Close()
 			}
 			w.WriteHeader(http.StatusOK)
 			return
@@ -186,9 +182,7 @@ func (kv *KvStoreAPI) getHandler() func(http.ResponseWriter, *http.Request) {
 				httputil.Error(w, err)
 				return
 			}
-			srw := httputil.NewSnappyResponseWriter(w, r)
-			httputil.WriteJSON(srw, toKeyValue(res))
-			srw.Close()
+			httputil.MarshalAndWrite(r, w, toKeyValue(res))
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
