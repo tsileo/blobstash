@@ -746,8 +746,7 @@ func (c *Cache) findProcExec(context *fuse.Context) string {
 	return exec
 }
 
-//func (c *Cache) Stat(ctx context.Context, hash string) (bool, error) {
-func (c *Cache) Stat(hash string) (bool, error) {
+func (c *Cache) Stat(ctx context.Context, hash string) (bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

@@ -21,6 +21,7 @@ var (
 )
 
 func (up *Uploader) writeReader(f io.Reader, meta *rnode.RawNode) error { // (*WriteResult, error) {
+	ctx := context.TODO()
 	// writeResult := NewWriteResult()
 	// Init the rolling checksum
 
@@ -41,12 +42,12 @@ func (up *Uploader) writeReader(f io.Reader, meta *rnode.RawNode) error { // (*W
 		chunkHash := hashutil.Compute(chunk.Data)
 		size += chunk.Length
 
-		exists, err := up.bs.Stat(chunkHash)
+		exists, err := up.bs.Stat(ctx, chunkHash)
 		if err != nil {
 			panic(fmt.Sprintf("DB error: %v", err))
 		}
 		if !exists {
-			if err := up.bs.Put(context.TODO(), chunkHash, chunk.Data); err != nil {
+			if err := up.bs.Put(ctx, chunkHash, chunk.Data); err != nil {
 				panic(fmt.Errorf("failed to PUT blob %v", err))
 			}
 		}
@@ -75,6 +76,7 @@ func (up *Uploader) PutFile(path string) (*rnode.RawNode, error) { // , *WriteRe
 }
 
 func (up *Uploader) putFile(path, filename string) (*rnode.RawNode, error) { // , *WriteResult, error) {
+	ctx := context.TODO()
 	up.StartUpload()
 	defer up.UploadDone()
 	fstat, err := os.Stat(path)
@@ -119,13 +121,13 @@ func (up *Uploader) putFile(path, filename string) (*rnode.RawNode, error) { // 
 		// wr = cwr
 	}
 	mhash, mjs := meta.Encode()
-	mexists, err := up.bs.Stat(mhash)
+	mexists, err := up.bs.Stat(ctx, mhash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat blob %v: %v", mhash, err)
 	}
 	// wr.Size += len(mjs)
 	if !mexists {
-		if err := up.bs.Put(context.TODO(), mhash, mjs); err != nil {
+		if err := up.bs.Put(ctx, mhash, mjs); err != nil {
 			return nil, fmt.Errorf("failed to put blob %v: %v", mhash, err)
 		}
 		// wr.BlobsCount++
@@ -139,14 +141,15 @@ func (up *Uploader) putFile(path, filename string) (*rnode.RawNode, error) { // 
 }
 
 func (up *Uploader) PutMeta(meta *rnode.RawNode) error {
+	ctx := context.TODO()
 	mhash, mjs := meta.Encode()
-	mexists, err := up.bs.Stat(mhash)
+	mexists, err := up.bs.Stat(ctx, mhash)
 	if err != nil {
 		return fmt.Errorf("failed to stat blob %v: %v", mhash, err)
 	}
 	// wr.Size += len(mjs)
 	if !mexists {
-		if err := up.bs.Put(context.TODO(), mhash, mjs); err != nil {
+		if err := up.bs.Put(ctx, mhash, mjs); err != nil {
 			return fmt.Errorf("failed to put blob %v: %v", mhash, err)
 		}
 		// wr.BlobsCount++
@@ -160,15 +163,16 @@ func (up *Uploader) PutMeta(meta *rnode.RawNode) error {
 }
 
 func (up *Uploader) RenameMeta(meta *rnode.RawNode, name string) error {
+	ctx := context.TODO()
 	meta.Name = filepath.Base(name)
 	mhash, mjs := meta.Encode()
-	mexists, err := up.bs.Stat(mhash)
+	mexists, err := up.bs.Stat(ctx, mhash)
 	if err != nil {
 		return fmt.Errorf("failed to stat blob %v: %v", mhash, err)
 	}
 	// wr.Size += len(mjs)
 	if !mexists {
-		if err := up.bs.Put(context.TODO(), mhash, mjs); err != nil {
+		if err := up.bs.Put(ctx, mhash, mjs); err != nil {
 			return fmt.Errorf("failed to put blob %v: %v", mhash, err)
 		}
 		// wr.BlobsCount++
@@ -183,6 +187,7 @@ func (up *Uploader) RenameMeta(meta *rnode.RawNode, name string) error {
 
 // fmt.Sprintf("%x", blake2b.Sum256(js))
 func (up *Uploader) PutReader(name string, reader io.Reader, data map[string]interface{}) (*rnode.RawNode, error) { // *WriteResult, error) {
+	ctx := context.TODO()
 	up.StartUpload()
 	defer up.UploadDone()
 
@@ -200,13 +205,13 @@ func (up *Uploader) PutReader(name string, reader io.Reader, data map[string]int
 		return nil, err
 	}
 	mhash, mjs := meta.Encode()
-	mexists, err := up.bs.Stat(mhash)
+	mexists, err := up.bs.Stat(ctx, mhash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat blob %v: %v", mhash, err)
 	}
 	// wr.Size += len(mjs)
 	if !mexists {
-		if err := up.bs.Put(context.TODO(), mhash, mjs); err != nil {
+		if err := up.bs.Put(ctx, mhash, mjs); err != nil {
 			return nil, fmt.Errorf("failed to put blob %v: %v", mhash, err)
 		}
 		// wr.BlobsCount++

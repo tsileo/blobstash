@@ -82,6 +82,9 @@ func (up *Uploader) DirExplorer(path string, pnode *node, nodes chan<- *node) {
 func (up *Uploader) DirWriterNode(node *node) {
 	node.mu.Lock()
 	defer node.mu.Unlock()
+
+	ctx := context.TODO()
+
 	// node.wr = NewWriteResult()
 	hashes := []string{}
 
@@ -131,13 +134,13 @@ func (up *Uploader) DirWriterNode(node *node) {
 	// node.meta.Size = node.wr.Size
 	mhash, mjs := node.meta.Encode()
 	node.meta.Hash = mhash
-	mexists, err := up.bs.Stat(mhash)
+	mexists, err := up.bs.Stat(ctx, mhash)
 	if err != nil {
 		node.err = err
 		return
 	}
 	if !mexists {
-		if err := up.bs.Put(context.TODO(), mhash, mjs); err != nil {
+		if err := up.bs.Put(ctx, mhash, mjs); err != nil {
 			node.err = err
 			return
 		}

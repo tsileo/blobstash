@@ -88,10 +88,10 @@ func displayNode(c *Node, showRef bool) {
 	fmt.Printf("%s\t%s%s\n", t.Format("2006-01-02  15:04"), ref, name)
 }
 
-func (l *filetreeLsCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
+func (l *filetreeLsCmd) Execute(ctx context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
 	if f.NArg() == 0 {
 		nodes := []*Node{}
-		if err := l.kvs.Client().GetJSON("/api/filetree/fs/root?prefix=_filetree:root", nil, &nodes); err != nil {
+		if err := l.kvs.Client().GetJSON(ctx, "/api/filetree/fs/root?prefix=_filetree:root", nil, &nodes); err != nil {
 			return rerr("failed to fetch root: %v", err)
 		}
 		for _, node := range nodes {
@@ -102,12 +102,12 @@ func (l *filetreeLsCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interfa
 		data := strings.Split(f.Arg(0), "/")
 		path := strings.Join(data[1:], "/")
 		// FIXME(tsileo): not store the type in the key anymore
-		key, err := l.kvs.Get(fmt.Sprintf("_filetree:root:dir:%s", data[0]), -1)
+		key, err := l.kvs.Get(ctx, fmt.Sprintf("_filetree:root:dir:%s", data[0]), -1)
 		n := &Node{}
 		if err != nil {
 			return rerr("failed to fetch root key \"%s\": %v", data[0], err)
 		}
-		if err := l.kvs.Client().GetJSON(fmt.Sprintf("/api/filetree/fs/ref/%s/%s", key.Hash, path), nil, n); err != nil {
+		if err := l.kvs.Client().GetJSON(ctx, fmt.Sprintf("/api/filetree/fs/ref/%s/%s", key.Hash, path), nil, n); err != nil {
 			return rerr("failed to fetch node: %v", err)
 		}
 		for _, c := range n.Children {
@@ -133,17 +133,17 @@ func (*filetreeDownloadCmd) Usage() string {
 
 func (*filetreeDownloadCmd) SetFlags(_ *flag.FlagSet) {}
 
-func (r *filetreeDownloadCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
+func (r *filetreeDownloadCmd) Execute(ctx context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
 	data := strings.Split(f.Arg(0), "/")
 	path := strings.Join(data[1:], "/")
 	// FIXME(tsileo): not store the type in the key anymore
 	// FIXME(tsileo): move this into a filetree client
-	key, err := r.kvs.Get(fmt.Sprintf("_filetree:root:dir:%s", data[0]), -1)
+	key, err := r.kvs.Get(ctx, fmt.Sprintf("_filetree:root:dir:%s", data[0]), -1)
 	n := &Node{}
 	if err != nil {
 		return rerr("failed to fetch root key \"%s\": %v", data[0], err)
 	}
-	if err := r.kvs.Client().GetJSON(fmt.Sprintf("/api/filetree/fs/ref/%s/%s", key.Hash, path), nil, n); err != nil {
+	if err := r.kvs.Client().GetJSON(ctx, fmt.Sprintf("/api/filetree/fs/ref/%s/%s", key.Hash, path), nil, n); err != nil {
 		return rerr("failed to fetch node: %v", err)
 	}
 
@@ -185,7 +185,7 @@ func (*filetreePutCmd) Usage() string {
 
 func (*filetreePutCmd) SetFlags(_ *flag.FlagSet) {}
 
-func (r *filetreePutCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
+func (r *filetreePutCmd) Execute(ctx context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
 	finfo, err := os.Stat(f.Arg(0))
 	switch {
 	case os.IsNotExist(err):
@@ -216,7 +216,7 @@ func (r *filetreePutCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interf
 		}
 	}
 	fmt.Printf("meta=%+v", m)
-	if _, err := r.kvs.Put(fmt.Sprintf("_filetree:root:%s:%s", m.Type, m.Name), m.Hash, []byte("TODO meta data"), -1); err != nil {
+	if _, err := r.kvs.Put(ctx, fmt.Sprintf("_filetree:root:%s:%s", m.Type, m.Name), m.Hash, []byte("TODO meta data"), -1); err != nil {
 		return rerr("faile to set kv entry: %v", err)
 	}
 
