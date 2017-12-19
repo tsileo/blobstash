@@ -40,6 +40,7 @@ import (
 	log "github.com/inconshreveable/log15"
 	logext "github.com/inconshreveable/log15/ext"
 	"github.com/vmihailenco/msgpack"
+	"github.com/yuin/gopher-lua"
 
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/config"
@@ -72,11 +73,14 @@ var (
 	PermRead           = "read"
 )
 
+var ErrUnprocessableEntity = errors.New("unprocessable entity")
+
 var reservedKeys = map[string]struct{}{
 	"_id":      struct{}{},
 	"_updated": struct{}{},
 	"_created": struct{}{},
 	"_hash":    struct{}{},
+	"_hooks":   struct{}{},
 }
 
 func idFromKey(col, key string) (*id.ID, error) {
@@ -98,7 +102,7 @@ const (
 	PointerBlobJSON = "@blobs/json:" // FIXME(tsileo): document the Pointer feature
 	// PointerBlobRef     = "@blobs/ref:"  // FIXME(tsileo): implements this like a @filetree/ref
 	PointerFiletreeRef = "@filetree/ref:"
-	PointerURLInfo     = "@url/info:" // FIXME(tsileo): fetch OG meta data or at least title, optionally screenshot???
+	//PointerURLInfo     = "@url/info:" // XXX(tsileo): fetch OG meta data or at least title, optionally screenshot???
 	// TODO(tsileo): implements PointerKvRef
 	// PointerKvRef = "@kv/ref:"
 	// XXX(tsileo): allow custom Lua-defined pointer, this could be useful for implement cross-note linking in Blobs
@@ -124,6 +128,7 @@ type DocStore struct {
 	conf *config.Config
 	// docIndex *index.HashIndexes
 
+	hooks         *LuaHooks
 	storedQueries map[string]*storedQuery
 
 	locker *locker
@@ -162,11 +167,17 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 		}
 	}
 
+	hooks, err := newLuaHooks(conf, ft, blobStore)
+	if err != nil {
+		return nil, err
+	}
+
 	return &DocStore{
 		kvStore:       kvStore,
 		blobStore:     blobStore,
 		filetree:      ft,
 		storedQueries: storedQueries,
+		hooks:         hooks,
 		conf:          conf,
 		locker:        newLocker(),
 		logger:        logger,
@@ -477,11 +488,29 @@ func isQueryAll(q string) bool {
 
 // Insert the given doc (`*map[string]interface{}` for now) in the given collection
 func (docstore *DocStore) Insert(collection string, doc *map[string]interface{}) (*id.ID, error) {
+	// FIXME(tsileo): fix the pointer mess
+
 	docFlag := FlagNoop
+
 	// If there's already an "_id" field in the doc, remove it
 	if _, ok := (*doc)["_id"]; ok {
 		delete(*doc, "_id")
 	}
+
+	// TODO(tsileo): track the hook execution time and log it
+	ok, newDoc, err := docstore.hooks.Execute(collection, "post", *doc)
+	if err != nil {
+		return nil, err
+	}
+
+	if ok && newDoc == nil {
+		return nil, ErrUnprocessableEntity
+	}
+
+	if ok {
+		*doc = newDoc
+	}
+
 	data, err := msgpack.Marshal(doc)
 	if err != nil {
 		return nil, err
@@ -527,6 +556,7 @@ type query struct {
 	storedQueryArgs interface{}
 	basicQuery      string
 	script          string
+	lfunc           *lua.LFunction
 }
 
 func queryToScript(q *query) string {
@@ -544,7 +574,7 @@ end
 }
 
 func (q *query) isMatchAll() bool {
-	if q.script == "" && q.basicQuery == "" && q.storedQuery == "" && q.storedQueryArgs == nil {
+	if q.lfunc == nil && q.script == "" && q.basicQuery == "" && q.storedQuery == "" && q.storedQueryArgs == nil {
 		return true
 	}
 	return false
@@ -560,9 +590,19 @@ func addSpecialFields(doc map[string]interface{}, _id *id.ID) {
 		doc["_updated"] = time.Unix(0, int64(updated)).UTC().Format(time.RFC3339)
 	}
 }
+func (docstore *DocStore) LuaQuery(L *lua.LState, lfunc *lua.LFunction, collection string, cursor string, limit int) ([]map[string]interface{}, map[string]interface{}, string, error) {
+	query := &query{
+		lfunc: lfunc,
+	}
+	docs, pointers, stats, err := docstore.query(L, collection, query, cursor, limit, true, 0)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	return docs, pointers, vkv.PrevKey(stats.LastID), nil
+}
 
 func (docstore *DocStore) Query(collection string, query *query, cursor string, limit, asOf int) ([]map[string]interface{}, map[string]interface{}, *executionStats, error) {
-	docs, pointers, stats, err := docstore.query(collection, query, cursor, limit, true, asOf)
+	docs, pointers, stats, err := docstore.query(nil, collection, query, cursor, limit, true, asOf)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -572,7 +612,7 @@ func (docstore *DocStore) Query(collection string, query *query, cursor string, 
 
 // query returns a JSON list as []byte for the given query
 // docs are unmarhsalled to JSON only when needed.
-func (docstore *DocStore) query(collection string, query *query, cursor string, limit int, fetchPointers bool, asOf int) ([]map[string]interface{}, map[string]interface{}, *executionStats, error) {
+func (docstore *DocStore) query(L *lua.LState, collection string, query *query, cursor string, limit int, fetchPointers bool, asOf int) ([]map[string]interface{}, map[string]interface{}, *executionStats, error) {
 	// js := []byte("[")
 	tstart := time.Now()
 	stats := &executionStats{
@@ -653,7 +693,7 @@ QUERY:
 		case "match_all":
 			qmatcher = &MatchAllEngine{}
 		case "lua":
-			qmatcher, err = docstore.newLuaQueryEngine(query)
+			qmatcher, err = docstore.newLuaQueryEngine(L, query)
 			if err != nil {
 				return nil, nil, stats, err
 			}
@@ -776,7 +816,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				return
 			}
 
-			docs, pointers, stats, err := docstore.query(collection, &query{
+			docs, pointers, stats, err := docstore.query(nil, collection, &query{
 				storedQueryArgs: queryArgs,
 				storedQuery:     q.Get("stored_query"),
 				script:          q.Get("script"),
@@ -854,6 +894,11 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 
 			// Actually insert the doc
 			_id, err := docstore.Insert(collection, &doc)
+			if err == ErrUnprocessableEntity {
+				// FIXME(tsileo): returns an object with field errors (set via the Lua API in the hook)
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				return
+			}
 			if err != nil {
 				panic(err)
 			}

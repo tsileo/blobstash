@@ -2,16 +2,26 @@ package docstore
 
 import (
 	"bytes"
+	"crypto/rand"
 	"fmt"
+	"io/ioutil"
+	"os/exec"
 	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/blevesearch/segment"
+	"github.com/dchest/blake2b"
 	log "github.com/inconshreveable/log15"
 	"github.com/reiver/go-porterstemmer"
 	"github.com/yuin/gopher-lua"
 
 	luautil "a4.io/blobstash/pkg/apps/luautil"
+	"a4.io/blobstash/pkg/config"
+	"a4.io/blobstash/pkg/filetree"
+	filetreeLua "a4.io/blobstash/pkg/filetree/lua"
+	"a4.io/blobstash/pkg/stash/store"
 	"a4.io/gluarequire2"
 )
 
@@ -28,9 +38,161 @@ func (mae *MatchAllEngine) Match(_ map[string]interface{}) (bool, error) {
 
 func (mae *MatchAllEngine) Close() error { return nil }
 
+type LuaHook struct {
+	L        *lua.LState // A pointer of the state from `LuaHooks`
+	hookFunc *lua.LFunction
+	ID       string
+}
+
+func NewLuaHook(L *lua.LState, code string) (*LuaHook, error) {
+	if err := L.DoString(code); err != nil {
+		return nil, err
+	}
+	hookFunc := L.Get(-1).(*lua.LFunction)
+	L.Pop(1)
+	return &LuaHook{
+		L:        L,
+		hookFunc: hookFunc,
+		ID:       fmt.Sprintf("%x", blake2b.Sum256([]byte(code))),
+	}, nil
+}
+
+// TOOD(tsileo): helper for validation like for required fields and returns details for 422 error (field error details)
+func (h *LuaHook) Execute(doc map[string]interface{}) (map[string]interface{}, error) {
+	if err := h.L.CallByParam(lua.P{
+		Fn:      h.hookFunc,
+		NRet:    1,
+		Protect: true,
+	}, luautil.InterfaceToLValue(h.L, doc)); err != nil {
+		fmt.Printf("failed to call pre put hook func: %+v %+v\n", doc, err)
+		return nil, err
+	}
+	newDoc := luautil.TableToMap(h.L.Get(-1).(*lua.LTable))
+	h.L.Pop(1)
+	return newDoc, nil
+}
+
+type LuaHooks struct {
+	hooks  map[string]map[string]*LuaHook
+	L      *lua.LState
+	config *config.Config
+	sync.Mutex
+}
+
+func setupCmd(cwd string) func(*lua.LState) int {
+	return func(L *lua.LState) int {
+		// register functions to the table
+		mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
+			"run": func(L *lua.LState) int {
+				parts := strings.Split(L.ToString(1), " ")
+				cmd := exec.Command(parts[0], parts[1:]...)
+				cmd.Dir = cwd
+				err := cmd.Run()
+				var out string
+				if err != nil {
+					out = err.Error()
+				}
+				L.Push(lua.LString(out))
+				return 1
+			},
+		})
+		// returns the module
+		L.Push(mod)
+		return 1
+	}
+}
+
+func newLuaHooks(conf *config.Config, ft *filetree.FileTree, bs store.BlobStore) (*LuaHooks, error) {
+	hooks := &LuaHooks{
+		config: conf,
+		L:      lua.NewState(),
+		hooks:  map[string]map[string]*LuaHook{},
+	}
+
+	// Load the "filetree" module
+	filetreeLua.Setup(hooks.L, ft, bs)
+	// FIXME(tsileo): better CWD
+	hooks.L.PreloadModule("cmd", setupCmd("/tmp"))
+	hooks.L.SetGlobal("random_string", hooks.L.NewFunction(func(L *lua.LState) int {
+		b := make([]byte, L.ToInt(1))
+		if _, err := rand.Read(b); err != nil {
+			panic(err)
+		}
+		L.Push(lua.LString(fmt.Sprintf("%x", b)))
+		return 1
+	}))
+
+	if c := conf.Docstore; c != nil {
+		if ch := c.Hooks; ch != nil {
+			for col, ops := range ch {
+				for op, path := range ops {
+					data, err := ioutil.ReadFile(path)
+					if err != nil {
+						return nil, err
+					}
+					if err := hooks.Register(col, op, string(data)); err != nil {
+						return nil, err
+					}
+				}
+			}
+		}
+	}
+
+	return hooks, nil
+}
+
+func (lh *LuaHooks) Register(col, op, code string) error {
+	lh.Lock()
+	defer lh.Unlock()
+	ops, ok := lh.hooks[col]
+	if !ok {
+		lh.hooks[col] = map[string]*LuaHook{}
+		ops = lh.hooks[col]
+	}
+	h, err := NewLuaHook(lh.L, code)
+	if err != nil {
+		return err
+	}
+	ops[op] = h
+	fmt.Printf("RESGISTERED %+v\n", lh.hooks)
+	return nil
+}
+
+func (lh *LuaHooks) Execute(col, op string, doc map[string]interface{}) (bool, map[string]interface{}, error) {
+	fmt.Printf("HOOKS EXECUTE %v %v check\n", col, op)
+	lh.Lock()
+	defer lh.Unlock()
+	ops, ok := lh.hooks[col]
+	if !ok {
+		return false, nil, nil
+	}
+	h, ok := ops[op]
+	if !ok {
+		return false, nil, nil
+	}
+
+	newDoc, err := h.Execute(doc)
+	if err != nil {
+		return true, nil, err
+	}
+
+	newDoc["_hooks"] = map[string]interface{}{
+		op: h.ID[:7],
+	}
+	fmt.Printf("HOOKS EXECUTE %v %v executed\n", col, op)
+
+	return true, newDoc, nil
+}
+
+func (lh *LuaHooks) Close() error {
+	lh.L.Close()
+	return nil
+}
+
 type LuaQueryEngine struct {
 	storedQueries   map[string]*storedQuery // Stored query store
 	storedQueryName string                  // Requested stored query name if any
+	lfunc           *lua.LFunction
 
 	code  string
 	query interface{} // Raw query
@@ -47,7 +209,7 @@ func (lqe *LuaQueryEngine) Close() error {
 	return nil
 }
 
-func setGlobals(L *lua.LState) {
+func SetLuaGlobals(L *lua.LState) {
 	// FIXME(tsileo): a `use_index(index_field, value)` and have the optimizer use it
 	// TODO(tsileo): harvesine function for geoquery
 	// TODO(tsileo): current time helper
@@ -55,19 +217,23 @@ func setGlobals(L *lua.LState) {
 	L.SetGlobal("porterstemmer_stem", L.NewFunction(stem))
 }
 
-func (docstore *DocStore) newLuaQueryEngine(query *query) (*LuaQueryEngine, error) {
+func (docstore *DocStore) newLuaQueryEngine(L *lua.LState, query *query) (*LuaQueryEngine, error) {
+	if L == nil {
+		L = lua.NewState()
+	}
 	engine := &LuaQueryEngine{
 		storedQueries:   docstore.storedQueries,
 		query:           query.storedQueryArgs,
 		code:            queryToScript(query),
 		storedQueryName: query.storedQuery,
+		lfunc:           query.lfunc,
 		L:               lua.NewState(),
 		q:               lua.LNil,
 		logger:          docstore.logger.New("submodule", "lua_query_engine"),
 	}
 	fmt.Printf("code=\n\n%s\n\n", engine.code)
 	gluarequire2.NewRequire2Module(gluarequire2.NewRequireFromGitHub(nil)).SetGlobal(engine.L)
-	setGlobals(engine.L)
+	SetLuaGlobals(engine.L)
 	if err := engine.L.DoString(`
 -- Python-like string.split implementation http://lua-users.org/wiki/SplitJoin
 function string:split(sSeparator, nMax, bRegexp)
@@ -181,7 +347,11 @@ return in_list
 			}
 			ret = engine.L.Get(-1).(*lua.LFunction)
 		}
-	} else {
+	}
+	if engine.lfunc != nil {
+		ret = engine.lfunc
+	}
+	if ret == nil {
 		// XXX(tsileo): queryToString converted the basic function to a script retunring a function
 		if err := engine.L.DoString(engine.code); err != nil {
 			return nil, err

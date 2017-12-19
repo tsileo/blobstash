@@ -90,6 +90,10 @@ func (ft *FileTree) ShareTTL() time.Duration {
 }
 
 // BlobStore is the interface to be compatible with both the server and the BlobStore client
+func NewBlobStoreCompat(bs store.BlobStore, ctx context.Context) *BlobStore {
+	return &BlobStore{bs, ctx}
+}
+
 type BlobStore struct {
 	blobStore store.BlobStore
 	ctx       context.Context

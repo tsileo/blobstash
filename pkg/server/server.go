@@ -140,17 +140,17 @@ func New(conf *config.Config) (*Server, error) {
 	}
 	filetree.Register(s.router.PathPrefix("/api/filetree").Subrouter(), s.router, basicAuth)
 
-	apps, err := apps.New(logger.New("app", "apps"), conf, filetree, hub, s.whitelistHosts)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize filetree app: %v", err)
-	}
-	apps.Register(s.router.PathPrefix("/api/apps").Subrouter(), s.router, basicAuth)
-
 	docstore, err := docstore.New(logger.New("app", "docstore"), conf, kvstore, blobstore, filetree)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize docstore app: %v", err)
 	}
 	docstore.Register(s.router.PathPrefix("/api/docstore").Subrouter(), basicAuth)
+
+	apps, err := apps.New(logger.New("app", "apps"), conf, filetree, docstore, hub, s.whitelistHosts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize filetree app: %v", err)
+	}
+	apps.Register(s.router.PathPrefix("/api/apps").Subrouter(), s.router, basicAuth)
 
 	// Setup the closeFunc
 	s.closeFunc = func() error {

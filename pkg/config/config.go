@@ -95,7 +95,8 @@ func (c *Config) LogLvl() log15.Lvl {
 }
 
 type DocstoreConfig struct {
-	StoredQueries []*StoredQuery `yaml:"stored_queries"`
+	StoredQueries []*StoredQuery               `yaml:"stored_queries"`
+	Hooks         map[string]map[string]string `yaml:"hooks"`
 }
 
 type StoredQuery struct {

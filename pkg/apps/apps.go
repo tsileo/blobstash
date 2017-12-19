@@ -15,9 +15,12 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
+	"github.com/yuin/gopher-lua"
 
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/config"
+	"a4.io/blobstash/pkg/docstore"
+	docstoreLua "a4.io/blobstash/pkg/docstore/lua"
 	"a4.io/blobstash/pkg/filetree"
 	"a4.io/blobstash/pkg/httputil"
 	"a4.io/blobstash/pkg/hub"
@@ -31,6 +34,7 @@ type Apps struct {
 	apps            map[string]*App
 	config          *config.Config
 	ft              *filetree.FileTree
+	docstore        *docstore.DocStore
 	hub             *hub.Hub
 	hostWhitelister func(...string)
 	log             log.Logger
@@ -107,7 +111,8 @@ type App struct {
 	proxyTarget *url.URL
 	proxy       *rhttputil.ReverseProxy
 
-	app *gluapp.App
+	docstore *docstore.DocStore
+	app      *gluapp.App
 
 	index map[string]os.FileInfo
 	log   log.Logger
@@ -116,6 +121,7 @@ type App struct {
 
 func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 	app := &App{
+		docstore:   apps.docstore,
 		path:       appConf.Path,
 		name:       appConf.Name,
 		domain:     appConf.Domain,
@@ -142,7 +148,15 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 
 	if app.path != "" {
 		var err error
-		app.app, err = gluapp.NewApp(&gluapp.Config{Path: app.path, Entrypoint: app.entrypoint})
+		app.app, err = gluapp.NewApp(&gluapp.Config{
+			Path:       app.path,
+			Entrypoint: app.entrypoint,
+			SetupState: func(L *lua.LState) error {
+				docstore.SetLuaGlobals(L)
+				docstoreLua.Setup(L, apps.docstore)
+				return nil
+			},
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -201,7 +215,7 @@ func (app *App) serve(ctx context.Context, p string, w http.ResponseWriter, req 
 }
 
 // New initializes the Apps manager
-func New(logger log.Logger, conf *config.Config, ft *filetree.FileTree, chub *hub.Hub, hostWhitelister func(...string)) (*Apps, error) {
+func New(logger log.Logger, conf *config.Config, ft *filetree.FileTree, ds *docstore.DocStore, chub *hub.Hub, hostWhitelister func(...string)) (*Apps, error) {
 	// var err error
 	apps := &Apps{
 		apps:            map[string]*App{},
@@ -209,6 +223,7 @@ func New(logger log.Logger, conf *config.Config, ft *filetree.FileTree, chub *hu
 		log:             logger,
 		config:          conf,
 		hub:             chub,
+		docstore:        ds,
 		hostWhitelister: hostWhitelister,
 	}
 	chub.Subscribe(hub.ScanBlob, "apps", apps.appUpdateCallback)

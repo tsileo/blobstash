@@ -208,6 +208,13 @@ func fromJSON(L *lua.LState, value interface{}) lua.LValue {
 			arr.Append(fromJSON(L, item))
 		}
 		return arr
+	case []map[string]interface{}:
+		arr := L.CreateTable(len(converted), 0)
+		for _, item := range converted {
+			arr.Append(fromJSON(L, item))
+		}
+		fmt.Printf("arr=%+v\n", arr)
+		return arr
 	case map[string]interface{}:
 		tbl := L.CreateTable(0, len(converted))
 		for key, item := range converted {
@@ -217,6 +224,13 @@ func fromJSON(L *lua.LState, value interface{}) lua.LValue {
 	case nil:
 		return lua.LNil
 	default:
+		if s, ok := converted.(fmt.Stringer); ok {
+			return lua.LString(s.String())
+		}
+		js, err := json.Marshal(converted)
+		if err == nil {
+			return FromJSON(L, js)
+		}
 		panic(fmt.Errorf("unsupported type %+v", converted))
 	}
 	return lua.LNil

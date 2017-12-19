@@ -37,6 +37,10 @@ func MarshalAndWrite(r *http.Request, w http.ResponseWriter, data interface{}, w
 
 	w.Header().Set("Content-Type", responseFormat)
 
+	for _, wo := range writeOptions {
+		wo(w)
+	}
+
 	var out []byte
 	var err error
 
