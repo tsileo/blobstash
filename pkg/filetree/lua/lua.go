@@ -19,9 +19,11 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore) func(*lua.LState) 
 				uploader := writer.NewUploader(filetree.NewBlobStoreCompat(bs, context.TODO()))
 				name := L.ToString(1)
 				newName := L.ToString(2)
+				extraMeta := L.ToBool(3)
 				var ref string
 				if newName != "" {
-					node, err := uploader.PutAndRenameFile(name, newName)
+					// Upload the given file with a new name and without meta data (mtime/ctime/mode)
+					node, err := uploader.PutFileRename(name, newName, extraMeta)
 					if err != nil {
 						panic(err)
 					}

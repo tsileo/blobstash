@@ -66,16 +66,16 @@ func (up *Uploader) writeReader(f io.Reader, meta *rnode.RawNode) error { // (*W
 	// return writeResult, nil
 }
 
-func (up *Uploader) PutAndRenameFile(path, filename string) (*rnode.RawNode, error) { // , *WriteResult, error) {
-	return up.putFile(path, filename)
+func (up *Uploader) PutFileRename(path, filename string, extraMeta bool) (*rnode.RawNode, error) { // , *WriteResult, error) {
+	return up.putFile(path, filename, extraMeta)
 }
 
 func (up *Uploader) PutFile(path string) (*rnode.RawNode, error) { // , *WriteResult, error) {
 	_, filename := filepath.Split(path)
-	return up.putFile(path, filename)
+	return up.putFile(path, filename, true)
 }
 
-func (up *Uploader) putFile(path, filename string) (*rnode.RawNode, error) { // , *WriteResult, error) {
+func (up *Uploader) putFile(path, filename string, extraMeta bool) (*rnode.RawNode, error) { // , *WriteResult, error) {
 	ctx := context.TODO()
 	up.StartUpload()
 	defer up.UploadDone()
@@ -92,16 +92,18 @@ func (up *Uploader) putFile(path, filename string) (*rnode.RawNode, error) { // 
 	meta.Size = int(fstat.Size())
 	meta.Type = "file"
 
-	// Only set the mode if it's not the default one
-	mode := uint32(fstat.Mode())
-	if mode != 0644 {
-		meta.Mode = mode
-	}
+	if extraMeta {
+		// Only set the mode if it's not the default one
+		mode := uint32(fstat.Mode())
+		if mode != 0644 {
+			meta.Mode = mode
+		}
 
-	// Mtime/Ctime handling
-	meta.ModTime = fstat.ModTime().Unix()
-	if stat, ok := fstat.Sys().(*syscall.Stat_t); ok {
-		meta.ChangeTime = stat.Ctim.Sec
+		// Mtime/Ctime handling
+		meta.ModTime = fstat.ModTime().Unix()
+		if stat, ok := fstat.Sys().(*syscall.Stat_t); ok {
+			meta.ChangeTime = stat.Ctim.Sec
+		}
 	}
 
 	// wr := NewWriteResult()

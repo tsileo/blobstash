@@ -2,7 +2,6 @@ package docstore
 
 import (
 	"bytes"
-	"crypto/rand"
 	"fmt"
 	"io/ioutil"
 	"os/exec"
@@ -22,6 +21,7 @@ import (
 	"a4.io/blobstash/pkg/filetree"
 	filetreeLua "a4.io/blobstash/pkg/filetree/lua"
 	"a4.io/blobstash/pkg/stash/store"
+	"a4.io/gluapp/util"
 	"a4.io/gluarequire2"
 )
 
@@ -112,16 +112,7 @@ func newLuaHooks(conf *config.Config, ft *filetree.FileTree, bs store.BlobStore)
 	// Load the "filetree" module
 	filetreeLua.Setup(hooks.L, ft, bs)
 	// FIXME(tsileo): better CWD
-	hooks.L.PreloadModule("cmd", setupCmd("/tmp"))
-	hooks.L.SetGlobal("random_string", hooks.L.NewFunction(func(L *lua.LState) int {
-		b := make([]byte, L.ToInt(1))
-		if _, err := rand.Read(b); err != nil {
-			panic(err)
-		}
-		L.Push(lua.LString(fmt.Sprintf("%x", b)))
-		return 1
-	}))
-
+	util.Setup(hooks.L, "/tmp")
 	if c := conf.Docstore; c != nil {
 		if ch := c.Hooks; ch != nil {
 			for col, ops := range ch {
@@ -415,6 +406,7 @@ func stem(L *lua.LState) int {
 	return 1
 }
 
+// FIXME(tsileo): cache this and the stem, make it available to "apps" in a better way
 func tokenize(data []byte) (map[string]interface{}, error) {
 	out := map[string]interface{}{}
 	segmenter := segment.NewWordSegmenter(bytes.NewReader(data))
