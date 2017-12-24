@@ -1754,7 +1754,7 @@ func (f *RWFile) Flush() fuse.Status {
 
 	// Sometimes the RWFile can still be a file opened in RO mode (if there's another opened file in RW mode)
 	if f.flags&fuse.O_ANYWRITE != 0 && (f.node == nil || f.node.Hash() != f.Hash()) {
-		rawNode, err := f.fs.up.PutAndRenameFile(f.meta.loopbackPath, f.meta.filename)
+		rawNode, err := f.fs.up.PutFileRename(f.meta.loopbackPath, f.meta.filename, true)
 		if err != nil {
 			if os.IsNotExist(err) {
 				// This means the file has been removed
