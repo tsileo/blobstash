@@ -29,6 +29,22 @@ func WithStatusCode(status int) func(http.ResponseWriter) {
 	}
 }
 
+func Unmarshal(req *http.Request, out interface{}) error {
+	requestFormat := jsonMimeType
+	if f := req.Header.Get("Content-Type"); f != "" {
+		requestFormat = f
+	}
+
+	switch requestFormat {
+	case jsonMimeType:
+		return json.NewDecoder(req.Body).Decode(out)
+	case msgpackMimeType:
+		return msgpack.NewDecoder(req.Body).Decode(out)
+	}
+
+	return fmt.Errorf("Unsupported request content type: \"%s\"", requestFormat)
+}
+
 func MarshalAndWrite(r *http.Request, w http.ResponseWriter, data interface{}, writeOptions ...func(http.ResponseWriter)) bool {
 	responseFormat := jsonMimeType
 	if f := r.Header.Get("Accept"); f != "" && f != "*/*" {

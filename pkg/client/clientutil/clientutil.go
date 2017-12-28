@@ -1,6 +1,7 @@
 package clientutil // import "a4.io/blobstash/pkg/client/clientutil"
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -269,6 +270,42 @@ func Unmarshal(resp *http.Response, out interface{}) error {
 
 func (client *ClientUtil) Get(path string, options ...func(*http.Request) error) (*http.Response, error) {
 	return client.Do("GET", path, nil, options...)
+}
+
+func (client *ClientUtil) doWithMsgpackBody(method, path string, payload interface{}, options ...func(*http.Request) error) (*http.Response, error) {
+	encoded, err := msgpack.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal payload: %v", err)
+	}
+
+	options = append(options, WithHeader("Content-Type", "application/msgpack"))
+	return client.Do(method, path, bytes.NewReader(encoded), options...)
+}
+
+func (client *ClientUtil) doWithJSONBody(method, path string, payload interface{}, options ...func(*http.Request) error) (*http.Response, error) {
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal payload: %v", err)
+	}
+
+	options = append(options, WithHeader("Content-Type", "application/json"))
+	return client.Do(method, path, bytes.NewReader(encoded), options...)
+}
+
+func (client *ClientUtil) PatchMsgpack(path string, payload interface{}, options ...func(*http.Request) error) (*http.Response, error) {
+	return client.doWithMsgpackBody("PATCH", path, payload, options...)
+}
+
+func (client *ClientUtil) PostMsgpack(path string, payload interface{}, options ...func(*http.Request) error) (*http.Response, error) {
+	return client.doWithMsgpackBody("POST", path, payload, options...)
+}
+
+func (client *ClientUtil) PostJSON(path string, payload interface{}, options ...func(*http.Request) error) (*http.Response, error) {
+	return client.doWithJSONBody("POST", path, payload, options...)
+}
+
+func (client *ClientUtil) PatchJSON(path string, payload interface{}, options ...func(*http.Request) error) (*http.Response, error) {
+	return client.doWithJSONBody("PATCH", path, payload, options...)
 }
 
 // DoReq "do" the request and returns the `*http.Response`

@@ -67,13 +67,17 @@ func (e *FSUpdateEvent) JSON() string {
 }
 
 type FileTree struct {
-	kvStore       store.KvStore
-	blobStore     store.BlobStore
-	conf          *config.Config
-	hub           *hub.Hub
-	sharingCred   *bewit.Cred
-	authFunc      func(*http.Request) bool
-	shareTTL      time.Duration
+	kvStore   store.KvStore
+	blobStore store.BlobStore
+
+	conf *config.Config
+
+	hub *hub.Hub
+
+	authFunc    func(*http.Request) bool
+	sharingCred *bewit.Cred
+	shareTTL    time.Duration
+
 	thumbCache    *cache.Cache
 	metadataCache *cache.Cache
 	nodeCache     *lru.Cache
@@ -951,7 +955,8 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 			} else {
 				// Decode the raw node from the request body
 				newChild = &rnode.RawNode{}
-				err = json.NewDecoder(r.Body).Decode(newChild)
+				err = httputil.Unmarshal(r, newChild)
+				//err = json.NewDecoder(r.Body).Decode(newChild)
 			}
 			if err != nil {
 				panic(err)

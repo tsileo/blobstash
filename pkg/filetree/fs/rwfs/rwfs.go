@@ -1763,34 +1763,35 @@ func (f *RWFile) Flush() fuse.Status {
 			f.fs.logEIO(fmt.Errorf("failed to upload: %v", err))
 			return fuse.EIO
 		}
-		js, err := json.Marshal(rawNode)
-		if err != nil {
-			f.fs.logEIO(err)
-			return fuse.EIO
-		}
+
 		d := filepath.Dir(f.meta.Path)
 		if d == "." {
 			d = ""
 		}
 
-		resp, err := f.fs.kvs.Client().DoReqWithQuery(
-			context.TODO(), "PATCH", "/api/filetree/fs/fs/"+f.fs.ref+"/"+d,
-			map[string]string{
+		resp, err := f.fs.clientUtil.PatchMsgpack("/api/filetree/fs/fs/"+f.fs.ref+"/"+d, rawNode,
+			clientutil.WithQueryArgs(map[string]string{
 				"mtime": strconv.Itoa(int(rawNode.ModTime)),
-			}, nil, bytes.NewReader(js))
-		if err != nil || resp.StatusCode != 200 {
-			f.fs.logEIO(fmt.Errorf("upload failed with resp %s/%+v", resp, err))
+			}))
+		if err != nil {
+			f.fs.logEIO(fmt.Errorf("upload failed: %v", err))
 			return fuse.EIO
 		}
+		defer resp.Body.Close()
+
+		if err := clientutil.ExpectStatusCode(resp, 200); err != nil {
+			f.fs.logEIO(err)
+			return fuse.EIO
+		}
+
 		// FIXME(tsileo): save it in *FileSystem, we'll need it when GCing the stash
 		// Also do it everywhere it's needed
 		// rev := resp.Header.Get("BlobStash-Filetree-FS-Revision")
 
 		// Update the rw meta ref
 		newNode := &Node{}
-		defer resp.Body.Close()
-		if err := json.NewDecoder(resp.Body).Decode(newNode); err != nil {
-			f.fs.logEIO(fmt.Errorf("failed to decode PATCH resp: %v", err))
+		if err := clientutil.Unmarshal(resp, newNode); err != nil {
+			f.fs.logEIO(err)
 			return fuse.EIO
 		}
 
