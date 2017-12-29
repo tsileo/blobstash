@@ -446,33 +446,36 @@ func (rl *rwLayer) Utimens(path string, m *time.Time, fctx *fuse.Context) error 
 		return fmt.Errorf("a remote node should exists for %s", path)
 	}
 
-	// We PATCH the node, just for updating its mtime
-	h := map[string]string{
-		"BlobStash-Filetree-Patch-Ref": node.Ref,
-	}
-
 	dest := filepath.Dir(path)
 	if dest == "." {
 		dest = ""
 	}
 
-	resp, err := rl.fs.kvs.Client().DoReqWithQuery(
-		context.TODO(), "PATCH", "/api/filetree/fs/fs/"+rl.fs.ref+"/"+dest,
-		map[string]string{
-			"mtime": strconv.Itoa(int(m.Unix())),
-		}, h, nil)
-	if err != nil || resp.StatusCode != 200 {
-		return fmt.Errorf("upload failed with resp %s/%+v", resp, err)
+	// We PATCH the node, just for updating its mtime
+	resp, err := rl.fs.clientUtil.PatchMsgpack(
+		"/api/filetree/fs/fs/"+rl.fs.ref+"/"+dest,
+		nil,
+		clientutil.WithQueryArg("mtime", strconv.Itoa(int(m.Unix()))),
+		clientutil.WithHeader("BlobStash-Filetree-Patch-Ref", node.Ref),
+	)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if err := clientutil.ExpectStatusCode(resp, 200); err != nil {
+		return err
 	}
 
-	rwmeta, ok := rl.cache[path]
-	if ok {
-		// Update the rw meta ref if needed
+	// Update the rw meta ref if needed
+	if rwmeta, ok := rl.cache[path]; ok {
 		newNode := &Node{}
-		defer resp.Body.Close()
-		if err := json.NewDecoder(resp.Body).Decode(newNode); err != nil {
-			return fmt.Errorf("failed to decode PATCH resp: %v", err)
+		if err := clientutil.Unmarshal(resp, newNode); err != nil {
+			return err
 		}
+		//if err := json.NewDecoder(resp.Body).Decode(newNode); err != nil {
+		//	return fmt.Errorf("failed to decode PATCH resp: %v", err)
+		//}
 		rwmeta.Node = newNode
 		rwmeta.ref = newNode.Ref
 	}
@@ -1399,49 +1402,49 @@ func (fs *FileSystem) Create(path string, flags uint32, mode uint32, fctx *fuse.
 
 	// XXX(tsileo): this should be in the rw layer
 	// Only continue if the node don't already exist
-	rnode, err := fs.getNode(path)
+	remoteNode, err := fs.getNode(path)
 	if err != nil {
 		fs.logEIO(err)
 		return nil, fuse.EIO
 	}
-	if rnode != nil {
+	if remoteNode != nil {
 		fs.logEIO(fmt.Errorf("a node already exist at %s", path))
 		return nil, fuse.EIO
 	}
 
-	node := map[string]interface{}{
-		"type":    "file",
-		"name":    filepath.Base(path),
-		"version": "1",
-		"mtime":   mtime,
-		"mode":    mode,
+	node := &rnode.RawNode{
+		Type:    rnode.File,
+		Name:    filepath.Base(path),
+		Version: rnode.V1,
+		ModTime: mtime,
+		Mode:    mode,
 	}
 
+	// TODO(tsileo): a util function for getting the node parent dir and change the `.` to ``
 	d := filepath.Dir(path)
 	if d == "." {
 		d = ""
 	}
-	js, err := json.Marshal(node)
+
+	resp, err := fs.clientUtil.PatchMsgpack(
+		"/api/filetree/fs/fs/"+fs.ref+"/"+d,
+		node,
+		clientutil.WithQueryArg("mtime", strconv.Itoa(int(mtime))),
+	)
 	if err != nil {
 		fs.logEIO(err)
 		return nil, fuse.EIO
 	}
-	resp, err := fs.kvs.Client().DoReqWithQuery(
-		context.TODO(), "PATCH", "/api/filetree/fs/fs/"+fs.ref+"/"+d,
-		map[string]string{
-			"mtime": strconv.Itoa(int(mtime)),
-		},
-		nil, bytes.NewReader(js))
-	if err != nil || resp.StatusCode != 200 {
-		fs.logEIO(fmt.Errorf("patch failed with status=%d and err=%v", resp.StatusCode, err))
+	defer resp.Body.Close()
+
+	if err := clientutil.ExpectStatusCode(resp, 200); err != nil {
+		fs.logEIO(err)
 		return nil, fuse.EIO
 	}
 
-	// Update the rw meta ref
 	newNode := &Node{}
-	defer resp.Body.Close()
-	if err := json.NewDecoder(resp.Body).Decode(newNode); err != nil {
-		fs.logEIO(fmt.Errorf("failed to decode PATCH resp: %v", err))
+	if err := clientutil.Unmarshal(resp, newNode); err != nil {
+		fs.logEIO(err)
 		return nil, fuse.EIO
 	}
 

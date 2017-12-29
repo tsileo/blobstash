@@ -159,6 +159,15 @@ func WithQueryArgs(query map[string]string) func(*http.Request) error {
 	}
 }
 
+func WithQueryArg(name, value string) func(*http.Request) error {
+	return func(request *http.Request) error {
+		q := request.URL.Query()
+		q.Set(name, value)
+		request.URL.RawQuery = q.Encode()
+		return nil
+	}
+}
+
 func WithAPIKey(apiKey string) func(*http.Request) error {
 	return func(request *http.Request) error {
 		request.SetBasicAuth("", apiKey)
@@ -273,23 +282,31 @@ func (client *ClientUtil) Get(path string, options ...func(*http.Request) error)
 }
 
 func (client *ClientUtil) doWithMsgpackBody(method, path string, payload interface{}, options ...func(*http.Request) error) (*http.Response, error) {
-	encoded, err := msgpack.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal payload: %v", err)
+	var body io.Reader
+	if payload != nil {
+		encoded, err := msgpack.Marshal(payload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal payload: %v", err)
+		}
+		body = bytes.NewReader(encoded)
 	}
 
 	options = append(options, WithHeader("Content-Type", "application/msgpack"))
-	return client.Do(method, path, bytes.NewReader(encoded), options...)
+	return client.Do(method, path, body, options...)
 }
 
 func (client *ClientUtil) doWithJSONBody(method, path string, payload interface{}, options ...func(*http.Request) error) (*http.Response, error) {
-	encoded, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal payload: %v", err)
+	var body io.Reader
+	if payload != nil {
+		encoded, err := json.Marshal(payload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal payload: %v", err)
+		}
+		body = bytes.NewReader(encoded)
 	}
 
 	options = append(options, WithHeader("Content-Type", "application/json"))
-	return client.Do(method, path, bytes.NewReader(encoded), options...)
+	return client.Do(method, path, body, options...)
 }
 
 func (client *ClientUtil) PatchMsgpack(path string, payload interface{}, options ...func(*http.Request) error) (*http.Response, error) {

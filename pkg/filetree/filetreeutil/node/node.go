@@ -14,8 +14,13 @@ import (
 	"github.com/vmihailenco/msgpack"
 )
 
-var (
-	version = "1"
+const (
+	File = "file"
+	Dir  = "dir"
+)
+
+const (
+	V1 = "1"
 )
 
 type RawNode struct {

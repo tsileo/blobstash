@@ -117,7 +117,9 @@ func (up *Uploader) DirWriterNode(node *node) {
 	up.StartDirUpload()
 	defer up.DirUploadDone()
 
-	node.meta = &rnode.RawNode{}
+	node.meta = &rnode.RawNode{
+		Version: rnode.V1,
+	}
 	sort.Strings(hashes)
 	for _, hash := range hashes {
 		node.meta.AddRef(hash)
