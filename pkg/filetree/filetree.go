@@ -398,9 +398,10 @@ func (s byName) Less(i, j int) bool { return s[i].Name < s[j].Name }
 func (s byName) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 func MetaToNode(m *rnode.RawNode) (*Node, error) {
-	if m.Version != rnode.V1 {
-		return nil, fmt.Errorf("bad node version \"%s\"", m.Version)
-	}
+	// FIXME(tsileo): re-enable the version check (bug during FS create)
+	//if m.Version != rnode.V1 {
+	//return nil, fmt.Errorf("bad node version \"%s\" for node %+v", m.Version, m)
+	//}
 	n := &Node{
 		Name: m.Name,
 		Type: m.Type,
@@ -429,7 +430,7 @@ func (ft *FileTree) fetchDir(ctx context.Context, n *Node, depth, maxDepth int) 
 	if depth > maxDepth {
 		return nil
 	}
-	if n.Type == "dir" {
+	if n.Type == rnode.Dir {
 		n.Children = []*Node{}
 		for _, ref := range n.Meta.Refs {
 			cn, err := ft.nodeByRef(ctx, ref.(string))
@@ -494,8 +495,8 @@ func (fs *FS) Root(ctx context.Context, create bool, mtime int64) (*Node, error)
 			return nil, err
 		}
 		meta := &rnode.RawNode{
-			Type:    "dir",
-			Version: "1",
+			Type:    rnode.Dir,
+			Version: rnode.V1,
 			Name:    "_root",
 			ModTime: mtime,
 		}
@@ -561,13 +562,13 @@ func (fs *FS) Path(ctx context.Context, path string, create bool, mtime int64) (
 			}
 			// Create a new dir since it doesn't exist
 			cmeta = &rnode.RawNode{
-				Type:    "dir",
-				Version: "1",
+				Type:    rnode.Dir,
+				Version: rnode.V1,
 				Name:    p,
 				ModTime: mtime,
 			}
 			if i == pathCount-1 {
-				cmeta.Type = "file"
+				cmeta.Type = rnode.File
 			}
 			//  we don't set the meta type, it will be set on Update if it doesn't exist
 			node, err = MetaToNode(cmeta)
@@ -610,7 +611,7 @@ func (ft *FileTree) buildIndex(ctx context.Context, path string, node *Node) map
 	}
 	dpath := filepath.Join(path, node.Name)
 	for _, child := range node.Children {
-		if child.Type == "file" {
+		if child.Type == rnode.File {
 			out[filepath.Join(dpath, child.Name)] = child.Hash
 		} else {
 			for p, ref := range ft.buildIndex(ctx, dpath, child) {
@@ -914,7 +915,7 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 				}
 				panic(err)
 			}
-			if node.Type != "dir" {
+			if node.Type != rnode.Dir {
 				panic("only dir can be patched")
 			}
 
@@ -959,6 +960,7 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 				// Decode the raw node from the request body
 				newChild = &rnode.RawNode{}
 				err = httputil.Unmarshal(r, newChild)
+				fmt.Printf("DECODED=%+v\n", newChild)
 				//err = json.NewDecoder(r.Body).Decode(newChild)
 			}
 			if err != nil {
@@ -1286,7 +1288,7 @@ func (ft *FileTree) dirHandler() func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
-		if n.Type != "dir" {
+		if n.Type != rnode.Dir {
 			panic(httputil.NewPublicErrorFmt("node is not a dir (%s)", n.Type))
 		}
 

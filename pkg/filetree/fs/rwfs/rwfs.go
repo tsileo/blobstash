@@ -631,7 +631,7 @@ func (n *Node) Mode() uint32 {
 	if n.RawMode > 0 {
 		return uint32(n.RawMode)
 	}
-	if n.Type == "file" {
+	if n.Type == rnode.File {
 		return 0644
 	} else {
 		return 0755
@@ -648,11 +648,11 @@ func (n *Node) Hash() string {
 }
 
 func (n *Node) IsDir() bool {
-	return n.Type == "dir"
+	return n.Type == rnode.Dir
 }
 
 func (n *Node) IsFile() bool {
-	return n.Type == "file"
+	return n.Type == rnode.File
 }
 
 func (n *Node) Mtime() uint64 {
@@ -1395,6 +1395,18 @@ func (fs *FileSystem) Access(name string, mode uint32, fctx *fuse.Context) fuse.
 	return fuse.OK
 }
 
+func (fs *FileSystem) dir(path string) string {
+	d := filepath.Dir(path)
+	if d == "." {
+		d = ""
+	}
+	return d
+}
+
+func (fs *FileSystem) remotePath(path string) string {
+	return fmt.Sprintf("/api/filetree/fs/fs/%s/%s", fs.ref, path)
+}
+
 func (fs *FileSystem) Create(path string, flags uint32, mode uint32, fctx *fuse.Context) (nodefs.File, fuse.Status) {
 	fs.logOP("Create", path, true, fctx)
 
@@ -1420,16 +1432,10 @@ func (fs *FileSystem) Create(path string, flags uint32, mode uint32, fctx *fuse.
 		Mode:    mode,
 	}
 
-	// TODO(tsileo): a util function for getting the node parent dir and change the `.` to ``
-	d := filepath.Dir(path)
-	if d == "." {
-		d = ""
-	}
-
 	resp, err := fs.clientUtil.PatchMsgpack(
-		"/api/filetree/fs/fs/"+fs.ref+"/"+d,
+		fs.remotePath(fs.dir(path)),
 		node,
-		clientutil.WithQueryArg("mtime", strconv.Itoa(int(mtime))),
+		clientutil.WithQueryArg("mtime", strconv.FormatInt(mtime, 10)),
 	)
 	if err != nil {
 		fs.logEIO(err)
@@ -1772,7 +1778,10 @@ func (f *RWFile) Flush() fuse.Status {
 			d = ""
 		}
 
-		resp, err := f.fs.clientUtil.PatchMsgpack("/api/filetree/fs/fs/"+f.fs.ref+"/"+d, rawNode,
+		resp, err := f.fs.clientUtil.PatchMsgpack(
+			f.fs.remotePath(f.fs.dir(f.meta.Path)),
+			//"/api/filetree/fs/fs/"+f.fs.ref+"/"+d,
+			rawNode,
 			clientutil.WithQueryArgs(map[string]string{
 				"mtime": strconv.Itoa(int(rawNode.ModTime)),
 			}))
