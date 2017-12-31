@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/golang/snappy"
 	"github.com/vmihailenco/msgpack"
 )
 
@@ -190,6 +191,10 @@ func EnableMsgpack() func(*http.Request) error {
 	return WithHeader("Accept", "application/msgpack")
 }
 
+func EnableSnappyEncoding() func(*http.Request) error {
+	return WithHeader("Accept-Encoding", "snappy")
+}
+
 type ClientUtil struct {
 	host    string
 	client  *http.Client
@@ -219,11 +224,18 @@ type BadStatusCodeError struct {
 	Err error
 }
 
-func (e *BadStatusCodeError) IsNotFound() bool {
+func (e *BadStatusCodeError) IsNotFound() (res bool) {
 	if e.ResponseStatusCode == http.StatusNotFound {
-		return true
+		res = true
 	}
-	return false
+	return
+}
+
+func (e *BadStatusCodeError) IsUnauthorized() (res bool) {
+	if e.ResponseStatusCode == http.StatusUnauthorized {
+		res = true
+	}
+	return
 }
 
 func (e *BadStatusCodeError) Error() string {
@@ -255,6 +267,20 @@ func ExpectStatusCode(resp *http.Response, status int) *BadStatusCodeError {
 	}
 }
 
+func Decode(resp *http.Response) ([]byte, error) {
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// FIXME(tsileo): use a sync.Pool for the snappy reader (thanks to Reset on the snappy reader)
+	if resp.Header.Get("Content-Encoding") == "snappy" {
+		return snappy.Decode(nil, body)
+	}
+
+	return body, nil
+}
+
 func Unmarshal(resp *http.Response, out interface{}) error {
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -281,8 +307,19 @@ func (client *ClientUtil) Delete(path string, options ...func(*http.Request) err
 	return client.Do("DELETE", path, nil, options...)
 }
 
+func (client *ClientUtil) Head(path string, options ...func(*http.Request) error) (*http.Response, error) {
+	return client.Do("GET", path, nil, options...)
+}
+
 func (client *ClientUtil) Get(path string, options ...func(*http.Request) error) (*http.Response, error) {
 	return client.Do("GET", path, nil, options...)
+}
+
+func (client *ClientUtil) Post(path string, data []byte, options ...func(*http.Request) error) (*http.Response, error) {
+	body := bytes.NewReader(snappy.Encode(nil, data))
+	options = append(options, WithHeader("Content-Type", "snappy"))
+
+	return client.Do("POST", path, body, options...)
 }
 
 func (client *ClientUtil) doWithMsgpackBody(method, path string, payload interface{}, options ...func(*http.Request) error) (*http.Response, error) {
@@ -352,6 +389,26 @@ func (client *ClientUtil) Do(method, path string, body io.Reader, options ...fun
 	return client.client.Do(request)
 }
 
+func (client *ClientUtil) CheckAuth() (bool, error) {
+	resp, err := client.Get("/api/ping")
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	serr := ExpectStatusCode(resp, http.StatusOK)
+
+	if serr == nil {
+		return true, nil
+	}
+
+	if serr.IsUnauthorized() {
+		return false, nil
+	}
+
+	return false, serr
+}
+
 // DoReq "do" the request and returns the `*http.Response`
 func (client *Client) DoReqWithQuery(ctx context.Context, method, path string, query map[string]string, headers map[string]string, body io.Reader) (*http.Response, error) {
 	request, err := http.NewRequest(method, fmt.Sprintf("%s%s", client.opts.Host, path), body)
@@ -394,22 +451,6 @@ func (client *Client) DoReqWithQuery(ctx context.Context, method, path string, q
 		request.Header.Set(header, val)
 	}
 	return client.client.Do(request)
-}
-
-func (client *Client) CheckAuth(ctx context.Context) (bool, error) {
-	resp, err := client.DoReq(ctx, "GET", "/api/ping", nil, nil)
-	if err != nil {
-		return false, err
-	}
-	defer resp.Body.Close()
-	switch resp.StatusCode {
-	case 200:
-		return true, nil
-	case 401:
-		return false, nil
-	default:
-		return false, fmt.Errorf("API call failed with status %d", resp.StatusCode)
-	}
 }
 
 func (client *Client) GetJSON(ctx context.Context, path string, headers map[string]string, out interface{}) error {

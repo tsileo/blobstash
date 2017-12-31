@@ -97,7 +97,7 @@ func main() {
 	kvopts := kvstore.DefaultOpts().SetHost(os.Getenv("BLOBS_API_HOST"), os.Getenv("BLOBS_API_KEY"))
 	kvopts.SnappyCompression = false
 	kvs := kvstore.New(kvopts)
-	bs := blobstore.New(kvopts)
+	//bs := blobstore.New(kvopts)
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -108,9 +108,13 @@ func main() {
 	clientUtil := clientutil.NewClientUtil(host,
 		clientutil.WithAPIKey(apiKey),
 		clientutil.WithHeader(ctxutil.FileTreeHostnameHeader, hostname),
+		clientutil.EnableMsgpack(),
+		clientutil.EnableSnappyEncoding(),
 	)
 
-	authOk, err := kvs.Client().CheckAuth(context.TODO())
+	bs := blobstore.New2(clientUtil)
+
+	authOk, err := clientUtil.CheckAuth()
 	if err != nil {
 		fmt.Printf("failed to contact BlobStash: %v\n", err)
 		os.Exit(1)
@@ -850,7 +854,7 @@ type FileSystem struct {
 
 	up         *writer.Uploader
 	kvs        *kvstore.KvStore
-	bs         *blobstore.BlobStore
+	bs         *blobstore.BlobStore2
 	clientUtil *clientutil.ClientUtil
 
 	mu sync.Mutex
@@ -891,7 +895,7 @@ type FDInfo struct {
 	CreatedAt  time.Time
 }
 
-func NewFileSystem(ref, mountpoint string, debug bool, cache *Cache, cacheDir string, bs *blobstore.BlobStore, kvs *kvstore.KvStore, cu *clientutil.ClientUtil) (*FileSystem, error) {
+func NewFileSystem(ref, mountpoint string, debug bool, cache *Cache, cacheDir string, bs *blobstore.BlobStore2, kvs *kvstore.KvStore, cu *clientutil.ClientUtil) (*FileSystem, error) {
 	fs := &FileSystem{
 		cache:      cache,
 		bs:         bs,
@@ -921,20 +925,28 @@ func NewFileSystem(ref, mountpoint string, debug bool, cache *Cache, cacheDir st
 	return fs, nil
 }
 
+func (fs *FileSystem) dir(path string) string {
+	d := filepath.Dir(path)
+	if d == "." {
+		d = ""
+	}
+	return d
+}
+
+func (fs *FileSystem) remotePath(path string) string {
+	return fmt.Sprintf("/api/filetree/fs/fs/%s/%s", fs.ref, path)
+}
+
 // getNode fetches the node at path from BlobStash, like a "remote stat".
 func (fs *FileSystem) getNode(path string) (*Node, error) {
 	fs.stats.Lock()
 	fs.stats.RemoteStat++
 	fs.stats.Unlock()
 
-	node := &Node{}
-	// TODO(tsileo): enable msgpack on the client, not on each request
-	resp, err := fs.clientUtil.Get("/api/filetree/fs/fs/"+fs.ref+"/"+path,
-		clientutil.EnableMsgpack())
+	resp, err := fs.clientUtil.Get(fs.remotePath(path))
 	if err != nil {
 		return nil, err
 	}
-	// TODO(tsileo): ensure all resp body are closed
 	defer resp.Body.Close()
 
 	if err := clientutil.ExpectStatusCode(resp, http.StatusOK); err != nil {
@@ -945,6 +957,7 @@ func (fs *FileSystem) getNode(path string) (*Node, error) {
 		return nil, err
 	}
 
+	node := &Node{}
 	if err := clientutil.Unmarshal(resp, node); err != nil {
 		return nil, err
 	}
@@ -1128,7 +1141,7 @@ func (fs *FileSystem) Open(name string, flags uint32, fctx *fuse.Context) (nodef
 
 	node, err := fs.getNode(name)
 	if err != nil {
-		fs.logEIO(err)
+		fs.logEIO(fmt.Errorf("failed to get node: %v", err))
 		return nil, fuse.EIO
 	}
 
@@ -1143,7 +1156,7 @@ func (fs *FileSystem) Open(name string, flags uint32, fctx *fuse.Context) (nodef
 		}
 		f, err := NewRWFile(context.TODO(), fctx, fs, name, flags, 0644, node)
 		if err != nil {
-			fs.logEIO(err)
+			fs.logEIO(fmt.Errorf("failed to open RW file: %v", err))
 			return nil, fuse.EIO
 		}
 
@@ -1422,18 +1435,6 @@ func (fs *FileSystem) Access(name string, mode uint32, fctx *fuse.Context) fuse.
 	fs.logOP("Access", name, false, fctx)
 	// FIXME(tsileo): better impl
 	return fuse.OK
-}
-
-func (fs *FileSystem) dir(path string) string {
-	d := filepath.Dir(path)
-	if d == "." {
-		d = ""
-	}
-	return d
-}
-
-func (fs *FileSystem) remotePath(path string) string {
-	return fmt.Sprintf("/api/filetree/fs/fs/%s/%s", fs.ref, path)
 }
 
 func (fs *FileSystem) Create(path string, flags uint32, mode uint32, fctx *fuse.Context) (nodefs.File, fuse.Status) {

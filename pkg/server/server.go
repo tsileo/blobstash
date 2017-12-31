@@ -38,7 +38,9 @@ import (
 )
 
 func pingHandler(w http.ResponseWriter, r *http.Request) {
-	httputil.WriteJSON(w, map[string]interface{}{"ping": "pong"})
+	httputil.MarshalAndWrite(r, w, map[string]interface{}{
+		"ping": "pong",
+	})
 }
 
 type App interface {

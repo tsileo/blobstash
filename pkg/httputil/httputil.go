@@ -3,12 +3,14 @@ package httputil // import "a4.io/blobstash/pkg/httputil"
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"reflect"
 	"strconv"
 	"strings"
 
+	"github.com/golang/snappy"
 	"github.com/vmihailenco/msgpack"
 
 	"a4.io/blobstash/pkg/logger"
@@ -43,6 +45,46 @@ func Unmarshal(req *http.Request, out interface{}) error {
 	}
 
 	return fmt.Errorf("Unsupported request content type: \"%s\"", requestFormat)
+}
+
+func Read(r *http.Request) ([]byte, error) {
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// FIXME(tsileo): use a sync.Pool for the snappy reader (thanks to Reset on the snappy reader)
+	if r.Header.Get("Content-Type") == "snappy" {
+		return snappy.Decode(nil, body)
+	}
+
+	return body, nil
+}
+
+func Write(r *http.Request, w http.ResponseWriter, data []byte, writeOptions ...func(http.ResponseWriter)) {
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Content-Type", "application/octet-stream")
+
+	var snap bool
+	if e := r.Header.Get("Accept-Encoding"); e == "snappy" {
+		w.Header().Set("Content-Encoding", e)
+		snap = true
+	}
+
+	for _, wo := range writeOptions {
+		wo(w)
+	}
+
+	if snap {
+		if _, err := w.Write(snappy.Encode(nil, data)); err != nil {
+			panic(err)
+		}
+		return
+	}
+
+	if _, err := w.Write(data); err != nil {
+		panic(err)
+	}
 }
 
 func MarshalAndWrite(r *http.Request, w http.ResponseWriter, data interface{}, writeOptions ...func(http.ResponseWriter)) bool {

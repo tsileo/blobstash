@@ -58,6 +58,7 @@ func (bs *BlobStoreAPI) uploadHandler() func(http.ResponseWriter, *http.Request)
 				var buf bytes.Buffer
 				buf.ReadFrom(part)
 				blob := buf.Bytes()
+				// FIXME(tsileo): should we do the check here? or let the storage engine do it
 				chash := hashutil.Compute(blob)
 				if hash != chash {
 					httputil.WriteJSONError(w, http.StatusInternalServerError, "blob corrupted, hash does not match, expected "+chash)
@@ -90,9 +91,7 @@ func (bs *BlobStoreAPI) blobHandler() func(http.ResponseWriter, *http.Request) {
 				}
 				return
 			}
-			srw := httputil.NewSnappyResponseWriter(w, r)
-			srw.Write(blob)
-			srw.Close()
+			httputil.Write(r, w, blob)
 			return
 		case "HEAD":
 			exists, err := bs.bs.Stat(ctx, vars["hash"])
@@ -105,6 +104,26 @@ func (bs *BlobStoreAPI) blobHandler() func(http.ResponseWriter, *http.Request) {
 			}
 			httputil.WriteJSONError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
 			return
+		case "POST":
+			blob, err := httputil.Read(r)
+			if err != nil {
+				httputil.Error(w, err)
+				return
+			}
+
+			// FIXME(tsileo): should we do the check here? or let the storage engine do it
+			chash := hashutil.Compute(blob)
+			if vars["hash"] != chash {
+				httputil.WriteJSONError(w, http.StatusInternalServerError, "blob corrupted, hash does not match, expected "+chash)
+				return
+			}
+
+			b := &mblob.Blob{Hash: vars["hash"], Data: blob}
+			if err := bs.bs.Put(ctx, b); err != nil {
+				httputil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
+			}
+
+			w.WriteHeader(http.StatusCreated)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -131,8 +150,8 @@ func (bs *BlobStoreAPI) enumerateHandler() func(http.ResponseWriter, *http.Reque
 				httputil.Error(w, err)
 				return
 			}
-			srw := httputil.NewSnappyResponseWriter(w, r)
-			httputil.WriteJSON(srw, map[string]interface{}{
+
+			httputil.MarshalAndWrite(r, w, map[string]interface{}{
 				"data": refs,
 				"pagination": map[string]interface{}{
 					"cursor":   nextCursor,
@@ -141,7 +160,6 @@ func (bs *BlobStoreAPI) enumerateHandler() func(http.ResponseWriter, *http.Reque
 					"per_page": limit,
 				},
 			})
-			srw.Close()
 			return
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
