@@ -121,6 +121,11 @@ func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
 	return nil
 }
 
+func (bs *BlobStore) GetEncoded(ctx context.Context, hash string) ([]byte, error) {
+	bs.log.Info("OP Get (encoded)", "hash", hash)
+	return bs.back.GetEncoded(hash)
+}
+
 func (bs *BlobStore) Get(ctx context.Context, hash string) ([]byte, error) {
 	bs.log.Info("OP Get", "hash", hash)
 	return bs.back.Get(hash)

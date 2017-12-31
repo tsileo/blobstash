@@ -61,6 +61,21 @@ func Read(r *http.Request) ([]byte, error) {
 	return body, nil
 }
 
+// Same as Write, but assume data is already snappy encoded
+func WriteEncoded(r *http.Request, w http.ResponseWriter, data []byte, writeOptions ...func(http.ResponseWriter)) {
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Encoding", "snappy")
+
+	for _, wo := range writeOptions {
+		wo(w)
+	}
+
+	if _, err := w.Write(data); err != nil {
+		panic(err)
+	}
+}
+
 func Write(r *http.Request, w http.ResponseWriter, data []byte, writeOptions ...func(http.ResponseWriter)) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Content-Type", "application/octet-stream")

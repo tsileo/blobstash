@@ -82,6 +82,22 @@ func (bs *BlobStoreAPI) blobHandler() func(http.ResponseWriter, *http.Request) {
 		vars := mux.Vars(r)
 		switch r.Method {
 		case "GET":
+			// FIXME(tsileo): clean this case, skip a decoding/encoding round and return the bytes as is from the
+			// backend storage
+			if r.Header.Get("Accept-Encoding") == "snappy" {
+				blob, err := bs.bs.GetEncoded(ctx, vars["hash"])
+				if err != nil {
+					if err == blobsfile.ErrBlobNotFound {
+						httputil.WriteJSONError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
+					} else {
+						httputil.Error(w, err)
+					}
+					return
+				}
+				httputil.WriteEncoded(r, w, blob)
+				return
+			}
+
 			blob, err := bs.bs.Get(ctx, vars["hash"])
 			if err != nil {
 				if err == blobsfile.ErrBlobNotFound {
@@ -112,6 +128,7 @@ func (bs *BlobStoreAPI) blobHandler() func(http.ResponseWriter, *http.Request) {
 			}
 
 			// FIXME(tsileo): should we do the check here? or let the storage engine do it
+			// XXX(tsileo): if the blob is already snappy encoded, find a way to skip the extra decoding/encoding like for GET
 			chash := hashutil.Compute(blob)
 			if vars["hash"] != chash {
 				httputil.WriteJSONError(w, http.StatusInternalServerError, "blob corrupted, hash does not match, expected "+chash)

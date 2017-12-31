@@ -77,6 +77,7 @@ func (bs *BlobStore2) Put(ctx context.Context, hash string, blob []byte) error {
 	return nil
 }
 
+// FIXME(tsileo): remove the old client
 type BlobStore struct {
 	client *clientutil.Client
 }
