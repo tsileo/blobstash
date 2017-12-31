@@ -3,7 +3,6 @@ package main
 // import "a4.io/blobstash/pkg/filetree/fs"
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha1"
 	"encoding/json"
@@ -11,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -406,23 +406,30 @@ func (rl *rwLayer) Chmod(path string, mode uint32, mtime int64, fctx *fuse.Conte
 		dest = ""
 	}
 
-	resp, err := rl.fs.kvs.Client().DoReqWithQuery(
-		context.TODO(), "PATCH", "/api/filetree/fs/fs/"+rl.fs.ref+"/"+dest,
-		map[string]string{
+	resp, err := rl.fs.clientUtil.PatchMsgpack(
+		rl.fs.remotePath(rl.fs.dir(path)),
+		nil,
+		clientutil.WithQueryArgs(map[string]string{
 			"mtime":  strconv.Itoa(int(mtime)),
 			"rename": strconv.FormatBool(true),
-		}, h, nil)
-	if err != nil || resp.StatusCode != 200 {
-		return fmt.Errorf("upload failed with resp %s/%+v", resp, err)
+		}),
+		clientutil.WithHeaders(h),
+	)
+	if err != nil {
+		return err
 	}
 
-	rwmeta, ok := rl.cache[path]
-	if ok {
+	defer resp.Body.Close()
+
+	if err := clientutil.ExpectStatusCode(resp, http.StatusOK); err != nil {
+		return err
+	}
+
+	if rwmeta, ok := rl.cache[path]; ok {
 		// Update the rw meta ref if needed
 		newNode := &Node{}
-		defer resp.Body.Close()
-		if err := json.NewDecoder(resp.Body).Decode(newNode); err != nil {
-			return fmt.Errorf("failed to decode PATCH resp: %v", err)
+		if err := clientutil.Unmarshal(resp, newNode); err != nil {
+			return err
 		}
 		rwmeta.Node = newNode
 		rwmeta.ref = newNode.Ref
@@ -463,7 +470,7 @@ func (rl *rwLayer) Utimens(path string, m *time.Time, fctx *fuse.Context) error 
 	}
 	defer resp.Body.Close()
 
-	if err := clientutil.ExpectStatusCode(resp, 200); err != nil {
+	if err := clientutil.ExpectStatusCode(resp, http.StatusOK); err != nil {
 		return err
 	}
 
@@ -930,7 +937,7 @@ func (fs *FileSystem) getNode(path string) (*Node, error) {
 	// TODO(tsileo): ensure all resp body are closed
 	defer resp.Body.Close()
 
-	if err := clientutil.ExpectStatusCode(resp, 200); err != nil {
+	if err := clientutil.ExpectStatusCode(resp, http.StatusOK); err != nil {
 		if err.IsNotFound() {
 			// Return nil as ENOENT
 			return nil, nil
@@ -1207,43 +1214,44 @@ func (fs *FileSystem) Mkdir(path string, mode uint32, fctx *fuse.Context) fuse.S
 	}
 
 	// Only continue if the node don't already exist
-	rnode, err := fs.getNode(path)
+	remoteNode, err := fs.getNode(path)
 	if err != nil {
 		fs.logEIO(err)
 		return fuse.EIO
 	}
 
-	if rnode != nil {
+	if remoteNode != nil {
 		// FIXME(tsileo): what is the right behavior if the dir already exists? short circuit the call for now.
 		return fuse.OK
 	}
 
 	mtime := time.Now().Unix()
-	node := map[string]interface{}{
-		"type":    "dir",
-		"name":    filepath.Base(path),
-		"version": "1",
-		"mtime":   mtime,
+
+	node := &rnode.RawNode{
+		Version: rnode.V1,
+		Type:    rnode.Dir,
+		Name:    filepath.Base(path),
+		ModTime: mtime,
 	}
-	d := filepath.Dir(path)
-	if d == "." {
-		d = ""
-	}
-	js, err := json.Marshal(node)
+
+	resp, err := fs.clientUtil.PatchMsgpack(
+		fs.remotePath(fs.dir(path)),
+		node,
+		clientutil.WithQueryArg("mtime", strconv.FormatInt(mtime, 10)),
+	)
 	if err != nil {
 		fs.logEIO(err)
 		return fuse.EIO
 	}
-	resp, err := fs.kvs.Client().DoReqWithQuery(
-		context.TODO(), "PATCH", "/api/filetree/fs/fs/"+fs.ref+"/"+d,
-		map[string]string{
-			"mtime": strconv.Itoa(int(mtime)),
-		},
-		nil, bytes.NewReader(js))
-	if err != nil || resp.StatusCode != 200 {
-		fs.logEIO(fmt.Errorf("patch failed with status=%d and err=%v", resp.StatusCode, err))
+
+	defer resp.Body.Close()
+
+	if err := clientutil.ExpectStatusCode(resp, http.StatusOK); err != nil {
+		fs.logEIO(err)
 		return fuse.EIO
 	}
+
+	// FIXME(tsileo): read the header with the FS version (vkv version)
 
 	return fuse.OK
 }
@@ -1261,25 +1269,28 @@ func (fs *FileSystem) Unlink(name string, fctx *fuse.Context) fuse.Status {
 	}
 
 	mtime := time.Now().Unix()
-	resp, err := fs.kvs.Client().DoReqWithQuery(
-		context.TODO(), "DELETE", "/api/filetree/fs/fs/"+fs.ref+"/"+name,
-		map[string]string{
-			"mtime": strconv.Itoa(int(mtime)),
-		}, nil, nil)
+	resp, err := fs.clientUtil.Delete(
+		fs.remotePath(name),
+		clientutil.WithQueryArg("mtime", strconv.FormatInt(mtime, 10)),
+	)
 	if err != nil {
 		fs.logEIO(err)
 		return fuse.EIO
 	}
+	defer resp.Body.Close()
 
-	switch resp.StatusCode {
-	case 200, 204:
-		return fuse.OK
-	case 404:
-		return fuse.ENOENT
-	default:
-		fs.logEIO(fmt.Errorf("request failed with status=%d", resp.StatusCode))
+	if err := clientutil.ExpectStatusCode(resp, http.StatusNoContent); err != nil {
+		if err.IsNotFound() {
+			return fuse.ENOENT
+		}
+
+		fs.logEIO(err)
 		return fuse.EIO
 	}
+
+	// FIXME(tsileo): track the kv version
+
+	return fuse.OK
 }
 
 func (fs *FileSystem) Rmdir(name string, fctx *fuse.Context) fuse.Status {
@@ -1303,15 +1314,22 @@ func (fs *FileSystem) Rmdir(name string, fctx *fuse.Context) fuse.Status {
 	}
 
 	mtime := time.Now().Unix()
-	resp, err := fs.kvs.Client().DoReqWithQuery(
-		context.TODO(), "DELETE", "/api/filetree/fs/fs/"+fs.ref+"/"+name,
-		map[string]string{
-			"mtime": strconv.Itoa(int(mtime)),
-		}, nil, nil)
-	if err != nil || resp.StatusCode != 204 {
-		fs.logEIO(fmt.Errorf("request failed with status=%d and err=%v", resp.StatusCode, err))
+	resp, err := fs.clientUtil.Delete(
+		fs.remotePath(name),
+		clientutil.WithQueryArg("mtime", strconv.FormatInt(mtime, 10)),
+	)
+	if err != nil {
+		fs.logEIO(err)
 		return fuse.EIO
 	}
+	defer resp.Body.Close()
+
+	if err := clientutil.ExpectStatusCode(resp, http.StatusNoContent); err != nil {
+		fs.logEIO(err)
+		return fuse.EIO
+	}
+
+	// FIXME(tsileo): track the kv version
 
 	return fuse.OK
 }
@@ -1347,39 +1365,50 @@ func (fs *FileSystem) Rename(oldPath string, newPath string, fctx *fuse.Context)
 		return fuse.ENOENT
 	}
 
+	// XXX the delete is in two phase: delete the original node and re-add it to its new parent
+
 	// First, we remove the old path
-	resp, err := fs.kvs.Client().DoReqWithQuery(
-		context.TODO(), "DELETE", "/api/filetree/fs/fs/"+fs.ref+"/"+oldPath,
-		map[string]string{
-			"mtime": strconv.Itoa(int(mtime)),
-		}, nil, nil)
-	if err != nil || resp.StatusCode != 204 {
-		fs.logEIO(fmt.Errorf("request failed with status=%d and err=%v", resp.StatusCode, err))
+	resp, err := fs.clientUtil.Delete(
+		fs.remotePath(oldPath),
+		clientutil.WithQueryArg("mtime", strconv.FormatInt(mtime, 10)),
+	)
+	if err != nil {
+		fs.logEIO(err)
+		return fuse.EIO
+	}
+	defer resp.Body.Close()
+
+	if err := clientutil.ExpectStatusCode(resp, http.StatusNoContent); err != nil {
+		fs.logEIO(err)
 		return fuse.EIO
 	}
 
 	// Next, we re-add it to its dest
-	h := map[string]string{
-		"BlobStash-Filetree-Patch-Ref":  node.Ref,
-		"BlobStash-Filetree-Patch-Name": filepath.Base(newPath),
-	}
-	dest := filepath.Dir(newPath)
-	if dest == "." {
-		dest = ""
-	}
-
-	// TODO(tsileo): set the mtime and rename=true
-	resp, err = fs.kvs.Client().DoReqWithQuery(
-		context.TODO(), "PATCH", "/api/filetree/fs/fs/"+fs.ref+"/"+dest,
-		map[string]string{
+	resp, err = fs.clientUtil.PatchMsgpack(
+		fs.remotePath(fs.dir(newPath)),
+		nil,
+		clientutil.WithHeaders(map[string]string{
+			"BlobStash-Filetree-Patch-Ref":  node.Ref,
+			"BlobStash-Filetree-Patch-Name": filepath.Base(newPath),
+		}),
+		clientutil.WithQueryArgs(map[string]string{
 			// FIXME(tsileo): s/rename/change/ ?
 			"rename": strconv.FormatBool(true),
 			"mtime":  strconv.Itoa(int(mtime)),
-		}, h, nil)
-	if err != nil || resp.StatusCode != 200 {
-		fs.logEIO(fmt.Errorf("request failed with status=%d and err=%v", resp.StatusCode, err))
+		}),
+	)
+	if err != nil {
+		fs.logEIO(err)
 		return fuse.EIO
 	}
+	defer resp.Body.Close()
+
+	if err := clientutil.ExpectStatusCode(resp, http.StatusOK); err != nil {
+		fs.logEIO(err)
+		return fuse.EIO
+	}
+
+	// FIXME(tsileo): track the kv version
 
 	return fuse.OK
 }
@@ -1443,7 +1472,7 @@ func (fs *FileSystem) Create(path string, flags uint32, mode uint32, fctx *fuse.
 	}
 	defer resp.Body.Close()
 
-	if err := clientutil.ExpectStatusCode(resp, 200); err != nil {
+	if err := clientutil.ExpectStatusCode(resp, http.StatusOK); err != nil {
 		fs.logEIO(err)
 		return nil, fuse.EIO
 	}
@@ -1773,14 +1802,8 @@ func (f *RWFile) Flush() fuse.Status {
 			return fuse.EIO
 		}
 
-		d := filepath.Dir(f.meta.Path)
-		if d == "." {
-			d = ""
-		}
-
 		resp, err := f.fs.clientUtil.PatchMsgpack(
 			f.fs.remotePath(f.fs.dir(f.meta.Path)),
-			//"/api/filetree/fs/fs/"+f.fs.ref+"/"+d,
 			rawNode,
 			clientutil.WithQueryArgs(map[string]string{
 				"mtime": strconv.Itoa(int(rawNode.ModTime)),
@@ -1791,7 +1814,7 @@ func (f *RWFile) Flush() fuse.Status {
 		}
 		defer resp.Body.Close()
 
-		if err := clientutil.ExpectStatusCode(resp, 200); err != nil {
+		if err := clientutil.ExpectStatusCode(resp, http.StatusOK); err != nil {
 			f.fs.logEIO(err)
 			return fuse.EIO
 		}

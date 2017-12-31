@@ -277,6 +277,10 @@ func Unmarshal(resp *http.Response, out interface{}) error {
 	return fmt.Errorf("unsupported \"%s\" content type", contentType)
 }
 
+func (client *ClientUtil) Delete(path string, options ...func(*http.Request) error) (*http.Response, error) {
+	return client.Do("DELETE", path, nil, options...)
+}
+
 func (client *ClientUtil) Get(path string, options ...func(*http.Request) error) (*http.Response, error) {
 	return client.Do("GET", path, nil, options...)
 }
