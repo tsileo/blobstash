@@ -64,7 +64,6 @@ func Read(r *http.Request) ([]byte, error) {
 // Same as Write, but assume data is already snappy encoded
 func WriteEncoded(r *http.Request, w http.ResponseWriter, data []byte, writeOptions ...func(http.ResponseWriter)) {
 	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Encoding", "snappy")
 
 	for _, wo := range writeOptions {
@@ -78,7 +77,6 @@ func WriteEncoded(r *http.Request, w http.ResponseWriter, data []byte, writeOpti
 
 func Write(r *http.Request, w http.ResponseWriter, data []byte, writeOptions ...func(http.ResponseWriter)) {
 	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Content-Type", "application/octet-stream")
 
 	var snap bool
 	if e := r.Header.Get("Accept-Encoding"); e == "snappy" {
@@ -134,7 +132,8 @@ func MarshalAndWrite(r *http.Request, w http.ResponseWriter, data interface{}, w
 		return false
 	}
 
-	w.Write(out)
+	// Write the response (and optionally compress the response with snappy)
+	Write(r, w, out)
 	return true
 }
 

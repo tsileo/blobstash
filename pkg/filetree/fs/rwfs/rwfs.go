@@ -244,7 +244,7 @@ func newVFSEntry(content func() interface{}) func(string, *fuse.Context) (nodefs
 func newDebugVFS(fs *FileSystem) *DebugVFS {
 	return &DebugVFS{
 		fs:   fs,
-		Path: "fs",
+		Path: ".fs",
 		attr: &fuse.Attr{
 			Mode:  fuse.S_IFDIR | 0755,
 			Owner: *fuse.CurrentOwner(),
@@ -857,6 +857,8 @@ type FileSystem struct {
 	bs         *blobstore.BlobStore2
 	clientUtil *clientutil.ClientUtil
 
+	lastRevision int64
+
 	mu sync.Mutex
 }
 
@@ -1082,8 +1084,8 @@ func (fs *FileSystem) OpenDir(name string, fctx *fuse.Context) ([]fuse.DirEntry,
 	// Quick hack to add the magic "/fs" directory
 	if name == "" {
 		// The root is requested, we want to show the ".fs" dir
-		index["fs"] = fuse.DirEntry{
-			Name: "fs",
+		index[fs.debugVFS.Path] = fuse.DirEntry{
+			Name: fs.debugVFS.Path,
 			Mode: uint32(fuse.S_IFDIR | 0755),
 		}
 	}

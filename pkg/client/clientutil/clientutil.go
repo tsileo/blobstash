@@ -22,13 +22,14 @@ import (
 var ErrBlobNotFound = errors.New("blob not found")
 var ErrNotFound = errors.New("not found")
 
+// FIXME(tsileo): more sensible default?
 var transport http.RoundTripper = &http.Transport{
 	Proxy: http.ProxyFromEnvironment,
 	Dial: (&net.Dialer{
-		Timeout:   30 * time.Second,
+		Timeout:   10 * time.Second,
 		KeepAlive: 30 * time.Second,
 	}).Dial,
-	TLSHandshakeTimeout: 10 * time.Second,
+	TLSHandshakeTimeout: 5 * time.Second,
 }
 
 // Opts holds the client configuration
@@ -253,7 +254,7 @@ func ExpectStatusCode(resp *http.Response, status int) *BadStatusCodeError {
 	}
 
 	// Not the expected status
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := Decode(resp)
 	if err != nil {
 		return &BadStatusCodeError{Err: err}
 	}
@@ -282,7 +283,7 @@ func Decode(resp *http.Response) ([]byte, error) {
 }
 
 func Unmarshal(resp *http.Response, out interface{}) error {
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := Decode(resp)
 	if err != nil {
 		return err
 	}

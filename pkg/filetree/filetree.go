@@ -115,12 +115,11 @@ func (bs *BlobStore) Put(ctx context.Context, hash string, data []byte) error {
 	return bs.blobStore.Put(ctx, &blob.Blob{Hash: hash, Data: data})
 }
 
-// TODO(tsileo): a way to create a snapchat without modifying anything (and forcing the datactx before)
+// TODO(tsileo): a way to create a snapshot without modifying anything (and forcing the datactx before)
 type Snapshot struct {
 	Ref       string `msgpack:"-"`
 	CreatedAt int64  `msgpack:"-"`
 
-	Version  string `msgpack:"v"`
 	Hostname string `msgpack:"h"`
 	Message  string `msgpack:"m,omitempty"`
 }
