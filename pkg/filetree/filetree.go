@@ -632,6 +632,7 @@ func (ft *FileTree) uploadHandler() func(http.ResponseWriter, *http.Request) {
 			return
 		}
 		ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
+		ctx = ctxutil.WithNamespace(ctx, r.Header.Get(ctxutil.NamespaceHeader))
 		// Try to parse the metadata (JSON encoded in the `data` query argument)
 		var data map[string]interface{}
 		if d := r.URL.Query().Get("data"); d != "" {
@@ -772,6 +773,8 @@ func fixPath(p string) string {
 func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := ctxutil.WithFileTreeHostname(r.Context(), r.Header.Get(ctxutil.FileTreeHostnameHeader))
+		ctx = ctxutil.WithNamespace(ctx, r.Header.Get(ctxutil.NamespaceHeader))
+
 		// FIXME(tsileo): handle mtime in the context too, and make it optional
 
 		vars := mux.Vars(r)
