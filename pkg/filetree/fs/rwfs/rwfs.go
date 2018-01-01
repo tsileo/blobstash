@@ -200,15 +200,11 @@ func main() {
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		for tick := range ticker.C {
-			fmt.Printf("tick: %v\n", tick)
 			root.stats.Lock()
 			if !root.stats.lastMod.IsZero() && root.stats.updated {
 				// FIXME(tsileo): make the delay configurable
-				if tick.Sub(root.stats.lastMod) > 30*time.Second {
+				if tick.Sub(root.stats.lastMod) > 300*time.Second {
 					root.stats.updated = false
-					// FIXME(tsileo): GC the stash
-					// FIXME(tsileo): when reset (i.e. destroy) the stash,
-					// it should be re-created automatically at the first request.
 
 					gcScript := fmt.Sprintf(`
 local key = "_filetree:fs:%s"
@@ -219,6 +215,7 @@ mark_kv(key, version)
 -- mark the whole tree
 mark_filetree_node(ref)
 `, root.ref, root.lastRevision)
+
 					// FIXME(tsileo): make the stash name configurable
 					resp, err := root.clientUtil.Post(
 						fmt.Sprintf("/api/stash/rwfs-%s/_gc", root.ref),
@@ -234,6 +231,8 @@ mark_filetree_node(ref)
 						// FIXME(tsileo): find a better way to handle this?
 						panic(err)
 					}
+
+					log.Println("current snapshot saved")
 				}
 			}
 			root.stats.Unlock()
@@ -252,6 +251,9 @@ mark_filetree_node(ref)
 		fmt.Printf("failed to unmount: %s", err)
 		os.Exit(1)
 	}
+
+	// FIXME(tsileo): URGENT trigger the GC before umount
+
 	cache.Close()
 	log.Println("unmounted")
 	os.Exit(0)
@@ -670,7 +672,6 @@ func (n *Node) Mode() uint32 {
 }
 
 func (n *Node) Hash() string {
-	fmt.Printf("node=%+v\n", n)
 	if len(n.Metadata) == 0 {
 		// It happens for empty file
 		return "69217a3079908094e11121d042354a7c1f55b6482ca1a51e1b250dfd1ed0eef9"
