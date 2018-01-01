@@ -309,7 +309,7 @@ func (client *ClientUtil) Delete(path string, options ...func(*http.Request) err
 }
 
 func (client *ClientUtil) Head(path string, options ...func(*http.Request) error) (*http.Response, error) {
-	return client.Do("GET", path, nil, options...)
+	return client.Do("HEAD", path, nil, options...)
 }
 
 func (client *ClientUtil) Get(path string, options ...func(*http.Request) error) (*http.Response, error) {
