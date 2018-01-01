@@ -47,6 +47,8 @@ import (
 // - [X] `-live-update` (or `-ro`?) mode to receive update via SSE (e.g. serve static over fuse, or Dropbox infinite like), allow caching and to invalidate cache on remote changes (need to be able to discard its own generated event via the hostname)
 // - [ ] support data context (add timeout server-side), and merge the data context on unmount
 
+const revisionHeader = "BlobStash-Filetree-FS-Revision"
+
 func main() {
 	// Scans the arg list and sets up flags
 	debug := flag.Bool("debug", false, "print debugging messages.")
@@ -244,7 +246,7 @@ func newVFSEntry(content func() interface{}) func(string, *fuse.Context) (nodefs
 func newDebugVFS(fs *FileSystem) *DebugVFS {
 	return &DebugVFS{
 		fs:   fs,
-		Path: ".fs",
+		Path: "fs",
 		attr: &fuse.Attr{
 			Mode:  fuse.S_IFDIR | 0755,
 			Owner: *fuse.CurrentOwner(),
@@ -399,17 +401,6 @@ func (rl *rwLayer) Chmod(path string, mode uint32, mtime int64, fctx *fuse.Conte
 		return fmt.Errorf("a remote note should exist")
 	}
 
-	// Next, we re-add it to its dest
-	h := map[string]string{
-		"BlobStash-Filetree-Patch-Ref":  node.Ref,
-		"BlobStash-Filetree-Patch-Mode": strconv.Itoa(int(mode)),
-	}
-
-	dest := filepath.Dir(path)
-	if dest == "." {
-		dest = ""
-	}
-
 	resp, err := rl.fs.clientUtil.PatchMsgpack(
 		rl.fs.remotePath(rl.fs.dir(path)),
 		nil,
@@ -417,7 +408,10 @@ func (rl *rwLayer) Chmod(path string, mode uint32, mtime int64, fctx *fuse.Conte
 			"mtime":  strconv.Itoa(int(mtime)),
 			"rename": strconv.FormatBool(true),
 		}),
-		clientutil.WithHeaders(h),
+		clientutil.WithHeaders(map[string]string{
+			"BlobStash-Filetree-Patch-Ref":  node.Ref,
+			"BlobStash-Filetree-Patch-Mode": strconv.Itoa(int(mode)),
+		}),
 	)
 	if err != nil {
 		return err
@@ -457,14 +451,9 @@ func (rl *rwLayer) Utimens(path string, m *time.Time, fctx *fuse.Context) error 
 		return fmt.Errorf("a remote node should exists for %s", path)
 	}
 
-	dest := filepath.Dir(path)
-	if dest == "." {
-		dest = ""
-	}
-
 	// We PATCH the node, just for updating its mtime
 	resp, err := rl.fs.clientUtil.PatchMsgpack(
-		"/api/filetree/fs/fs/"+rl.fs.ref+"/"+dest,
+		rl.fs.remotePath(rl.fs.dir(path)),
 		nil,
 		clientutil.WithQueryArg("mtime", strconv.Itoa(int(m.Unix()))),
 		clientutil.WithHeader("BlobStash-Filetree-Patch-Ref", node.Ref),
@@ -857,8 +846,6 @@ type FileSystem struct {
 	bs         *blobstore.BlobStore2
 	clientUtil *clientutil.ClientUtil
 
-	lastRevision int64
-
 	mu sync.Mutex
 }
 
@@ -998,9 +985,10 @@ func (fs *FileSystem) logOP(opCode, path string, write bool, fctx *fuse.Context)
 		fs.stats.lastMod = time.Now()
 	}
 	fs.stats.Unlock()
-	// TODO(tsileo): only if fs.debug
-	exec := fs.cache.findProcExec(fctx)
-	log.Printf("OP %s path=/%s pid=%d %s\n", opCode, path, fctx.Pid, exec)
+	if fs.debug {
+		exec := fs.cache.findProcExec(fctx)
+		log.Printf("OP %s path=/%s pid=%d %s\n", opCode, path, fctx.Pid, exec)
+	}
 }
 
 func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse.Status) {
@@ -1084,8 +1072,8 @@ func (fs *FileSystem) OpenDir(name string, fctx *fuse.Context) ([]fuse.DirEntry,
 	// Quick hack to add the magic "/fs" directory
 	if name == "" {
 		// The root is requested, we want to show the ".fs" dir
-		index[fs.debugVFS.Path] = fuse.DirEntry{
-			Name: fs.debugVFS.Path,
+		index["fs"] = fuse.DirEntry{
+			Name: "fs",
 			Mode: uint32(fuse.S_IFDIR | 0755),
 		}
 	}
