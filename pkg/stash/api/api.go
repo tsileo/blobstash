@@ -53,6 +53,9 @@ func (s *StashAPI) dataContextHandler() func(http.ResponseWriter, *http.Request)
 				return
 			}
 			dataContext.Destroy()
+			if err := s.stash.Destroy(context.TODO(), name); err != nil {
+				panic(err)
+			}
 			w.WriteHeader(http.StatusNoContent)
 
 		default:

@@ -204,13 +204,21 @@ func main() {
 			root.stats.Lock()
 			if !root.stats.lastMod.IsZero() && root.stats.updated {
 				// FIXME(tsileo): make the delay configurable
-				if tick.Sub(root.stats.lastMod) > 300*time.Second {
+				if tick.Sub(root.stats.lastMod) > 30*time.Second {
 					root.stats.updated = false
 					// FIXME(tsileo): GC the stash
 					// FIXME(tsileo): when reset (i.e. destroy) the stash,
 					// it should be re-created automatically at the first request.
 
-					gcScript := fmt.Sprintf(`mark_kv("_filetree:fs:%s", "%d")`, root.ref, root.lastRevision)
+					gcScript := fmt.Sprintf(`
+local key = "_filetree:fs:%s"
+local version = "%d"
+local _, ref, _ = blobstash.kvstore:get(key, version)
+-- mark the actual KV entry
+mark_kv(key, version)
+-- mark the whole tree
+mark_filetree_node(ref)
+`, root.ref, root.lastRevision)
 					// FIXME(tsileo): make the stash name configurable
 					resp, err := root.clientUtil.Post(
 						fmt.Sprintf("/api/stash/rwfs-%s/_gc", root.ref),

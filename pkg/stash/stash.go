@@ -255,6 +255,21 @@ func (s *Stash) MergeAndDestroy(ctx context.Context, name string) error {
 	return nil
 }
 
+func (s *Stash) Destroy(ctx context.Context, name string) error {
+	s.Lock()
+	defer s.Unlock()
+	dc, ok := s.contexes[name]
+	if !ok {
+		return fmt.Errorf("data context not found")
+	}
+
+	if err := s.destroy(dc, name); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (s *Stash) dataContext(ctx context.Context) (*dataContext, error) {
 	// TODO(tsileo): handle destroyed context
 	name, _ := ctxutil.Namespace(ctx)

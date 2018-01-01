@@ -118,9 +118,7 @@ func (p *KvStoreProxy) Get(ctx context.Context, key string, version int) (*vkv.K
 			if rerr != nil && rerr != vkv.ErrNotFound {
 				return nil, err
 			}
-			fmt.Printf("ERR=%+v RKV=%+v KV=%+v\n\n\n", rerr, rkv, kv)
 			if rerr == nil && rkv.Version > kv.Version {
-				// FIXME(tsileo): kv can be nil
 				// The one from the "root" kv store is more recent, return it
 				return rkv, nil
 			}
