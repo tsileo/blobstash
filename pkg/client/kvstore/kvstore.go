@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -156,4 +157,103 @@ func (kvs *KvStore) Keys(ctx context.Context, prefix, start, end string, limit i
 	default:
 		return nil, fmt.Errorf("failed to get keys: %v", string(body))
 	}
+}
+
+type KvStore2 struct {
+	client *clientutil.ClientUtil
+}
+
+func New2(c *clientutil.ClientUtil) *KvStore2 {
+	return &KvStore2{c}
+}
+
+func (kvs *KvStore2) Put(ctx context.Context, key, ref string, pdata []byte, version int) (*response.KeyValue, error) {
+	data := url.Values{}
+	data.Set("data", string(pdata))
+	data.Set("ref", ref)
+	if version != -1 {
+		data.Set("version", strconv.Itoa(version))
+	}
+	resp, err := kvs.client.Post("/api/kvstore/key/"+key, []byte(data.Encode()))
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+
+	if err := clientutil.ExpectStatusCode(resp, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	// TODO(tsileo): better place than response?
+	kv := &response.KeyValue{}
+	if err := clientutil.Unmarshal(resp, kv); err != nil {
+		return nil, err
+	}
+
+	return kv, nil
+}
+
+func (kvs *KvStore2) Get(ctx context.Context, key string, version int) (*response.KeyValue, error) {
+	resp, err := kvs.client.Get(fmt.Sprintf("/api/kvstore/key/%s?version=%v", key, version))
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+
+	if err := clientutil.ExpectStatusCode(resp, 200); err != nil {
+		if err.IsNotFound() {
+			return nil, ErrKeyNotFound
+		}
+		return nil, err
+	}
+
+	kv := &response.KeyValue{}
+	if err := clientutil.Unmarshal(resp, kv); err != nil {
+		return nil, err
+	}
+
+	return kv, nil
+}
+
+func (kvs *KvStore2) Versions(ctx context.Context, key string, start, end, limit int) (*response.KeyValueVersions, error) {
+	// TODO handle start, end and limit
+	resp, err := kvs.client.Get(fmt.Sprintf("/api/kvstore/key/%s/_versions?start=%d&end=%d&limit=%d", key, start, end, limit))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if err := clientutil.ExpectStatusCode(resp, http.StatusOK); err != nil {
+		if err.IsNotFound() {
+			return nil, ErrKeyNotFound
+		}
+		return nil, err
+	}
+
+	kvversions := &response.KeyValueVersions{}
+	if err := clientutil.Unmarshal(resp, kvversions); err != nil {
+		return nil, err
+	}
+	return kvversions, nil
+}
+
+func (kvs *KvStore2) Keys(ctx context.Context, prefix, start, end string, limit int) ([]*response.KeyValue, error) {
+	resp, err := kvs.client.Get(fmt.Sprintf("/api/kvstore/keys?prefix=%s&start=%s&end=%s&limit=%d", prefix, start, end, limit))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if err := clientutil.ExpectStatusCode(resp, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	keys := &response.KeysResponse{}
+	if err := clientutil.Unmarshal(resp, keys); err != nil {
+		return nil, err
+	}
+
+	return keys.Keys, nil
 }

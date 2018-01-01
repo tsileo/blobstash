@@ -1,7 +1,6 @@
 package api // import "a4.io/blobstash/pkg/kvstore/api"
 
 import (
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -159,7 +158,7 @@ func (kv *KvStoreAPI) getHandler() func(http.ResponseWriter, *http.Request) {
 			ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 
 			// Parse the form value
-			hah, err := ioutil.ReadAll(r.Body)
+			hah, err := httputil.Read(r)
 			values, err := url.ParseQuery(string(hah))
 			if err != nil {
 				httputil.Error(w, err)
@@ -183,6 +182,7 @@ func (kv *KvStoreAPI) getHandler() func(http.ResponseWriter, *http.Request) {
 				return
 			}
 			httputil.MarshalAndWrite(r, w, toKeyValue(res))
+			// TODO(tsileo): switch to StatusCreated
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
