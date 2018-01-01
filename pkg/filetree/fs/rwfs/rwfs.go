@@ -110,6 +110,7 @@ func main() {
 	clientUtil := clientutil.NewClientUtil(host,
 		clientutil.WithAPIKey(apiKey),
 		clientutil.WithHeader(ctxutil.FileTreeHostnameHeader, hostname),
+		clientutil.WithHeader(ctxutil.NamespaceHeader, "rwfs-"+ref),
 		clientutil.EnableMsgpack(),
 		clientutil.EnableSnappyEncoding(),
 	)
@@ -207,6 +208,23 @@ func main() {
 					// FIXME(tsileo): GC the stash
 					// FIXME(tsileo): when reset (i.e. destroy) the stash,
 					// it should be re-created automatically at the first request.
+
+					gcScript := fmt.Sprintf(`mark_kv("_filetree:fs:%s", "%d")`, root.ref, root.lastRevision)
+					// FIXME(tsileo): make the stash name configurable
+					resp, err := root.clientUtil.Post(
+						fmt.Sprintf("/api/stash/rwfs-%s/_gc", root.ref),
+						[]byte(gcScript),
+					)
+					if err != nil {
+						// FIXME(tsileo): find a better way to handle this?
+						panic(err)
+					}
+					defer resp.Body.Close()
+
+					if err := clientutil.ExpectStatusCode(resp, http.StatusNoContent); err != nil {
+						// FIXME(tsileo): find a better way to handle this?
+						panic(err)
+					}
 				}
 			}
 			root.stats.Unlock()
@@ -246,7 +264,7 @@ func newVFSEntry(content func() interface{}) func(string, *fuse.Context) (nodefs
 func newDebugVFS(fs *FileSystem) *DebugVFS {
 	return &DebugVFS{
 		fs:   fs,
-		Path: "fs",
+		Path: ".fs",
 		attr: &fuse.Attr{
 			Mode:  fuse.S_IFDIR | 0755,
 			Owner: *fuse.CurrentOwner(),
@@ -285,6 +303,9 @@ func newDebugVFS(fs *FileSystem) *DebugVFS {
 			}),
 			"last_mod": newVFSEntry(func() interface{} {
 				return fs.stats.lastMod.Unix()
+			}),
+			"last_revision": newVFSEntry(func() interface{} {
+				return fs.lastRevision
 			}),
 		},
 	}
@@ -433,6 +454,8 @@ func (rl *rwLayer) Chmod(path string, mode uint32, mtime int64, fctx *fuse.Conte
 		rwmeta.ref = newNode.Ref
 	}
 
+	rl.fs.updateLastRevision(resp)
+
 	return nil
 }
 
@@ -473,12 +496,11 @@ func (rl *rwLayer) Utimens(path string, m *time.Time, fctx *fuse.Context) error 
 		if err := clientutil.Unmarshal(resp, newNode); err != nil {
 			return err
 		}
-		//if err := json.NewDecoder(resp.Body).Decode(newNode); err != nil {
-		//	return fmt.Errorf("failed to decode PATCH resp: %v", err)
-		//}
 		rwmeta.Node = newNode
 		rwmeta.ref = newNode.Ref
 	}
+
+	rl.fs.updateLastRevision(resp)
 
 	return nil
 }
@@ -846,6 +868,8 @@ type FileSystem struct {
 	bs         *blobstore.BlobStore2
 	clientUtil *clientutil.ClientUtil
 
+	lastRevision int64
+
 	mu sync.Mutex
 }
 
@@ -914,6 +938,18 @@ func NewFileSystem(ref, mountpoint string, debug bool, cache *Cache, cacheDir st
 	return fs, nil
 }
 
+func (fs *FileSystem) updateLastRevision(resp *http.Response) {
+	rev := resp.Header.Get(revisionHeader)
+	if rev == "" {
+		panic("missing FS revision in response")
+	}
+	var err error
+	fs.lastRevision, err = strconv.ParseInt(rev, 10, 0)
+	if err != nil {
+		panic("invalid FS revision")
+	}
+}
+
 func (fs *FileSystem) dir(path string) string {
 	d := filepath.Dir(path)
 	if d == "." {
@@ -959,7 +995,7 @@ func (fs *FileSystem) String() string {
 }
 
 func (fs *FileSystem) SetDebug(debug bool) {
-	fs.debug = debug
+	//fs.debug = debug
 }
 
 func (*FileSystem) StatFs(name string) *fuse.StatfsOut {
@@ -1072,8 +1108,8 @@ func (fs *FileSystem) OpenDir(name string, fctx *fuse.Context) ([]fuse.DirEntry,
 	// Quick hack to add the magic "/fs" directory
 	if name == "" {
 		// The root is requested, we want to show the ".fs" dir
-		index["fs"] = fuse.DirEntry{
-			Name: "fs",
+		index[fs.debugVFS.Path] = fuse.DirEntry{
+			Name: fs.debugVFS.Path,
 			Mode: uint32(fuse.S_IFDIR | 0755),
 		}
 	}
@@ -1254,7 +1290,7 @@ func (fs *FileSystem) Mkdir(path string, mode uint32, fctx *fuse.Context) fuse.S
 		return fuse.EIO
 	}
 
-	// FIXME(tsileo): read the header with the FS version (vkv version)
+	fs.updateLastRevision(resp)
 
 	return fuse.OK
 }
@@ -1291,7 +1327,7 @@ func (fs *FileSystem) Unlink(name string, fctx *fuse.Context) fuse.Status {
 		return fuse.EIO
 	}
 
-	// FIXME(tsileo): track the kv version
+	fs.updateLastRevision(resp)
 
 	return fuse.OK
 }
@@ -1332,7 +1368,7 @@ func (fs *FileSystem) Rmdir(name string, fctx *fuse.Context) fuse.Status {
 		return fuse.EIO
 	}
 
-	// FIXME(tsileo): track the kv version
+	fs.updateLastRevision(resp)
 
 	return fuse.OK
 }
@@ -1411,7 +1447,7 @@ func (fs *FileSystem) Rename(oldPath string, newPath string, fctx *fuse.Context)
 		return fuse.EIO
 	}
 
-	// FIXME(tsileo): track the kv version
+	fs.updateLastRevision(resp)
 
 	return fuse.OK
 }
@@ -1473,6 +1509,8 @@ func (fs *FileSystem) Create(path string, flags uint32, mode uint32, fctx *fuse.
 		fs.logEIO(err)
 		return nil, fuse.EIO
 	}
+
+	fs.updateLastRevision(resp)
 
 	f, err := NewRWFile(context.TODO(), fctx, fs, path, flags, mode, newNode)
 	if err != nil {
@@ -1820,6 +1858,8 @@ func (f *RWFile) Flush() fuse.Status {
 			f.fs.logEIO(err)
 			return fuse.EIO
 		}
+
+		f.fs.updateLastRevision(resp)
 
 		f.meta.ref = newNode.Ref
 

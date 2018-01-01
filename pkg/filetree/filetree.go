@@ -959,8 +959,6 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 				// Decode the raw node from the request body
 				newChild = &rnode.RawNode{}
 				err = httputil.Unmarshal(r, newChild)
-				fmt.Printf("DECODED=%+v\n", newChild)
-				//err = json.NewDecoder(r.Body).Decode(newChild)
 			}
 			if err != nil {
 				panic(err)

@@ -3,7 +3,6 @@ package api // import "a4.io/blobstash/pkg/stash/api"
 import (
 	"context"
 	"github.com/gorilla/mux"
-	"io/ioutil"
 	"net/http"
 
 	"a4.io/blobstash/pkg/httputil"
@@ -26,11 +25,9 @@ func (s *StashAPI) listHandler() func(http.ResponseWriter, *http.Request) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		srw := httputil.NewSnappyResponseWriter(w, r)
-		httputil.WriteJSON(srw, map[string]interface{}{
+		httputil.MarshalAndWrite(r, w, map[string]interface{}{
 			"data": s.stash.ContextNames(),
 		})
-		srw.Close()
 	}
 }
 
@@ -44,15 +41,12 @@ func (s *StashAPI) dataContextHandler() func(http.ResponseWriter, *http.Request)
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
-			w.WriteHeader(http.StatusOK)
 			if r.Method == "HEAD" {
 				return
 			}
-			srw := httputil.NewSnappyResponseWriter(w, r)
-			httputil.WriteJSON(srw, map[string]interface{}{
+			httputil.MarshalAndWrite(r, w, map[string]interface{}{
 				"data": nil,
 			})
-			srw.Close()
 		case "DELETE":
 			if !ok {
 				w.WriteHeader(http.StatusNotFound)
@@ -97,7 +91,7 @@ func (s *StashAPI) dataContextGCHandler() func(http.ResponseWriter, *http.Reques
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
-			script, err := ioutil.ReadAll(r.Body)
+			script, err := httputil.Read(r)
 			if err != nil {
 				panic(err)
 			}
