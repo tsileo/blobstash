@@ -96,9 +96,9 @@ func main() {
 	// Setup the clients for BlobStash
 	host := os.Getenv("BLOBS_API_HOST")
 	apiKey := os.Getenv("BLOBS_API_KEY")
-	kvopts := kvstore.DefaultOpts().SetHost(os.Getenv("BLOBS_API_HOST"), os.Getenv("BLOBS_API_KEY"))
-	kvopts.SnappyCompression = false
-	kvs := kvstore.New(kvopts)
+	//kvopts := kvstore.DefaultOpts().SetHost(os.Getenv("BLOBS_API_HOST"), os.Getenv("BLOBS_API_KEY"))
+	//kvopts.SnappyCompression = false
+	//kvs := kvstore.New(kvopts)
 	//bs := blobstore.New(kvopts)
 
 	hostname, err := os.Hostname()
@@ -116,6 +116,7 @@ func main() {
 	)
 
 	bs := blobstore.New2(clientUtil)
+	kvs := kvstore.New2(clientUtil)
 
 	authOk, err := clientUtil.CheckAuth()
 	if err != nil {
@@ -864,7 +865,7 @@ type FileSystem struct {
 	stats   *FSStats
 
 	up         *writer.Uploader
-	kvs        *kvstore.KvStore
+	kvs        *kvstore.KvStore2
 	bs         *blobstore.BlobStore2
 	clientUtil *clientutil.ClientUtil
 
@@ -908,7 +909,7 @@ type FDInfo struct {
 	CreatedAt  time.Time
 }
 
-func NewFileSystem(ref, mountpoint string, debug bool, cache *Cache, cacheDir string, bs *blobstore.BlobStore2, kvs *kvstore.KvStore, cu *clientutil.ClientUtil) (*FileSystem, error) {
+func NewFileSystem(ref, mountpoint string, debug bool, cache *Cache, cacheDir string, bs *blobstore.BlobStore2, kvs *kvstore.KvStore2, cu *clientutil.ClientUtil) (*FileSystem, error) {
 	fs := &FileSystem{
 		cache:      cache,
 		bs:         bs,
