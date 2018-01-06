@@ -52,6 +52,7 @@ func (s *StashAPI) dataContextHandler() func(http.ResponseWriter, *http.Request)
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
+			// FIXME(tsileo): stash.Destroy should destroy the data ctx
 			dataContext.Destroy()
 			if err := s.stash.Destroy(context.TODO(), name); err != nil {
 				panic(err)

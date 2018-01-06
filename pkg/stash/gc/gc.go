@@ -21,6 +21,7 @@ type GarbageCollector struct {
 	refs        map[string]struct{}
 }
 
+// FIXME(tsileo): take a Context (with namespace set) instead of a DataContext
 func New(s *stash.Stash, dc store.DataContext) *GarbageCollector {
 	L := lua.NewState()
 	res := &GarbageCollector{
