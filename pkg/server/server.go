@@ -120,10 +120,6 @@ func New(conf *config.Config) (*Server, error) {
 	// FIXME(tsileo): handle middleware in the `Register` interface
 	blobStoreAPI.New(blobstore).Register(s.router.PathPrefix("/api/blobstore").Subrouter(), basicAuth)
 
-	// nsDB, err := nsdb.New(logger.New("app", "nsdb"), conf, blobstore, metaHandler, hub)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to initialize nsdb: %v", err)
-	// }
 	// Load the synctable
 	// XXX(tsileo): sync should always get the root data context
 	synctable := synctable.New(logger.New("app", "sync"), conf, rootBlobstore)
@@ -170,9 +166,6 @@ func New(conf *config.Config) (*Server, error) {
 		if err := cstash.Close(); err != nil {
 			return err
 		}
-		// if err := nsDB.Close(); err != nil {
-		// 	return err
-		// }
 		if err := filetree.Close(); err != nil {
 			return err
 		}
