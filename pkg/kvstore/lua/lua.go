@@ -16,7 +16,7 @@ func setupKvStore(L *lua.LState, kvs store.KvStore, ctx context.Context) func(*l
 			"get_meta_blob": func(L *lua.LState) int {
 				version, err := strconv.Atoi(L.ToString(2))
 				if err != nil {
-					L.ArgError(3, "version must be a valid int")
+					L.ArgError(2, "version must be a valid int")
 					return 0
 				}
 				data, err := kvs.GetMetaBlob(ctx, L.ToString(1), version)
@@ -31,7 +31,7 @@ func setupKvStore(L *lua.LState, kvs store.KvStore, ctx context.Context) func(*l
 			"get": func(L *lua.LState) int {
 				version, err := strconv.Atoi(L.ToString(2))
 				if err != nil {
-					L.ArgError(3, "version must be a valid int")
+					L.ArgError(2, "version must be a valid int")
 					return 0
 				}
 				fkv, err := kvs.Get(ctx, L.ToString(1), version)

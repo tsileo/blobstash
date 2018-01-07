@@ -110,10 +110,6 @@ func (s *StashAPI) dataContextGCHandler() func(http.ResponseWriter, *http.Reques
 			}); err != nil {
 				panic(err)
 			}
-			//garbageCollector := gc.New(s.stash, dataContext)
-			//if err := garbageCollector.GC(context.TODO(), string(script)); err != nil {
-			//	panic(err)
-			//}
 			w.WriteHeader(http.StatusNoContent)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
