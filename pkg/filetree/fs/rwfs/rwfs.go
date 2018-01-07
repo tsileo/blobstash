@@ -827,7 +827,8 @@ type FileSystem struct {
 
 	lastRevision int64
 
-	mu sync.Mutex
+	muGC sync.Mutex
+	mu   sync.Mutex
 }
 
 // FSStats holds some stats about the mounted FS
@@ -897,6 +898,12 @@ func NewFileSystem(ref, mountpoint string, debug, ro bool, cache *Cache, cacheDi
 }
 
 func (fs *FileSystem) GC() error {
+	fs.muGC.Lock()
+	defer fs.muGC.Unlock()
+
+	// FIXME(tsileo): Make sure we don't do a GC for nothing inside this one?
+	// between the "auto GC", final GC, and public GC
+
 	gcScript := fmt.Sprintf(`
 local kvstore = require('kvstore')
 
@@ -1917,7 +1924,12 @@ func (f *RWFile) Release() {
 		}
 	}
 
-	f.File.Release()
+	if strings.HasPrefix(f.meta.Path, "public/") {
+		log.Printf("GCing now for making the new public file available...")
+		if err := f.fs.GC(); err != nil {
+			log.Printf("failed to GC: %v\n", err)
+		}
+	}
 }
 
 func NewFile(fctx *fuse.Context, fs *FileSystem, path string, node *Node) (*File, error) {
