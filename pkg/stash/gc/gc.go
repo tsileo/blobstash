@@ -13,34 +13,22 @@ import (
 	"a4.io/blobstash/pkg/stash"
 )
 
-type GarbageCollector struct {
-	stash *stash.Stash
-	L     *lua.LState
-	refs  map[string]struct{}
-	ctx   context.Context
-}
-
-// FIXME(tsileo): take a Context (with namespace set) instead of a DataContext
-func New(ctx context.Context, s *stash.Stash) *GarbageCollector {
+func GC(ctx context.Context, s *stash.Stash, script string) error {
+	// TOOD(tsileo): take a logger
+	refs := map[string]struct{}{}
 
 	L := lua.NewState()
-	res := &GarbageCollector{
-		ctx: ctx,
-		L:   L,
-		//dataContext: dc,
-		refs:  map[string]struct{}{},
-		stash: s,
-	}
 
 	// mark(<blob hash>) is the lowest-level func, it "mark"s a blob to be copied to the root blobstore
 	mark := func(L *lua.LState) int {
 		// TODO(tsileo): debug logging here to help troubleshot GC issues
 		ref := L.ToString(1)
-		if _, ok := res.refs[ref]; !ok {
-			res.refs[ref] = struct{}{}
+		if _, ok := refs[ref]; !ok {
+			refs[ref] = struct{}{}
 		}
 		return 0
 	}
+
 	L.SetGlobal("mark", L.NewFunction(mark))
 	L.PreloadModule("json", loadJSON)
 	L.PreloadModule("msgpack", loadMsgpack)
@@ -78,28 +66,25 @@ function mark_filetree_node (ref)
 end
 _G.mark_filetree_node = mark_filetree_node
 `); err != nil {
-		panic(err)
+		return err
 	}
 	// FIXME(tsileo): do like in the docstore, export code _G.mark_kv(key, version), _G.mark_fs_ref(ref)...
 	// and the option to load custom GC script from the filesystem like stored queries
-	return res
-}
 
-func (gc *GarbageCollector) GC(script string) error {
-	if err := gc.L.DoString(script); err != nil {
+	if err := L.DoString(script); err != nil {
 		return err
 	}
-	for ref, _ := range gc.refs {
+	for ref, _ := range refs {
 		// FIXME(tsileo): stat before get/put
 
 		// Get the marked blob from the blobstore proxy
-		data, err := gc.stash.BlobStore().Get(gc.ctx, ref)
+		data, err := s.BlobStore().Get(ctx, ref)
 		if err != nil {
 			return err
 		}
 
 		// Save it in the root blobstore
-		if err := gc.stash.Root().BlobStore().Put(gc.ctx, &blob.Blob{Hash: ref, Data: data}); err != nil {
+		if err := s.Root().BlobStore().Put(ctx, &blob.Blob{Hash: ref, Data: data}); err != nil {
 			return err
 		}
 	}
@@ -107,7 +92,6 @@ func (gc *GarbageCollector) GC(script string) error {
 }
 
 // FIXME(tsileo): have a single share "Lua lib" for all the Lua interactions (GC, document store...)
-
 func loadMsgpack(L *lua.LState) int {
 	// register functions to the table
 	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{

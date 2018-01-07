@@ -105,7 +105,7 @@ func (s *StashAPI) dataContextGCHandler() func(http.ResponseWriter, *http.Reques
 			}
 			defer r.Body.Close()
 			if err := s.stash.DoAndDestroy(ctx, name, func(ctx context.Context, dc store.DataContext) error {
-				return gc.New(ctx, s.stash).GC(string(script))
+				return gc.GC(ctx, s.stash, string(script))
 
 			}); err != nil {
 				panic(err)

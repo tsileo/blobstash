@@ -10,6 +10,7 @@ import (
 
 	"a4.io/blobstash/pkg/blob"
 	bstore "a4.io/blobstash/pkg/blobstore"
+	"a4.io/blobstash/pkg/ctxutil"
 	"a4.io/blobstash/pkg/hashutil"
 	"a4.io/blobstash/pkg/hub"
 	kstore "a4.io/blobstash/pkg/kvstore"
@@ -93,8 +94,7 @@ func TestDataContextMerge(t *testing.T) {
 		t.Errorf("root blobstore should be empty")
 	}
 
-	gc := New(s, tmpDataContext)
-	if err := gc.GC(context.Background(), "mark_kv('hello', 10)"); err != nil {
+	if err := GC(ctxutil.WithNamespace(context.Background(), "tmp"), s, "mark_kv('hello', 10)"); err != nil {
 		panic(err)
 	}
 
