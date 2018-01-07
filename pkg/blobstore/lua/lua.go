@@ -28,9 +28,9 @@ func setupBlobStore(L *lua.LState, bs store.BlobStore, ctx context.Context) func
 				return 1
 			},
 			"get": func(L *lua.LState) int {
-				data, err := bs.Get(ctx, L.ToString(2))
+				data, err := bs.Get(ctx, L.ToString(1))
 				if err != nil {
-					fmt.Printf("failed to fetch %s: %v\n", L.ToString(2), err)
+					fmt.Printf("failed to fetch %s: %v\n", L.ToString(1), err)
 					L.Push(lua.LNil)
 					return 1
 					// TODO(tsileo): handle not found

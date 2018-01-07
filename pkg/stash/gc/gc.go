@@ -2,37 +2,39 @@ package gc // import "a4.io/blobstash/pkg/stash/gc"
 
 import (
 	"context"
-	"fmt"
-	"strconv"
 
 	"github.com/vmihailenco/msgpack"
 	"github.com/yuin/gopher-lua"
 
 	"a4.io/blobstash/pkg/apps/luautil"
 	"a4.io/blobstash/pkg/blob"
+	bsLua "a4.io/blobstash/pkg/blobstore/lua"
+	kvsLua "a4.io/blobstash/pkg/kvstore/lua"
 	"a4.io/blobstash/pkg/stash"
-	"a4.io/blobstash/pkg/stash/store"
 )
 
 type GarbageCollector struct {
-	dataContext store.DataContext
-	stash       *stash.Stash
-	L           *lua.LState
-	refs        map[string]struct{}
+	stash *stash.Stash
+	L     *lua.LState
+	refs  map[string]struct{}
+	ctx   context.Context
 }
 
 // FIXME(tsileo): take a Context (with namespace set) instead of a DataContext
-func New(s *stash.Stash, dc store.DataContext) *GarbageCollector {
+func New(ctx context.Context, s *stash.Stash) *GarbageCollector {
+
 	L := lua.NewState()
 	res := &GarbageCollector{
-		L:           L,
-		dataContext: dc,
-		refs:        map[string]struct{}{},
-		stash:       s,
+		ctx: ctx,
+		L:   L,
+		//dataContext: dc,
+		refs:  map[string]struct{}{},
+		stash: s,
 	}
 
 	// mark(<blob hash>) is the lowest-level func, it "mark"s a blob to be copied to the root blobstore
 	mark := func(L *lua.LState) int {
+		// TODO(tsileo): debug logging here to help troubleshot GC issues
 		ref := L.ToString(1)
 		if _, ok := res.refs[ref]; !ok {
 			res.refs[ref] = struct{}{}
@@ -42,25 +44,18 @@ func New(s *stash.Stash, dc store.DataContext) *GarbageCollector {
 	L.SetGlobal("mark", L.NewFunction(mark))
 	L.PreloadModule("json", loadJSON)
 	L.PreloadModule("msgpack", loadMsgpack)
-	bs, err := newBlobstore(L, dc)
-	if err != nil {
-		panic(err)
-	}
-	kvs, err := newKvstore(L, dc)
-	if err != nil {
-		panic(err)
-	}
-	rootTable := L.CreateTable(0, 2)
-	rootTable.RawSetH(lua.LString("blobstore"), bs)
-	rootTable.RawSetH(lua.LString("kvstore"), kvs)
-	L.SetGlobal("blobstash", rootTable)
+	kvsLua.Setup(L, s.KvStore(), ctx)
+	bsLua.Setup(L, s.BlobStore(), ctx)
+
 	if err := L.DoString(`
 local msgpack = require('msgpack')
+local kvstore = require('kvstore')
+local blobstore = require('blobstore')
 function mark_kv (key, version)
-  local h = blobstash.kvstore:get_meta_blob(key, version)
+  local h = kvstore.get_meta_blob(key, version)
   if h ~= nil then
     mark(h)
-    local _, ref, _ = blobstash.kvstore:get(key, version)
+    local _, ref, _ = kvstore.get(key, version)
     if ref ~= '' then
       mark(ref)
     end
@@ -68,7 +63,7 @@ function mark_kv (key, version)
 end
 _G.mark_kv = mark_kv
 function mark_filetree_node (ref)
-  local data = blobstash.blobstore:get(ref)
+  local data = blobstore.get(ref)
   local node = msgpack.decode(data)
   mark(ref)
   if node.t == 'dir' then
@@ -90,26 +85,25 @@ _G.mark_filetree_node = mark_filetree_node
 	return res
 }
 
-func (gc *GarbageCollector) GC(ctx context.Context, script string) error {
+func (gc *GarbageCollector) GC(script string) error {
 	if err := gc.L.DoString(script); err != nil {
 		return err
 	}
-	fmt.Printf("refs=%+v\n", gc.refs)
 	for ref, _ := range gc.refs {
 		// FIXME(tsileo): stat before get/put
 
-		data, err := gc.dataContext.BlobStoreProxy().Get(ctx, ref)
+		// Get the marked blob from the blobstore proxy
+		data, err := gc.stash.BlobStore().Get(gc.ctx, ref)
 		if err != nil {
 			return err
 		}
 
-		if err := gc.stash.Root().BlobStore().Put(ctx, &blob.Blob{Hash: ref, Data: data}); err != nil {
+		// Save it in the root blobstore
+		if err := gc.stash.Root().BlobStore().Put(gc.ctx, &blob.Blob{Hash: ref, Data: data}); err != nil {
 			return err
 		}
 	}
-	// return nil
-	// FIXME(tsileo): make destroying the context optional
-	return gc.dataContext.Destroy()
+	return nil
 }
 
 // FIXME(tsileo): have a single share "Lua lib" for all the Lua interactions (GC, document store...)
@@ -175,134 +169,5 @@ func jsonEncode(L *lua.LState) int {
 func jsonDecode(L *lua.LState) int {
 	data := L.ToString(1)
 	L.Push(luautil.FromJSON(L, []byte(data)))
-	return 1
-}
-
-type blobstore struct {
-	dc store.DataContext
-}
-
-func newBlobstore(L *lua.LState, dc store.DataContext) (*lua.LUserData, error) {
-	bs := &blobstore{dc}
-	mt := L.NewTypeMetatable("blobstore")
-	L.SetField(mt, "__index", L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
-		"get":  blobstoreGet,
-		"stat": blobstoreStat,
-	}))
-	ud := L.NewUserData()
-	ud.Value = bs
-	L.SetMetatable(ud, L.GetTypeMetatable("blobstore"))
-	return ud, nil
-}
-
-func checkBlobstore(L *lua.LState) *blobstore {
-	ud := L.CheckUserData(1)
-	if v, ok := ud.Value.(*blobstore); ok {
-		return v
-	}
-	L.ArgError(1, "blobstore expected")
-	return nil
-}
-
-func blobstoreStat(L *lua.LState) int {
-	bs := checkBlobstore(L)
-	if bs == nil {
-		return 1
-	}
-	data, err := bs.dc.BlobStoreProxy().Stat(context.TODO(), L.ToString(2))
-	if err != nil {
-		L.Push(lua.LNil)
-		return 1
-		// TODO(tsileo): handle not found
-	}
-	if data == true {
-		L.Push(lua.LTrue)
-	} else {
-		L.Push(lua.LFalse)
-	}
-	return 1
-}
-
-func blobstoreGet(L *lua.LState) int {
-	bs := checkBlobstore(L)
-	if bs == nil {
-		return 1
-	}
-	data, err := bs.dc.BlobStoreProxy().Get(context.TODO(), L.ToString(2))
-	if err != nil {
-		fmt.Printf("failed to fetch %s: %v\n", L.ToString(2), err)
-		L.Push(lua.LNil)
-		return 1
-		// TODO(tsileo): handle not found
-	}
-	L.Push(lua.LString(data))
-	return 1
-	// L.Push(buildBody(L, request.body))
-	// return 1
-}
-
-type kvstore struct {
-	dc store.DataContext
-}
-
-func newKvstore(L *lua.LState, dc store.DataContext) (*lua.LUserData, error) {
-	kvs := &kvstore{dc}
-	mt := L.NewTypeMetatable("kvstore")
-	L.SetField(mt, "__index", L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
-		"get_meta_blob": kvstoreGetMetaBlob,
-		"get":           kvstoreGet,
-	}))
-	ud := L.NewUserData()
-	ud.Value = kvs
-	L.SetMetatable(ud, L.GetTypeMetatable("kvstore"))
-	return ud, nil
-}
-
-func checkKvstore(L *lua.LState) *kvstore {
-	ud := L.CheckUserData(1)
-	if v, ok := ud.Value.(*kvstore); ok {
-		return v
-	}
-	L.ArgError(1, "kvstore expected")
-	return nil
-}
-
-func kvstoreGet(L *lua.LState) int {
-	kv := checkKvstore(L)
-	if kv == nil {
-		return 1
-	}
-	version, err := strconv.Atoi(L.ToString(3))
-	if err != nil {
-		L.ArgError(3, "version must be a valid int")
-		return 0
-	}
-	fkv, err := kv.dc.KvStoreProxy().Get(context.TODO(), L.ToString(2), version)
-	if err != nil {
-		panic(err)
-	}
-	L.Push(lua.LString(fkv.Data))
-	L.Push(lua.LString(fkv.HexHash()))
-	L.Push(lua.LString(strconv.Itoa(fkv.Version)))
-	return 3
-}
-
-func kvstoreGetMetaBlob(L *lua.LState) int {
-	kv := checkKvstore(L)
-	if kv == nil {
-		return 1
-	}
-	version, err := strconv.Atoi(L.ToString(3))
-	if err != nil {
-		L.ArgError(3, "version must be a valid int")
-		return 0
-	}
-	data, err := kv.dc.KvStoreProxy().GetMetaBlob(context.TODO(), L.ToString(2), version)
-	if err != nil {
-		L.Push(lua.LNil)
-		return 1
-		// TODO(tsileo): handle not found
-	}
-	L.Push(lua.LString(data))
 	return 1
 }

@@ -5,6 +5,7 @@ import (
 	"github.com/gorilla/mux"
 	"net/http"
 
+	"a4.io/blobstash/pkg/ctxutil"
 	"a4.io/blobstash/pkg/httputil"
 	"a4.io/blobstash/pkg/stash"
 	"a4.io/blobstash/pkg/stash/gc"
@@ -87,8 +88,11 @@ func (s *StashAPI) dataContextMergeHandler() func(http.ResponseWriter, *http.Req
 
 func (s *StashAPI) dataContextGCHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
 		name := mux.Vars(r)["name"]
-		dataContext, ok := s.stash.DataContextByName(name)
+		ctx = ctxutil.WithNamespace(ctx, name)
+
+		_, ok := s.stash.DataContextByName(name)
 		switch r.Method {
 		case "POST":
 			if !ok {
@@ -100,8 +104,8 @@ func (s *StashAPI) dataContextGCHandler() func(http.ResponseWriter, *http.Reques
 				panic(err)
 			}
 			defer r.Body.Close()
-			if err := s.stash.DoAndDestroy(context.TODO(), name, func(ctx context.Context, dc store.DataContext) error {
-				return gc.New(s.stash, dataContext).GC(ctx, string(script))
+			if err := s.stash.DoAndDestroy(ctx, name, func(ctx context.Context, dc store.DataContext) error {
+				return gc.New(ctx, s.stash).GC(string(script))
 
 			}); err != nil {
 				panic(err)

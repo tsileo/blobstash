@@ -205,34 +205,9 @@ func main() {
 				// FIXME(tsileo): make the delay configurable
 				if tick.Sub(root.stats.lastMod) > 300*time.Second {
 					root.stats.updated = false
-
-					gcScript := fmt.Sprintf(`
-local key = "_filetree:fs:%s"
-local version = "%d"
-local _, ref, _ = blobstash.kvstore:get(key, version)
--- mark the actual KV entry
-mark_kv(key, version)
--- mark the whole tree
-mark_filetree_node(ref)
-`, root.ref, root.lastRevision)
-
-					// FIXME(tsileo): make the stash name configurable
-					resp, err := root.clientUtil.Post(
-						fmt.Sprintf("/api/stash/rwfs-%s/_gc", root.ref),
-						[]byte(gcScript),
-					)
-					if err != nil {
-						// FIXME(tsileo): find a better way to handle this?
+					if err := root.GC(); err != nil {
 						panic(err)
 					}
-					defer resp.Body.Close()
-
-					if err := clientutil.ExpectStatusCode(resp, http.StatusNoContent); err != nil {
-						// FIXME(tsileo): find a better way to handle this?
-						panic(err)
-					}
-
-					log.Println("current snapshot saved")
 				}
 			}
 			root.stats.Unlock()
@@ -253,6 +228,11 @@ mark_filetree_node(ref)
 	}
 
 	// FIXME(tsileo): URGENT trigger the GC before umount
+	if root.stats.updated {
+		if err := root.GC(); err != nil {
+			log.Printf("failed to GC: %v\n", err)
+		}
+	}
 
 	cache.Close()
 	log.Println("unmounted")
@@ -948,6 +928,42 @@ func NewFileSystem(ref, mountpoint string, debug bool, cache *Cache, cacheDir st
 	return fs, nil
 }
 
+func (fs *FileSystem) GC() error {
+	gcScript := fmt.Sprintf(`
+local kvstore = require('kvstore')
+
+local key = "_filetree:fs:%s"
+local version = "%d"
+local _, ref, _ = kvstore.get(key, version)
+
+-- mark the actual KV entry
+mark_kv(key, version)
+
+-- mark the whole tree
+mark_filetree_node(ref)
+`, fs.ref, fs.lastRevision)
+
+	log.Printf("starting GC...")
+	// FIXME(tsileo): make the stash name configurable
+	resp, err := fs.clientUtil.Post(
+		fmt.Sprintf("/api/stash/rwfs-%s/_gc", fs.ref),
+		[]byte(gcScript),
+	)
+	if err != nil {
+		// FIXME(tsileo): find a better way to handle this?
+		return err
+	}
+	defer resp.Body.Close()
+
+	if err := clientutil.ExpectStatusCode(resp, http.StatusNoContent); err != nil {
+		// FIXME(tsileo): find a better way to handle this?
+		return err
+	}
+
+	log.Println("current snapshot saved")
+	return nil
+}
+
 func (fs *FileSystem) updateLastRevision(resp *http.Response) {
 	rev := resp.Header.Get(revisionHeader)
 	if rev == "" {
@@ -1017,6 +1033,7 @@ func (*FileSystem) OnMount(*pathfs.PathNodeFs) {}
 func (*FileSystem) OnUnmount() {}
 
 func (fs *FileSystem) logEIO(err error) {
+	panic(err)
 	log.Printf("EIO error: %+v\n", err)
 	fs.stats.Lock()
 	defer fs.stats.Unlock()

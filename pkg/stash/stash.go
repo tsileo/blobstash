@@ -219,16 +219,19 @@ func (s *Stash) Root() store.DataContext {
 
 func (s *Stash) DoAndDestroy(ctx context.Context, name string, do func(context.Context, store.DataContext) error) error {
 	s.Lock()
-	defer s.Unlock()
 	dc, ok := s.contexes[name]
 	if !ok {
+		s.Unlock()
 		return fmt.Errorf("data context not found")
 	}
+	s.Unlock()
 
 	if err := do(ctx, dc); err != nil {
 		return err
 	}
 
+	s.Lock()
+	defer s.Unlock()
 	if err := s.destroy(dc, name); err != nil {
 		return err
 	}
@@ -296,6 +299,7 @@ func (s *Stash) DataContextByName(name string) (*dataContext, bool) {
 		return s.rootDataContext, true
 	}
 
+	// FIXME(tsileo): fix the deadlock
 	s.Lock()
 	defer s.Unlock()
 	if dc, ok := s.contexes[name]; ok {
