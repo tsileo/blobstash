@@ -325,12 +325,6 @@
 
 [[projects]]
   branch = "master"
-  name = "github.com/tsileo/blobstash"
-  packages = ["pkg/docstore/optimizer"]
-  revision = "a4bb05299bc3663f09ae63c684bb5e153de11bb3"
-
-[[projects]]
-  branch = "master"
   name = "github.com/unrolled/secure"
   packages = ["."]
   revision = "d6ff8660e1a61e887970a917ee2b9be0cfad6d40"
@@ -422,6 +416,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "f28679b6391a32538df4738db9bebcf8bd7d0274e5f2b4d8d1c9bfb36b0d61b4"
+  inputs-digest = "69a845d28afb547d166aa3bd6bcbd545ab8a62d1a4a34cbe10d57d37b6031259"
   solver-name = "gps-cdcl"
   solver-version = 1

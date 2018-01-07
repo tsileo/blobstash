@@ -45,13 +45,11 @@ import (
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/docstore/id"
-	_ "a4.io/blobstash/pkg/docstore/index"
 	"a4.io/blobstash/pkg/filetree"
 	"a4.io/blobstash/pkg/httputil"
 	"a4.io/blobstash/pkg/httputil/bewit"
 	"a4.io/blobstash/pkg/stash/store"
 	"a4.io/blobstash/pkg/vkv"
-	_ "github.com/tsileo/blobstash/pkg/docstore/optimizer"
 )
 
 // FIXME(tsileo): create a "meta" hook for handling indexing

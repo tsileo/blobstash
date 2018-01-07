@@ -106,10 +106,6 @@
 
 [[constraint]]
   branch = "master"
-  name = "github.com/tsileo/blobstash"
-
-[[constraint]]
-  branch = "master"
   name = "github.com/unrolled/secure"
 
 [[constraint]]

@@ -14,7 +14,6 @@ import (
 	"github.com/vmihailenco/msgpack"
 
 	"a4.io/blobstash/pkg/logger"
-	// "github.com/tsileo/blobstash/permissions"
 )
 
 const ResponseFormatHeader = "BlobStash-API-Response-Format"
