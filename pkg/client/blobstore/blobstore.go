@@ -1,11 +1,8 @@
 package blobstore // import "a4.io/blobstash/pkg/client/blobstore"
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
-	"mime/multipart"
 	"net/http"
 
 	"a4.io/blobstash/pkg/client/clientutil"
@@ -15,8 +12,8 @@ type BlobStore struct {
 	client *clientutil.ClientUtil
 }
 
-func New(c *clientutil.ClientUtil) *BlobStore2 {
-	return &BlobStore2{c}
+func New(c *clientutil.ClientUtil) *BlobStore {
+	return &BlobStore{c}
 }
 
 // Get fetch the given blob from the remote BlobStash instance.
