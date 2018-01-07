@@ -115,7 +115,7 @@ func main() {
 		clientutil.EnableSnappyEncoding(),
 	)
 
-	bs := blobstore.New2(clientUtil)
+	bs := blobstore.New(clientUtil)
 	kvs := kvstore.New2(clientUtil)
 
 	authOk, err := clientUtil.CheckAuth()
@@ -855,7 +855,7 @@ type FileSystem struct {
 
 	up         *writer.Uploader
 	kvs        *kvstore.KvStore2
-	bs         *blobstore.BlobStore2
+	bs         *blobstore.BlobStore
 	clientUtil *clientutil.ClientUtil
 
 	lastRevision int64
@@ -898,7 +898,7 @@ type FDInfo struct {
 	CreatedAt  time.Time
 }
 
-func NewFileSystem(ref, mountpoint string, debug bool, cache *Cache, cacheDir string, bs *blobstore.BlobStore2, kvs *kvstore.KvStore2, cu *clientutil.ClientUtil) (*FileSystem, error) {
+func NewFileSystem(ref, mountpoint string, debug bool, cache *Cache, cacheDir string, bs *blobstore.BlobStore, kvs *kvstore.KvStore2, cu *clientutil.ClientUtil) (*FileSystem, error) {
 	fs := &FileSystem{
 		cache:      cache,
 		bs:         bs,
