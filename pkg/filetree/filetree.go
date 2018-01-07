@@ -40,8 +40,7 @@ import (
 
 var (
 	// FIXME(tsileo): add a way to set a custom fmt key life for Blobs CLI as we don't care about the FS?
-	indexFile = "index.html"
-	FSKeyFmt  = "_filetree:fs:%s"
+	FSKeyFmt = "_filetree:fs:%s"
 
 	MaxUploadSize int64 = 512 << 20 // 512MB
 )
@@ -574,48 +573,6 @@ func (fs *FS) Path(ctx context.Context, path string, create bool, mtime int64) (
 	}
 	return node, cmeta, !found, nil
 }
-func (ft *FileTree) indexHandler() func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
-		vars := mux.Vars(r)
-		ref := vars["ref"]
-		node, err := ft.nodeByRef(ctx, ref)
-		if err != nil {
-			if err == clientutil.ErrBlobNotFound {
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
-			panic(err)
-		}
-		out := ft.buildIndex(ctx, "/", node)
-		httputil.MarshalAndWrite(r, w, out)
-	}
-}
-
-func (ft *FileTree) buildIndex(ctx context.Context, path string, node *Node) map[string]string {
-	out := map[string]string{}
-	if err := ft.fetchDir(ctx, node, 1, 1); err != nil {
-		panic(err)
-	}
-	dpath := filepath.Join(path, node.Name)
-	for _, child := range node.Children {
-		if child.Type == rnode.File {
-			out[filepath.Join(dpath, child.Name)] = child.Hash
-		} else {
-			for p, ref := range ft.buildIndex(ctx, dpath, child) {
-				out[p] = ref
-			}
-		}
-	}
-	if dpath != "/" {
-		out[dpath+"/"] = node.Hash
-	}
-	return out
-}
 
 // Handle multipart form upload to create a new Node (outside of any FS)
 func (ft *FileTree) uploadHandler() func(http.ResponseWriter, *http.Request) {
@@ -1107,8 +1064,14 @@ func (ft *FileTree) serveFile(ctx context.Context, w http.ResponseWriter, r *htt
 		panic(err)
 	}
 
+	var mtime time.Time
+	if m.ModTime > 0 {
+		mtime = time.Unix(m.ModTime, 0)
+	} else {
+		mtime = time.Now()
+	}
+
 	// Serve the file content using the same code as the `http.ServeFile` (it'll handle HEAD request)
-	mtime := time.Now() // TODO(ts): use the FS time
 	http.ServeContent(w, r, m.Name, mtime, f)
 }
 
@@ -1237,5 +1200,4 @@ func notFound(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusNotFound)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, "<!doctype html><title>BlobStash</title><p>%s</p>\n", http.StatusText(http.StatusNotFound))
-
 }
