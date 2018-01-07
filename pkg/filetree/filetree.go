@@ -185,6 +185,9 @@ func (ft *FileTree) Register(r *mux.Router, root *mux.Router, basicAuth func(htt
 	// r.Handle("/fs", http.HandlerFunc(ft.fsHandler()))
 	// r.Handle("/fs/{name}", http.HandlerFunc(ft.fsByNameHandler()))
 
+	root.Handle("/public/{type}/{name}/", http.HandlerFunc(ft.publicHandler()))
+	root.Handle("/public/{type}/{name}/{path:.+}", http.HandlerFunc(ft.publicHandler()))
+
 	r.Handle("/upload", basicAuth(http.HandlerFunc(ft.uploadHandler())))
 
 	// Hook the standard endpint
@@ -1005,14 +1008,13 @@ func (ft *FileTree) fileHandler() func(http.ResponseWriter, *http.Request) {
 		vars := mux.Vars(r)
 
 		hash := vars["ref"]
-		ft.serveFile(ctx, w, r, hash)
+		ft.serveFile(ctx, w, r, hash, false)
 	}
 }
 
 // serveFile serve the node as a file using `net/http` FS util
-func (ft *FileTree) serveFile(ctx context.Context, w http.ResponseWriter, r *http.Request, hash string) {
+func (ft *FileTree) serveFile(ctx context.Context, w http.ResponseWriter, r *http.Request, hash string, authorized bool) {
 	// FIXME(tsileo): set authorized to true if the API call is authenticated via API key!
-	var authorized bool
 
 	if err := bewit.Validate(r, ft.sharingCred); err != nil {
 		ft.log.Debug("invalid bewit", "err", err)
@@ -1073,6 +1075,74 @@ func (ft *FileTree) serveFile(ctx context.Context, w http.ResponseWriter, r *htt
 
 	// Serve the file content using the same code as the `http.ServeFile` (it'll handle HEAD request)
 	http.ServeContent(w, r, m.Name, mtime, f)
+}
+
+func (ft *FileTree) publicHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" && r.Method != "HEAD" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+		ctx := ctxutil.WithFileTreeHostname(r.Context(), r.Header.Get(ctxutil.FileTreeHostnameHeader))
+		ctx = ctxutil.WithNamespace(ctx, r.Header.Get(ctxutil.NamespaceHeader))
+
+		vars := mux.Vars(r)
+		fsName := vars["name"]
+		path := "/public/" + vars["path"]
+		refType := vars["type"]
+		prefixFmt := FSKeyFmt
+		if p := r.URL.Query().Get("prefix"); p != "" {
+			prefixFmt = p + ":%s"
+		}
+		var mtime int64
+		var err error
+		if st := r.URL.Query().Get("mtime"); st != "" {
+			mtime, err = strconv.ParseInt(st, 10, 0)
+			if err != nil {
+				panic(err)
+			}
+		}
+		var fs *FS
+		switch refType {
+		case "ref":
+			fs = &FS{
+				Ref: fsName,
+				ft:  ft,
+			}
+		case "fs":
+			fs, err = ft.FS(ctx, fsName, prefixFmt, false, 0)
+			if err != nil {
+				panic(err)
+			}
+		default:
+			panic(fmt.Errorf("Unknown type \"%s\"", refType))
+		}
+		node, _, _, err := fs.Path(ctx, path, false, mtime)
+		switch err {
+		case nil:
+		case clientutil.ErrBlobNotFound:
+			// Returns a 404 if the blob/children is not found
+			notFound(w)
+			return
+		case blobsfile.ErrBlobNotFound:
+			// Returns a 404 if the blob/children is not found
+			notFound(w)
+			return
+		default:
+			panic(err)
+		}
+
+		w.Header().Set("ETag", node.Hash)
+
+		// Handle HEAD request
+		if r.Method == "HEAD" {
+			return
+		}
+
+		ft.serveFile(ctx, w, r, node.Hash, true)
+		return
+	}
 }
 
 // Fetch a Node outside any FS
