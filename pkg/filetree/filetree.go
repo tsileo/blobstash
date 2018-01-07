@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -179,7 +178,6 @@ func (ft *FileTree) Register(r *mux.Router, root *mux.Router, basicAuth func(htt
 	r.Handle("/node/{ref}", basicAuth(http.HandlerFunc(ft.nodeHandler())))
 
 	// Public/semi-private handler
-	dirHandler := http.HandlerFunc(ft.dirHandler())
 	fileHandler := http.HandlerFunc(ft.fileHandler())
 
 	r.Handle("/fs", basicAuth(http.HandlerFunc(ft.fsRootHandler())))
@@ -191,13 +189,8 @@ func (ft *FileTree) Register(r *mux.Router, root *mux.Router, basicAuth func(htt
 	r.Handle("/upload", basicAuth(http.HandlerFunc(ft.uploadHandler())))
 
 	// Hook the standard endpint
-	r.Handle("/dir/{ref}", dirHandler)
 	r.Handle("/file/{ref}", fileHandler)
-
-	// r.Handle("/index/{ref}", basicAuth(http.HandlerFunc(ft.indexHandler())))
-
 	// Enable shortcut path from the root
-	root.Handle("/d/{ref}", dirHandler)
 	root.Handle("/f/{ref}", fileHandler)
 }
 
@@ -1071,6 +1064,16 @@ func (ft *FileTree) serveFile(ctx context.Context, w http.ResponseWriter, r *htt
 		authorized = true
 	}
 
+	if !authorized {
+		// Try if an API key is provided
+		ft.log.Info("before authFunc")
+		if !ft.authFunc(r) {
+			// Rreturns a 404 to prevent leak of hashes
+			notFound(w)
+			return
+		}
+	}
+
 	blob, err := ft.blobStore.Get(ctx, hash)
 	if err != nil {
 		if err == clientutil.ErrBlobNotFound {
@@ -1083,21 +1086,6 @@ func (ft *FileTree) serveFile(ctx context.Context, w http.ResponseWriter, r *htt
 	m, err := rnode.NewNodeFromBlob(hash, blob)
 	if err != nil {
 		panic(err)
-	}
-
-	// if !authorized && m.IsPublic() {
-	// ft.log.Debug("XAttrs public=1")
-	// authorized = true
-	// }
-
-	if !authorized {
-		// Try if an API key is provided
-		ft.log.Info("before authFunc")
-		if !ft.authFunc(r) {
-			// Rreturns a 404 to prevent leak of hashes
-			notFound(w)
-			return
-		}
 	}
 
 	if !m.IsFile() {
@@ -1250,77 +1238,4 @@ func notFound(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, "<!doctype html><title>BlobStash</title><p>%s</p>\n", http.StatusText(http.StatusNotFound))
 
-}
-
-// dirHandler serve the directory like a standard directory (an HTML page with links to each Node)
-func (ft *FileTree) dirHandler() func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" && r.Method != "HEAD" {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
-		var authorized bool
-
-		if err := bewit.Validate(r, ft.sharingCred); err != nil {
-			ft.log.Debug("invalid bewit", "err", err)
-		} else {
-			ft.log.Debug("valid bewit")
-			authorized = true
-		}
-
-		vars := mux.Vars(r)
-
-		hash := vars["ref"]
-		n, err := ft.nodeByRef(ctx, hash)
-		if err != nil {
-			if err == clientutil.ErrBlobNotFound {
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
-			panic(err)
-		}
-
-		if !authorized {
-			// Returns a 404 to prevent leak of hashes
-			ft.log.Info("Unauthorized access")
-			notFound(w)
-			return
-		}
-
-		if n.Type != rnode.Dir {
-			panic(httputil.NewPublicErrorFmt("node is not a dir (%s)", n.Type))
-		}
-
-		if r.Method == "HEAD" {
-			return
-		}
-
-		if err := ft.fetchDir(ctx, n, 1, 1); err != nil {
-			panic(err)
-		}
-
-		sort.Sort(byName(n.Children))
-
-		// Check if the dir contains an "index.html")
-		for _, cn := range n.Children {
-			if cn.Name == indexFile {
-				ft.serveFile(ctx, w, r, cn.Hash)
-				return
-			}
-		}
-
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprintf(w, "<!doctype html><title>BlobStash - %s</title><pre>\n", n.Name)
-		for _, cn := range n.Children {
-			u := &url.URL{Path: fmt.Sprintf("/%s/%s", cn.Type[0:1], cn.Hash)}
-
-			// Only compute the Bewit if the node is not public
-			if err := bewit.Bewit(ft.sharingCred, u, ft.shareTTL); err != nil {
-				panic(err)
-			}
-			fmt.Fprintf(w, "<a href=\"%s\">%s</a>\n", u.String(), cn.Name)
-		}
-		fmt.Fprintf(w, "</pre>\n")
-	}
 }
