@@ -49,6 +49,8 @@ func main() {
 	// Scans the arg list and sets up flags
 	debug := flag.Bool("debug", false, "print debugging messages.")
 	resetCache := flag.Bool("reset-cache", false, "remove the local cache before starting.")
+	roMode := flag.Bool("ro", false, "read-only mode")
+
 	flag.Parse()
 	if flag.NArg() < 2 {
 		fmt.Fprintf(os.Stderr, "usage: %s MOUNTPOINT REF\n", os.Args[0])
@@ -119,7 +121,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	root, err := NewFileSystem(flag.Arg(1), flag.Arg(0), *debug, cache, cacheDir, bs, kvs, clientUtil)
+	root, err := NewFileSystem(flag.Arg(1), flag.Arg(0), *debug, *roMode, cache, cacheDir, bs, kvs, clientUtil)
 	if err != nil {
 		fmt.Printf("failed to initialize filesystem: %v\n", err)
 		os.Exit(1)
@@ -863,7 +865,7 @@ type FDInfo struct {
 	CreatedAt  time.Time
 }
 
-func NewFileSystem(ref, mountpoint string, debug bool, cache *Cache, cacheDir string, bs *blobstore.BlobStore, kvs *kvstore.KvStore, cu *clientutil.ClientUtil) (*FileSystem, error) {
+func NewFileSystem(ref, mountpoint string, debug, ro bool, cache *Cache, cacheDir string, bs *blobstore.BlobStore, kvs *kvstore.KvStore, cu *clientutil.ClientUtil) (*FileSystem, error) {
 	fs := &FileSystem{
 		cache:      cache,
 		bs:         bs,
@@ -871,6 +873,7 @@ func NewFileSystem(ref, mountpoint string, debug bool, cache *Cache, cacheDir st
 		clientUtil: cu,
 		ref:        ref,
 		debug:      debug,
+		ro:         ro,
 		rwLayer:    nil,
 		up:         writer.NewUploader(cache),
 		stats: &FSStats{
@@ -1008,7 +1011,7 @@ func (fs *FileSystem) logEIO(err error) {
 func (fs *FileSystem) logOP(opCode, path string, write bool, fctx *fuse.Context) {
 	fs.stats.Lock()
 	fs.stats.Ops++
-	if write {
+	if !fs.ro && write {
 		fs.stats.updated = true
 		fs.stats.lastMod = time.Now()
 	}
@@ -1029,16 +1032,18 @@ func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse
 		return a, fuse.OK
 	}
 
-	// Check if the requested path is a file already opened for writing
-	rwAttr, err := fs.rwLayer.GetAttr(name, fctx)
-	if err != nil {
-		fs.logEIO(err)
-		return nil, fuse.EIO
-	}
+	if !fs.ro {
+		// Check if the requested path is a file already opened for writing
+		rwAttr, err := fs.rwLayer.GetAttr(name, fctx)
+		if err != nil {
+			fs.logEIO(err)
+			return nil, fuse.EIO
+		}
 
-	// The file is already opened for writing, return the stat result
-	if rwAttr != nil {
-		return rwAttr, fuse.OK
+		// The file is already opened for writing, return the stat result
+		if rwAttr != nil {
+			return rwAttr, fuse.OK
+		}
 	}
 
 	// The is not already opened for writing, contact BlobStash
@@ -1090,9 +1095,12 @@ func (fs *FileSystem) OpenDir(name string, fctx *fuse.Context) ([]fuse.DirEntry,
 	}
 
 	var err error
-	// The real directory is the 1st layer, if a file exists locally as a file it will show up instead of the remote version
-	//if !fs.ro {
-	index := fs.rwLayer.OpenDir(name, fctx)
+	var index map[string]fuse.DirEntry
+	if !fs.ro {
+		// The real directory is the 1st layer, if a file exists locally as a file it will show up instead of the remote version
+		//if !fs.ro {
+		index = fs.rwLayer.OpenDir(name, fctx)
+	}
 	if index == nil {
 		index = map[string]fuse.DirEntry{}
 	}
@@ -1196,6 +1204,10 @@ func (fs *FileSystem) Open(name string, flags uint32, fctx *fuse.Context) (nodef
 func (fs *FileSystem) Utimens(path string, a *time.Time, m *time.Time, fctx *fuse.Context) fuse.Status {
 	fs.logOP("Utimens", path, true, fctx)
 
+	if fs.ro {
+		return fuse.EPERM
+	}
+
 	if err := fs.rwLayer.Utimens(path, m, fctx); err != nil {
 		fs.logEIO(err)
 		return fuse.EIO
@@ -1206,6 +1218,10 @@ func (fs *FileSystem) Utimens(path string, a *time.Time, m *time.Time, fctx *fus
 
 func (fs *FileSystem) Chmod(path string, mode uint32, fctx *fuse.Context) fuse.Status {
 	fs.logOP("Chmod", path, true, fctx)
+
+	if fs.ro {
+		return fuse.EPERM
+	}
 
 	mtime := time.Now().Unix()
 
@@ -1289,7 +1305,7 @@ func (fs *FileSystem) Mkdir(path string, mode uint32, fctx *fuse.Context) fuse.S
 
 func (fs *FileSystem) Unlink(name string, fctx *fuse.Context) fuse.Status {
 	fs.logOP("Unlink", name, true, fctx)
-	// FIXME(tsileo): lock the fs here
+	// FIXME(tsileo): lock the fs here?
 	if fs.ro {
 		return fuse.EPERM
 	}
@@ -1457,6 +1473,9 @@ func (fs *FileSystem) Access(name string, mode uint32, fctx *fuse.Context) fuse.
 
 func (fs *FileSystem) Create(path string, flags uint32, mode uint32, fctx *fuse.Context) (nodefs.File, fuse.Status) {
 	fs.logOP("Create", path, true, fctx)
+	if fs.ro {
+		return nil, fuse.EPERM
+	}
 
 	mtime := time.Now().Unix()
 
@@ -1569,6 +1588,10 @@ func (fs *FileSystem) ListXAttr(name string, fctx *fuse.Context) ([]string, fuse
 
 func (fs *FileSystem) RemoveXAttr(name string, attr string, fctx *fuse.Context) fuse.Status {
 	fs.logOP("RemoveXAttr", name, false, fctx)
+	if fs.ro {
+		return fuse.EPERM
+	}
+
 	return fuse.OK
 }
 
