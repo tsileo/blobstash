@@ -1,0 +1,13 @@
+releases/
+*.zip
+output/
+.lego*
+certs/
+*.swp
+*.key
+.subl*
+config.json
+.fuse*
+draft_*
+tmp_*
+ldb_*

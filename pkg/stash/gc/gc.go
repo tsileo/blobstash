@@ -39,6 +39,7 @@ func GC(ctx context.Context, s *stash.Stash, script string) error {
 local msgpack = require('msgpack')
 local kvstore = require('kvstore')
 local blobstore = require('blobstore')
+
 function mark_kv (key, version)
   local h = kvstore.get_meta_blob(key, version)
   if h ~= nil then
@@ -50,6 +51,7 @@ function mark_kv (key, version)
   end
 end
 _G.mark_kv = mark_kv
+
 function mark_filetree_node (ref)
   local data = blobstore.get(ref)
   local node = msgpack.decode(data)

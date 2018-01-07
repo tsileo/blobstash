@@ -1194,7 +1194,7 @@ func (ft *FileTree) nodeHandler() func(http.ResponseWriter, *http.Request) {
 func (ft *FileTree) nodeByRef(ctx context.Context, hash string) (*Node, error) {
 	if cached, ok := ft.nodeCache.Get(hash); ok {
 		n := cached.(*Node)
-		// FIXME(tsileo): investigate a bug in PATCH that cause this
+		// FIXME(tsileo): investigate a possible bug in PATCH that cause this
 		// if n.Hash != hash {
 		// panic("cache messed up")
 		// }

@@ -5,9 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"golang.org/x/crypto/acme/autocert"
-	_ "io"
-	_ "log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -32,6 +29,8 @@ import (
 	"a4.io/blobstash/pkg/stash"
 	stashAPI "a4.io/blobstash/pkg/stash/api"
 	synctable "a4.io/blobstash/pkg/sync"
+
+	"golang.org/x/crypto/acme/autocert"
 
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
@@ -162,7 +161,6 @@ func New(conf *config.Config) (*Server, error) {
 		if err := rootKvstore.Close(); err != nil {
 			return err
 		}
-
 		if err := cstash.Close(); err != nil {
 			return err
 		}
