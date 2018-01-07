@@ -61,10 +61,6 @@
   name = "github.com/evanphx/json-patch"
 
 [[constraint]]
-  name = "github.com/fsnotify/fsnotify"
-  version = "1.4.2"
-
-[[constraint]]
   branch = "master"
   name = "github.com/golang/snappy"
 

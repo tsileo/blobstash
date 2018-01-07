@@ -155,12 +155,6 @@
   revision = "944e07253867aacae43c04b2e6a239005443f33a"
 
 [[projects]]
-  name = "github.com/fsnotify/fsnotify"
-  packages = ["."]
-  revision = "629574ca2a5df945712d3079857300b5e4da0236"
-  version = "v1.4.2"
-
-[[projects]]
   name = "github.com/go-ini/ini"
   packages = ["."]
   revision = "32e4c1e6bc4e7d0d8451aa6b75200d19e37a536a"
@@ -416,6 +410,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "69a845d28afb547d166aa3bd6bcbd545ab8a62d1a4a34cbe10d57d37b6031259"
+  inputs-digest = "61eace12d101999643bd137971b0ebf46df052b279f85038596e1c1bf76dfa4c"
   solver-name = "gps-cdcl"
   solver-version = 1

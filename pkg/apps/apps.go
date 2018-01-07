@@ -12,7 +12,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
 	"github.com/yuin/gopher-lua"
@@ -64,40 +63,6 @@ func (app *App) reload() error {
 		return err
 	}
 	return nil
-}
-
-func (app *App) watch() {
-	if app.path == "" {
-		return
-	}
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		panic(err)
-	}
-	defer watcher.Close()
-
-	done := make(chan bool)
-	go func() {
-		for {
-			select {
-			case <-watcher.Events:
-				// if event.Op&fsnotify.Write == fsnotify.Write {
-				// log.Println("modified file:", event.Name)
-				if err := app.reload(); err != nil {
-					panic(err)
-				}
-			case err := <-watcher.Errors:
-				panic(err)
-			}
-		}
-	}()
-
-	err = watcher.Add(app.path)
-	if err != nil {
-		panic(err)
-		// log.Fatal(err)
-	}
-	<-done
 }
 
 // App handle an app meta data
@@ -234,8 +199,6 @@ func New(logger log.Logger, conf *config.Config, ft *filetree.FileTree, ds *docs
 		}
 		fmt.Printf("app %+v\n", app)
 		apps.apps[app.name] = app
-		// Watch the app directory for re-scanning it when necessary
-		go app.watch()
 	}
 	return apps, nil
 }
