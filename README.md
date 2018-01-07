@@ -4,7 +4,6 @@ BlobStash
 [![Travis](https://img.shields.io/travis/tsileo/blobstash.svg)](https://travis-ci.org/tsileo/blobstash)
 &nbsp; &nbsp;[![Go Report Card](https://goreportcard.com/badge/github.com/tsileo/blobstash)](https://goreportcard.com/report/github.com/tsileo/blobstash)
 &nbsp; &nbsp;[![License](http://img.shields.io/badge/license-MIT-red.svg?style=flat)](https://raw.githubusercontent.com/tsileo/blobstash/master/LICENSE)
-&nbsp; &nbsp;[![BADGINATOR](https://badginator.herokuapp.com/tsileo/blobstash.svg)](https://github.com/defunctzombie/badginator)
 
 Your personal database.
 
