@@ -21,13 +21,11 @@ import (
 	"time"
 
 	"github.com/dchest/blake2b"
-	"github.com/dustin/go-humanize"
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 	"github.com/hanwen/go-fuse/fuse/pathfs"
 	"github.com/hashicorp/golang-lru"
 	"github.com/mitchellh/go-ps"
-	_ "github.com/pkg/xattr"
 
 	bcache "a4.io/blobstash/pkg/cache"
 	"a4.io/blobstash/pkg/client/blobstore"
@@ -42,17 +40,14 @@ import (
 
 // TODO(tsileo):
 // - support file@<date> ; e.g.: file.txt@2017-5-4T21:30 ???
-// - [/] `-snapshot` mode that lock to the current version, very efficient, can specify a snapshot version `-at`
-// - [X] `-rw` mode that support mutation, will query BlobStah a lot (without `-live-update`)
-// - [X] `-live-update` (or `-ro`?) mode to receive update via SSE (e.g. serve static over fuse, or Dropbox infinite like), allow caching and to invalidate cache on remote changes (need to be able to discard its own generated event via the hostname)
-// - [ ] support data context (add timeout server-side), and merge the data context on unmount
+// - `-snapshot` mode that lock to the current version, very efficient, can specify a snapshot version `-at`
+// - RO mode
 
 const revisionHeader = "BlobStash-Filetree-FS-Revision"
 
 func main() {
 	// Scans the arg list and sets up flags
 	debug := flag.Bool("debug", false, "print debugging messages.")
-	debugTicker := flag.Int("debug-ticker", 0, "dump stats every x seconds in the logs.")
 	resetCache := flag.Bool("reset-cache", false, "remove the local cache before starting.")
 	flag.Parse()
 	if flag.NArg() < 2 {
@@ -134,31 +129,6 @@ func main() {
 		EntryTimeout:    0 * time.Second,
 		AttrTimeout:     0 * time.Second,
 		NegativeTimeout: 0 * time.Second,
-	}
-
-	// Optional periodic dump of the stats, enabled via -debug-ticker x, where x is the interval in seconds between the dumps
-	if *debugTicker > 0 {
-		ticker := time.NewTicker(time.Duration(*debugTicker) * time.Second)
-		go func() {
-			for _ = range ticker.C {
-				log.Printf("DEBUG:\n")
-				fmt.Printf("[fs]\nfs.ref=%s fs.ops=%d fs.fds=%d fs.fds_rw=%d fs.eio=%d fs.uptime=%v\n", root.stats.Ref, root.stats.Ops, root.stats.OpenedFds, root.stats.RWOpenedFds, root.stats.Eios, time.Since(root.stats.startedAt))
-				fmt.Printf("[cache]\ncache.hits=%d cache.hits_pct=%.2f cache.reqs=%d cache.added=%d cache.len=%d cache.size=%v\n", root.stats.CacheHits, float64(root.stats.CacheHits)*100.0/float64(root.stats.CacheReqs), root.stats.CacheReqs, root.stats.CacheAdded, root.cache.blobsCache.Len(), humanize.Bytes(uint64(root.cache.blobsCache.Size())))
-				fmt.Printf("[blobstash]\nblobstash.uploaded_files=%d blobstash.uploaded_files_size=%s blobstash.remote_stat=%d\n", root.stats.UploadedFiles, humanize.Bytes(uint64(root.stats.UploadedFilesSize)), root.stats.RemoteStat)
-				//fmt.Printf("[rw cache]rwlayer cached: %+v %+v\n", root.rwLayer.cache, root.rwLayer.index)
-				fmt.Printf("[fds]\n")
-				if len(root.stats.FDIndex) == 0 {
-					fmt.Printf("no fds\n")
-				}
-				for _, fdi := range root.stats.FDIndex {
-					ro := " [rw]"
-					if !fdi.Writable {
-						ro = " [ro]"
-					}
-					fmt.Printf("/%s%s [%d %s] [%s]\n", fdi.Path, ro, fdi.Pid, fdi.Executable, fdi.CreatedAt.Format(time.RFC3339))
-				}
-			}
-		}()
 	}
 
 	nfs := pathfs.NewPathNodeFs(root, nil)
