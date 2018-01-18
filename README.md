@@ -11,7 +11,9 @@ Your personal database.
 
 ## Manifesto
 
-BlobStash is at the same time a database and web server.
+BlobStash is primarily a database, you can store raw blobs, key-value pairs, JSON documents and files/directories. 
+
+It can also acts as a web server/reverse proxy.
 
 The web server supports HTTP/2 and can generate you TLS certs on the fly using Let's Encrypt.
 You can proxy other applications and gives them free certs at the same time, you can also write apps (using Lua) that lets
@@ -19,7 +21,6 @@ you interact with BlobStash's database.
 Hosting static content is also an option.
 It let you easily add authentication to any app/proxied service.
 
-But BlobStash is primarily a database, here are the primitive data types supported by BlobStash.
 
 ### Blobs
 
@@ -30,24 +31,18 @@ All data is immutable, stored with error correcting code for bit-rot protection,
 
 The blob store supports real-time replication via an Oplog (powered by Server-Sent Events) to replicate to another BlobStash instance (or any system), and also support efficient synchronisation between instances using a Merkle tree to speed-up operations.
 
-Asynchronous replication of encrypted blobs to Amazon S3 is supported.
-
-
 ### Key-values
 
-Key-values are the way to keep a mutable reference to an internal or external object, it can be a hash or any sequence of bytes.
-
-It acts like a traditional key-value store, you can set/retrieve/list keys, except for the "version" support.
+Key-value pairs lets you keep a mutable reference to an internal or external object, it can be a hash and/or any sequence of bytes.
 
 Each key-value has a timestamp associated, its version. you can easily list all the versions, by default, the latest version is returned.
 Internally, each "version" is stored as a separate blob, with a specific format, so it can be detected and re-indexed.
 
 Key-Values are indexed in a temporary database (that can be rebuilt at any time by scanning all the blobs) and stored as a blob.
 
-
 ### JSON documents
 
-A Lua-powered JSON document store let's you perform powerful queries on JSON documents, stored as blobs.
+A Lua-powered JSON document store lets you perform powerful queries against a collection of JSON documents.
 
 You can easily reference/embed blob or files.
 
