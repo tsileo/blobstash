@@ -50,6 +50,7 @@ func main() {
 	debug := flag.Bool("debug", false, "print debugging messages.")
 	resetCache := flag.Bool("reset-cache", false, "remove the local cache before starting.")
 	roMode := flag.Bool("ro", false, "read-only mode")
+	syncDelay := flag.Duration("sync-delay", 5*time.Minute, "delay to wait after the last modification to initate a sync")
 
 	flag.Parse()
 	if flag.NArg() < 2 {
@@ -169,8 +170,7 @@ func main() {
 		for tick := range ticker.C {
 			root.stats.Lock()
 			if !root.stats.lastMod.IsZero() && root.stats.updated {
-				// FIXME(tsileo): make the delay configurable
-				if tick.Sub(root.stats.lastMod) > 300*time.Second {
+				if tick.Sub(root.stats.lastMod) > *syncDelay {
 					if err := root.GC(); err != nil {
 						panic(err)
 					}
@@ -894,17 +894,17 @@ func NewFileSystem(ref, mountpoint string, debug, ro bool, cache *Cache, cacheDi
 }
 
 func (fs *FileSystem) GC() error {
-	fs.muGC.Lock()
-	defer fs.muGC.Unlock()
 	fs.stats.Lock()
-	if !root.stats.updated {
+	if !fs.stats.updated {
 		return nil
 	}
-	root.stats.updated = false
+	fs.stats.updated = false
 	fs.stats.Unlock()
 
 	// FIXME(tsileo): Make sure we don't do a GC for nothing inside this one?
 	// between the "auto GC", final GC, and public GC
+	fs.muGC.Lock()
+	defer fs.muGC.Unlock()
 
 	gcScript := fmt.Sprintf(`
 local kvstore = require('kvstore')
