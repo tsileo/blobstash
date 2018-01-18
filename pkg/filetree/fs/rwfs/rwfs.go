@@ -171,7 +171,6 @@ func main() {
 			if !root.stats.lastMod.IsZero() && root.stats.updated {
 				// FIXME(tsileo): make the delay configurable
 				if tick.Sub(root.stats.lastMod) > 300*time.Second {
-					root.stats.updated = false
 					if err := root.GC(); err != nil {
 						panic(err)
 					}
@@ -194,11 +193,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// FIXME(tsileo): URGENT trigger the GC before umount
-	if root.stats.updated {
-		if err := root.GC(); err != nil {
-			log.Printf("failed to GC: %v\n", err)
-		}
+	if err := root.GC(); err != nil {
+		log.Printf("failed to GC: %v\n", err)
 	}
 
 	cache.Close()
@@ -900,6 +896,12 @@ func NewFileSystem(ref, mountpoint string, debug, ro bool, cache *Cache, cacheDi
 func (fs *FileSystem) GC() error {
 	fs.muGC.Lock()
 	defer fs.muGC.Unlock()
+	fs.stats.Lock()
+	if !root.stats.updated {
+		return nil
+	}
+	root.stats.updated = false
+	fs.stats.Unlock()
 
 	// FIXME(tsileo): Make sure we don't do a GC for nothing inside this one?
 	// between the "auto GC", final GC, and public GC
