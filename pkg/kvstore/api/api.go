@@ -113,7 +113,7 @@ func (kv *KvStoreAPI) versionsHandler() func(http.ResponseWriter, *http.Request)
 				"data": out,
 				"pagination": map[string]interface{}{
 					"cursor":   cursor,
-					"has_more": len(out) == limit,
+					"has_more": cursor != "0" && len(out) == limit,
 					"count":    len(out),
 					"per_page": limit,
 				},

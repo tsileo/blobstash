@@ -14,7 +14,7 @@ import (
 )
 
 func GC(ctx context.Context, s *stash.Stash, script string) error {
-	// TOOD(tsileo): take a logger
+	// TODO(tsileo): take a logger
 	refs := map[string]struct{}{}
 
 	L := lua.NewState()
