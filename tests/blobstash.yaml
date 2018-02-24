@@ -1,3 +1,7 @@
 listen: ':8050'
 api_key: '123'
 data_dir: 'blobstash_data/'
+extra_apache_combined_logs: apache.log
+#replicate_from:
+#  url: https://0.8a.io
+#  api_key: redbulletvodkatupeuxpastestnononon

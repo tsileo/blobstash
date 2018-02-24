@@ -33,6 +33,7 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 
 	"github.com/gorilla/mux"
+	"github.com/gorilla/handlers"
 	log "github.com/inconshreveable/log15"
 )
 
@@ -214,14 +215,24 @@ func (s *Server) whitelistHosts(hosts ...string) {
 }
 
 func (s *Server) Serve() error {
+	reqLogger := httputil.LoggerMiddleware(s.log)
+	h := httputil.RecoverHandler(middleware.CorsMiddleware(reqLogger(middleware.Secure(s.router))))
+	if s.conf.ExtraApacheCombinedLogs != "" {
+		s.log.Info(fmt.Sprintf("enabling apache logs to %s", s.conf.ExtraApacheCombinedLogs))
+		logFile, err := os.OpenFile(s.conf.ExtraApacheCombinedLogs, os.O_APPEND|os.O_WRONLY, 0644)
+		if err != nil {
+			return err
+		}
+		defer logFile.Close()
+		h = handlers.CombinedLoggingHandler(logFile, h)
+	}
+
 	go func() {
 		listen := config.DefaultListen
 		if s.conf.Listen != "" {
 			listen = s.conf.Listen
 		}
 		s.log.Info(fmt.Sprintf("listening on %v", listen))
-		reqLogger := httputil.LoggerMiddleware(s.log)
-		h := httputil.RecoverHandler(middleware.CorsMiddleware(reqLogger(middleware.Secure(s.router))))
 		if s.conf.AutoTLS {
 			cacheDir := autocert.DirCache(filepath.Join(s.conf.ConfigDir(), config.LetsEncryptDir))
 
