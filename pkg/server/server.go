@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"expvar"
 	"fmt"
 	"net/http"
 	"os"
@@ -37,6 +38,8 @@ import (
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
 )
+
+var serverCounters = expvar.NewMap("server")
 
 func pingHandler(w http.ResponseWriter, r *http.Request) {
 	httputil.MarshalAndWrite(r, w, map[string]interface{}{
@@ -217,7 +220,8 @@ func (s *Server) whitelistHosts(hosts ...string) {
 
 func (s *Server) Serve() error {
 	reqLogger := httputil.LoggerMiddleware(s.log)
-	h := httputil.RecoverHandler(middleware.CorsMiddleware(reqLogger(middleware.Secure(s.router))))
+	expvarMiddleare := httputil.ExpvarsMiddleware(serverCounters)
+	h := httputil.RecoverHandler(middleware.CorsMiddleware(reqLogger(expvarMiddleare(middleware.Secure(s.router)))))
 	if s.conf.ExtraApacheCombinedLogs != "" {
 		s.log.Info(fmt.Sprintf("enabling apache logs to %s", s.conf.ExtraApacheCombinedLogs))
 		logFile, err := os.OpenFile(s.conf.ExtraApacheCombinedLogs, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)

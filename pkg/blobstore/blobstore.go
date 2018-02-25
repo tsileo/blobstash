@@ -3,6 +3,7 @@ package blobstore // import "a4.io/blobstash/pkg/blobstore"
 import (
 	"context"
 	"encoding/hex"
+	"expvar"
 	"fmt"
 	"path/filepath"
 
@@ -15,6 +16,14 @@ import (
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/hub"
+)
+
+var (
+	readVar  = expvar.NewInt("blobstore-read-bytes")
+	writeVar = expvar.NewInt("blobstore-write-bytes")
+
+	readCountVar  = expvar.NewInt("blobstore-read-count")
+	writeCountVar = expvar.NewInt("blobstore-write-count")
 )
 
 var ErrBlobExists = fmt.Errorf("blob exist")
@@ -117,18 +126,36 @@ func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
 		return err
 	}
 
+	writeCountVar.Add(1)
+	writeVar.Add(int64(len(blob.Data)))
+
 	bs.log.Debug("blob saved", "hash", blob.Hash)
 	return nil
 }
 
 func (bs *BlobStore) GetEncoded(ctx context.Context, hash string) ([]byte, error) {
 	bs.log.Info("OP Get (encoded)", "hash", hash)
-	return bs.back.GetEncoded(hash)
+	blob, err := bs.back.GetEncoded(hash)
+	if err != nil {
+		return nil, err
+	}
+
+	readCountVar.Add(1)
+	readVar.Add(int64(len(blob)))
+
+	return blob, err
 }
 
 func (bs *BlobStore) Get(ctx context.Context, hash string) ([]byte, error) {
 	bs.log.Info("OP Get", "hash", hash)
-	return bs.back.Get(hash)
+	blob, err := bs.back.Get(hash)
+	if err != nil {
+		return nil, err
+	}
+	readCountVar.Add(1)
+	readVar.Add(int64(len(blob)))
+
+	return blob, err
 }
 
 func (bs *BlobStore) Stat(ctx context.Context, hash string) (bool, error) {
