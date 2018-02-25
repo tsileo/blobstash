@@ -67,6 +67,8 @@ type Config struct {
 	AutoTLS bool     `yaml:"tls_auto"`
 	Domains []string `yaml:"tls_domains"`
 
+	ExpvarListen string `yaml:"expvar_server_listen"`
+
 	ExtraApacheCombinedLogs string `yaml:"extra_apache_combined_logs"`
 
 	APIKey     string  `yaml:"api_key"`

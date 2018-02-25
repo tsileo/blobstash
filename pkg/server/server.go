@@ -17,6 +17,7 @@ import (
 	blobStoreAPI "a4.io/blobstash/pkg/blobstore/api"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/docstore"
+	"a4.io/blobstash/pkg/expvarserver"
 	"a4.io/blobstash/pkg/filetree"
 	"a4.io/blobstash/pkg/httputil"
 	"a4.io/blobstash/pkg/hub"
@@ -251,6 +252,14 @@ func (s *Server) Serve() error {
 			http.ListenAndServe(listen, h)
 		}
 	}()
+	if s.conf.ExpvarListen != "" {
+		go func() {
+			s.log.Info(fmt.Sprintf("enabling expvar server on %v", s.conf.ExpvarListen))
+			if err := expvarserver.Enable(s.conf); err != nil {
+				s.log.Info(fmt.Sprintf("failed: %v", err))
+			}
+		}()
+	}
 	s.tillShutdown()
 	return s.closeFunc()
 	// return http.ListenAndServe(":8051", s.router)
