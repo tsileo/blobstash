@@ -67,26 +67,30 @@ func (st *Sync) Register(r *mux.Router, basicAuth func(http.Handler) http.Handle
 	r.Handle("/_trigger", basicAuth(http.HandlerFunc(st.triggerHandler())))
 }
 
-func (st *Sync) Client(url, apiKey string) *SyncClient {
+func (st *Sync) Client(url, apiKey string, oneWay bool) *SyncClient {
 	rawState := st.generateTree()
-	return NewSyncClient(st.log.New("submodule", "synctable-client"), st, rawState, st.blobstore, url, apiKey)
+	return NewSyncClient(st.log.New("submodule", "synctable-client"), st, rawState, st.blobstore, url, apiKey, oneWay)
 }
 
-func (st *Sync) Sync(url, apiKey string) (*SyncStats, error) {
+func (st *Sync) Sync(url, apiKey string, oneWay bool) (*SyncStats, error) {
 	log := st.log.New("trigger_id", logext.RandId(6))
 	log.Info("Starting sync...", "url", url)
 	rawState := st.generateTree()
 	defer rawState.Close()
-	client := NewSyncClient(st.log.New("submodule", "synctable-client"), st, rawState, st.blobstore, url, apiKey)
+	client := NewSyncClient(st.log.New("submodule", "synctable-client"), st, rawState, st.blobstore, url, apiKey, oneWay)
 	return client.Sync()
 }
 
 func (st *Sync) triggerHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
+		q := httputil.NewQuery(r.URL.Query())
 		url := q.Get("url")
 		apiKey := q.Get("api_key")
-		stats, err := st.Sync(url, apiKey)
+		oneWay, err := q.GetBoolDefault("one_way", false)
+		if err != nil {
+			panic(err)
+		}
+		stats, err := st.Sync(url, apiKey, oneWay)
 		if err != nil {
 			panic(err)
 		}

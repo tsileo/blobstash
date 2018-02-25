@@ -73,7 +73,8 @@ func New(logger log.Logger, conf *config.Config, bs store.BlobStore, s *bsync.Sy
 }
 
 func (r *Replication) sync() error {
-	stats, err := r.synctable.Sync(r.conf.URL, r.conf.APIKey)
+	// Initiate a one-way synchronization
+	stats, err := r.synctable.Sync(r.conf.URL, r.conf.APIKey, true)
 	if err != nil {
 		return err
 	}

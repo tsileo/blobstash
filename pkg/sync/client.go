@@ -17,6 +17,7 @@ type SyncClient struct {
 	client *clientutil.ClientUtil
 
 	blobstore store.BlobStore
+	oneWay    bool
 
 	st    *Sync
 	state *StateTree
@@ -24,10 +25,11 @@ type SyncClient struct {
 	log log.Logger
 }
 
-func NewSyncClient(logger log.Logger, st *Sync, state *StateTree, blobstore store.BlobStore, url, apiKey string) *SyncClient {
+func NewSyncClient(logger log.Logger, st *Sync, state *StateTree, blobstore store.BlobStore, url, apiKey string, oneWay bool) *SyncClient {
 	return &SyncClient{
 		client:    clientutil.NewClientUtil(url, clientutil.WithAPIKey(apiKey)),
 		st:        st,
+		oneWay:    oneWay,
 		state:     state,
 		blobstore: blobstore,
 	}
@@ -74,6 +76,7 @@ type SyncStats struct {
 	UploadedSize   int    `json:"uploaded_size"`
 	Duration       string `json:"sync_duration"`
 	AlreadySynced  bool   `json:"already_in_sync"`
+	OneWay         bool   `json:"one_way_sync"`
 }
 
 // Get fetch the given blob from the remote BlobStash instance.
@@ -146,7 +149,9 @@ func (stc *SyncClient) Receive(h string) error {
 
 func (stc *SyncClient) Sync() (*SyncStats, error) {
 	start := time.Now()
-	stats := &SyncStats{}
+	stats := &SyncStats{
+		OneWay: stc.oneWay,
+	}
 
 	local_state := stc.state.State()
 	stc.state.Close()
@@ -237,6 +242,10 @@ func (stc *SyncClient) Sync() (*SyncStats, error) {
 				dlHashes = append(dlHashes, rh)
 			}
 		}
+	}
+
+	if stc.oneWay && len(upHashes) > 0 {
+		return nil, fmt.Errorf("one way sync error: found %d blobs only present locally", len(upHashes))
 	}
 
 	// Upload blobs to the remote BlobStash instances
