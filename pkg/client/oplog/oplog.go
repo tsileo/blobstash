@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"net/http"
 
 	"a4.io/blobstash/pkg/client/clientutil"
 )
@@ -15,12 +15,8 @@ var (
 	headerData  = []byte("data:")
 )
 
-// FIXME(tsileo): move this to client util
-var defaultServerAddr = "http://localhost:8050"
-var defaultUserAgent = "Oplog Go client v1"
-
 type Oplog struct {
-	client *clientutil.Client
+	client *clientutil.ClientUtil
 }
 
 type Op struct {
@@ -28,57 +24,38 @@ type Op struct {
 	Data  string
 }
 
-// FIXME(tsileo): same here, move this to client util
-func DefaultOpts() *clientutil.Opts {
-	return &clientutil.Opts{
-		Host:              defaultServerAddr,
-		UserAgent:         defaultUserAgent,
-		APIKey:            "",
-		SnappyCompression: false,
-	}
-}
-
-func New(opts *clientutil.Opts) *Oplog {
-	if opts == nil {
-		opts = DefaultOpts()
-	}
-	return &Oplog{
-		client: clientutil.New(opts),
-	}
+func New(client *clientutil.ClientUtil) *Oplog {
+	return &Oplog{client}
 }
 
 // Get fetch the given blob from the remote BlobStash instance.
 func (o *Oplog) GetBlob(ctx context.Context, hash string) ([]byte, error) {
-	resp, err := o.client.DoReq(ctx, "GET", fmt.Sprintf("/api/blobstore/blob/%s", hash), nil, nil)
+	resp, err := o.client.Get(fmt.Sprintf("/api/blobstore/blob/%s", hash))
 	if err != nil {
 		return nil, err
 	}
+
 	defer resp.Body.Close()
-	switch {
-	case resp.StatusCode == 200:
-		sr := clientutil.NewSnappyResponseReader(resp)
-		defer sr.Close()
-		return ioutil.ReadAll(sr)
-	case resp.StatusCode == 404:
-		return nil, fmt.Errorf("Blob %s not found", hash)
-	default:
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return nil, err
+
+	if err := clientutil.ExpectStatusCode(resp, http.StatusOK); err != nil {
+		if err.IsNotFound() {
+			return nil, clientutil.ErrBlobNotFound
 		}
-		return nil, fmt.Errorf("failed to get blob %v: %v", hash, string(body))
+		return nil, err
 	}
+
+	return clientutil.Decode(resp)
 }
 
 // FIXME(tsileo): use a ctx and support cancelation
 func (o *Oplog) Notify(ctx context.Context, ops chan<- *Op, connCallback func()) error {
-	resp, err := o.client.DoReq(ctx, "GET", "/_oplog/", nil, nil)
+	resp, err := o.client.Get("/_oplog/")
 	if err != nil {
 		return err
 	}
 
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("bad status code: %d", resp.StatusCode)
+	if err := clientutil.ExpectStatusCode(resp, http.StatusOK); err != nil {
+		return err
 	}
 
 	if connCallback != nil {

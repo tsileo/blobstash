@@ -1,11 +1,9 @@
 package sync
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
-	"mime/multipart"
+	"net/http"
 	"time"
 
 	"a4.io/blobstash/pkg/blob"
@@ -16,30 +14,19 @@ import (
 )
 
 type SyncClient struct {
-	client *clientutil.Client
-
-	url    string
-	apiKey string
+	client *clientutil.ClientUtil
 
 	blobstore store.BlobStore
 
-	st *Sync
-	// FIXME(tsileo): close the state
+	st    *Sync
 	state *StateTree
 
 	log log.Logger
 }
 
 func NewSyncClient(logger log.Logger, st *Sync, state *StateTree, blobstore store.BlobStore, url, apiKey string) *SyncClient {
-	clientOpts := &clientutil.Opts{
-		APIKey:            apiKey,
-		Host:              url,
-		SnappyCompression: false, // FIXME(tsileo): Activate this once snappy response reader is imported
-	}
 	return &SyncClient{
-		client:    clientutil.New(clientOpts),
-		url:       url,
-		apiKey:    apiKey,
+		client:    clientutil.NewClientUtil(url, clientutil.WithAPIKey(apiKey)),
 		st:        st,
 		state:     state,
 		blobstore: blobstore,
@@ -48,7 +35,17 @@ func NewSyncClient(logger log.Logger, st *Sync, state *StateTree, blobstore stor
 
 func (stc *SyncClient) RemoteState() (*State, error) {
 	s := &State{}
-	if err := stc.client.GetJSON(context.TODO(), "/api/sync/state", nil, s); err != nil {
+	resp, err := stc.client.Get("/api/sync/state")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if err := clientutil.ExpectStatusCode(resp, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	if err := clientutil.Unmarshal(resp, s); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -56,7 +53,15 @@ func (stc *SyncClient) RemoteState() (*State, error) {
 
 func (stc *SyncClient) RemoteLeaf(prefix string) (*LeafState, error) {
 	ls := &LeafState{}
-	if err := stc.client.GetJSON(context.TODO(), fmt.Sprintf("/api/sync/state/leaf/%s", prefix), nil, ls); err != nil {
+	resp, err := stc.client.Get(fmt.Sprintf("/api/sync/state/leaf/%s", prefix))
+	if err != nil {
+		return nil, err
+	}
+	if err := clientutil.ExpectStatusCode(resp, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	if err := clientutil.Unmarshal(resp, ls); err != nil {
 		return nil, err
 	}
 	return ls, nil
@@ -73,53 +78,35 @@ type SyncStats struct {
 
 // Get fetch the given blob from the remote BlobStash instance.
 func (stc *SyncClient) remotePutBlob(hash string, blob []byte) error {
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
-	part, err := writer.CreateFormFile(hash, hash)
-	if err != nil {
-		return err
-	}
-	part.Write(blob)
-
-	headers := map[string]string{"Content-Type": writer.FormDataContentType()}
-	resp, err := stc.client.DoReq(context.TODO(), "POST", "/api/blobstore/upload", headers, &buf)
+	resp, err := stc.client.Post(fmt.Sprintf("/api/blobstore/blob/%s", hash), blob)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
+
+	if err := clientutil.ExpectStatusCode(resp, http.StatusCreated); err != nil {
 		return err
 	}
-	switch {
-	case resp.StatusCode == 200:
-		return nil
-	default:
-		return fmt.Errorf("failed to put blob %v: %v", hash, string(body))
-	}
+	return nil
 }
 
 // Get fetch the given blob from the remote BlobStash instance.
 func (stc *SyncClient) remoteGetBlob(hash string) ([]byte, error) {
-	resp, err := stc.client.DoReq(context.TODO(), "GET", fmt.Sprintf("/api/blobstore/blob/%s", hash), nil, nil)
+	resp, err := stc.client.Get(fmt.Sprintf("/api/blobstore/blob/%s", hash))
 	if err != nil {
 		return nil, err
 	}
+
 	defer resp.Body.Close()
-	switch {
-	case resp.StatusCode == 200:
-		sr := clientutil.NewSnappyResponseReader(resp)
-		defer sr.Close()
-		return ioutil.ReadAll(sr)
-	case resp.StatusCode == 404:
-		return nil, fmt.Errorf("Blob %s not found", hash)
-	default:
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return nil, err
+
+	if err := clientutil.ExpectStatusCode(resp, http.StatusOK); err != nil {
+		if err.IsNotFound() {
+			return nil, clientutil.ErrBlobNotFound
 		}
-		return nil, fmt.Errorf("failed to get blob %v: %v", hash, string(body))
+		return nil, err
 	}
+
+	return clientutil.Decode(resp)
 }
 
 func (stc *SyncClient) putBlob(hash string, data []byte) error {
@@ -162,6 +149,7 @@ func (stc *SyncClient) Sync() (*SyncStats, error) {
 	stats := &SyncStats{}
 
 	local_state := stc.state.State()
+	stc.state.Close()
 
 	remote_state, err := stc.RemoteState()
 	if err != nil {

@@ -204,12 +204,9 @@ type ClientUtil struct {
 
 // New initializes an HTTP client
 func NewClientUtil(host string, options ...func(*http.Request) error) *ClientUtil {
-	client := &http.Client{
-		Transport: transport,
-	}
 	return &ClientUtil{
 		host:    host,
-		client:  client,
+		client:  http.DefaultClient,
 		options: options,
 	}
 }

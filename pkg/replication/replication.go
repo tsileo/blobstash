@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"a4.io/blobstash/pkg/blob"
+	"a4.io/blobstash/pkg/client/clientutil"
 	"a4.io/blobstash/pkg/client/oplog"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/stash/store"
@@ -55,7 +56,7 @@ func New(logger log.Logger, conf *config.Config, bs store.BlobStore, s *bsync.Sy
 		conf:        conf.ReplicateFrom,
 		blobstore:   bs,
 		log:         logger,
-		remoteOplog: oplog.New(oplog.DefaultOpts().SetHost(conf.ReplicateFrom.URL, conf.ReplicateFrom.APIKey)),
+		remoteOplog: oplog.New(clientutil.NewClientUtil(conf.ReplicateFrom.URL, clientutil.WithAPIKey(conf.ReplicateFrom.APIKey))),
 		synctable:   s,
 		backoff: &Backoff{
 			delay:    1 * time.Second,
