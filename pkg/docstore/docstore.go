@@ -535,7 +535,7 @@ func (docstore *DocStore) Insert(collection string, doc *map[string]interface{})
 
 	// Create a pointer in the key-value store
 	if _, err := docstore.kvStore.Put(
-		ctx, fmt.Sprintf(KeyFmt, collection, _id.String()), hash, []byte{docFlag}, int(now.UnixNano()),
+		ctx, fmt.Sprintf(KeyFmt, collection, _id.String()), hash, []byte{docFlag}, now.UnixNano(),
 	); err != nil {
 		return nil, err
 	}
@@ -599,7 +599,7 @@ func (docstore *DocStore) LuaQuery(L *lua.LState, lfunc *lua.LFunction, collecti
 	return docs, pointers, vkv.PrevKey(stats.LastID), nil
 }
 
-func (docstore *DocStore) Query(collection string, query *query, cursor string, limit, asOf int) ([]map[string]interface{}, map[string]interface{}, *executionStats, error) {
+func (docstore *DocStore) Query(collection string, query *query, cursor string, limit int, asOf int64) ([]map[string]interface{}, map[string]interface{}, *executionStats, error) {
 	docs, pointers, stats, err := docstore.query(nil, collection, query, cursor, limit, true, asOf)
 	if err != nil {
 		return nil, nil, nil, err
@@ -610,7 +610,7 @@ func (docstore *DocStore) Query(collection string, query *query, cursor string, 
 
 // query returns a JSON list as []byte for the given query
 // docs are unmarhsalled to JSON only when needed.
-func (docstore *DocStore) query(L *lua.LState, collection string, query *query, cursor string, limit int, fetchPointers bool, asOf int) ([]map[string]interface{}, map[string]interface{}, *executionStats, error) {
+func (docstore *DocStore) query(L *lua.LState, collection string, query *query, cursor string, limit int, fetchPointers bool, asOf int64) ([]map[string]interface{}, map[string]interface{}, *executionStats, error) {
 	// js := []byte("[")
 	tstart := time.Now()
 	stats := &executionStats{
@@ -780,7 +780,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 		case "GET", "HEAD":
 			// permissions.CheckPerms(r, PermCollectionName, collection, PermRead)
 
-			var asOf int
+			var asOf int64
 			var err error
 			// Parse the cursor
 			cursor := q.Get("cursor")
@@ -789,10 +789,10 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				if err != nil {
 					panic(err)
 				}
-				asOf = int(t.UTC().UnixNano())
+				asOf = t.UTC().UnixNano()
 			}
 			if asOf == 0 {
-				asOf, err = q.GetIntDefault("as_of_nano", 0)
+				asOf, err = q.GetInt64Default("as_of_nano", 0)
 				if err != nil {
 					panic(err)
 				}
@@ -926,8 +926,8 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 
 // Fetch a single document into `res` and returns the `id.ID`
 // Start acts like a cursor.
-func (docstore *DocStore) FetchVersions(collection, sid string, start, limit int, fetchPointers bool) ([]map[string]interface{}, map[string]interface{}, int, error) {
-	var cursor int
+func (docstore *DocStore) FetchVersions(collection, sid string, start int64, limit int, fetchPointers bool) ([]map[string]interface{}, map[string]interface{}, int64, error) {
+	var cursor int64
 	// TODO(tsileo): better output than a slice of `map[string]interface{}`
 	if collection == "" {
 		return nil, nil, cursor, errors.New("missing collection query arg")
@@ -935,7 +935,7 @@ func (docstore *DocStore) FetchVersions(collection, sid string, start, limit int
 
 	// Fetch the KV versions entry for this _id
 	// XXX(tsileo): use int64 for start/end
-	kvv, _, err := docstore.kvStore.Versions(context.TODO(), fmt.Sprintf(KeyFmt, collection, sid), strconv.Itoa(start), limit)
+	kvv, _, err := docstore.kvStore.Versions(context.TODO(), fmt.Sprintf(KeyFmt, collection, sid), strconv.FormatInt(start, 10), limit)
 	// FIXME(tsileo): return the cursor from Versions
 	if err != nil {
 		return nil, nil, cursor, err
@@ -995,7 +995,7 @@ func (docstore *DocStore) FetchVersions(collection, sid string, start, limit int
 }
 
 // Fetch a single document into `res` and returns the `id.ID`
-func (docstore *DocStore) Fetch(collection, sid string, res interface{}, fetchPointers bool, version int) (*id.ID, map[string]interface{}, error) {
+func (docstore *DocStore) Fetch(collection, sid string, res interface{}, fetchPointers bool, version int64) (*id.ID, map[string]interface{}, error) {
 	if collection == "" {
 		return nil, nil, errors.New("missing collection query arg")
 	}
@@ -1315,7 +1315,7 @@ func (docstore *DocStore) docVersionsHandler() func(http.ResponseWriter, *http.R
 				httputil.Error(w, err)
 				return
 			}
-			cursor, err := q.GetIntDefault("cursor", int(time.Now().UTC().UnixNano()))
+			cursor, err := q.GetInt64Default("cursor", time.Now().UTC().UnixNano())
 			if err != nil {
 				httputil.Error(w, err)
 				return

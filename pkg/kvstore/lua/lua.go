@@ -14,7 +14,7 @@ func setupKvStore(L *lua.LState, kvs store.KvStore, ctx context.Context) func(*l
 		// register functions to the table
 		mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
 			"get_meta_blob": func(L *lua.LState) int {
-				version, err := strconv.Atoi(L.ToString(2))
+				version, err := strconv.ParseInt(L.ToString(2), 10, 0)
 				if err != nil {
 					L.ArgError(2, "version must be a valid int")
 					return 0
@@ -29,7 +29,7 @@ func setupKvStore(L *lua.LState, kvs store.KvStore, ctx context.Context) func(*l
 				return 1
 			},
 			"get": func(L *lua.LState) int {
-				version, err := strconv.Atoi(L.ToString(2))
+				version, err := strconv.ParseInt(L.ToString(2), 10, 0)
 				if err != nil {
 					L.ArgError(2, "version must be a valid int")
 					return 0
@@ -40,7 +40,7 @@ func setupKvStore(L *lua.LState, kvs store.KvStore, ctx context.Context) func(*l
 				}
 				L.Push(lua.LString(fkv.Data))
 				L.Push(lua.LString(fkv.HexHash()))
-				L.Push(lua.LString(strconv.Itoa(fkv.Version)))
+				L.Push(lua.LString(strconv.FormatInt(fkv.Version, 10)))
 				return 3
 
 			},

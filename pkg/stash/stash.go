@@ -371,7 +371,7 @@ type KvStore struct {
 
 func (kv *KvStore) Close() error { return nil }
 
-func (kv *KvStore) Put(ctx context.Context, key, ref string, data []byte, version int) (*vkv.KeyValue, error) {
+func (kv *KvStore) Put(ctx context.Context, key, ref string, data []byte, version int64) (*vkv.KeyValue, error) {
 	dataContext, err := kv.s.dataContext(ctx)
 	if err != nil {
 		return nil, err
@@ -379,7 +379,7 @@ func (kv *KvStore) Put(ctx context.Context, key, ref string, data []byte, versio
 	return dataContext.KvStoreProxy().Put(ctx, key, ref, data, version)
 }
 
-func (kv *KvStore) Get(ctx context.Context, key string, version int) (*vkv.KeyValue, error) {
+func (kv *KvStore) Get(ctx context.Context, key string, version int64) (*vkv.KeyValue, error) {
 	dataContext, err := kv.s.dataContext(ctx)
 	if err != nil {
 		return nil, err
@@ -387,7 +387,7 @@ func (kv *KvStore) Get(ctx context.Context, key string, version int) (*vkv.KeyVa
 	return dataContext.KvStoreProxy().Get(ctx, key, version)
 }
 
-func (kv *KvStore) GetMetaBlob(ctx context.Context, key string, version int) (string, error) {
+func (kv *KvStore) GetMetaBlob(ctx context.Context, key string, version int64) (string, error) {
 	dataContext, err := kv.s.dataContext(ctx)
 	if err != nil {
 		return "", err

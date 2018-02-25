@@ -34,7 +34,7 @@ type KeyValue struct {
 	SchemaVersion int `msgpack:"_v"`
 
 	Key     string `msgpack:"k,omitempty"`
-	Version int    `msgpack:"v"`
+	Version int64  `msgpack:"v"`
 	Hash    []byte `msgpack:"h,omitempty"`
 	Data    []byte `msgpack:"d,omitempty"`
 }
@@ -75,11 +75,11 @@ type KeyValueVersions struct {
 }
 
 func NextVersionCursor(key string) string {
-	v, err := strconv.Atoi(key)
+	v, err := strconv.ParseInt(key, 10, 0)
 	if err != nil {
 		panic(fmt.Errorf("should never happen, key=%s", key))
 	}
-	return strconv.Itoa(v - 1)
+	return strconv.FormatInt(v-1, 10)
 }
 
 // NextKey returns the next key for lexigraphical (key = NextKey(lastkey))
@@ -128,7 +128,7 @@ func (db *DB) Close() error { return db.rdb.Close() }
 
 func (db *DB) Destroy() error { return db.rdb.Destroy() }
 
-func (db *DB) Get(key string, version int) (*KeyValue, error) {
+func (db *DB) Get(key string, version int64) (*KeyValue, error) {
 	if version <= 0 {
 		return db.get(key)
 	}
@@ -159,7 +159,7 @@ func (db *DB) Put(kv *KeyValue) error {
 	kv.SchemaVersion = schemaVersion
 
 	if kv.Version < 1 {
-		kv.Version = int(time.Now().UTC().UnixNano())
+		kv.Version = time.Now().UTC().UnixNano()
 	}
 
 	encoded, err := kv.Dump()
@@ -191,7 +191,7 @@ func (db *DB) Put(kv *KeyValue) error {
 	return nil
 }
 
-func buildVkey(kvkey []byte, version int) []byte {
+func buildVkey(kvkey []byte, version int64) []byte {
 	klen := len(kvkey) - 1
 	vkey := make([]byte, klen+10)
 
@@ -210,7 +210,7 @@ func buildVkey(kvkey []byte, version int) []byte {
 	return vkey
 }
 
-func buildMetaBlobKey(key []byte, version int) []byte {
+func buildMetaBlobKey(key []byte, version int64) []byte {
 	klen := len(key)
 	vkey := make([]byte, klen+10)
 
@@ -229,7 +229,7 @@ func buildMetaBlobKey(key []byte, version int) []byte {
 	return vkey
 }
 
-func (db *DB) SetMetaBlob(key string, version int, hash string) error {
+func (db *DB) SetMetaBlob(key string, version int64, hash string) error {
 	vkey := buildMetaBlobKey([]byte(key), version)
 
 	h, err := hex.DecodeString(hash)
@@ -244,7 +244,7 @@ func (db *DB) SetMetaBlob(key string, version int, hash string) error {
 	return nil
 }
 
-func (db *DB) GetMetaBlob(key string, version int) (string, error) {
+func (db *DB) GetMetaBlob(key string, version int64) (string, error) {
 	if version <= 0 {
 		return "", fmt.Errorf("a valid version must be specified")
 	}
@@ -263,7 +263,7 @@ func (db *DB) GetMetaBlob(key string, version int) (string, error) {
 	return "", nil
 }
 
-func (db *DB) getAt(key string, version int) (*KeyValue, error) {
+func (db *DB) getAt(key string, version int64) (*KeyValue, error) {
 	kvkey := append([]byte{FlagKey}, []byte(key)...)
 	vkey := buildVkey(kvkey, version)
 	data, err := db.rdb.Get(vkey)
@@ -326,14 +326,14 @@ func (db *DB) ReverseKeys(start, end string, limit int) ([]*KeyValue, string, er
 	return db.keys(start, end, limit, true)
 }
 
-func (db *DB) Versions(key string, start, end, limit int) (*KeyValueVersions, int, error) {
-	var nstart int
+func (db *DB) Versions(key string, start, end int64, limit int) (*KeyValueVersions, int64, error) {
+	var nstart int64
 	res := &KeyValueVersions{
 		Key:      key,
 		Versions: []*KeyValue{},
 	}
 	if end <= 0 {
-		end = int(time.Now().UTC().UnixNano())
+		end = time.Now().UTC().UnixNano()
 	}
 
 	kvkey := append([]byte{FlagKey}, []byte(key)...)

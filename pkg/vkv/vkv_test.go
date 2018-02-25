@@ -68,21 +68,21 @@ func TestDBIVersions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error creating db %v", err)
 	}
-	eversions := map[string]map[int]*KeyValue{}
+	eversions := map[string]map[int64]*KeyValue{}
 	ekeys := []string{}
 	vcount := 100
 	for i := 0; i < 50; i++ {
 		k := fmt.Sprintf("ok%d", i)
-		eversions[k] = map[int]*KeyValue{}
+		eversions[k] = map[int64]*KeyValue{}
 		ekeys = append(ekeys, k)
 		for v := 0; v < vcount; v++ {
 			kv := &KeyValue{
 				Key:     k,
 				Data:    []byte(fmt.Sprintf("hello-%d-%d", i, v)),
-				Version: v + 1,
+				Version: int64(v + 1),
 			}
 			check(db.Put(kv))
-			eversions[k][v] = kv
+			eversions[k][int64(v)] = kv
 		}
 	}
 	t.Logf("ekeys=%+v", ekeys)
@@ -95,9 +95,9 @@ func TestDBIVersions(t *testing.T) {
 		}
 		t.Logf("versions=%+v", allversions)
 		for v := 0; v < vcount; v++ {
-			checkKv(t, eversions[k][int(math.Abs(float64(v-(vcount-1))))], allversions.Versions[v])
+			checkKv(t, eversions[k][int64(math.Abs(float64(v-(vcount-1))))], allversions.Versions[v])
 		}
-		start := -1
+		start := int64(-1)
 		// j := 0
 		eversions2 := []*KeyValue{}
 		for i := 0; i < vcount/10; i++ {
@@ -116,7 +116,7 @@ func TestDBIVersions(t *testing.T) {
 			t.Errorf("iteration failed")
 		}
 		for v, kv := range eversions2 {
-			checkKv(t, eversions[k][int(math.Abs(float64(v-(vcount-1))))], kv)
+			checkKv(t, eversions[k][int64(math.Abs(float64(v-(vcount-1))))], kv)
 		}
 	}
 }
@@ -135,7 +135,7 @@ func TestDBIter(t *testing.T) {
 		kv := &KeyValue{
 			Key:     k,
 			Data:    []byte("hello"),
-			Version: v + 1,
+			Version: int64(v + 1),
 		}
 
 		check(db.Put(kv))

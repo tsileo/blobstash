@@ -219,7 +219,7 @@ type Node struct {
 }
 
 // Update the given node with the given meta, the updated/new node is assumed to be already saved
-func (ft *FileTree) Update(ctx context.Context, n *Node, m *rnode.RawNode, prefixFmt string, first bool) (*Node, int, error) {
+func (ft *FileTree) Update(ctx context.Context, n *Node, m *rnode.RawNode, prefixFmt string, first bool) (*Node, int64, error) {
 	newNode, err := MetaToNode(m)
 	if err != nil {
 		return nil, 0, err
@@ -302,7 +302,7 @@ func (ft *FileTree) Update(ctx context.Context, n *Node, m *rnode.RawNode, prefi
 }
 
 // Update the given node with the given meta, the updated/new node is assumed to be already saved
-func (ft *FileTree) AddChild(ctx context.Context, n *Node, newChild *rnode.RawNode, prefixFmt string, mtime int64) (*Node, int, error) {
+func (ft *FileTree) AddChild(ctx context.Context, n *Node, newChild *rnode.RawNode, prefixFmt string, mtime int64) (*Node, int64, error) {
 	// Save the new child meta
 	//newChild.ModTime = time.Now().UTC().Unix()
 	newChildRef, data := newChild.Encode()
@@ -352,7 +352,7 @@ func (ft *FileTree) AddChild(ctx context.Context, n *Node, newChild *rnode.RawNo
 }
 
 // Delete removes the given node from its parent children
-func (ft *FileTree) Delete(ctx context.Context, n *Node, prefixFmt string, mtime int64) (*Node, int, error) {
+func (ft *FileTree) Delete(ctx context.Context, n *Node, prefixFmt string, mtime int64) (*Node, int64, error) {
 	if n.parent == nil {
 		panic("can't delete root")
 	}
@@ -829,7 +829,7 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 				panic(err)
 			}
 
-			w.Header().Add("BlobStash-Filetree-FS-Revision", strconv.Itoa(revision))
+			w.Header().Add("BlobStash-Filetree-FS-Revision", strconv.FormatInt(revision, 10))
 
 			// Event handling for the oplog
 			evtType := "file-updated"
@@ -933,7 +933,7 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 				panic(err)
 			}
 
-			w.Header().Add("BlobStash-Filetree-FS-Revision", strconv.Itoa(revision))
+			w.Header().Add("BlobStash-Filetree-FS-Revision", strconv.FormatInt(revision, 10))
 
 			updateEvent := &FSUpdateEvent{
 				Name:      fs.Name,
@@ -973,7 +973,7 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 				panic(err)
 			}
 
-			w.Header().Add("BlobStash-Filetree-FS-Revision", strconv.Itoa(revision))
+			w.Header().Add("BlobStash-Filetree-FS-Revision", strconv.FormatInt(revision, 10))
 
 			updateEvent := &FSUpdateEvent{
 				Name:      fs.Name,

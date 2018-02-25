@@ -300,6 +300,20 @@ func (q *Query) GetBoolDefault(key string, defaultval bool) (bool, error) {
 	return defaultval, nil
 }
 
+func (q *Query) GetInt64Default(key string, defaultval int64) (int64, error) {
+	if sv := q.values.Get(key); sv != "" {
+		val, err := strconv.ParseInt(sv, 10, 0)
+		if err != nil {
+			return 0, fmt.Errorf("failed to parse %s as int: %v", key, err)
+		}
+
+		return val, nil
+	}
+
+	// Return the default value
+	return defaultval, nil
+}
+
 func (q *Query) GetIntDefault(key string, defaultval int) (int, error) {
 	if sv := q.values.Get(key); sv != "" {
 		val, err := strconv.Atoi(sv)
@@ -313,6 +327,7 @@ func (q *Query) GetIntDefault(key string, defaultval int) (int, error) {
 	// Return the default value
 	return defaultval, nil
 }
+
 func (q *Query) GetInt(key string, defaultval, maxval int) (int, error) {
 	if sv := q.values.Get(key); sv != "" {
 		val, err := strconv.Atoi(sv)

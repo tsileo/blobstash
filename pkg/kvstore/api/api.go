@@ -3,7 +3,6 @@ package api // import "a4.io/blobstash/pkg/kvstore/api"
 import (
 	"net/http"
 	"net/url"
-	"strconv"
 
 	"github.com/gorilla/mux"
 
@@ -15,7 +14,7 @@ import (
 
 type keyValue struct {
 	Key     string `json:"key"`
-	Version int    `json:"version"`
+	Version int64  `json:"version"`
 	Hash    string `json:"hash,omitempty"`
 	Data    []byte `json:"data,omitempty"`
 }
@@ -133,7 +132,7 @@ func (kv *KvStoreAPI) getHandler() func(http.ResponseWriter, *http.Request) {
 			ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 
 			q := httputil.NewQuery(r.URL.Query())
-			version, err := q.GetIntDefault("version", -1)
+			version, err := q.GetInt64Default("version", -1)
 			if err != nil {
 				panic(err)
 			}
@@ -164,17 +163,13 @@ func (kv *KvStoreAPI) getHandler() func(http.ResponseWriter, *http.Request) {
 				httputil.Error(w, err)
 				return
 			}
+			q := httputil.NewQuery(values)
 			ref := values.Get("ref")
 			data := values.Get("data")
-			sversion := values.Get("version")
-			version := -1
-			if sversion != "" {
-				iversion, err := strconv.Atoi(sversion)
-				if err != nil {
-					httputil.WriteJSONError(w, http.StatusInternalServerError, "version must be an integer")
-					return
-				}
-				version = iversion
+			version, err := q.GetInt64Default("version", -1)
+			if err != nil {
+				httputil.Error(w, err)
+				return
 			}
 			res, err := kv.kv.Put(ctx, key, ref, []byte(data), version)
 			if err != nil {

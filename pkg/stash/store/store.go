@@ -78,9 +78,9 @@ type DataContext interface {
 }
 
 type KvStore interface {
-	Put(ctx context.Context, key, ref string, data []byte, version int) (*vkv.KeyValue, error)
-	Get(ctx context.Context, key string, version int) (*vkv.KeyValue, error)
-	GetMetaBlob(ctx context.Context, key string, version int) (string, error)
+	Put(ctx context.Context, key, ref string, data []byte, version int64) (*vkv.KeyValue, error)
+	Get(ctx context.Context, key string, version int64) (*vkv.KeyValue, error)
+	GetMetaBlob(ctx context.Context, key string, version int64) (string, error)
 	Versions(ctx context.Context, key, start string, limit int) (*vkv.KeyValueVersions, string, error)
 	Keys(ctx context.Context, start, end string, limit int) ([]*vkv.KeyValue, string, error)
 	ReverseKeys(ctx context.Context, start, end string, limit int) ([]*vkv.KeyValue, string, error)
@@ -92,7 +92,7 @@ type KvStoreProxy struct {
 	ReadSrc KvStore
 }
 
-func (p *KvStoreProxy) Put(ctx context.Context, key, ref string, data []byte, version int) (*vkv.KeyValue, error) {
+func (p *KvStoreProxy) Put(ctx context.Context, key, ref string, data []byte, version int64) (*vkv.KeyValue, error) {
 	if version > 0 {
 		kv, err := p.ReadSrc.Get(ctx, key, version)
 		switch err {
@@ -107,7 +107,7 @@ func (p *KvStoreProxy) Put(ctx context.Context, key, ref string, data []byte, ve
 	return p.KvStore.Put(ctx, key, ref, data, version)
 }
 
-func (p *KvStoreProxy) Get(ctx context.Context, key string, version int) (*vkv.KeyValue, error) {
+func (p *KvStoreProxy) Get(ctx context.Context, key string, version int64) (*vkv.KeyValue, error) {
 	kv, err := p.KvStore.Get(ctx, key, version)
 	switch err {
 	case nil:
@@ -131,7 +131,7 @@ func (p *KvStoreProxy) Get(ctx context.Context, key string, version int) (*vkv.K
 	return kv, nil
 }
 
-func (p *KvStoreProxy) GetMetaBlob(ctx context.Context, key string, version int) (string, error) {
+func (p *KvStoreProxy) GetMetaBlob(ctx context.Context, key string, version int64) (string, error) {
 	h, err := p.KvStore.GetMetaBlob(ctx, key, version)
 	switch err {
 	case nil:
@@ -190,9 +190,9 @@ func (p *KvStoreProxy) Versions(ctx context.Context, key, start string, limit in
 	for _, sh := range tmp {
 		kv := sh.Item.(*vkv.KeyValue)
 		if sh.IsFromRoot {
-			mcursor.rcursor = strconv.Itoa(kv.Version)
+			mcursor.rcursor = strconv.FormatInt(kv.Version, 10)
 		} else {
-			mcursor.scursor = strconv.Itoa(kv.Version)
+			mcursor.scursor = strconv.FormatInt(kv.Version, 10)
 		}
 		out = append(out, kv)
 	}

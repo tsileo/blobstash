@@ -22,7 +22,7 @@ type ID struct {
 	data    []byte
 	hash    string // The hash is not part of the ID but it can be attached to the ID
 	flag    byte   // Same here, not part of the ID but can be attched to it for convenience
-	version int    // not part of the ID too
+	version int64  // not part of the ID too
 }
 
 // New initializes an ID for the given timestamp
@@ -47,12 +47,12 @@ func (id *ID) Flag() byte {
 	return id.flag
 }
 
-func (id *ID) SetVersion(v int) {
+func (id *ID) SetVersion(v int64) {
 	id.version = v
 }
 
 // TODO(tsileo): make version an int64
-func (id *ID) Version() int {
+func (id *ID) Version() int64 {
 	return id.version
 }
 

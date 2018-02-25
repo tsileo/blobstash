@@ -42,7 +42,7 @@ func New(logger log.Logger, dir string, blobStore store.BlobStore, metaHandler *
 	return kvStore, nil
 }
 
-func (kv *KvStore) GetMetaBlob(ctx context.Context, key string, version int) (string, error) {
+func (kv *KvStore) GetMetaBlob(ctx context.Context, key string, version int64) (string, error) {
 	return kv.vkv.GetMetaBlob(key, version)
 }
 
@@ -79,7 +79,7 @@ func (kv *KvStore) Close() error {
 	return kv.vkv.Close()
 }
 
-func (kv *KvStore) Get(ctx context.Context, key string, version int) (*vkv.KeyValue, error) {
+func (kv *KvStore) Get(ctx context.Context, key string, version int64) (*vkv.KeyValue, error) {
 	kv.log.Info("OP Get", "key", key, "version", version)
 	return kv.vkv.Get(key, version)
 }
@@ -92,12 +92,12 @@ func (kv *KvStore) Keys(ctx context.Context, start, end string, limit int) ([]*v
 func (kv *KvStore) Versions(ctx context.Context, key, start string, limit int) (*vkv.KeyValueVersions, string, error) {
 	kv.log.Info("OP Versions", "key", key, "start", start)
 	// FIXME(tsileo): decide between -1/0 for default, or introduce a constant Max/Min?? and the end only make sense for the reverse Versions?
-	var istart int
+	var istart int64
 	var err error
 	if start == "0" {
-		istart = int(time.Now().UTC().UnixNano())
+		istart = time.Now().UTC().UnixNano()
 	} else {
-		istart, err = strconv.Atoi(start)
+		istart, err = strconv.ParseInt(start, 10, 0)
 		if err != nil {
 			return nil, "", err
 		}
@@ -107,14 +107,14 @@ func (kv *KvStore) Versions(ctx context.Context, key, start string, limit int) (
 		return nil, "", err
 	}
 
-	return res, strconv.Itoa(cursor), nil
+	return res, strconv.FormatInt(cursor, 10), nil
 }
 
 func (kv *KvStore) ReverseKeys(ctx context.Context, start, end string, limit int) ([]*vkv.KeyValue, string, error) {
 	return kv.vkv.ReverseKeys(start, end, limit)
 }
 
-func (kv *KvStore) Put(ctx context.Context, key, ref string, data []byte, version int) (*vkv.KeyValue, error) {
+func (kv *KvStore) Put(ctx context.Context, key, ref string, data []byte, version int64) (*vkv.KeyValue, error) {
 	// _, fromHttp := ctxutil.Request(ctx)
 	// kv.log.Info("OP Put", "from_http", fromHttp, "key", key, "value", value, "version", version)
 	res := &vkv.KeyValue{
