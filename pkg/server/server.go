@@ -32,8 +32,8 @@ import (
 
 	"golang.org/x/crypto/acme/autocert"
 
-	"github.com/gorilla/mux"
 	"github.com/gorilla/handlers"
+	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
 )
 
@@ -219,7 +219,7 @@ func (s *Server) Serve() error {
 	h := httputil.RecoverHandler(middleware.CorsMiddleware(reqLogger(middleware.Secure(s.router))))
 	if s.conf.ExtraApacheCombinedLogs != "" {
 		s.log.Info(fmt.Sprintf("enabling apache logs to %s", s.conf.ExtraApacheCombinedLogs))
-		logFile, err := os.OpenFile(s.conf.ExtraApacheCombinedLogs, os.O_APPEND|os.O_WRONLY, 0644)
+		logFile, err := os.OpenFile(s.conf.ExtraApacheCombinedLogs, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			return err
 		}
