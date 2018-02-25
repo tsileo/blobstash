@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"syscall"
 	"time"
 
 	"github.com/dchest/blake2b"
@@ -101,9 +100,10 @@ func (up *Uploader) putFile(path, filename string, extraMeta bool) (*rnode.RawNo
 
 		// Mtime/Ctime handling
 		meta.ModTime = fstat.ModTime().Unix()
-		if stat, ok := fstat.Sys().(*syscall.Stat_t); ok {
-			meta.ChangeTime = stat.Ctim.Sec
-		}
+		setMtime(meta, fstat)
+		//if stat, ok := fstat.Sys().(*syscall.Stat_t); ok {
+		//	meta.ChangeTime = stat.Ctim.Sec
+		//}
 	}
 
 	// wr := NewWriteResult()
