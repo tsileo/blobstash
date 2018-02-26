@@ -273,7 +273,6 @@ func (s *Server) tillShutdown() {
 	// Listen for shutdown signal
 	cs := make(chan os.Signal, 1)
 	signal.Notify(cs, os.Interrupt,
-		syscall.SIGHUP,
 		syscall.SIGINT,
 		syscall.SIGTERM,
 		syscall.SIGQUIT)
