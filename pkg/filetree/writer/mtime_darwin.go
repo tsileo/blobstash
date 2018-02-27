@@ -9,6 +9,6 @@ import (
 
 func setMtime(m *rnode.RawNode, fstat os.FileInfo) {
 	if stat, ok := fstat.Sys().(*syscall.Stat_t); ok {
-		m.ChangeTime = int64(stat.Ctim.Sec)
+		m.ChangeTime, _ = stat.Ctimespec.Unix()
 	}
 }

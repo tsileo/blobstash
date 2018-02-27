@@ -2,11 +2,10 @@
 mkdir releases >/dev/null 2>&1
 echo '
   darwin   amd64    OS X
-  freebsd  386      FreeBSD 32-bit
   freebsd  amd64    FreeBSD 64-bit
-  linux    386      Linux 32-bit
   linux    amd64    Linux 64-bit
   linux    arm      Linux ARM
+  linux    mipsle   Linux MIPS-LE
 ' | {
   while read os arch label; do
     [ -n "$os" ] || continue
