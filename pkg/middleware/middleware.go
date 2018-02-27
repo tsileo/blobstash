@@ -1,6 +1,7 @@
 package middleware // import "a4.io/blobstash/pkg/middleware"
 
 import (
+	"expvar"
 	"net/http"
 	"os"
 	"strconv"
@@ -10,6 +11,11 @@ import (
 
 	_ "github.com/carbocation/interpose/middleware"
 	"github.com/unrolled/secure"
+)
+
+var (
+	apiAuthSuccess = expvar.NewInt("api-auth-success")
+	apiAuthFailure = expvar.NewInt("api-auth-failure")
 )
 
 func Secure(h http.Handler) http.Handler {
@@ -60,9 +66,11 @@ func NewBasicAuth(conf *config.Config) (func(*http.Request) bool, func(http.Hand
 	return authFunc, func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if authFunc(r) {
+				apiAuthSuccess.Add(1)
 				next.ServeHTTP(w, r)
 				return
 			}
+			apiAuthFailure.Add(1)
 			httputil.WriteJSONError(w, http.StatusUnauthorized, http.StatusText(http.StatusUnauthorized))
 		})
 	}

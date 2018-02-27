@@ -8,10 +8,14 @@ import (
 	log "github.com/inconshreveable/log15"
 )
 
+var (
+	apiReqsVar = expvar.NewInt("api-reqs")
+)
+
 func ExpvarsMiddleware(m *expvar.Map) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			m.Add("reqs", 1)
+			apiReqsVar.Add(1)
 			next.ServeHTTP(w, r)
 		})
 	}
