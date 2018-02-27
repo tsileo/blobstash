@@ -44,6 +44,9 @@ type Decoder struct {
 	extLen int
 	rec    []byte // accumulates read data if not nil
 
+	useLoose   bool
+	useJSONTag bool
+
 	decodeMapFunc func(*Decoder) (interface{}, error)
 }
 
@@ -64,6 +67,19 @@ func NewDecoder(r io.Reader) *Decoder {
 
 func (d *Decoder) SetDecodeMapFunc(fn func(*Decoder) (interface{}, error)) {
 	d.decodeMapFunc = fn
+}
+
+// UseDecodeInterfaceLoose causes decoder to use DecodeInterfaceLoose
+// to decode msgpack value into Go interface{}.
+func (d *Decoder) UseDecodeInterfaceLoose(flag bool) {
+	d.useLoose = flag
+}
+
+// UseJSONTag causes the Decoder to use json struct tag as fallback option
+// if there is no msgpack tag.
+func (d *Decoder) UseJSONTag(v bool) *Decoder {
+	d.useJSONTag = v
+	return d
 }
 
 func (d *Decoder) Reset(r io.Reader) error {
@@ -194,6 +210,13 @@ func (d *Decoder) decode(dst interface{}) error {
 		return fmt.Errorf("msgpack: Decode(nonsettable %T)", dst)
 	}
 	return d.DecodeValue(v)
+}
+
+func (d *Decoder) decodeInterface() (interface{}, error) {
+	if d.useLoose {
+		return d.DecodeInterfaceLoose()
+	}
+	return d.DecodeInterface()
 }
 
 func (d *Decoder) DecodeValue(v reflect.Value) error {

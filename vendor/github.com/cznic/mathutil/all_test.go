@@ -46,6 +46,10 @@ func TODO(...interface{}) string {
 
 func use(...interface{}) {}
 
+func init() {
+	use(caller, TODO)
+}
+
 // ============================================================================
 
 func r32() *FC32 {
@@ -60,7 +64,6 @@ func r32() *FC32 {
 var (
 	r64lo          = big.NewInt(math.MinInt64)
 	r64hi          = big.NewInt(math.MaxInt64)
-	_3             = big.NewInt(3)
 	MinIntM1       = MinInt
 	MaxIntP1       = MaxInt
 	MaxUintP1 uint = MaxUint
@@ -148,8 +151,8 @@ func Test1(t *testing.T) {
 				}
 				r.Seed(int64(seed))
 				m := map[int]bool{}
-				v := make([]int, period, period)
-				p := make([]int64, period, period)
+				v := make([]int, period)
+				p := make([]int64, period)
 				for i := lo; i <= hi; i++ {
 					x := r.Next()
 					p[i-lo] = r.Pos()
@@ -209,8 +212,8 @@ func Test2(t *testing.T) {
 				}
 				r.Seed(int64(seed))
 				m := map[int]bool{}
-				v := make([]int, period, period)
-				p := make([]int64, period, period)
+				v := make([]int, period)
+				p := make([]int64, period)
 				for i := lo; i <= hi; i++ {
 					x := r.Prev()
 					p[i-lo] = r.Pos()
@@ -378,8 +381,8 @@ func TestBig1(t *testing.T) {
 				}
 				r.Seed(int64(seed))
 				m := map[int64]bool{}
-				v := make([]int64, period, period)
-				p := make([]int64, period, period)
+				v := make([]int64, period)
+				p := make([]int64, period)
 				for i := lo64; i <= hi64; i++ {
 					x := r.Next().Int64()
 					p[i-lo64] = r.Pos().Int64()
@@ -444,8 +447,8 @@ func TestBig2(t *testing.T) {
 				}
 				r.Seed(int64(seed))
 				m := map[int64]bool{}
-				v := make([]int64, period, period)
-				p := make([]int64, period, period)
+				v := make([]int64, period)
+				p := make([]int64, period)
 				for i := lo64; i <= hi64; i++ {
 					x := r.Prev().Int64()
 					p[i-lo64] = r.Pos().Int64()

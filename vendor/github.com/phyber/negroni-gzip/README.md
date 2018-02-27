@@ -6,6 +6,7 @@ Mostly a copy of the Martini gzip module with small changes to make it function
 under Negroni. Support for setting the compression level has also been added
 and tests have been written. Test coverage is 100% according to `go cover`.
 
+
 ## Usage
 
 ~~~ go
@@ -49,6 +50,12 @@ negroni Static middleware you will need to include `negroni.Static()` after
     n.Use(gzip.Gzip(gzip.DefaultCompression))
     n.Use(negroni.NewStatic(http.Dir("public")))
 ~~~
+
+## Warning
+
+Compressing TLS traffic may leak the page contents to an attacker if the page
+contains user input. See the [BREACH](https://en.wikipedia.org/wiki/BREACH)
+article on Wikipedia for more information.
 
 ## Authors
 * [Jeremy Saenz](http://github.com/codegangsta)

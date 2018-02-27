@@ -47,6 +47,12 @@ func (grw *gzipResponseWriter) WriteHeader(code int) {
 		grw.w.Reset(ioutil.Discard)
 		grw.w = nil
 	}
+
+	// Avoid sending Content-Length header before compression. The length would
+	// be invalid, and some browsers like Safari will report
+	// "The network connection was lost." errors
+	grw.Header().Del(headerContentLength)
+
 	grw.ResponseWriter.WriteHeader(code)
 	grw.wroteHeader = true
 }
@@ -65,6 +71,24 @@ func (grw *gzipResponseWriter) Write(b []byte) (int, error) {
 		grw.Header().Set(headerContentType, http.DetectContentType(b))
 	}
 	return grw.w.Write(b)
+}
+
+type gzipResponseWriterCloseNotifier struct {
+	*gzipResponseWriter
+}
+
+func (rw *gzipResponseWriterCloseNotifier) CloseNotify() <-chan bool {
+	return rw.ResponseWriter.(http.CloseNotifier).CloseNotify()
+}
+
+func newGzipResponseWriter(rw negroni.ResponseWriter, w *gzip.Writer) negroni.ResponseWriter {
+	wr := &gzipResponseWriter{w: w, ResponseWriter: rw}
+
+	if _, ok := rw.(http.CloseNotifier); ok {
+		return &gzipResponseWriterCloseNotifier{gzipResponseWriter: wr}
+	}
+
+	return wr
 }
 
 // handler struct contains the ServeHTTP method
@@ -113,14 +137,11 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next http.Ha
 	// Wrap the original http.ResponseWriter with negroni.ResponseWriter
 	// and create the gzipResponseWriter.
 	nrw := negroni.NewResponseWriter(w)
-	grw := gzipResponseWriter{gz, nrw, false}
+	grw := newGzipResponseWriter(nrw, gz)
 
 	// Call the next handler supplying the gzipResponseWriter instead of
 	// the original.
-	next(&grw, r)
-
-	// Delete the content length after we know we have been written to.
-	grw.Header().Del(headerContentLength)
+	next(grw, r)
 
 	gz.Close()
 }

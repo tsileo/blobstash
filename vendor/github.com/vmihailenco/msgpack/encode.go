@@ -17,15 +17,29 @@ type writer interface {
 
 type byteWriter struct {
 	io.Writer
+
+	buf       []byte
+	bootstrap [64]byte
 }
 
-func (w byteWriter) WriteByte(b byte) error {
-	_, err := w.Write([]byte{b})
+func newByteWriter(w io.Writer) *byteWriter {
+	bw := &byteWriter{
+		Writer: w,
+	}
+	bw.buf = bw.bootstrap[:]
+	return bw
+}
+
+func (w *byteWriter) WriteByte(c byte) error {
+	w.buf = w.buf[:1]
+	w.buf[0] = c
+	_, err := w.Write(w.buf)
 	return err
 }
 
-func (w byteWriter) WriteString(s string) (int, error) {
-	return w.Write([]byte(s))
+func (w *byteWriter) WriteString(s string) (int, error) {
+	w.buf = append(w.buf[:0], s...)
+	return w.Write(w.buf)
 }
 
 // Marshal returns the MessagePack encoding of v.
@@ -41,13 +55,14 @@ type Encoder struct {
 
 	sortMapKeys   bool
 	structAsArray bool
+	useJSONTag    bool
 }
 
 // NewEncoder returns a new encoder that writes to w.
 func NewEncoder(w io.Writer) *Encoder {
 	bw, ok := w.(writer)
 	if !ok {
-		bw = byteWriter{Writer: w}
+		bw = newByteWriter(w)
 	}
 	return &Encoder{
 		w:   bw,
@@ -67,6 +82,13 @@ func (e *Encoder) SortMapKeys(v bool) *Encoder {
 // StructAsArray causes the Encoder to encode Go structs as MessagePack arrays.
 func (e *Encoder) StructAsArray(v bool) *Encoder {
 	e.structAsArray = v
+	return e
+}
+
+// UseJSONTag causes the Encoder to use json struct tag as fallback option
+// if there is no msgpack tag.
+func (e *Encoder) UseJSONTag(v bool) *Encoder {
+	e.useJSONTag = v
 	return e
 }
 

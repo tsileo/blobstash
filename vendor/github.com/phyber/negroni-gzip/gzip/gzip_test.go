@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/urfave/negroni"
 )
 
 const (
@@ -139,6 +141,36 @@ func Test_ServeHTTP_WebSocketConnection(t *testing.T) {
 	gzipHandler.ServeHTTP(w, req, testHTTPContent)
 
 	if w.Body.String() != gzipTestString {
+		t.Fail()
+	}
+}
+
+func Test_ServeHTTP_CloseNotifier(t *testing.T) {
+	ok := false
+
+	n := negroni.New()
+	n.Use(Gzip(DefaultCompression))
+	n.UseHandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		_ = rw.(*gzipResponseWriterCloseNotifier)
+		_ = rw.(http.CloseNotifier)
+		ok = true
+	})
+
+	s := httptest.NewServer(n)
+
+	defer s.Close()
+
+	req, err := http.NewRequest("GET", s.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set(headerAcceptEncoding, encodingGzip)
+
+	if _, err := http.DefaultClient.Do(req); err != nil {
+		t.Fatal(err)
+	}
+
+	if !ok {
 		t.Fail()
 	}
 }
