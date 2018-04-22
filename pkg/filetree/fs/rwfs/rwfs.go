@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -20,6 +21,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/dchest/blake2b"
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
@@ -832,10 +835,14 @@ func (c *Cache) GetRemote(ctx context.Context, hash string) ([]byte, error) {
 		c.fs.stats.CacheReqs++
 		c.fs.stats.Unlock()
 
-		// FIXME(tsileo): get s3 + decrypt
-		data, err = c.fs.bs.Get(ctx, hash)
+		obj, err := s3util.GetBucket(c.fs.ft.s3, "TODO").GetObject(hash)
 		if err != nil {
-			return nil, fmt.Errorf("failed to call blobstore: %v", err)
+			return nil, err
+		}
+		eblob := s3util.NewEncryptedBlob(obj, c.fs.ft.key)
+		data, err := eblob.PlainText()
+		if err != nil {
+			return nil, err
 		}
 		if err := c.blobsCache.Add(hash, data); err != nil {
 			return nil, fmt.Errorf("failed to add to cache: %v", err)
@@ -859,6 +866,9 @@ type FileSystem struct {
 	kvs        *kvstore.KvStore
 	bs         *blobstore.BlobStore
 	clientUtil *clientutil.ClientUtil
+
+	s3  *s3.S3
+	key *[32]byte
 
 	lastRevision int64
 
@@ -928,6 +938,17 @@ func NewFileSystem(ref, mountpoint string, debug, ro bool, cache *Cache, cacheDi
 
 	fs.rwLayer.fs = fs
 	cache.fs = fs
+
+	if kfile := os.Getenv("BLOBS_KEY_FILE"); kfile != "" {
+		var out [32]byte
+		data, err := ioutil.ReadFile(kfile)
+		if err != nil {
+			return nil, err
+		}
+		copy(out[:], data)
+		fs.key = &out
+		fs.s3 = s3.New(session.New())
+	}
 
 	return fs, nil
 }

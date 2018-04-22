@@ -86,6 +86,14 @@ func (b *Bucket) Exists() (bool, error) {
 	return false, err
 }
 
+func (b *Bucket) GetObject(key string) (*Object, error) {
+	return &Object{
+		s3:     b.s3,
+		Bucket: b.Name,
+		Key:    key,
+	}, nil
+}
+
 func (b *Bucket) List(marker string, max int) ([]*Object, error) {
 	var out []*Object
 	params := &s3.ListObjectsInput{
