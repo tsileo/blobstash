@@ -1237,6 +1237,9 @@ func (ft *FileTree) nodeHandler() func(http.ResponseWriter, *http.Request) {
 			}
 		}
 
+		if err := ft.addRemoteRefs(r, n); err != nil {
+			panic(err)
+		}
 		httputil.MarshalAndWrite(r, w, map[string]interface{}{
 			"node": n,
 		})
