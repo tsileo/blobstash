@@ -388,6 +388,7 @@ func (b *S3Backend) reindex(bucket *Bucket, restore bool) error {
 
 	if err := bucket.Iter(max, func(object *Object) error {
 		b.log.Debug("fetching an objects batch from S3")
+		ehash := object.Key
 		eblob := NewEncryptedBlob(object, b.key)
 		hash, err := eblob.PlainTextHash()
 		if err != nil {
@@ -395,7 +396,7 @@ func (b *S3Backend) reindex(bucket *Bucket, restore bool) error {
 		}
 		b.log.Debug("indexing plain-text hash", "hash", hash)
 
-		if err := b.index.Index(hash); err != nil {
+		if err := b.index.Index(ehash, hash); err != nil {
 			return err
 		}
 
@@ -437,8 +438,37 @@ func (b *S3Backend) reindex(bucket *Bucket, restore bool) error {
 		return err
 	}
 
-	b.log.Info("Sync done", "objects_cnt", cnt, "duration", time.Since(start))
-
+	b.log.Info("S3 scan done", "objects_downloaded_cnt", cnt, "duration", time.Since(start))
+	start = time.Now()
+	cnt = 0
+	out := make(chan *blobsfile.Blob)
+	errc := make(chan error, 1)
+	go func() {
+		errc <- b.backend.Enumerate(out, "", "\xff", 0)
+	}()
+	for blob := range out {
+		exists, err := b.index.Exists(blob.Hash)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			t := time.Now()
+			b.wg.Add(1)
+			defer b.wg.Done()
+			data, err := b.backend.Get(blob.Hash)
+			if err != nil {
+				return err
+			}
+			if err := b.put(blob.Hash, data); err != nil {
+				return err
+			}
+			b.log.Info("blob uploaded to s3", "hash", blob.Hash, "duration", time.Since(t))
+		}
+	}
+	if err := <-errc; err != nil {
+		return err
+	}
+	b.log.Info("local scan done", "objects_uploaded_cnt", cnt, "duration", time.Since(start))
 	return nil
 }
 
@@ -505,6 +535,7 @@ L:
 func (b *S3Backend) put(hash string, data []byte) error {
 	// At this point, we're sure the blob does not exist remotely
 
+	ehash := hash
 	// Encrypt if requested
 	if b.encrypted {
 		var err error
@@ -513,13 +544,13 @@ func (b *S3Backend) put(hash string, data []byte) error {
 			return err
 		}
 		// Re-compute the hash
-		hash = hashutil.Compute(data)
+		ehash = hashutil.Compute(data)
 	}
 
 	// Prepare the upload request
 	params := &s3.PutObjectInput{
 		Bucket:   aws.String(b.bucket),
-		Key:      aws.String(hash),
+		Key:      aws.String(ehash),
 		Body:     bytes.NewReader(data),
 		Metadata: map[string]*string{},
 	}
@@ -530,7 +561,7 @@ func (b *S3Backend) put(hash string, data []byte) error {
 	}
 
 	// Save the hash in the local index
-	if err := b.index.Index(hash); err != nil {
+	if err := b.index.Index(hash, ehash); err != nil {
 		return nil
 	}
 
