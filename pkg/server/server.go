@@ -136,7 +136,7 @@ func New(conf *config.Config) (*Server, error) {
 		}
 	}
 
-	filetree, err := filetree.New(logger.New("app", "filetree"), conf, authFunc, kvstore, blobstore, hub)
+	filetree, err := filetree.New(logger.New("app", "filetree"), conf, authFunc, kvstore, blobstore, hub, rootBlobstore.GetRemoteRef)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize filetree app: %v", err)
 	}

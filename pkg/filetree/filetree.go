@@ -22,6 +22,7 @@ import (
 
 	"a4.io/blobsfile"
 	"a4.io/blobstash/pkg/blob"
+	"a4.io/blobstash/pkg/blobstore"
 	"a4.io/blobstash/pkg/cache"
 	"a4.io/blobstash/pkg/client/clientutil"
 	"a4.io/blobstash/pkg/config"
@@ -80,6 +81,8 @@ type FileTree struct {
 	metadataCache *cache.Cache
 	nodeCache     *lru.Cache
 
+	remoteFetcher func(string) (string, error)
+
 	log log.Logger
 }
 
@@ -130,7 +133,7 @@ type FS struct {
 }
 
 // New initializes the `DocStoreExt`
-func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bool, kvStore store.KvStore, blobStore store.BlobStore, chub *hub.Hub) (*FileTree, error) {
+func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bool, kvStore store.KvStore, blobStore store.BlobStore, chub *hub.Hub, remoteFetcher func(string) (string, error)) (*FileTree, error) {
 	logger.Debug("init")
 	// FIXME(tsileo): make the number of thumbnails to keep in memory a config item
 	thumbscache, err := cache.New(conf.VarDir(), "filetree_thumbs.cache", 512<<20)
@@ -161,6 +164,7 @@ func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bo
 		shareTTL:      1 * time.Hour,
 		hub:           chub,
 		log:           logger,
+		remoteFetcher: remoteFetcher,
 	}, nil
 }
 
@@ -208,8 +212,9 @@ type Node struct {
 	Children   []*Node `json:"children,omitempty" msgpack:"c,omitempty"`
 
 	// FIXME(ts): rename to Metadata
-	Data map[string]interface{} `json:"metadata,omitempty" msgpack:"md,omitempty"`
-	Info *Info                  `json:"info,omitempty" msgpack:"i,omitempty"`
+	Data       map[string]interface{} `json:"metadata,omitempty" msgpack:"md,omitempty"`
+	Info       *Info                  `json:"info,omitempty" msgpack:"i,omitempty"`
+	RemoteRefs []*rnode.IndexValue    `json:"remote_refs,omitempty" msgpack:"rrfs,omitempty"`
 
 	Meta   *rnode.RawNode `json:"-" msgpack:"-"`
 	parent *Node          `json:"-" msgpack:"-"`
@@ -723,6 +728,30 @@ func fixPath(p string) string {
 	return p
 }
 
+func (ft *FileTree) addRemoteRefs(r *http.Request, n *Node) error {
+	// FIXME(tsileo): use a header instead
+	//if r.URL.Query().Get("remote") != "1" {
+	//	return nil
+	//}
+	rrefs := []*rnode.IndexValue{}
+
+	for _, piv := range n.Meta.FileRefs() {
+		rref, err := ft.remoteFetcher(piv.Value)
+		if err != nil {
+			if err == blobstore.ErrRemoteNotAvailable {
+				return nil
+			}
+			return err
+		}
+		iv := &rnode.IndexValue{Index: piv.Index, Value: rref}
+		rrefs = append(rrefs, iv)
+	}
+
+	n.RemoteRefs = rrefs
+
+	return nil
+}
+
 func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := ctxutil.WithFileTreeHostname(r.Context(), r.Header.Get(ctxutil.FileTreeHostnameHeader))
@@ -786,6 +815,9 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 			}
 
 			// Returns the Node as JSON
+			if err := fs.ft.addRemoteRefs(r, node); err != nil {
+				panic(err)
+			}
 			httputil.MarshalAndWrite(r, w, node)
 			return
 

@@ -111,37 +111,9 @@ func NewFile(ctx context.Context, bs BlobStore, meta *node.RawNode, cache *lru.C
 		lru:     cache,
 		ctx:     ctx,
 	}
-	if meta.Size > 0 {
-		for idx, m := range meta.Refs {
-			data := m.([]interface{})
-			var index int64
-			switch i := data[0].(type) {
-			case float64:
-				index = int64(i)
-			case int:
-				index = int64(i)
-			case int64:
-				index = i
-			case int8:
-				index = int64(i)
-			case int16:
-				index = int64(i)
-			case int32:
-				index = int64(i)
-
-			// XXX(tsileo): these a used by msgpack
-			case uint8:
-				index = int64(i)
-			case uint16:
-				index = int64(i)
-			case uint32:
-				index = int64(i)
-			case uint64:
-				index = int64(i)
-			default:
-				panic("unexpected index")
-			}
-			iv := &IndexValue{Index: index, Value: data[1].(string), I: idx}
+	if fileRefs := meta.FileRefs(); fileRefs != nil {
+		for idx, riv := range fileRefs {
+			iv := &IndexValue{Index: riv.Index, Value: riv.Value, I: idx}
 			f.lmrange = append(f.lmrange, iv)
 			f.trie.Insert(iv)
 		}

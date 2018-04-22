@@ -577,6 +577,10 @@ func (b *S3Backend) Get(hash string) (data []byte, err error) {
 	return nil, ErrWriteOnly
 }
 
+func (b *S3Backend) GetRemoteRef(pref string) (string, error) {
+	return b.index.Get(pref)
+}
+
 func (b *S3Backend) Close() {
 	b.stop <- struct{}{}
 	b.wg.Wait()

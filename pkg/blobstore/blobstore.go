@@ -28,6 +28,8 @@ var (
 
 var ErrBlobExists = fmt.Errorf("blob exist")
 
+var ErrRemoteNotAvailable = fmt.Errorf("remote backend not available")
+
 func NextHexKey(key string) string {
 	bkey, err := hex.DecodeString(key)
 	if err != nil {
@@ -89,6 +91,13 @@ func (bs *BlobStore) Close() error {
 		return err
 	}
 	return nil
+}
+
+func (bs *BlobStore) GetRemoteRef(ref string) (string, error) {
+	if bs.s3back == nil {
+		return "", ErrRemoteNotAvailable
+	}
+	return bs.s3back.GetRemoteRef(ref)
 }
 
 func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {

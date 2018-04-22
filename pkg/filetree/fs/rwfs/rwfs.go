@@ -601,6 +601,7 @@ type Node struct {
 	ModTime    string                 `json:"mtime" msgpack:"mt"`
 	ChangeTime string                 `json:"ctime" msgpack:"ct"`
 	RawMode    int                    `json:"mode" msgpack:"mo"`
+	RemoteRefs []*rnode.IndexValue    `json:"remote_refs,omitempty" msgpack:"rrfs,omitempty"`
 }
 
 func (n *Node) Mode() uint32 {
