@@ -30,6 +30,7 @@ import (
 	"github.com/hashicorp/golang-lru"
 	"github.com/mitchellh/go-ps"
 
+	"a4.io/blobstash/pkg/backend/s3/s3util"
 	bcache "a4.io/blobstash/pkg/cache"
 	"a4.io/blobstash/pkg/client/blobstore"
 	"a4.io/blobstash/pkg/client/clientutil"
@@ -835,11 +836,11 @@ func (c *Cache) GetRemote(ctx context.Context, hash string) ([]byte, error) {
 		c.fs.stats.CacheReqs++
 		c.fs.stats.Unlock()
 
-		obj, err := s3util.GetBucket(c.fs.ft.s3, "TODO").GetObject(hash)
+		obj, err := s3util.NewBucket(c.fs.s3, "TODO").GetObject(hash)
 		if err != nil {
 			return nil, err
 		}
-		eblob := s3util.NewEncryptedBlob(obj, c.fs.ft.key)
+		eblob := s3util.NewEncryptedBlob(obj, c.fs.key)
 		data, err := eblob.PlainText()
 		if err != nil {
 			return nil, err
