@@ -43,14 +43,18 @@ func (i *Index) Close() error {
 	return i.db.Close()
 }
 
-func (i *Index) Index(hash string) error {
+func (i *Index) Index(plainHash, encryptedHash string) error {
 	i.Lock()
 	defer i.Unlock()
-	bhash, err := hex.DecodeString(hash)
+	phash, err := hex.DecodeString(plainHash)
 	if err != nil {
 		return err
 	}
-	return i.db.Set(bhash, []byte{1})
+	ehash, err := hex.DecodeString(encryptedHash)
+	if err != nil {
+		return err
+	}
+	return i.db.Set(phash, ehash)
 }
 
 func (i *Index) Exists(hash string) (bool, error) {
@@ -68,4 +72,21 @@ func (i *Index) Exists(hash string) (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+func (i *Index) Get(hash string) (string, error) {
+	i.Lock()
+	defer i.Unlock()
+	bhash, err := hex.DecodeString(hash)
+	if err != nil {
+		return "", err
+	}
+	v, err := i.db.Get(nil, bhash)
+	if err != nil {
+		return "", err
+	}
+	if v != nil {
+		return hex.EncodeToString(v), nil
+	}
+	return "", nil
 }
