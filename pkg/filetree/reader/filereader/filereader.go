@@ -100,7 +100,7 @@ type File struct {
 	ctx     context.Context
 }
 
-// NewFakeFile creates a new FakeFile instance.
+// NewFile creates a new File instance.
 func NewFile(ctx context.Context, bs BlobStore, meta *node.RawNode, cache *lru.Cache) (f *File) {
 	f = &File{
 		bs:      bs,
@@ -114,6 +114,26 @@ func NewFile(ctx context.Context, bs BlobStore, meta *node.RawNode, cache *lru.C
 	if fileRefs := meta.FileRefs(); fileRefs != nil {
 		for idx, riv := range fileRefs {
 			iv := &IndexValue{Index: riv.Index, Value: riv.Value, I: idx}
+			f.lmrange = append(f.lmrange, iv)
+			f.trie.Insert(iv)
+		}
+	}
+	return
+}
+
+func NewFileRemote(ctx context.Context, bs BlobStore, meta *node.RawNode, ivs []*node.IndexValue, cache *lru.Cache) (f *File) {
+	f = &File{
+		bs:      bs,
+		meta:    meta,
+		size:    int64(meta.Size),
+		lmrange: []*IndexValue{},
+		trie:    yfast.New(uint64(0)),
+		lru:     cache,
+		ctx:     ctx,
+	}
+	if ivs != nil {
+		for idx, riv := range ivs {
+			iv := &IndexValue{Index: riv.Index, Value: "remote://" + riv.Value, I: idx}
 			f.lmrange = append(f.lmrange, iv)
 			f.trie.Insert(iv)
 		}

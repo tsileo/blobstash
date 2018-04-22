@@ -774,6 +774,9 @@ func (c *Cache) Put(ctx context.Context, hash string, data []byte) error {
 
 // Get implements the BlobStore interface for filereader.File
 func (c *Cache) Get(ctx context.Context, hash string) ([]byte, error) {
+	if strings.HasPrefix(hash, "remote://") {
+		return c.GetRemote(ctx, hash[9:])
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	var err error
@@ -795,6 +798,41 @@ func (c *Cache) Get(ctx context.Context, hash string) ([]byte, error) {
 		c.fs.stats.CacheReqs++
 		c.fs.stats.Unlock()
 
+		data, err = c.fs.bs.Get(ctx, hash)
+		if err != nil {
+			return nil, fmt.Errorf("failed to call blobstore: %v", err)
+		}
+		if err := c.blobsCache.Add(hash, data); err != nil {
+			return nil, fmt.Errorf("failed to add to cache: %v", err)
+		}
+	}
+	return data, nil
+}
+
+// Get implements the BlobStore interface for filereader.File
+func (c *Cache) GetRemote(ctx context.Context, hash string) ([]byte, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var err error
+	cachedBlob, ok, err := c.blobsCache.Get(hash)
+	if err != nil {
+		return nil, fmt.Errorf("cache failed: %v", err)
+	}
+	var data []byte
+	if ok {
+		c.fs.stats.Lock()
+		c.fs.stats.CacheHits++
+		c.fs.stats.CacheReqs++
+		c.fs.stats.Unlock()
+
+		data = cachedBlob
+	} else {
+		c.fs.stats.Lock()
+		c.fs.stats.CacheAdded++
+		c.fs.stats.CacheReqs++
+		c.fs.stats.Unlock()
+
+		// FIXME(tsileo): get s3 + decrypt
 		data, err = c.fs.bs.Get(ctx, hash)
 		if err != nil {
 			return nil, fmt.Errorf("failed to call blobstore: %v", err)
