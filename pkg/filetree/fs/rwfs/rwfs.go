@@ -836,7 +836,7 @@ func (c *Cache) GetRemote(ctx context.Context, hash string) ([]byte, error) {
 		c.fs.stats.CacheReqs++
 		c.fs.stats.Unlock()
 
-		obj, err := s3util.NewBucket(c.fs.s3, "TODO").GetObject(hash)
+		obj, err := s3util.NewBucket(c.fs.s3, os.Getenv("BLOBS_S3_BUCKET")).GetObject(hash)
 		if err != nil {
 			return nil, err
 		}
