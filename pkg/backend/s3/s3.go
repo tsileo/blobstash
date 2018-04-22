@@ -396,7 +396,7 @@ func (b *S3Backend) reindex(bucket *Bucket, restore bool) error {
 		}
 		b.log.Debug("indexing plain-text hash", "hash", hash)
 
-		if err := b.index.Index(ehash, hash); err != nil {
+		if err := b.index.Index(hash, ehash); err != nil {
 			return err
 		}
 
@@ -462,6 +462,7 @@ func (b *S3Backend) reindex(bucket *Bucket, restore bool) error {
 			if err := b.put(blob.Hash, data); err != nil {
 				return err
 			}
+			cnt++
 			b.log.Info("blob uploaded to s3", "hash", blob.Hash, "duration", time.Since(t))
 		}
 	}
