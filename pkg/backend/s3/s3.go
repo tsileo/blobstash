@@ -32,6 +32,10 @@ import (
 	"a4.io/blobstash/pkg/queue"
 )
 
+// TODO(tsileo):
+// - HTTP endpoint to trigger the SyncRemoteBlob event
+// - make the stash/data ctx handle the remote blobs
+
 var ErrWriteOnly = errors.New("backend is in read-only mode")
 
 type S3Backend struct {
@@ -126,6 +130,8 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 		}
 	}
 
+	h.Subscribe(hub.SyncRemoteBlob, "s3-backend", s3backend.newSyncRemoteBlobCallback)
+
 	// Initialize the worker (queue consumer)
 	go s3backend.worker()
 
@@ -138,6 +144,44 @@ func (b *S3Backend) String() string {
 		suf = "-encrypted"
 	}
 	return fmt.Sprintf("s3-backend-%s", b.bucket) + suf
+}
+
+// newSyncRemoteBlobCallback download a blob
+func (b *S3Backend) newSyncRemoteBlobCallback(ctx context.Context, _ *blob.Blob, payload interface{}) error {
+	log := b.log.New("ref", payload)
+	log.Debug("newSyncRemoteBlobCallback", "ref", payload)
+	obj, err := s3util.NewBucket(b.s3, b.bucket).GetObject(payload.(string))
+	if err != nil {
+		return err
+	}
+	eblob := s3util.NewEncryptedBlob(obj, b.key)
+
+	hash, data, err := eblob.HashAndPlainText()
+
+	exists, err := b.backend.Exists(hash)
+	if err != nil {
+		return err
+	}
+	if exists {
+		log.Debug("blob already exists")
+		return nil
+	}
+
+	if err := b.backend.Put(hash, data); err != nil {
+		return err
+	}
+
+	// Wait for subscribed event completion
+	if err := b.hub.NewBlobEvent(context.TODO(), &blob.Blob{
+		Hash: hash,
+		Data: data,
+	}, nil); err != nil {
+		return err
+	}
+
+	log.Debug("blob saved")
+
+	return nil
 }
 
 func (b *S3Backend) Put(hash string) error {

@@ -206,6 +206,29 @@ func (b *EncryptedBlob) PlainText() ([]byte, error) {
 	return decoded, nil
 }
 
+func (b *EncryptedBlob) HashAndPlainText() (string, []byte, error) {
+	r, err := b.o.Reader()
+	if err != nil {
+		return "", nil, err
+	}
+	defer r.Close()
+	data, err := ioutil.ReadAll(r)
+	if err != nil {
+		return "", nil, err
+	}
+
+	if !bytes.Equal(blobHeader, data[0:21]) {
+		return "", nil, fmt.Errorf("missing header (\"%s\")", data[0:21])
+	}
+
+	decoded, err := Open(b.key, data)
+	if err != nil {
+		return "", nil, err
+	}
+
+	return hex.EncodeToString(data[21:53]), decoded, nil
+}
+
 func (b *EncryptedBlob) PlainTextHash() (string, error) {
 	r, err := b.o.Peeker(53)
 	defer r.Close()
