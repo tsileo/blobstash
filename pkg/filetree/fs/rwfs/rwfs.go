@@ -21,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/dchest/blake2b"
@@ -669,8 +670,12 @@ func (n *Node) Copy(dst io.Writer, fs *FileSystem, meta *rnode.RawNode) error {
 			return err
 		}
 	}
-
-	fileReader := filereader.NewFile(ctx, fs.cache, meta, fcache)
+	var fileReader io.ReadCloser
+	if n.RemoteRefs != nil {
+		fileReader = filereader.NewFileRemote(ctx, fs.cache, meta, n.RemoteRefs, fcache)
+	} else {
+		fileReader = filereader.NewFile(ctx, fs.cache, meta, fcache)
+	}
 	defer fileReader.Close()
 	io.Copy(dst, fileReader)
 	return nil
@@ -822,6 +827,7 @@ func (c *Cache) GetRemote(ctx context.Context, hash string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cache failed: %v", err)
 	}
+	fmt.Printf("GET FROM S3\n")
 	var data []byte
 	if ok {
 		c.fs.stats.Lock()
@@ -841,7 +847,7 @@ func (c *Cache) GetRemote(ctx context.Context, hash string) ([]byte, error) {
 			return nil, err
 		}
 		eblob := s3util.NewEncryptedBlob(obj, c.fs.key)
-		data, err := eblob.PlainText()
+		data, err = eblob.PlainText()
 		if err != nil {
 			return nil, err
 		}
@@ -948,7 +954,7 @@ func NewFileSystem(ref, mountpoint string, debug, ro bool, cache *Cache, cacheDi
 		}
 		copy(out[:], data)
 		fs.key = &out
-		fs.s3 = s3.New(session.New())
+		fs.s3 = s3.New(session.New(&aws.Config{Region: aws.String(os.Getenv("BLOBS_S3_REGION"))}))
 	}
 
 	return fs, nil
@@ -2015,8 +2021,12 @@ func NewFile(fctx *fuse.Context, fs *FileSystem, path string, node *Node) (*File
 			return nil, err
 		}
 	}
-	r := filereader.NewFile(ctx, fs.cache, meta, fcache)
-
+	var r *filereader.File
+	if node.RemoteRefs != nil {
+		r = filereader.NewFileRemote(ctx, fs.cache, meta, node.RemoteRefs, fcache)
+	} else {
+		r = filereader.NewFile(ctx, fs.cache, meta, fcache)
+	}
 	rnd := fmt.Sprintf("%s:%d:%d", path, fctx.Pid, time.Now().UnixNano())
 	fid := fmt.Sprintf("%x", sha1.Sum([]byte(rnd)))[:6]
 

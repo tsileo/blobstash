@@ -185,10 +185,10 @@ func NewEncryptedBlob(o *Object, key *[32]byte) *EncryptedBlob {
 
 func (b *EncryptedBlob) PlainText() ([]byte, error) {
 	r, err := b.o.Reader()
-	defer r.Close()
 	if err != nil {
 		return nil, err
 	}
+	defer r.Close()
 	data, err := ioutil.ReadAll(r)
 	if err != nil {
 		return nil, err
