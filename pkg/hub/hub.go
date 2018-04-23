@@ -16,6 +16,7 @@ const (
 	ScanBlob
 	GarbageCollection
 	FiletreeFSUpdate
+	SyncRemoteBlob
 )
 
 type Hub struct {
@@ -60,6 +61,7 @@ func New(logger log.Logger) *Hub {
 			NewBlob:          map[string]func(context.Context, *blob.Blob, interface{}) error{},
 			ScanBlob:         map[string]func(context.Context, *blob.Blob, interface{}) error{},
 			FiletreeFSUpdate: map[string]func(context.Context, *blob.Blob, interface{}) error{},
+			SyncRemoteBlob:   map[string]func(context.Context, *blob.Blob, interface{}) error{},
 		},
 	}
 }
