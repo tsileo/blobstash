@@ -35,6 +35,7 @@ import (
 // TODO(tsileo):
 // - HTTP endpoint to trigger the SyncRemoteBlob event
 // - make the stash/data ctx handle the remote blobs
+// - make the FS use iputil, -auto-remote-blobs and -force-remote-blobs flags
 
 var ErrWriteOnly = errors.New("backend is in read-only mode")
 

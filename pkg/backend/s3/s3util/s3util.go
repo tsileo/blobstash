@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -109,6 +110,9 @@ func (b *Bucket) List(marker string, max int) ([]*Object, error) {
 	}
 
 	for _, item := range resp.Contents {
+		if strings.HasPrefix(*item.Key, "tmp/") {
+			continue
+		}
 		out = append(out, &Object{
 			s3:     b.s3,
 			Key:    *item.Key,
@@ -147,6 +151,21 @@ type Object struct {
 	Bucket string
 	Size   int64
 	s3     *s3.S3
+}
+
+func (o *Object) Exists() (bool, error) {
+	params := &s3.HeadObjectInput{
+		Bucket: aws.String(o.Bucket),
+		Key:    aws.String(o.Key),
+	}
+	_, err := o.s3.HeadObject(params)
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == s3.ErrCodeNoSuchKey {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func (o *Object) Peeker(size int64) (io.ReadCloser, error) {
