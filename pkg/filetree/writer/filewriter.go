@@ -41,13 +41,25 @@ func (up *Uploader) writeReader(f io.Reader, meta *rnode.RawNode) error { // (*W
 		chunkHash := hashutil.Compute(chunk.Data)
 		size += chunk.Length
 
-		exists, err := up.bs.Stat(ctx, chunkHash)
+		var exists bool
+		if rstorer, ok := up.bs.(BlobRemoteStorer); ok {
+			exists, err = rstorer.StatRemote(ctx, chunkHash)
+		} else {
+			exists, err = up.bs.Stat(ctx, chunkHash)
+		}
 		if err != nil {
 			panic(fmt.Sprintf("DB error: %v", err))
 		}
 		if !exists {
-			if err := up.bs.Put(ctx, chunkHash, chunk.Data); err != nil {
-				panic(fmt.Errorf("failed to PUT blob %v", err))
+			if rstorer, ok := up.bs.(BlobRemoteStorer); ok {
+				if err := rstorer.PutRemote(ctx, chunkHash, chunk.Data); err != nil {
+					panic(fmt.Errorf("failed to PUT blob to remote %v", err))
+				}
+
+			} else {
+				if err := up.bs.Put(ctx, chunkHash, chunk.Data); err != nil {
+					panic(fmt.Errorf("failed to PUT blob %v", err))
+				}
 			}
 		}
 

@@ -14,6 +14,11 @@ type BlobStorer interface {
 	Put(context.Context, string, []byte) error
 }
 
+type BlobRemoteStorer interface {
+	StatRemote(context.Context, string) (bool, error)
+	PutRemote(context.Context, string, []byte) error
+}
+
 type Uploader struct {
 	bs BlobStorer
 

@@ -3,6 +3,7 @@ package main
 // import "a4.io/blobstash/pkg/filetree/fs"
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha1"
 	"encoding/json"
@@ -41,6 +42,7 @@ import (
 	rnode "a4.io/blobstash/pkg/filetree/filetreeutil/node"
 	"a4.io/blobstash/pkg/filetree/reader/filereader"
 	"a4.io/blobstash/pkg/filetree/writer"
+	"a4.io/blobstash/pkg/hashutil"
 )
 
 // TODO(tsileo):
@@ -734,6 +736,22 @@ func (c *Cache) findProcExec(context *fuse.Context) string {
 	return exec
 }
 
+func (c *Cache) StatRemote(ctx context.Context, hash string) (bool, error) {
+	exists, err := c.Stat(ctx, hash)
+	if err != nil {
+		return false, err
+	}
+	if exists {
+		return true, nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	obj, _ := s3util.NewBucket(c.fs.s3, os.Getenv("BLOBS_S3_BUCKET")).GetObject("tmp/" + hash)
+
+	return obj.Exists()
+}
+
 func (c *Cache) Stat(ctx context.Context, hash string) (bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -760,6 +778,51 @@ func (c *Cache) Stat(ctx context.Context, hash string) (bool, error) {
 	}
 
 	return stat, nil
+}
+
+// Get implements the BlobStore interface for filereader.File
+func (c *Cache) PutRemote(ctx context.Context, hash string, data []byte) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.fs.stats.Lock()
+	c.fs.stats.CacheAdded++
+	c.fs.stats.Unlock()
+
+	exists, err := c.StatRemote(ctx, hash)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+
+	if err := c.blobsCache.Add(hash, data); err != nil {
+		return err
+	}
+
+	// Encrypt
+	data, err = s3util.Seal(c.fs.key, hash, data)
+	if err != nil {
+		return err
+	}
+	// Re-compute the hash
+	ehash := hashutil.Compute(data)
+
+	// Prepare the upload request
+	params := &s3.PutObjectInput{
+		Bucket:   aws.String(os.Getenv("BLOBS_S3_BUCKET")),
+		Key:      aws.String("tmp/" + ehash),
+		Body:     bytes.NewReader(data),
+		Metadata: map[string]*string{},
+	}
+
+	// Actually upload the blob
+	if _, err := c.fs.s3.PutObject(params); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Get implements the BlobStore interface for filereader.File
