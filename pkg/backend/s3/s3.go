@@ -34,16 +34,25 @@ import (
 
 // TODO(tsileo):
 // - HTTP endpoint to trigger the SyncRemoteBlob event
-// - make the stash/data ctx handle the remote blobs
+// - make the stash/data ctx handle the remote blobs by sending
+// - TODO use data ctx name for the tmp/ -> stash/{stash-name}, (have the GC scan all the encrypted blobs and builds an in-memory index OR have the client send its index -> faster), do the GC, send the SyncRemoteBlob from within the GC (that should be async)
+// and have BlobStash stream from S3 in the meantime (and blocking the download queue to be sure we don't download blob twice)???
 // - make the FS use iputil, -auto-remote-blobs and -force-remote-blobs flags
+// - Make the upload optionally remote??
+// - Have a stash unique ID to protect the remote S3 local index kv
+// - SyncRemoteBlob should copy the blob after the copy and the GC delete the rest
 
 var ErrWriteOnly = errors.New("backend is in read-only mode")
 
 type S3Backend struct {
 	log log.Logger
 
-	queue *queue.Queue
-	index *index.Index
+	uploadQueue *queue.Queue
+	index       *index.Index
+
+	downloadQueue *queue.Queue
+	downloadIndex map[string]string
+	downloadMutex sync.Mutex
 
 	encrypted bool
 	key       *[32]byte
@@ -74,7 +83,13 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 	sess := session.New(&aws.Config{Region: aws.String(region)})
 
 	// Init the disk-backed queue
-	q, err := queue.New(filepath.Join(conf.VarDir(), "s3-repl.queue"))
+	uq, err := queue.New(filepath.Join(conf.VarDir(), "s3-upload.queue"))
+	if err != nil {
+		return nil, err
+	}
+
+	// Init the disk-backed queue
+	dq, err := queue.New(filepath.Join(conf.VarDir(), "s3-upload.queue"))
 	if err != nil {
 		return nil, err
 	}
@@ -91,15 +106,17 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 	}
 
 	s3backend := &S3Backend{
-		log:     logger,
-		backend: back,
-		hub:     h,
-		s3:      s3.New(sess),
-		stop:    make(chan struct{}),
-		bucket:  bucket,
-		key:     key,
-		queue:   q,
-		index:   i,
+		log:           logger,
+		backend:       back,
+		hub:           h,
+		s3:            s3.New(sess),
+		stop:          make(chan struct{}),
+		bucket:        bucket,
+		key:           key,
+		uploadQueue:   uq,
+		downloadQueue: dq,
+		downloadIndex: map[string]string{},
+		index:         i,
 	}
 
 	// FIXME(tsileo): should encypption be optional?
@@ -134,7 +151,8 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 	h.Subscribe(hub.SyncRemoteBlob, "s3-backend", s3backend.newSyncRemoteBlobCallback)
 
 	// Initialize the worker (queue consumer)
-	go s3backend.worker()
+	go s3backend.uploadWorker()
+	go s3backend.downloadWorker()
 
 	return s3backend, nil
 }
@@ -148,10 +166,15 @@ func (b *S3Backend) String() string {
 }
 
 // newSyncRemoteBlobCallback download a blob
-func (b *S3Backend) newSyncRemoteBlobCallback(ctx context.Context, _ *blob.Blob, payload interface{}) error {
-	log := b.log.New("ref", payload)
-	log.Debug("newSyncRemoteBlobCallback", "ref", payload)
-	obj, err := s3util.NewBucket(b.s3, b.bucket).GetObject(payload.(string))
+func (b *S3Backend) newSyncRemoteBlobCallback(ctx context.Context, blob *blob.Blob, _ interface{}) error {
+	b.log.Debug("newSyncRemoteBlobCallback", "blob", blob)
+	return b.downloadQueue.Enqueue(blob) // Extra is the S3 object key
+}
+
+func (b *S3Backend) downloadRemoteBlob(key string) error {
+	log := b.log.New("key", key)
+	log.Debug("downloading remote blob")
+	obj, err := s3util.NewBucket(b.s3, b.bucket).GetObject(key)
 	if err != nil {
 		return err
 	}
@@ -164,7 +187,7 @@ func (b *S3Backend) newSyncRemoteBlobCallback(ctx context.Context, _ *blob.Blob,
 		return err
 	}
 	if exists {
-		log.Debug("blob already exists")
+		log.Debug("blob already exists", "hash", hash)
 		return nil
 	}
 
@@ -180,13 +203,13 @@ func (b *S3Backend) newSyncRemoteBlobCallback(ctx context.Context, _ *blob.Blob,
 		return err
 	}
 
-	log.Debug("blob saved")
+	log.Debug("remote blob saved", "hash", hash)
 
 	return nil
 }
 
 func (b *S3Backend) Put(hash string) error {
-	return b.queue.Enqueue(&blob.Blob{Hash: hash})
+	return b.uploadQueue.Enqueue(&blob.Blob{Hash: hash})
 }
 
 func (b *S3Backend) reindex(bucket *s3util.Bucket, restore bool) error {
@@ -282,8 +305,9 @@ func (b *S3Backend) reindex(bucket *s3util.Bucket, restore bool) error {
 	return nil
 }
 
-func (b *S3Backend) worker() {
-	b.log.Debug("starting worker")
+func (b *S3Backend) uploadWorker() {
+	log := b.log.New("worker", "upload_worker")
+	log.Debug("starting worker")
 	t := time.NewTicker(30 * time.Second)
 L:
 	for {
@@ -292,11 +316,11 @@ L:
 			t.Stop()
 			break L
 		case <-t.C:
-			b.log.Debug("repl tick")
+			log.Debug("repl tick")
 			blb := &blob.Blob{}
 			for {
-				b.log.Debug("try to dequeue")
-				ok, deqFunc, err := b.queue.Dequeue(blb)
+				log.Debug("try to dequeue")
+				ok, deqFunc, err := b.uploadQueue.Dequeue(blb)
 				if err != nil {
 					panic(err)
 				}
@@ -317,7 +341,7 @@ L:
 							return err
 						}
 						if exists {
-							b.log.Debug("blob already exist", "hash", blob.Hash)
+							log.Debug("blob already exist", "hash", blob.Hash)
 							deqFunc(true)
 							return nil
 						}
@@ -327,11 +351,56 @@ L:
 							return err
 						}
 						deqFunc(true)
-						b.log.Info("blob uploaded to s3", "hash", blob.Hash, "duration", time.Since(t))
+						log.Info("blob uploaded to s3", "hash", blob.Hash, "duration", time.Since(t))
 
 						return nil
 					}(blb); err != nil {
-						b.log.Error("failed to upload blob", "hash", blb.Hash, "err", err)
+						log.Error("failed to upload blob", "hash", blb.Hash, "err", err)
+						time.Sleep(1 * time.Second)
+					}
+					continue
+				}
+				break
+			}
+		}
+	}
+}
+
+func (b *S3Backend) downloadWorker() {
+	log := b.log.New("worker", "download_worker")
+	log.Debug("starting worker")
+	t := time.NewTicker(10 * time.Second)
+L:
+	for {
+		select {
+		case <-b.stop:
+			t.Stop()
+			break L
+		case <-t.C:
+			log.Debug("repl tick")
+			blb := &blob.Blob{}
+			for {
+				log.Debug("try to dequeue")
+				ok, deqFunc, err := b.uploadQueue.Dequeue(blb)
+				if err != nil {
+					panic(err)
+				}
+				if ok {
+					if err := func(blob *blob.Blob) error {
+						t := time.Now()
+						b.wg.Add(1)
+						defer b.wg.Done()
+
+						if err := b.downloadRemoteBlob(blob.Extra.(string)); err != nil {
+							deqFunc(false)
+							return err
+						}
+						deqFunc(true)
+						log.Info("blob downloaded from s3", "hash", blob.Hash, "duration", time.Since(t))
+
+						return nil
+					}(blb); err != nil {
+						log.Error("failed to download blob", "hash", blb.Hash, "err", err)
 						time.Sleep(1 * time.Second)
 					}
 					continue
@@ -393,6 +462,7 @@ func (b *S3Backend) GetRemoteRef(pref string) (string, error) {
 func (b *S3Backend) Close() {
 	b.stop <- struct{}{}
 	b.wg.Wait()
-	b.queue.Close()
+	b.uploadQueue.Close()
+	b.downloadQueue.Close()
 	b.index.Close()
 }

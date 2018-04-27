@@ -2,8 +2,9 @@ package api // import "a4.io/blobstash/pkg/stash/api"
 
 import (
 	"context"
-	"github.com/gorilla/mux"
 	"net/http"
+
+	"github.com/gorilla/mux"
 
 	"a4.io/blobstash/pkg/ctxutil"
 	"a4.io/blobstash/pkg/httputil"
@@ -105,7 +106,7 @@ func (s *StashAPI) dataContextGCHandler() func(http.ResponseWriter, *http.Reques
 			}
 			defer r.Body.Close()
 			if err := s.stash.DoAndDestroy(ctx, name, func(ctx context.Context, dc store.DataContext) error {
-				return gc.GC(ctx, s.stash, string(script))
+				return gc.GC(ctx, nil, s.stash, string(script), nil)
 
 			}); err != nil {
 				panic(err)

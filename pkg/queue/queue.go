@@ -95,3 +95,6 @@ func (q *Queue) Dequeue(item interface{}) (bool, func(bool), error) {
 
 	return true, deqFunc, json.Unmarshal(v, item)
 }
+
+// TODO(tsileo): func (q *Queue) Items() ([]*blob.Blob, error)
+// also use `*blob.Blob` instead if `interface{}`

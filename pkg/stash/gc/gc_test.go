@@ -94,7 +94,7 @@ func TestDataContextMerge(t *testing.T) {
 		t.Errorf("root blobstore should be empty")
 	}
 
-	if err := GC(ctxutil.WithNamespace(context.Background(), "tmp"), s, "mark_kv('hello', 10)"); err != nil {
+	if err := GC(ctxutil.WithNamespace(context.Background(), "tmp"), nil, s, "mark_kv('hello', 10)", nil); err != nil {
 		panic(err)
 	}
 

@@ -9,11 +9,13 @@ import (
 	"a4.io/blobstash/pkg/apps/luautil"
 	"a4.io/blobstash/pkg/blob"
 	bsLua "a4.io/blobstash/pkg/blobstore/lua"
+	"a4.io/blobstash/pkg/hub"
 	kvsLua "a4.io/blobstash/pkg/kvstore/lua"
 	"a4.io/blobstash/pkg/stash"
 )
 
-func GC(ctx context.Context, s *stash.Stash, script string) error {
+func GC(ctx context.Context, h *hub.Hub, s *stash.Stash, script string, remoteRefs map[string]string) error {
+
 	// TODO(tsileo): take a logger
 	refs := map[string]struct{}{}
 
@@ -78,6 +80,16 @@ _G.mark_filetree_node = mark_filetree_node
 	}
 	for ref, _ := range refs {
 		// FIXME(tsileo): stat before get/put
+
+		// If there's a remote ref available, trigger an "async" remote sync
+		if remoteRefs != nil {
+			if remoteRef, ok := remoteRefs[ref]; ok {
+				if err := h.NewSyncRemoteBlobEvent(ctx, &blob.Blob{Hash: ref, Extra: remoteRef}, nil); err != nil {
+					return err
+				}
+				continue
+			}
+		}
 
 		// Get the marked blob from the blobstore proxy
 		data, err := s.BlobStore().Get(ctx, ref)

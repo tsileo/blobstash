@@ -41,6 +41,10 @@ func (h *Hub) newEvent(ctx context.Context, etype EventType, blob *blob.Blob, da
 	return nil
 }
 
+func (h *Hub) NewSyncRemoteBlobEvent(ctx context.Context, blob *blob.Blob, data interface{}) error {
+	return h.newEvent(ctx, NewBlob, blob, nil)
+}
+
 func (h *Hub) NewBlobEvent(ctx context.Context, blob *blob.Blob, data interface{}) error {
 	return h.newEvent(ctx, NewBlob, blob, data)
 }
