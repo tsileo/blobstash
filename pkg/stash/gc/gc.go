@@ -87,6 +87,7 @@ _G.mark_filetree_node = mark_filetree_node
 				if err := h.NewSyncRemoteBlobEvent(ctx, &blob.Blob{Hash: ref, Extra: remoteRef}, nil); err != nil {
 					return err
 				}
+				delete(remoteRefs, ref)
 				continue
 			}
 		}
@@ -99,6 +100,14 @@ _G.mark_filetree_node = mark_filetree_node
 
 		// Save it in the root blobstore
 		if err := s.Root().BlobStore().Put(ctx, &blob.Blob{Hash: ref, Data: data}); err != nil {
+			return err
+		}
+	}
+
+	// Delete the remaining S3 objects that haven't been marked for sync
+	// XXX(tsileo): do this after the DoAndDestroy in the parent func?
+	for _, remoteRef := range remoteRefs {
+		if err := h.NewDeleteRemoteBlobEvent(ctx, nil, remoteRef); err != nil {
 			return err
 		}
 	}

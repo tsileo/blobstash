@@ -17,6 +17,7 @@ const (
 	GarbageCollection
 	FiletreeFSUpdate
 	SyncRemoteBlob
+	DeleteRemoteBlob
 )
 
 type Hub struct {
@@ -41,10 +42,6 @@ func (h *Hub) newEvent(ctx context.Context, etype EventType, blob *blob.Blob, da
 	return nil
 }
 
-func (h *Hub) NewSyncRemoteBlobEvent(ctx context.Context, blob *blob.Blob, data interface{}) error {
-	return h.newEvent(ctx, NewBlob, blob, nil)
-}
-
 func (h *Hub) NewBlobEvent(ctx context.Context, blob *blob.Blob, data interface{}) error {
 	return h.newEvent(ctx, NewBlob, blob, data)
 }
@@ -57,6 +54,14 @@ func (h *Hub) FiletreeFSUpdateEvent(ctx context.Context, blob *blob.Blob, data i
 	return h.newEvent(ctx, FiletreeFSUpdate, blob, data)
 }
 
+func (h *Hub) NewDeleteRemoteBlobEvent(ctx context.Context, blob *blob.Blob, data interface{}) error {
+	return h.newEvent(ctx, NewBlob, blob, nil)
+}
+
+func (h *Hub) NewSyncRemoteBlobEvent(ctx context.Context, blob *blob.Blob, data interface{}) error {
+	return h.newEvent(ctx, NewBlob, blob, nil)
+}
+
 func New(logger log.Logger) *Hub {
 	logger.Debug("init")
 	return &Hub{
@@ -66,6 +71,7 @@ func New(logger log.Logger) *Hub {
 			ScanBlob:         map[string]func(context.Context, *blob.Blob, interface{}) error{},
 			FiletreeFSUpdate: map[string]func(context.Context, *blob.Blob, interface{}) error{},
 			SyncRemoteBlob:   map[string]func(context.Context, *blob.Blob, interface{}) error{},
+			DeleteRemoteBlob: map[string]func(context.Context, *blob.Blob, interface{}) error{},
 		},
 	}
 }

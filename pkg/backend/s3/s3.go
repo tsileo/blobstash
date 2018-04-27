@@ -50,6 +50,8 @@ type S3Backend struct {
 	uploadQueue *queue.Queue
 	index       *index.Index
 
+	deleteQueue *queue.Queue
+
 	downloadQueue *queue.Queue
 	downloadIndex map[string]string
 	downloadMutex sync.Mutex
@@ -94,6 +96,12 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 		return nil, err
 	}
 
+	// Init the disk-backed queue
+	delq, err := queue.New(filepath.Join(conf.VarDir(), "s3-delete.queue"))
+	if err != nil {
+		return nil, err
+	}
+
 	// Init the disk-backed index
 	indexPath := filepath.Join(conf.VarDir(), "s3-backend.index")
 	if scanMode || restoreMode {
@@ -115,6 +123,7 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 		key:           key,
 		uploadQueue:   uq,
 		downloadQueue: dq,
+		deleteQueue:   delq,
 		downloadIndex: map[string]string{},
 		index:         i,
 	}
@@ -149,9 +158,11 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 	}
 
 	h.Subscribe(hub.SyncRemoteBlob, "s3-backend", s3backend.newSyncRemoteBlobCallback)
+	h.Subscribe(hub.DeleteRemoteBlob, "s3-backend", s3backend.newDeleteRemoteBlobCallback)
 
 	// Initialize the worker (queue consumer)
 	go s3backend.uploadWorker()
+	go s3backend.deleteWorker()
 	go s3backend.downloadWorker()
 
 	return s3backend, nil
@@ -169,6 +180,11 @@ func (b *S3Backend) String() string {
 func (b *S3Backend) newSyncRemoteBlobCallback(ctx context.Context, blob *blob.Blob, _ interface{}) error {
 	b.log.Debug("newSyncRemoteBlobCallback", "blob", blob)
 	return b.downloadQueue.Enqueue(blob) // Extra is the S3 object key
+}
+
+func (b *S3Backend) newDeleteRemoteBlobCallback(ctx context.Context, _ *blob.Blob, ref interface{}) error {
+	b.log.Debug("newDeleteRemoteBlobCallback", "ref", ref)
+	return b.deleteQueue.Enqueue(&blob.Blob{Extra: ref})
 }
 
 func (b *S3Backend) downloadRemoteBlob(key string) error {
@@ -366,6 +382,55 @@ L:
 	}
 }
 
+func (b *S3Backend) deleteWorker() {
+	log := b.log.New("worker", "delete_worker")
+	log.Debug("starting worker")
+	t := time.NewTicker(5 * time.Second)
+L:
+	for {
+		select {
+		case <-b.stop:
+			t.Stop()
+			break L
+		case <-t.C:
+			log.Debug("repl tick")
+			blb := &blob.Blob{}
+			for {
+				log.Debug("try to dequeue")
+				ok, deqFunc, err := b.uploadQueue.Dequeue(blb)
+				if err != nil {
+					panic(err)
+				}
+				if ok {
+					if err := func(blob *blob.Blob) error {
+						t := time.Now()
+						b.wg.Add(1)
+						defer b.wg.Done()
+
+						obj, err := s3util.NewBucket(b.s3, b.bucket).GetObject(blob.Extra.(string))
+						if err != nil {
+							return err
+						}
+						if err := obj.Delete(); err != nil {
+							return err
+						}
+
+						deqFunc(true)
+						log.Info("blob deleted from s3", "ref", blob.Extra, "duration", time.Since(t))
+
+						return nil
+					}(blb); err != nil {
+						log.Error("failed to delete blob", "ref", blb.Extra, "err", err)
+						time.Sleep(1 * time.Second)
+					}
+					continue
+				}
+				break
+			}
+		}
+	}
+}
+
 func (b *S3Backend) downloadWorker() {
 	log := b.log.New("worker", "download_worker")
 	log.Debug("starting worker")
@@ -464,5 +529,6 @@ func (b *S3Backend) Close() {
 	b.wg.Wait()
 	b.uploadQueue.Close()
 	b.downloadQueue.Close()
+	b.deleteQueue.Close()
 	b.index.Close()
 }

@@ -153,6 +153,17 @@ type Object struct {
 	s3     *s3.S3
 }
 
+func (o *Object) Delete() error {
+	params := &s3.DeleteObjectInput{
+		Bucket: aws.String(o.Bucket),
+		Key:    aws.String(o.Key),
+	}
+	if _, err := o.s3.DeleteObject(params); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (o *Object) Exists() (bool, error) {
 	params := &s3.HeadObjectInput{
 		Bucket: aws.String(o.Bucket),
