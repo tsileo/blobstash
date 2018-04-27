@@ -1052,9 +1052,10 @@ mark_filetree_node(ref)
 
 	log.Printf("starting GC...")
 	// FIXME(tsileo): make the stash name configurable
-	resp, err := fs.clientUtil.Post(
+	resp, err := fs.clientUtil.PostMsgpack(
 		fmt.Sprintf("/api/stash/rwfs-%s/_gc", fs.ref),
-		[]byte(gcScript),
+		// FIXME(tsileo): remote refs map[<plain-text hash>]objKey
+		map[string]interface{}{"script": gcScript, "remote_refs": nil},
 	)
 	if err != nil {
 		// FIXME(tsileo): find a better way to handle this?

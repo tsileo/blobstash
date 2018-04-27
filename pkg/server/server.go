@@ -113,7 +113,7 @@ func New(conf *config.Config) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize the stash manager: %v", err)
 	}
-	stashAPI.New(cstash).Register(s.router.PathPrefix("/api/stash").Subrouter(), basicAuth)
+	stashAPI.New(cstash, hub).Register(s.router.PathPrefix("/api/stash").Subrouter(), basicAuth)
 
 	blobstore := cstash.BlobStore()
 	// FIXME(tsileo): test the stash with kvstore

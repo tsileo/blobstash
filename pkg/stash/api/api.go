@@ -8,6 +8,7 @@ import (
 
 	"a4.io/blobstash/pkg/ctxutil"
 	"a4.io/blobstash/pkg/httputil"
+	"a4.io/blobstash/pkg/hub"
 	"a4.io/blobstash/pkg/stash"
 	"a4.io/blobstash/pkg/stash/gc"
 	"a4.io/blobstash/pkg/stash/store"
@@ -15,10 +16,11 @@ import (
 
 type StashAPI struct {
 	stash *stash.Stash
+	hub   *hub.Hub
 }
 
-func New(s *stash.Stash) *StashAPI {
-	return &StashAPI{s}
+func New(s *stash.Stash, h *hub.Hub) *StashAPI {
+	return &StashAPI{s, h}
 }
 
 func (s *StashAPI) listHandler() func(http.ResponseWriter, *http.Request) {
@@ -87,6 +89,11 @@ func (s *StashAPI) dataContextMergeHandler() func(http.ResponseWriter, *http.Req
 	}
 }
 
+type GCInput struct {
+	Script     string            `json:"script"`
+	RemoteRefs map[string]string `json:"remote_refs"`
+}
+
 func (s *StashAPI) dataContextGCHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -96,17 +103,17 @@ func (s *StashAPI) dataContextGCHandler() func(http.ResponseWriter, *http.Reques
 		_, ok := s.stash.DataContextByName(name)
 		switch r.Method {
 		case "POST":
+			defer r.Body.Close()
 			if !ok {
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
-			script, err := httputil.Read(r)
-			if err != nil {
+			out := &GCInput{}
+			if err := httputil.Unmarshal(r, out); err != nil {
 				panic(err)
 			}
-			defer r.Body.Close()
 			if err := s.stash.DoAndDestroy(ctx, name, func(ctx context.Context, dc store.DataContext) error {
-				return gc.GC(ctx, nil, s.stash, string(script), nil)
+				return gc.GC(ctx, s.hub, s.stash, out.Script, out.RemoteRefs)
 
 			}); err != nil {
 				panic(err)
