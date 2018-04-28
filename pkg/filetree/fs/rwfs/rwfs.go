@@ -693,6 +693,8 @@ type Cache struct {
 	negNodeIndex    map[string]struct{}
 	remoteStatCache map[string]bool
 
+	remoteRefs map[string]string
+
 	procCache map[int]string
 }
 
@@ -707,6 +709,7 @@ func newCache(path string) (*Cache, error) {
 		negNodeIndex:    map[string]struct{}{},
 		blobsCache:      blobsCache,
 		procCache:       map[int]string{},
+		remoteRefs:      map[string]string{},
 		remoteStatCache: map[string]bool{},
 	}, nil
 }
@@ -821,6 +824,8 @@ func (c *Cache) PutRemote(ctx context.Context, hash string, data []byte) error {
 	if _, err := c.fs.s3.PutObject(params); err != nil {
 		return err
 	}
+
+	c.remoteRefs[hash] = "tmp/" + ehash
 
 	return nil
 }
@@ -1054,8 +1059,7 @@ mark_filetree_node(ref)
 	// FIXME(tsileo): make the stash name configurable
 	resp, err := fs.clientUtil.PostMsgpack(
 		fmt.Sprintf("/api/stash/rwfs-%s/_gc", fs.ref),
-		// FIXME(tsileo): remote refs map[<plain-text hash>]objKey
-		map[string]interface{}{"script": gcScript, "remote_refs": nil},
+		map[string]interface{}{"script": gcScript, "remote_refs": fs.cache.remoteRefs},
 	)
 	if err != nil {
 		// FIXME(tsileo): find a better way to handle this?
