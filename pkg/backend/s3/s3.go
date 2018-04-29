@@ -340,60 +340,55 @@ func (b *S3Backend) reindex(bucket *s3util.Bucket, restore bool) error {
 func (b *S3Backend) uploadWorker() {
 	log := b.log.New("worker", "upload_worker")
 	log.Debug("starting worker")
-	t := time.NewTicker(30 * time.Second)
 L:
 	for {
 		select {
 		case <-b.stop:
-			t.Stop()
 			break L
-		case <-t.C:
-			log.Debug("repl tick")
+		default:
 			blb := &blob.Blob{}
-			for {
-				log.Debug("try to dequeue")
-				ok, deqFunc, err := b.uploadQueue.Dequeue(blb)
-				if err != nil {
-					panic(err)
-				}
-				if ok {
-					if err := func(blob *blob.Blob) error {
-						t := time.Now()
-						b.wg.Add(1)
-						defer b.wg.Done()
-						data, err := b.backend.Get(blob.Hash)
-						if err != nil {
-							deqFunc(false)
-							return err
-						}
-						// Double check the blob does not exists
-						exists, err := b.index.Exists(blob.Hash)
-						if err != nil {
-							deqFunc(false)
-							return err
-						}
-						if exists {
-							log.Debug("blob already exist", "hash", blob.Hash)
-							deqFunc(true)
-							return nil
-						}
-
-						if err := b.put(blob.Hash, data); err != nil {
-							deqFunc(false)
-							return err
-						}
-						deqFunc(true)
-						log.Info("blob uploaded to s3", "hash", blob.Hash, "duration", time.Since(t))
-
-						return nil
-					}(blb); err != nil {
-						log.Error("failed to upload blob", "hash", blb.Hash, "err", err)
-						time.Sleep(1 * time.Second)
-					}
-					continue
-				}
-				break
+			ok, deqFunc, err := b.uploadQueue.Dequeue(blb)
+			if err != nil {
+				panic(err)
 			}
+			if ok {
+				if err := func(blob *blob.Blob) error {
+					t := time.Now()
+					b.wg.Add(1)
+					defer b.wg.Done()
+					data, err := b.backend.Get(blob.Hash)
+					if err != nil {
+						deqFunc(false)
+						return err
+					}
+					// Double check the blob does not exists
+					exists, err := b.index.Exists(blob.Hash)
+					if err != nil {
+						deqFunc(false)
+						return err
+					}
+					if exists {
+						log.Debug("blob already exist", "hash", blob.Hash)
+						deqFunc(true)
+						return nil
+					}
+
+					if err := b.put(blob.Hash, data); err != nil {
+						deqFunc(false)
+						return err
+					}
+					deqFunc(true)
+					log.Info("blob uploaded to s3", "hash", blob.Hash, "duration", time.Since(t))
+
+					return nil
+				}(blb); err != nil {
+					log.Error("failed to upload blob", "hash", blb.Hash, "err", err)
+					time.Sleep(1 * time.Second)
+				}
+				continue L
+			}
+			time.Sleep(1 * time.Second)
+			continue L
 		}
 	}
 }
@@ -401,48 +396,43 @@ L:
 func (b *S3Backend) deleteWorker() {
 	log := b.log.New("worker", "delete_worker")
 	log.Debug("starting worker")
-	t := time.NewTicker(5 * time.Second)
 L:
 	for {
 		select {
 		case <-b.stop:
-			t.Stop()
 			break L
-		case <-t.C:
-			log.Debug("repl tick")
+		default:
 			blb := &blob.Blob{}
-			for {
-				log.Debug("try to dequeue")
-				ok, deqFunc, err := b.deleteQueue.Dequeue(blb)
-				if err != nil {
-					panic(err)
-				}
-				if ok {
-					if err := func(blob *blob.Blob) error {
-						t := time.Now()
-						b.wg.Add(1)
-						defer b.wg.Done()
-
-						obj, err := s3util.NewBucket(b.s3, b.bucket).GetObject(blob.Extra.(string))
-						if err != nil {
-							return err
-						}
-						if err := obj.Delete(); err != nil {
-							return err
-						}
-
-						deqFunc(true)
-						log.Info("blob deleted from s3", "ref", blob.Extra, "duration", time.Since(t))
-
-						return nil
-					}(blb); err != nil {
-						log.Error("failed to delete blob", "ref", blb.Extra, "err", err)
-						time.Sleep(1 * time.Second)
-					}
-					continue
-				}
-				break
+			ok, deqFunc, err := b.deleteQueue.Dequeue(blb)
+			if err != nil {
+				panic(err)
 			}
+			if ok {
+				if err := func(blob *blob.Blob) error {
+					t := time.Now()
+					b.wg.Add(1)
+					defer b.wg.Done()
+
+					obj, err := s3util.NewBucket(b.s3, b.bucket).GetObject(blob.Extra.(string))
+					if err != nil {
+						return err
+					}
+					if err := obj.Delete(); err != nil {
+						return err
+					}
+
+					deqFunc(true)
+					log.Info("blob deleted from s3", "ref", blob.Extra, "duration", time.Since(t))
+
+					return nil
+				}(blb); err != nil {
+					log.Error("failed to delete blob", "ref", blb.Extra, "err", err)
+					time.Sleep(1 * time.Second)
+				}
+				continue L
+			}
+			time.Sleep(1 * time.Second)
+			continue L
 		}
 	}
 }
@@ -450,44 +440,39 @@ L:
 func (b *S3Backend) downloadWorker() {
 	log := b.log.New("worker", "download_worker")
 	log.Debug("starting worker")
-	t := time.NewTicker(10 * time.Second)
 L:
 	for {
 		select {
 		case <-b.stop:
-			t.Stop()
 			break L
-		case <-t.C:
-			log.Debug("repl tick")
+		default:
 			blb := &blob.Blob{}
-			for {
-				log.Debug("try to dequeue")
-				ok, deqFunc, err := b.downloadQueue.Dequeue(blb)
-				if err != nil {
-					panic(err)
-				}
-				if ok {
-					if err := func(blob *blob.Blob) error {
-						t := time.Now()
-						b.wg.Add(1)
-						defer b.wg.Done()
-
-						if err := b.downloadRemoteBlob(blob.Extra.(string)); err != nil {
-							deqFunc(false)
-							return err
-						}
-						deqFunc(true)
-						log.Info("blob downloaded from s3", "hash", blob.Hash, "duration", time.Since(t))
-
-						return nil
-					}(blb); err != nil {
-						log.Error("failed to download blob", "hash", blb.Hash, "err", err)
-						time.Sleep(1 * time.Second)
-					}
-					continue
-				}
-				break
+			ok, deqFunc, err := b.downloadQueue.Dequeue(blb)
+			if err != nil {
+				panic(err)
 			}
+			if ok {
+				if err := func(blob *blob.Blob) error {
+					t := time.Now()
+					b.wg.Add(1)
+					defer b.wg.Done()
+
+					if err := b.downloadRemoteBlob(blob.Extra.(string)); err != nil {
+						deqFunc(false)
+						return err
+					}
+					deqFunc(true)
+					log.Info("blob downloaded from s3", "hash", blob.Hash, "duration", time.Since(t))
+
+					return nil
+				}(blb); err != nil {
+					log.Error("failed to download blob", "hash", blb.Hash, "err", err)
+					time.Sleep(1 * time.Second)
+				}
+				continue L
+			}
+			time.Sleep(1 * time.Second)
+			continue L
 		}
 	}
 }
@@ -541,6 +526,8 @@ func (b *S3Backend) GetRemoteRef(pref string) (string, error) {
 }
 
 func (b *S3Backend) Close() {
+	b.stop <- struct{}{}
+	b.stop <- struct{}{}
 	b.stop <- struct{}{}
 	b.wg.Wait()
 	b.uploadQueue.Close()
