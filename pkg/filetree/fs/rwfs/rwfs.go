@@ -739,22 +739,6 @@ func (c *Cache) findProcExec(context *fuse.Context) string {
 	return exec
 }
 
-func (c *Cache) StatRemote(ctx context.Context, hash string) (bool, error) {
-	exists, err := c.Stat(ctx, hash)
-	if err != nil {
-		return false, err
-	}
-	if exists {
-		return true, nil
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	obj, _ := s3util.NewBucket(c.fs.s3, os.Getenv("BLOBS_S3_BUCKET")).GetObject("tmp/" + hash)
-
-	return obj.Exists()
-}
-
 func (c *Cache) Stat(ctx context.Context, hash string) (bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -792,13 +776,17 @@ func (c *Cache) PutRemote(ctx context.Context, hash string, data []byte) error {
 	c.fs.stats.CacheAdded++
 	//c.fs.stats.Unlock()
 
-	//exists, err := c.StatRemote(ctx, hash)
-	//if err != nil {
-	//	return err
-	//}
-	//if exists {
-	//	return nil
-	//}
+	exists, err := c.Stat(ctx, hash)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+
+	if _, ok := c.remoteRefs[hash]; ok {
+		return nil
+	}
 
 	var err error
 	if err := c.blobsCache.Add(hash, data); err != nil {
