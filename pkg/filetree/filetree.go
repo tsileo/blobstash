@@ -737,6 +737,10 @@ func (ft *FileTree) addRemoteRefs(r *http.Request, n *Node) error {
 
 	for _, piv := range n.Meta.FileRefs() {
 		rref, err := ft.remoteFetcher(piv.Value)
+		fmt.Printf("REMOTE FETCHER: %+v %+v %+v\n\n", piv, rref, err)
+		if rref == "" {
+			return nil
+		}
 		if err != nil {
 			if err == blobstore.ErrRemoteNotAvailable {
 				return nil

@@ -164,6 +164,19 @@ func (o *Object) Delete() error {
 	return nil
 }
 
+func (o *Object) Copy(dest string) error {
+	input := &s3.CopyObjectInput{
+		Bucket:     aws.String(o.Bucket),
+		CopySource: aws.String(fmt.Sprintf("/%s/%s", o.Bucket, o.Key)),
+		Key:        aws.String(dest),
+	}
+	if _, err := o.s3.CopyObject(input); err != nil {
+		return err
+	}
+	return nil
+
+}
+
 func (o *Object) Exists() (bool, error) {
 	params := &s3.HeadObjectInput{
 		Bucket: aws.String(o.Bucket),

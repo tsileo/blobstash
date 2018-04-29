@@ -2,6 +2,7 @@ package api // import "a4.io/blobstash/pkg/stash/api"
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -90,8 +91,8 @@ func (s *StashAPI) dataContextMergeHandler() func(http.ResponseWriter, *http.Req
 }
 
 type GCInput struct {
-	Script     string            `json:"script"`
-	RemoteRefs map[string]string `json:"remote_refs"`
+	Script     string            `json:"script" msgpack:"script"`
+	RemoteRefs map[string]string `json:"remote_refs" msgpack:"remote_refs"`
 }
 
 func (s *StashAPI) dataContextGCHandler() func(http.ResponseWriter, *http.Request) {
@@ -112,6 +113,7 @@ func (s *StashAPI) dataContextGCHandler() func(http.ResponseWriter, *http.Reques
 			if err := httputil.Unmarshal(r, out); err != nil {
 				panic(err)
 			}
+			fmt.Printf("\n\nGC imput: %+v\n\n", out)
 			if err := s.stash.DoAndDestroy(ctx, name, func(ctx context.Context, dc store.DataContext) error {
 				return gc.GC(ctx, s.hub, s.stash, out.Script, out.RemoteRefs)
 

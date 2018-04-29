@@ -2,6 +2,7 @@ package gc // import "a4.io/blobstash/pkg/stash/gc"
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/vmihailenco/msgpack"
 	"github.com/yuin/gopher-lua"
@@ -78,12 +79,14 @@ _G.mark_filetree_node = mark_filetree_node
 	if err := L.DoString(script); err != nil {
 		return err
 	}
+	fmt.Printf("Remote refs=%+v\n\nrefs=%+v\n\n", remoteRefs, refs)
 	for ref, _ := range refs {
 		// FIXME(tsileo): stat before get/put
 
 		// If there's a remote ref available, trigger an "async" remote sync
 		if remoteRefs != nil {
 			if remoteRef, ok := remoteRefs[ref]; ok {
+				fmt.Printf("sync remote\n\n")
 				if err := h.NewSyncRemoteBlobEvent(ctx, &blob.Blob{Hash: ref, Extra: remoteRef}, nil); err != nil {
 					return err
 				}
@@ -104,6 +107,7 @@ _G.mark_filetree_node = mark_filetree_node
 		}
 	}
 
+	fmt.Printf("Remote refs=%+v\n\nrefs=%+v\n\n", remoteRefs, refs)
 	// Delete the remaining S3 objects that haven't been marked for sync
 	// XXX(tsileo): do this after the DoAndDestroy in the parent func?
 	for _, remoteRef := range remoteRefs {

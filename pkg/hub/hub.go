@@ -55,11 +55,11 @@ func (h *Hub) FiletreeFSUpdateEvent(ctx context.Context, blob *blob.Blob, data i
 }
 
 func (h *Hub) NewDeleteRemoteBlobEvent(ctx context.Context, blob *blob.Blob, data interface{}) error {
-	return h.newEvent(ctx, NewBlob, blob, nil)
+	return h.newEvent(ctx, DeleteRemoteBlob, blob, data)
 }
 
 func (h *Hub) NewSyncRemoteBlobEvent(ctx context.Context, blob *blob.Blob, data interface{}) error {
-	return h.newEvent(ctx, NewBlob, blob, nil)
+	return h.newEvent(ctx, SyncRemoteBlob, blob, data)
 }
 
 func New(logger log.Logger) *Hub {

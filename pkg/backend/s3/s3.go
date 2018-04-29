@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -91,7 +92,7 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 	}
 
 	// Init the disk-backed queue
-	dq, err := queue.New(filepath.Join(conf.VarDir(), "s3-upload.queue"))
+	dq, err := queue.New(filepath.Join(conf.VarDir(), "s3-download.queue"))
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +196,6 @@ func (b *S3Backend) downloadRemoteBlob(key string) error {
 		return err
 	}
 	eblob := s3util.NewEncryptedBlob(obj, b.key)
-
 	hash, data, err := eblob.HashAndPlainText()
 
 	exists, err := b.backend.Exists(hash)
@@ -204,7 +204,23 @@ func (b *S3Backend) downloadRemoteBlob(key string) error {
 	}
 	if exists {
 		log.Debug("blob already exists", "hash", hash)
-		return nil
+		return obj.Delete()
+	}
+
+	// Copy the blob to its final destination
+	parts := strings.Split(key, "/")
+	ehash := parts[1]
+	// TODO(tsileo): Copy should retry internally
+	if err := obj.Copy(ehash); err != nil {
+		return err
+	}
+
+	if err := obj.Delete(); err != nil {
+		panic(err)
+	}
+
+	if err := b.index.Index(hash, ehash); err != nil {
+		return err
 	}
 
 	if err := b.backend.Put(hash, data); err != nil {
@@ -397,7 +413,7 @@ L:
 			blb := &blob.Blob{}
 			for {
 				log.Debug("try to dequeue")
-				ok, deqFunc, err := b.uploadQueue.Dequeue(blb)
+				ok, deqFunc, err := b.deleteQueue.Dequeue(blb)
 				if err != nil {
 					panic(err)
 				}
@@ -446,7 +462,7 @@ L:
 			blb := &blob.Blob{}
 			for {
 				log.Debug("try to dequeue")
-				ok, deqFunc, err := b.uploadQueue.Dequeue(blb)
+				ok, deqFunc, err := b.downloadQueue.Dequeue(blb)
 				if err != nil {
 					panic(err)
 				}
