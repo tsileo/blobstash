@@ -769,26 +769,18 @@ func (c *Cache) Stat(ctx context.Context, hash string) (bool, error) {
 
 // Get implements the BlobStore interface for filereader.File
 func (c *Cache) PutRemote(ctx context.Context, hash string, data []byte) error {
-	//c.mu.Lock()
-	//defer c.mu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	//c.fs.stats.Lock()
+	c.fs.stats.Lock()
 	c.fs.stats.CacheAdded++
-	//c.fs.stats.Unlock()
-
-	exists, err := c.Stat(ctx, hash)
-	if err != nil {
-		return err
-	}
-	if exists {
-		return nil
-	}
+	c.fs.stats.Unlock()
+	var err error
 
 	if _, ok := c.remoteRefs[hash]; ok {
 		return nil
 	}
 
-	var err error
 	if err := c.blobsCache.Add(hash, data); err != nil {
 		return err
 	}

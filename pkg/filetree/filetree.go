@@ -808,7 +808,7 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
 				return
 			default:
-				panic(err)
+				panic(fmt.Errorf("failed to get path: %v", err))
 			}
 
 			w.Header().Set("ETag", node.Hash)

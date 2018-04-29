@@ -41,16 +41,10 @@ func (up *Uploader) writeReader(f io.Reader, meta *rnode.RawNode) error { // (*W
 		chunkHash := hashutil.Compute(chunk.Data)
 		size += chunk.Length
 
-		var exists bool
-		if rstorer, ok := up.bs.(BlobRemoteStorer); ok {
-			exists, err = rstorer.StatRemote(ctx, chunkHash)
-		} else {
-			exists, err = up.bs.Stat(ctx, chunkHash)
+		exists, err := up.bs.Stat(ctx, chunkHash)
+		if err != nil {
+			panic(fmt.Sprintf("DB error: %v", err))
 		}
-		// FIXME(tsileo): handle 404 in StatRemote!
-		//if err != nil {
-		//	panic(fmt.Sprintf("DB error: %v", err))
-		//}
 		if !exists {
 			if rstorer, ok := up.bs.(BlobRemoteStorer); ok {
 				if err := rstorer.PutRemote(ctx, chunkHash, chunk.Data); err != nil {

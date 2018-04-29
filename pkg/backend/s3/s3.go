@@ -179,8 +179,25 @@ func (b *S3Backend) String() string {
 
 // newSyncRemoteBlobCallback download a blob
 func (b *S3Backend) newSyncRemoteBlobCallback(ctx context.Context, blob *blob.Blob, _ interface{}) error {
+	b.downloadMutex.Lock()
+	defer b.downloadMutex.Unlock()
 	b.log.Debug("newSyncRemoteBlobCallback", "blob", blob)
+	b.downloadIndex[blob.Hash] = blob.Extra.(string)
 	return b.downloadQueue.Enqueue(blob) // Extra is the S3 object key
+}
+
+// BlobWaitingForDownload check if a blob is currently enqueued, if it's the case, it will download it and return it
+func (b *S3Backend) BlobWaitingForDownload(hash string) (bool, *blob.Blob, error) {
+	b.downloadMutex.Lock()
+	defer b.downloadMutex.Unlock()
+	if k, ok := b.downloadIndex[hash]; ok {
+		blb, err := b.downloadRemoteBlob(k)
+		if err != nil {
+			return false, nil, err
+		}
+		return true, blb, nil
+	}
+	return false, nil, nil
 }
 
 func (b *S3Backend) newDeleteRemoteBlobCallback(ctx context.Context, _ *blob.Blob, ref interface{}) error {
@@ -188,23 +205,23 @@ func (b *S3Backend) newDeleteRemoteBlobCallback(ctx context.Context, _ *blob.Blo
 	return b.deleteQueue.Enqueue(&blob.Blob{Extra: ref})
 }
 
-func (b *S3Backend) downloadRemoteBlob(key string) error {
+func (b *S3Backend) downloadRemoteBlob(key string) (*blob.Blob, error) {
 	log := b.log.New("key", key)
 	log.Debug("downloading remote blob")
 	obj, err := s3util.NewBucket(b.s3, b.bucket).GetObject(key)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	eblob := s3util.NewEncryptedBlob(obj, b.key)
 	hash, data, err := eblob.HashAndPlainText()
 
 	exists, err := b.backend.Exists(hash)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if exists {
 		log.Debug("blob already exists", "hash", hash)
-		return obj.Delete()
+		return &blob.Blob{Hash: hash, Data: data}, obj.Delete()
 	}
 
 	// Copy the blob to its final destination
@@ -212,32 +229,31 @@ func (b *S3Backend) downloadRemoteBlob(key string) error {
 	ehash := parts[1]
 	// TODO(tsileo): Copy should retry internally
 	if err := obj.Copy(ehash); err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := obj.Delete(); err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	if err := b.index.Index(hash, ehash); err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := b.backend.Put(hash, data); err != nil {
-		return err
+		return nil, err
 	}
 
+	blb := &blob.Blob{Hash: hash, Data: data}
+
 	// Wait for subscribed event completion
-	if err := b.hub.NewBlobEvent(context.TODO(), &blob.Blob{
-		Hash: hash,
-		Data: data,
-	}, nil); err != nil {
-		return err
+	if err := b.hub.NewBlobEvent(context.TODO(), blb, nil); err != nil {
+		return nil, err
 	}
 
 	log.Debug("remote blob saved", "hash", hash)
 
-	return nil
+	return blb, nil
 }
 
 func (b *S3Backend) Put(hash string) error {
@@ -457,7 +473,9 @@ L:
 					b.wg.Add(1)
 					defer b.wg.Done()
 
-					if err := b.downloadRemoteBlob(blob.Extra.(string)); err != nil {
+					b.downloadMutex.Lock()
+					defer b.downloadMutex.Lock()
+					if _, err := b.downloadRemoteBlob(blob.Extra.(string)); err != nil {
 						deqFunc(false)
 						return err
 					}

@@ -15,7 +15,6 @@ type BlobStorer interface {
 }
 
 type BlobRemoteStorer interface {
-	StatRemote(context.Context, string) (bool, error)
 	PutRemote(context.Context, string, []byte) error
 }
 
