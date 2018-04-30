@@ -173,7 +173,7 @@ func (s *Stash) NewDataContext(name string) (*dataContext, error) {
 		return nil, err
 	}
 	// XXX(tsileo): use a dumb single file cache instead of the blobstore?
-	bsDst, err := blobstore.New(l.New("app", "blobstore"), path, nil, h)
+	bsDst, err := blobstore.New(l.New("app", "blobstore"), false, path, nil, h)
 	if err != nil {
 		return nil, err
 	}

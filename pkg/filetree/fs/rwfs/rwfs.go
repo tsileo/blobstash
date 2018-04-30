@@ -136,9 +136,9 @@ func main() {
 	}
 	opts := &nodefs.Options{
 		Debug:           false, // *debug,
-		EntryTimeout:    0 * time.Second,
-		AttrTimeout:     0 * time.Second,
-		NegativeTimeout: 0 * time.Second,
+		EntryTimeout:    1 * time.Second,
+		AttrTimeout:     1 * time.Second,
+		NegativeTimeout: 1 * time.Second,
 	}
 
 	nfs := pathfs.NewPathNodeFs(root, nil)

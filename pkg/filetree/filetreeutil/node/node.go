@@ -6,12 +6,19 @@ Package node implement the node specification for the filetree extension.
 package node // import "a4.io/blobstash/pkg/filetree/filetreeutil/node"
 
 import (
+	"bytes"
 	"fmt"
 	"mime"
 	"path/filepath"
 
 	"github.com/dchest/blake2b"
 	"github.com/vmihailenco/msgpack"
+)
+
+const (
+	NodeBlobHeader   = "#blob/node\n"
+	NodeBlobVersion  = 1
+	NodeBlobOverhead = len(NodeBlobHeader)
 )
 
 const (
@@ -22,6 +29,17 @@ const (
 const (
 	V1 = "1"
 )
+
+func IsNodeBlob(blob []byte) ([]byte, bool) { // returns (string, bool) string => meta type
+	// TODO add a test with a tiny blob
+	if len(blob) < NodeBlobOverhead {
+		return nil, false
+	}
+	if bytes.Equal(blob[0:NodeBlobOverhead], []byte(NodeBlobHeader)) {
+		return blob[NodeBlobOverhead:len(blob)], true
+	}
+	return nil, false
+}
 
 type IndexValue struct {
 	Index int64  `json:"i" msgpack:"i"`
@@ -94,6 +112,8 @@ func (n *RawNode) Encode() (string, []byte) {
 	if err != nil {
 		panic(err)
 	}
+	//data := []byte(NodeBlobHeader)
+	//data = append(data, js...)
 	h := fmt.Sprintf("%x", blake2b.Sum256(js))
 	return h, js
 }
@@ -108,6 +128,10 @@ func (n *RawNode) AddRef(hash string) {
 
 func NewNodeFromBlob(hash string, blob []byte) (*RawNode, error) {
 	node := &RawNode{}
+	//data, ok := IsNodeBlob(blob)
+	//if !ok {
+	//	return nil, fmt.Errorf("not a node blob")
+	//}
 	if err := msgpack.Unmarshal(blob, node); err != nil {
 		return nil, err
 	}

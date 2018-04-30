@@ -52,11 +52,12 @@ type BlobStore struct {
 	back   *blobsfile.BlobsFiles
 	s3back *s3.S3Backend
 	hub    *hub.Hub
+	root   bool
 
 	log log.Logger
 }
 
-func New(logger log.Logger, dir string, conf2 *config.Config, hub *hub.Hub) (*BlobStore, error) {
+func New(logger log.Logger, root bool, dir string, conf2 *config.Config, hub *hub.Hub) (*BlobStore, error) {
 	logger.Debug("init")
 
 	back, err := blobsfile.New(&blobsfile.Opts{Directory: filepath.Join(dir, "blobs")})
@@ -76,6 +77,7 @@ func New(logger log.Logger, dir string, conf2 *config.Config, hub *hub.Hub) (*Bl
 	}
 	return &BlobStore{
 		back:   back,
+		root:   root,
 		s3back: s3back,
 		hub:    hub,
 		log:    logger,
@@ -149,7 +151,7 @@ func (bs *BlobStore) GetEncoded(ctx context.Context, hash string) ([]byte, error
 	switch err {
 	case nil:
 	case blobsfile.ErrBlobNotFound:
-		if bs.s3back == nil {
+		if !bs.root || bs.s3back == nil {
 			return nil, err
 		}
 
@@ -181,7 +183,7 @@ func (bs *BlobStore) Get(ctx context.Context, hash string) ([]byte, error) {
 	switch err {
 	case nil:
 	case blobsfile.ErrBlobNotFound:
-		if bs.s3back == nil {
+		if !bs.root || bs.s3back == nil {
 			return nil, err
 		}
 

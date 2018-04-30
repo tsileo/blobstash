@@ -18,6 +18,8 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/endpoints"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 
 	"golang.org/x/crypto/nacl/secretbox"
@@ -50,6 +52,30 @@ func nextKey(key string) string {
 		}
 	}
 	return string(bkey)
+}
+
+func NewWithCustomEndoint(region, url string) (*s3.S3, error) {
+	defaultResolver := endpoints.DefaultResolver()
+	s3CustResolverFn := func(service, region string, optFns ...func(*endpoints.Options)) (endpoints.ResolvedEndpoint, error) {
+		if service == "s3" {
+			return endpoints.ResolvedEndpoint{
+				URL: "s3.custom.e",
+			}, nil
+		}
+
+		return defaultResolver.EndpointFor(service, region, optFns...)
+	}
+	sess, err := session.NewSessionWithOptions(session.Options{
+		Config: aws.Config{
+			Region:           aws.String(region),
+			EndpointResolver: endpoints.ResolverFunc(s3CustResolverFn),
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return s3.New(sess), nil
 }
 
 type Bucket struct {

@@ -82,7 +82,7 @@ func New(conf *config.Config) (*Server, error) {
 
 	hub := hub.New(logger.New("app", "hub"))
 	// Load the blobstore
-	rootBlobstore, err := blobstore.New(logger.New("app", "blobstore"), conf.VarDir(), conf, hub)
+	rootBlobstore, err := blobstore.New(logger.New("app", "blobstore"), true, conf.VarDir(), conf, hub)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize blobstore app: %v", err)
 	}

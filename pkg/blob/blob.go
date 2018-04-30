@@ -43,3 +43,7 @@ func (b *Blob) Check() error {
 	}
 	return nil
 }
+
+func (b *Blob) IsFileSchema() bool {
+	return false
+}
