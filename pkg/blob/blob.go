@@ -1,9 +1,16 @@
 package blob // import "a4.io/blobstash/pkg/blob"
 
 import (
+	"bytes"
 	"fmt"
 
 	"a4.io/blobstash/pkg/hashutil"
+)
+
+var (
+	nodeHeader = []byte("#blob/node\n")
+	metaHeader = []byte("#blob/meta\n")
+	// FIXME(tsileo): #blob/doc\n header
 )
 
 // FIXME(tsileo): remove this
@@ -44,6 +51,22 @@ func (b *Blob) Check() error {
 	return nil
 }
 
-func (b *Blob) IsFileSchema() bool {
+func (b *Blob) IsMeta() bool {
+	if len(b.Data) < len(metaHeader) {
+		return false
+	}
+	if bytes.Equal(b.Data[0:len(metaHeader)], metaHeader) {
+		return true
+	}
+	return false
+}
+
+func (b *Blob) IsFiletreeNode() bool {
+	if len(b.Data) < len(nodeHeader) {
+		return false
+	}
+	if bytes.Equal(b.Data[0:len(nodeHeader)], nodeHeader) {
+		return true
+	}
 	return false
 }

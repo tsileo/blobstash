@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	NodeBlobHeader   = "#blob/node\n"
-	NodeBlobVersion  = 1
-	NodeBlobOverhead = len(NodeBlobHeader)
+	NodeBlobHeader         = "#blob/node\n"
+	NodeBlobSnappyEncoding = '1'
+	NodeBlobOverhead       = len(NodeBlobHeader) + 1
 )
 
 const (
@@ -35,7 +35,7 @@ func IsNodeBlob(blob []byte) ([]byte, bool) { // returns (string, bool) string =
 	if len(blob) < NodeBlobOverhead {
 		return nil, false
 	}
-	if bytes.Equal(blob[0:NodeBlobOverhead], []byte(NodeBlobHeader)) {
+	if bytes.Equal(blob[0:NodeBlobOverhead-1], []byte(NodeBlobHeader)) {
 		return blob[NodeBlobOverhead:len(blob)], true
 	}
 	return nil, false
