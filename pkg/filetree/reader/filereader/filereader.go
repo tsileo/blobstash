@@ -61,7 +61,7 @@ func GetFile(ctx context.Context, bs BlobStore, hash, path string) error {
 		return err
 	}
 	if int(fstat.Size()) != meta.Size {
-		return fmt.Errorf("file %+v not successfully restored, size:%d/expected size:%d", fstat.Size, meta.Size)
+		return fmt.Errorf("file %s not successfully restored, size:%d/expected size:%d", path, fstat.Size(), meta.Size)
 	}
 	// TODO(tsileo): check against the full hash
 	return nil
