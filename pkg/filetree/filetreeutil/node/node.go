@@ -114,8 +114,8 @@ func (n *RawNode) Encode() (string, []byte) {
 	}
 	data := []byte(NodeBlobHeader)
 	data = append(data, js...)
-	h := fmt.Sprintf("%x", blake2b.Sum256(js))
-	return h, js
+	h := fmt.Sprintf("%x", blake2b.Sum256(data))
+	return h, data
 }
 
 func (n *RawNode) AddIndexedRef(index int, hash string) {

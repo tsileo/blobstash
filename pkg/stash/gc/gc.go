@@ -10,6 +10,7 @@ import (
 	"a4.io/blobstash/pkg/apps/luautil"
 	"a4.io/blobstash/pkg/blob"
 	bsLua "a4.io/blobstash/pkg/blobstore/lua"
+	"a4.io/blobstash/pkg/filetree/filetreeutil/node"
 	"a4.io/blobstash/pkg/hub"
 	kvsLua "a4.io/blobstash/pkg/kvstore/lua"
 	"a4.io/blobstash/pkg/stash"
@@ -35,6 +36,7 @@ func GC(ctx context.Context, h *hub.Hub, s *stash.Stash, script string, remoteRe
 	L.SetGlobal("mark", L.NewFunction(mark))
 	L.PreloadModule("json", loadJSON)
 	L.PreloadModule("msgpack", loadMsgpack)
+	L.PreloadModule("node", loadNode)
 	kvsLua.Setup(L, s.KvStore(), ctx)
 	bsLua.Setup(L, s.BlobStore(), ctx)
 
@@ -42,6 +44,7 @@ func GC(ctx context.Context, h *hub.Hub, s *stash.Stash, script string, remoteRe
 local msgpack = require('msgpack')
 local kvstore = require('kvstore')
 local blobstore = require('blobstore')
+local node = require('node')
 
 function mark_kv (key, version)
   local h = kvstore.get_meta_blob(key, version)
@@ -57,14 +60,14 @@ _G.mark_kv = mark_kv
 
 function mark_filetree_node (ref)
   local data = blobstore.get(ref)
-  local node = msgpack.decode(data)
+  local cnode = node.decode(data)
   mark(ref)
-  if node.t == 'dir' then
-    for _, childRef in ipairs(node.r) do
+  if cnode.t == 'dir' then
+    for _, childRef in ipairs(cnode.r) do
       mark_filetree_node(childRef)
     end
   else
-    for _, contentRef in ipairs(node.r) do
+    for _, contentRef in ipairs(cnode.r) do
       mark(contentRef[2])
     end
   end
@@ -116,6 +119,32 @@ _G.mark_filetree_node = mark_filetree_node
 		}
 	}
 	return nil
+}
+
+// FIXME(tsileo): have a single share "Lua lib" for all the Lua interactions (GC, document store...)
+func loadNode(L *lua.LState) int {
+	// register functions to the table
+	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
+		"decode": nodeDecode,
+	})
+	// returns the module
+	L.Push(mod)
+	return 1
+}
+
+// TODO(tsileo): a note about empty list vs empty object
+func nodeDecode(L *lua.LState) int {
+	data := L.ToString(1)
+	blob := []byte(data)
+	if encoded, ok := node.IsNodeBlob(blob); ok {
+		blob = encoded
+	}
+	out := map[string]interface{}{}
+	if err := msgpack.Unmarshal(blob, &out); err != nil {
+		panic(err)
+	}
+	L.Push(luautil.InterfaceToLValue(L, out))
+	return 1
 }
 
 // FIXME(tsileo): have a single share "Lua lib" for all the Lua interactions (GC, document store...)
