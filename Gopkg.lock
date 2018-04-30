@@ -28,8 +28,8 @@
     "trie/xfast",
     "trie/yfast"
   ]
-  revision = "900cfe0fd2681ca34fa97071e8fcf4f623679104"
-  version = "v1.0.44"
+  revision = "01f52d4880ca171ab1033bb0ee03cda8e0a31cc3"
+  version = "v1.0.46"
 
 [[projects]]
   name = "github.com/aws/aws-sdk-go"
@@ -50,6 +50,7 @@
     "aws/request",
     "aws/session",
     "aws/signer/v4",
+    "internal/sdkio",
     "internal/sdkrand",
     "internal/shareddefaults",
     "private/protocol",
@@ -61,8 +62,8 @@
     "service/s3",
     "service/sts"
   ]
-  revision = "bafcd9ccc717e9bc5406acaea370577299223873"
-  version = "v1.13.11"
+  revision = "cb873de7862ba08c63e82f37ffebc5ba02d87d26"
+  version = "v1.13.38"
 
 [[projects]]
   branch = "master"
@@ -153,13 +154,13 @@
   branch = "master"
   name = "github.com/evanphx/json-patch"
   packages = ["."]
-  revision = "944e07253867aacae43c04b2e6a239005443f33a"
+  revision = "9fa11df836c7537e8ad3d1639fa0d396559a7bab"
 
 [[projects]]
   name = "github.com/go-ini/ini"
   packages = ["."]
-  revision = "6333e38ac20b8949a8dd68baa3650f4dee8f39f0"
-  version = "v1.33.0"
+  revision = "6529cf7c58879c08d927016dde4477f18a0634cb"
+  version = "v1.36.0"
 
 [[projects]]
   name = "github.com/go-martini/martini"
@@ -316,19 +317,19 @@
     "exif",
     "tiff"
   ]
-  revision = "17202558c8d9c3fd047859f1a5e73fd9ae709187"
+  revision = "fb35d3c3290d09f3524b684b5d42d0063c227158"
 
 [[projects]]
   name = "github.com/sirupsen/logrus"
   packages = ["."]
-  revision = "d682213848ed68c0a260ca37d6dd5ace8423f5ba"
-  version = "v1.0.4"
+  revision = "c155da19408a8799da419ed3eeb0cb5db0ad5dbc"
+  version = "v1.0.5"
 
 [[projects]]
   branch = "master"
   name = "github.com/unrolled/secure"
   packages = ["."]
-  revision = "88720c9cbecfcf2eceb9bb4311ad6e398a8381ed"
+  revision = "a1cf62cc2159fff407728f118c41aece76c397fa"
 
 [[projects]]
   name = "github.com/urfave/negroni"
@@ -342,8 +343,8 @@
     ".",
     "codes"
   ]
-  revision = "b83fb55e0632418103602b3b23851cabc5d11762"
-  version = "v3.2.8"
+  revision = "a053f3dac71df214bfe8b367f34220f0029c9c02"
+  version = "v3.3.1"
 
 [[projects]]
   branch = "master"
@@ -354,7 +355,7 @@
     "parse",
     "pm"
   ]
-  revision = "7d7bc8747e3f614c5c587729a341fe7d8903cdb8"
+  revision = "b0fa786cf4ea360285924c4a7fd42325be57aec8"
 
 [[projects]]
   branch = "master"
@@ -369,13 +370,13 @@
     "scrypt",
     "ssh/terminal"
   ]
-  revision = "c7dcf104e3a7a1417abc0230cb0d5240d764159d"
+  revision = "b49d69b5da943f7ef3c9cf91c8777c1f78a0cc3c"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
   packages = ["context"]
-  revision = "d0aafc73d5cdc42264b0af071c261abac580695e"
+  revision = "5f9ae10d9af5b1c89ae6904293b14b064d4ada23"
 
 [[projects]]
   branch = "master"
@@ -384,7 +385,7 @@
     "unix",
     "windows"
   ]
-  revision = "7dca6fe1f43775aa6d1334576870ff63f978f539"
+  revision = "cbbc999da32df943dac6cd71eb3ee39e1d7838b9"
 
 [[projects]]
   name = "google.golang.org/appengine"
@@ -411,12 +412,12 @@
 [[projects]]
   name = "gopkg.in/yaml.v2"
   packages = ["."]
-  revision = "7f97868eec74b32b0982dd158a51a446d1da7eb5"
-  version = "v2.1.1"
+  revision = "5420a8b6744d3b0345ab293f6fcba19c978f1183"
+  version = "v2.2.1"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "3bc396cf0cddf6f46adfd980671a2309a43bddc1bf185ce21f0b330a83179921"
+  inputs-digest = "83b6436edd88aea823c0cf4d7f8adf8f268715965801a941bd2369f02cd3ac78"
   solver-name = "gps-cdcl"
   solver-version = 1
