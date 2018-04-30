@@ -10,14 +10,14 @@ script:
 - conda config --set always_yes yes --set changeps1 no
 - pip install requests
 # Run golang unit tests
-- go get -v a4.io/blobstash/...
-- cd $GOPATH/src/a4.io/blobstash
+# - go get -v a4.io/blobstash/...
+# - cd $GOPATH/src/a4.io/blobstash
+- go build blobstash.go
 - go test $(go list ./... | grep pkg)
 # Cross compile script
 # FIXME(tsileo): re-enable the cross compile
 # - ./extras/cross_compile.sh
 # Run the integrations tests
-- go build blobstash.go
 - pip install git+https://github.com/tsileo/blobstash-python-base.git
 - pip install git+https://github.com/tsileo/blobstash-python-filetree.git
 - pip install git+https://github.com/tsileo/blobstash-python-docstore.git
