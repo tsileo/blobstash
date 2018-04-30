@@ -112,8 +112,8 @@ func (n *RawNode) Encode() (string, []byte) {
 	if err != nil {
 		panic(err)
 	}
-	//data := []byte(NodeBlobHeader)
-	//data = append(data, js...)
+	data := []byte(NodeBlobHeader)
+	data = append(data, js...)
 	h := fmt.Sprintf("%x", blake2b.Sum256(js))
 	return h, js
 }
@@ -128,12 +128,18 @@ func (n *RawNode) AddRef(hash string) {
 
 func NewNodeFromBlob(hash string, blob []byte) (*RawNode, error) {
 	node := &RawNode{}
-	//data, ok := IsNodeBlob(blob)
+	data, ok := IsNodeBlob(blob)
+	if ok {
+		blob = data
+	}
 	//if !ok {
 	//	return nil, fmt.Errorf("not a node blob")
 	//}
 	if err := msgpack.Unmarshal(blob, node); err != nil {
 		return nil, err
+	}
+	if !ok {
+		fmt.Printf("\n\n\nBLOB WITHOUT NODE HEADER=%s/%+v\n\n\n", hash, node)
 	}
 	node.Hash = hash
 	return node, nil

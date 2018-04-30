@@ -22,7 +22,7 @@ func TestIsPrivate(t *testing.T) {
 		res, err := IsPrivate(data.host)
 		check(err)
 		if res != data.expected {
-			t.Errorf("IsPrivate(%q) failed, expected %q, got %q", data.host, data.expected, res)
+			t.Errorf("IsPrivate(%q) failed, expected %v, got %v", data.host, data.expected, res)
 		}
 	}
 }

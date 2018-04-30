@@ -265,7 +265,7 @@ func (docstore *DocStore) fetchPointers(doc map[string]interface{}) (map[string]
 				// Create a temporary authorization for the file (with a bewit)
 				u := &url.URL{Path: fmt.Sprintf("/%s/%s", node.Type[0:1], hash)}
 				if err := bewit.Bewit(docstore.filetree.SharingCred(), u, shareDuration); err != nil {
-					return nil, fmt.Errorf("failed to generate bewit: %v")
+					return nil, fmt.Errorf("failed to generate bewit: %v", err)
 				}
 				node.URL = u.String()
 

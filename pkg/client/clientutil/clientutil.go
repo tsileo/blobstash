@@ -374,13 +374,13 @@ func (client *ClientUtil) Do(method, path string, body io.Reader, options ...fun
 
 	for _, option := range client.options {
 		if err := option(request); err != nil {
-			return nil, fmt.Errorf("failed to set client option %v: %v", option, err)
+			return nil, fmt.Errorf("failed to set client option: %v", err)
 		}
 	}
 
 	for _, option := range options {
 		if err := option(request); err != nil {
-			return nil, fmt.Errorf("failed to set request option %v: %v", option, err)
+			return nil, fmt.Errorf("failed to set request option: %v", err)
 		}
 	}
 

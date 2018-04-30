@@ -1955,7 +1955,7 @@ func (f *RWFile) Flush() fuse.Status {
 
 	if status := f.File.Flush(); status != fuse.OK {
 		if status == fuse.EIO {
-			f.fs.logEIO(fmt.Errorf("loopback file %+v failed with status %v", status))
+			f.fs.logEIO(fmt.Errorf("loopback file %+v failed with status %v", f, status))
 		}
 		return status
 	}

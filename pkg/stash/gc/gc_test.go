@@ -44,7 +44,7 @@ func TestDataContextMerge(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	bsRoot, err := bstore.New(logger.New("app", "blobstore"), dir, nil, hub)
+	bsRoot, err := bstore.New(logger.New("app", "blobstore"), true, dir, nil, hub)
 	if err != nil {
 		panic(err)
 	}
