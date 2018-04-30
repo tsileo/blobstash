@@ -1,6 +1,7 @@
 language: go
 go:
 - '1.10'
+go_import_path: a4.io/blobstash
 install: true
 script:
 # Install Python3 (Anaconda looks like the easiest way in Travis)
