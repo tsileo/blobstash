@@ -8,9 +8,9 @@ import (
 )
 
 var (
-	nodeHeader = []byte("#blob/node\n")
-	metaHeader = []byte("#blob/meta\n")
-	// FIXME(tsileo): #blob/doc\n header
+	nodeHeader = []byte("#blobstash/node\n")
+	metaHeader = []byte("#blobstash/meta\n")
+	// FIXME(tsileo): #blobstash/doc\n header
 )
 
 // FIXME(tsileo): remove this

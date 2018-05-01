@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	MetaBlobHeader   = "#blob/meta\n"
+	MetaBlobHeader   = "#blobstash/meta\n"
 	MetaBlobVersion  = 1
 	MetaBlobOverhead = len(MetaBlobHeader)
 )

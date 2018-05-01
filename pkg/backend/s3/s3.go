@@ -543,7 +543,7 @@ func (b *S3Backend) put(hash string, data []byte) error {
 	// Encrypt if requested
 	if b.encrypted {
 		var err error
-		data, err = s3util.Seal(b.key, hash, data)
+		data, err = s3util.Seal(b.key, &blob.Blob{Hash: hash, Data: data})
 		if err != nil {
 			return err
 		}

@@ -16,6 +16,7 @@ import (
 	"io/ioutil"
 	"strings"
 
+	"a4.io/blobstash/pkg/blob"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/endpoints"
@@ -34,6 +35,10 @@ const keyLength = 32
 // Set a flag to identify the encryption algorithm in case we support/switch encryption scheme later
 const (
 	naclSecretBox byte = 1 << iota
+)
+
+const (
+	versionFlag byte = 1 << iota
 )
 
 var (
@@ -330,30 +335,41 @@ func (b *EncryptedBlob) PlainTextHash() (string, error) {
 }
 
 // Seal the data with the key derived from `password` (using scrypt) and seal the data with nacl/secretbox
-func Seal(nkey *[32]byte, hash string, data []byte) ([]byte, error) {
+func Seal(nkey *[32]byte, blb *blob.Blob) ([]byte, error) {
+	// FIXME(tsileo): store a flag for "data blobs"
 	nonce := new([nonceLength]byte)
 	if _, err := rand.Reader.Read(nonce[:]); err != nil {
 		return nil, err
 	}
-	bhash, err := hex.DecodeString(hash)
+	bhash, err := hex.DecodeString(blb.Hash)
 	if err != nil {
 		return nil, err
 	}
-	// Box will contains our meta data (alg byte + salt + nonce)
-	box := make([]byte, nonceLength+len(blobHeader)+len(bhash))
+	// Box will contains our meta data (alg byte + salt + nonce + flag)
+	box := make([]byte, nonceLength+len(blobHeader)+len(bhash)+2)
 	copy(box[:], blobHeader)
 	copy(box[len(blobHeader):], bhash)
+	// Add the version flag
+	copy(box[len(blobHeader)+len(bhash):], []byte{versionFlag})
+
+	// Add the "data blob" flag
+	flag := []byte{0}
+	if blb.IsFiletreeNode() || blb.IsMeta() {
+		flag = []byte{1}
+	}
+
+	copy(box[len(blobHeader)+len(bhash)+1:], flag)
 	// And the nonce
-	copy(box[len(blobHeader)+len(bhash):], nonce[:])
-	return secretbox.Seal(box, data, nonce, nkey), nil
+	copy(box[len(blobHeader)+len(bhash)+2:], nonce[:])
+	return secretbox.Seal(box, blb.Data, nonce, nkey), nil
 }
 
 // Open a previously sealed secretbox with the key derived from `password` (using scrypt)
 func Open(nkey *[32]byte, data []byte) ([]byte, error) {
 	// Extract the nonce
 	nonce := new([nonceLength]byte)
-	copy(nonce[:], data[len(blobHeader)+32:(len(blobHeader)+32+nonceLength)])
-	box := data[(nonceLength + 32 + len(blobHeader)):]
+	copy(nonce[:], data[len(blobHeader)+32+2:len(blobHeader)+32+2+nonceLength])
+	box := data[nonceLength+32+2+len(blobHeader):]
 	// Actually decrypt the cipher text
 	decrypted, success := secretbox.Open(nil, box, nonce, nkey)
 

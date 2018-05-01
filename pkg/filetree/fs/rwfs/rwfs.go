@@ -33,6 +33,7 @@ import (
 	"github.com/mitchellh/go-ps"
 
 	"a4.io/blobstash/pkg/backend/s3/s3util"
+	"a4.io/blobstash/pkg/blob"
 	bcache "a4.io/blobstash/pkg/cache"
 	"a4.io/blobstash/pkg/client/blobstore"
 	"a4.io/blobstash/pkg/client/clientutil"
@@ -810,7 +811,7 @@ func (c *Cache) PutRemote(ctx context.Context, hash string, data []byte) error {
 	}
 
 	// Encrypt
-	data, err = s3util.Seal(c.fs.key, hash, data)
+	data, err = s3util.Seal(c.fs.key, &blob.Blob{Hash: hash, Data: data})
 	if err != nil {
 		return err
 	}

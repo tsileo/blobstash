@@ -209,7 +209,8 @@ func (bs *BlobStore) GetEncoded(ctx context.Context, hash string) ([]byte, error
 			if cached {
 				bs.log.Debug("blob found in the data cache", "hash", hash)
 				blob, _, err = bs.dataCache.Get(hash)
-				blob = snappy.Encode(nil, blb.Data)
+				blob = snappy.Encode(nil, blob)
+				err = nil
 				break
 			}
 
@@ -228,15 +229,14 @@ func (bs *BlobStore) GetEncoded(ctx context.Context, hash string) ([]byte, error
 				if err := bs.dataCache.Add(hash, blob); err != nil {
 					return nil, err
 				}
-				blob = snappy.Encode(nil, blb.Data)
+				blob = snappy.Encode(nil, blob)
+				err = nil
 				break
 			}
 		}
 
 		// Return the original error
 		return nil, err
-
-		err = nil
 	default:
 		return nil, err
 	}
@@ -244,7 +244,7 @@ func (bs *BlobStore) GetEncoded(ctx context.Context, hash string) ([]byte, error
 	readCountVar.Add(1)
 	readVar.Add(int64(len(blob)))
 
-	return blob, err
+	return blob, nil
 }
 
 func (bs *BlobStore) Get(ctx context.Context, hash string) ([]byte, error) {
@@ -278,7 +278,7 @@ func (bs *BlobStore) Get(ctx context.Context, hash string) ([]byte, error) {
 			if cached {
 				bs.log.Debug("blob found in the data cache", "hash", hash)
 				blob, _, err = bs.dataCache.Get(hash)
-				break
+				return blob, err
 			}
 
 			// If the blob is available on S3, download it and add it to the data cache
