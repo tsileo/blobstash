@@ -77,7 +77,7 @@ func New(logger log.Logger, root bool, dir string, conf2 *config.Config, hub *hu
 		if s3repl := conf2.S3Repl; s3repl != nil && s3repl.Bucket != "" {
 			logger.Debug("init s3 replication")
 			var err error
-			s3back, err = s3.New(logger.New("app", "s3_replication"), back, hub, conf2)
+			s3back, err = s3.New(logger.New("app", "s3_replication"), back, dataCache, hub, conf2)
 			if err != nil {
 				return nil, err
 			}
@@ -95,9 +95,11 @@ func New(logger log.Logger, root bool, dir string, conf2 *config.Config, hub *hu
 
 func (bs *BlobStore) Close() error {
 	// TODO(tsileo): improve this
+	if bs.dataCache != nil {
+		bs.dataCache.Close()
+	}
 	if bs.s3back != nil {
 		bs.s3back.Close()
-		bs.dataCache.Close()
 	}
 
 	if err := bs.back.Close(); err != nil {
@@ -107,6 +109,7 @@ func (bs *BlobStore) Close() error {
 }
 
 func (bs *BlobStore) GetRemoteRef(ref string) (string, error) {
+	fmt.Printf("GetRemoteRef %s %+v %+v\n\n", ref, bs.root, bs.s3back)
 	if !bs.root || bs.s3back == nil {
 		return "", ErrRemoteNotAvailable
 	}

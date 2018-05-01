@@ -43,6 +43,7 @@ import (
 	"a4.io/blobstash/pkg/filetree/reader/filereader"
 	"a4.io/blobstash/pkg/filetree/writer"
 	"a4.io/blobstash/pkg/hashutil"
+	"a4.io/blobstash/pkg/iputil"
 )
 
 // TODO(tsileo):
@@ -58,6 +59,10 @@ func main() {
 	resetCache := flag.Bool("reset-cache", false, "remove the local cache before starting.")
 	roMode := flag.Bool("ro", false, "read-only mode")
 	syncDelay := flag.Duration("sync-delay", 5*time.Minute, "delay to wait after the last modification to initate a sync")
+	forceRemote := flag.Bool("force-remote", false, "force fetching data blobs from object storage")
+	disableRemote := flag.Bool("disable-remote", false, "disable fetching data blobs from object storage")
+
+	// FIXME(tsileo): a way to set the remote config via a special config file?
 
 	flag.Parse()
 	if flag.NArg() < 2 {
@@ -129,7 +134,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	root, err := NewFileSystem(flag.Arg(1), flag.Arg(0), *debug, *roMode, cache, cacheDir, bs, kvs, clientUtil)
+	isHostLocal, err := iputil.IsPrivate(host)
+	if err != nil {
+		fmt.Printf("invalid BLOBS_API_HOST")
+		os.Exit(1)
+	}
+
+	var useRemote bool
+	switch {
+	case *disableRemote:
+	case *forceRemote:
+		useRemote = true
+	case isHostLocal:
+		useRemote = isHostLocal
+	}
+
+	root, err := NewFileSystem(flag.Arg(1), flag.Arg(0), *debug, *roMode, cache, cacheDir, bs, kvs, clientUtil, useRemote)
 	if err != nil {
 		fmt.Printf("failed to initialize filesystem: %v\n", err)
 		os.Exit(1)
@@ -673,7 +693,7 @@ func (n *Node) Copy(dst io.Writer, fs *FileSystem, meta *rnode.RawNode) error {
 		}
 	}
 	var fileReader io.ReadCloser
-	if n.RemoteRefs != nil {
+	if fs.useRemote && n.RemoteRefs != nil {
 		fileReader = filereader.NewFileRemote(ctx, fs.cache, meta, n.RemoteRefs, fcache)
 	} else {
 		fileReader = filereader.NewFile(ctx, fs.cache, meta, fcache)
@@ -769,6 +789,10 @@ func (c *Cache) Stat(ctx context.Context, hash string) (bool, error) {
 
 // Get implements the BlobStore interface for filereader.File
 func (c *Cache) PutRemote(ctx context.Context, hash string, data []byte) error {
+	if !c.fs.useRemote {
+		return c.Put(ctx, hash, data)
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -919,6 +943,7 @@ type FileSystem struct {
 	cache   *Cache
 	stats   *FSStats
 
+	useRemote  bool
 	up         *writer.Uploader
 	kvs        *kvstore.KvStore
 	bs         *blobstore.BlobStore
@@ -968,7 +993,7 @@ type FDInfo struct {
 	CreatedAt  time.Time
 }
 
-func NewFileSystem(ref, mountpoint string, debug, ro bool, cache *Cache, cacheDir string, bs *blobstore.BlobStore, kvs *kvstore.KvStore, cu *clientutil.ClientUtil) (*FileSystem, error) {
+func NewFileSystem(ref, mountpoint string, debug, ro bool, cache *Cache, cacheDir string, bs *blobstore.BlobStore, kvs *kvstore.KvStore, cu *clientutil.ClientUtil, useRemote bool) (*FileSystem, error) {
 	fs := &FileSystem{
 		cache:      cache,
 		bs:         bs,
@@ -978,6 +1003,7 @@ func NewFileSystem(ref, mountpoint string, debug, ro bool, cache *Cache, cacheDi
 		debug:      debug,
 		ro:         ro,
 		rwLayer:    nil,
+		useRemote:  useRemote,
 		up:         writer.NewUploader(cache),
 		stats: &FSStats{
 			Ref:       ref,
@@ -2072,7 +2098,7 @@ func NewFile(fctx *fuse.Context, fs *FileSystem, path string, node *Node) (*File
 		}
 	}
 	var r *filereader.File
-	if node.RemoteRefs != nil {
+	if fs.useRemote && node.RemoteRefs != nil {
 		r = filereader.NewFileRemote(ctx, fs.cache, meta, node.RemoteRefs, fcache)
 	} else {
 		r = filereader.NewFile(ctx, fs.cache, meta, fcache)

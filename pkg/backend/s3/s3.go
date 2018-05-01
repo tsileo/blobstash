@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	log "github.com/inconshreveable/log15"
 
@@ -27,6 +26,7 @@ import (
 	"a4.io/blobstash/pkg/backend/s3/index"
 	"a4.io/blobstash/pkg/backend/s3/s3util"
 	"a4.io/blobstash/pkg/blob"
+	"a4.io/blobstash/pkg/cache"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/hashutil"
 	"a4.io/blobstash/pkg/hub"
@@ -60,8 +60,9 @@ type S3Backend struct {
 	encrypted bool
 	key       *[32]byte
 
-	backend *blobsfile.BlobsFiles
-	hub     *hub.Hub
+	backend   *blobsfile.BlobsFiles
+	dataCache *cache.Cache
+	hub       *hub.Hub
 
 	wg sync.WaitGroup
 
@@ -71,7 +72,7 @@ type S3Backend struct {
 	bucket string
 }
 
-func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config.Config) (*S3Backend, error) {
+func New(logger log.Logger, back *blobsfile.BlobsFiles, dataCache *cache.Cache, h *hub.Hub, conf *config.Config) (*S3Backend, error) {
 	// Parse config
 	bucket := conf.S3Repl.Bucket
 	region := conf.S3Repl.Region
@@ -82,9 +83,19 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 		return nil, err
 	}
 
-	// Create a S3 Session
-	sess := session.New(&aws.Config{Region: aws.String(region)})
-
+	var s3svc *s3.S3
+	if conf.S3Repl.Endpoint != "" {
+		s3svc, err = s3util.NewWithCustomEndoint(region, conf.S3Repl.Endpoint)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// Create a S3 Session
+		s3svc, err = s3util.New(region)
+		if err != nil {
+			return nil, err
+		}
+	}
 	// Init the disk-backed queue
 	uq, err := queue.New(filepath.Join(conf.VarDir(), "s3-upload.queue"))
 	if err != nil {
@@ -117,8 +128,9 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 	s3backend := &S3Backend{
 		log:           logger,
 		backend:       back,
+		dataCache:     dataCache,
 		hub:           h,
-		s3:            s3.New(sess),
+		s3:            s3svc,
 		stop:          make(chan struct{}),
 		bucket:        bucket,
 		key:           key,
@@ -219,9 +231,10 @@ func (b *S3Backend) downloadRemoteBlob(key string) (*blob.Blob, error) {
 	if err != nil {
 		return nil, err
 	}
+	blb := &blob.Blob{Hash: hash, Data: data}
 	if exists {
 		log.Debug("blob already exists", "hash", hash)
-		return &blob.Blob{Hash: hash, Data: data}, obj.Delete()
+		return blb, obj.Delete()
 	}
 
 	// Copy the blob to its final destination
@@ -240,11 +253,16 @@ func (b *S3Backend) downloadRemoteBlob(key string) (*blob.Blob, error) {
 		return nil, err
 	}
 
-	if err := b.backend.Put(hash, data); err != nil {
-		return nil, err
+	if blb.IsFiletreeNode() || blb.IsMeta() {
+		if err := b.backend.Put(hash, data); err != nil {
+			return nil, err
+		}
+	} else {
+		// "cache" it
+		if err := b.dataCache.Add(hash, data); err != nil {
+			return nil, err
+		}
 	}
-
-	blb := &blob.Blob{Hash: hash, Data: data}
 
 	// Wait for subscribed event completion
 	if err := b.hub.NewBlobEvent(context.TODO(), blb, nil); err != nil {
@@ -375,7 +393,24 @@ L:
 					b.wg.Add(1)
 					defer b.wg.Done()
 					data, err := b.backend.Get(blob.Hash)
-					if err != nil {
+					switch err {
+					case nil:
+					case blobsfile.ErrBlobNotFound:
+						cached, err := b.dataCache.Stat(blob.Hash)
+						if err != nil {
+							deqFunc(false)
+							return err
+						}
+						if cached {
+							data, _, err = b.dataCache.Get(blob.Hash)
+							if err == nil {
+								break
+							}
+						}
+
+						deqFunc(false)
+						return err
+					default:
 						deqFunc(false)
 						return err
 					}

@@ -2,6 +2,8 @@
 package iputil // import "a4.io/blobstash/pkg/iputil"
 import (
 	"net"
+	"net/url"
+	"strings"
 )
 
 var privateIPNets [3]*net.IPNet
@@ -28,6 +30,13 @@ func IsIPPrivate(ip net.IP) bool {
 
 // IsPrivate returns true if the given host revolve to a private IP address (or if a private address is passed)
 func IsPrivate(host string) (bool, error) {
+	if strings.HasPrefix(host, "http") {
+		u, err := url.Parse(host)
+		if err != nil {
+			return false, err
+		}
+		host = u.Hostname()
+	}
 	if ip := net.ParseIP(host); ip != nil {
 		return IsIPPrivate(ip), nil
 	}

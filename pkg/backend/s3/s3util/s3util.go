@@ -54,12 +54,25 @@ func nextKey(key string) string {
 	return string(bkey)
 }
 
+func New(region string) (*s3.S3, error) {
+	sess, err := session.NewSessionWithOptions(session.Options{
+		Config: aws.Config{
+			Region: aws.String(region),
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return s3.New(sess), nil
+}
+
 func NewWithCustomEndoint(region, url string) (*s3.S3, error) {
 	defaultResolver := endpoints.DefaultResolver()
 	s3CustResolverFn := func(service, region string, optFns ...func(*endpoints.Options)) (endpoints.ResolvedEndpoint, error) {
 		if service == "s3" {
 			return endpoints.ResolvedEndpoint{
-				URL: "s3.custom.e",
+				URL: url,
 			}, nil
 		}
 

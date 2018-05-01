@@ -31,9 +31,10 @@ type AppConfig struct {
 }
 
 type S3Repl struct {
-	Bucket  string `yaml:"bucket"`
-	Region  string `yaml:"region"`
-	KeyFile string `yaml:"key_file"`
+	Bucket   string `yaml:"bucket"`
+	Region   string `yaml:"region"`
+	KeyFile  string `yaml:"key_file"`
+	Endpoint string `yaml:"endpoint"`
 }
 
 type Replication struct {
