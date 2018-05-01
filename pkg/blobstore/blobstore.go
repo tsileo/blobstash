@@ -15,6 +15,7 @@ import (
 	// "a4.io/blobstash/pkg/backend/blobsfile"
 	"a4.io/blobstash/pkg/backend/s3"
 	"a4.io/blobstash/pkg/blob"
+	"a4.io/blobstash/pkg/cache"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/hub"
 )
@@ -49,10 +50,12 @@ func NextHexKey(key string) string {
 }
 
 type BlobStore struct {
-	back   *blobsfile.BlobsFiles
-	s3back *s3.S3Backend
-	hub    *hub.Hub
-	root   bool
+	back      *blobsfile.BlobsFiles
+	s3back    *s3.S3Backend
+	dataCache *cache.Cache
+
+	hub  *hub.Hub
+	root bool
 
 	log log.Logger
 }
@@ -64,8 +67,13 @@ func New(logger log.Logger, root bool, dir string, conf2 *config.Config, hub *hu
 	if err != nil {
 		return nil, fmt.Errorf("failed to init BlobsFile: %v", err)
 	}
+	var dataCache *cache.Cache
 	var s3back *s3.S3Backend
-	if conf2 != nil {
+	if root && conf2 != nil {
+		dataCache, err = cache.New(conf2.VarDir(), "data_blobs.cache", 50*1024<<20) // 50GB cache
+		if err != nil {
+			return nil, err
+		}
 		if s3repl := conf2.S3Repl; s3repl != nil && s3repl.Bucket != "" {
 			logger.Debug("init s3 replication")
 			var err error
@@ -76,11 +84,12 @@ func New(logger log.Logger, root bool, dir string, conf2 *config.Config, hub *hu
 		}
 	}
 	return &BlobStore{
-		back:   back,
-		root:   root,
-		s3back: s3back,
-		hub:    hub,
-		log:    logger,
+		back:      back,
+		root:      root,
+		s3back:    s3back,
+		dataCache: dataCache,
+		hub:       hub,
+		log:       logger,
 	}, nil
 }
 
@@ -88,6 +97,7 @@ func (bs *BlobStore) Close() error {
 	// TODO(tsileo): improve this
 	if bs.s3back != nil {
 		bs.s3back.Close()
+		bs.dataCache.Close()
 	}
 
 	if err := bs.back.Close(); err != nil {
@@ -97,7 +107,7 @@ func (bs *BlobStore) Close() error {
 }
 
 func (bs *BlobStore) GetRemoteRef(ref string) (string, error) {
-	if bs.s3back == nil {
+	if !bs.root || bs.s3back == nil {
 		return "", ErrRemoteNotAvailable
 	}
 	return bs.s3back.GetRemoteRef(ref)
@@ -121,13 +131,32 @@ func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
 		return nil
 	}
 
-	// Save the blob
-	if err := bs.back.Put(blob.Hash, blob.Data); err != nil {
-		return err
+	var specialBlob bool
+	if blob.IsMeta() || blob.IsFiletreeNode() {
+		specialBlob = true
+	}
+
+	if !bs.root || bs.root && specialBlob || bs.root && bs.s3back == nil {
+		// Save the blob
+		if err := bs.back.Put(blob.Hash, blob.Data); err != nil {
+			return err
+		}
+	} else {
+		bs.log.Info("saving the blob in the data cache", "hash", blob.Hash)
+		exists, err := bs.dataCache.Stat(blob.Hash)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			// This is most likely a data blob and the blob will be stored elsewhere
+			if err := bs.dataCache.Add(blob.Hash, blob.Data); err != nil {
+				return err
+			}
+		}
 	}
 
 	// Wait for adding the blob to the S3 replication queue if enabled
-	if bs.s3back != nil {
+	if bs.root && bs.s3back != nil {
 		if err := bs.s3back.Put(blob.Hash); err != nil {
 			return err
 		}
@@ -160,12 +189,50 @@ func (bs *BlobStore) GetEncoded(ctx context.Context, hash string) ([]byte, error
 		if berr != nil {
 			return nil, berr
 		}
-		if !inFlight {
-			// The blob is not queued for download, return the original error
-			return nil, err
+		if inFlight {
+			// The blob is queued for download, force the download
+			blob = blb.Data
+			blob = snappy.Encode(nil, blb.Data)
+			err = nil
+			break
 		}
 
-		blob = snappy.Encode(nil, blb.Data)
+		// If there's a data cache, it means the blob must be stored on S3
+		if bs.dataCache != nil {
+			cached, err := bs.dataCache.Stat(hash)
+			if err != nil {
+				return nil, err
+			}
+			if cached {
+				bs.log.Debug("blob found in the data cache", "hash", hash)
+				blob, _, err = bs.dataCache.Get(hash)
+				blob = snappy.Encode(nil, blb.Data)
+				break
+			}
+
+			// If the blob is available on S3, download it and add it to the data cache
+			indexed, err := bs.s3back.Indexed(hash)
+			if err != nil {
+				return nil, err
+			}
+
+			if indexed {
+				bs.log.Debug("blob found on S3", "hash", hash)
+				blob, err = bs.s3back.Get(hash)
+				if err != nil {
+					return nil, err
+				}
+				if err := bs.dataCache.Add(hash, blob); err != nil {
+					return nil, err
+				}
+				blob = snappy.Encode(nil, blb.Data)
+				break
+			}
+		}
+
+		// Return the original error
+		return nil, err
+
 		err = nil
 	default:
 		return nil, err
@@ -192,13 +259,46 @@ func (bs *BlobStore) Get(ctx context.Context, hash string) ([]byte, error) {
 		if berr != nil {
 			return nil, berr
 		}
-		if !inFlight {
-			// The blob is not queued for download, return the original error
-			return nil, err
+		if inFlight {
+			// The blob is queued for download, force the download
+			blob = blb.Data
+			err = nil
+			break
 		}
 
-		blob = blb.Data
-		err = nil
+		// If there's a data cache, it means the blob must be stored on S3
+		if bs.dataCache != nil {
+			cached, err := bs.dataCache.Stat(hash)
+			if err != nil {
+				return nil, err
+			}
+			if cached {
+				bs.log.Debug("blob found in the data cache", "hash", hash)
+				blob, _, err = bs.dataCache.Get(hash)
+				break
+			}
+
+			// If the blob is available on S3, download it and add it to the data cache
+			indexed, err := bs.s3back.Indexed(hash)
+			if err != nil {
+				return nil, err
+			}
+
+			if indexed {
+				bs.log.Debug("blob found on S3", "hash", hash)
+				blob, err = bs.s3back.Get(hash)
+				if err != nil {
+					return nil, err
+				}
+				if err := bs.dataCache.Add(hash, blob); err != nil {
+					return nil, err
+				}
+				break
+			}
+		}
+
+		// Return the original error
+		return nil, err
 	default:
 		return nil, err
 	}

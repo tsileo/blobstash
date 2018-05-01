@@ -537,12 +537,31 @@ func (b *S3Backend) put(hash string, data []byte) error {
 	return nil
 }
 
-func (b *S3Backend) Exists(hash string) (bool, error) {
-	return false, ErrWriteOnly
+func (b *S3Backend) Indexed(hash string) (bool, error) {
+	return b.index.Exists(hash)
 }
 
-func (b *S3Backend) Get(hash string) (data []byte, err error) {
-	return nil, ErrWriteOnly
+func (b *S3Backend) Exists(hash string) (bool, error) {
+	return b.Indexed(hash)
+}
+
+func (b *S3Backend) Get(hash string) ([]byte, error) {
+	ehash, err := b.index.Get(hash)
+	if err != nil {
+		return nil, err
+	}
+
+	obj, err := s3util.NewBucket(b.s3, b.bucket).GetObject(ehash)
+	if err != nil {
+		return nil, err
+	}
+	eblob := s3util.NewEncryptedBlob(obj, b.key)
+	fhash, data, err := eblob.HashAndPlainText()
+	if fhash != hash {
+		return nil, fmt.Errorf("hash does not match")
+	}
+
+	return data, err
 }
 
 func (b *S3Backend) GetRemoteRef(pref string) (string, error) {
