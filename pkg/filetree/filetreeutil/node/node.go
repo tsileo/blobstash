@@ -15,10 +15,10 @@ import (
 	"github.com/vmihailenco/msgpack"
 )
 
-const (
-	NodeBlobHeader         = "#blob/node\n"
-	NodeBlobSnappyEncoding = '1'
-	NodeBlobOverhead       = len(NodeBlobHeader) + 1
+var (
+	NodeBlobHeader          = []byte("#blob/node\n")
+	NodeBlobMsgpackEncoding = byte('1')
+	NodeBlobOverhead        = len(NodeBlobHeader) + 1
 )
 
 const (
@@ -112,7 +112,7 @@ func (n *RawNode) Encode() (string, []byte) {
 	if err != nil {
 		panic(err)
 	}
-	data := []byte(NodeBlobHeader)
+	data := append(NodeBlobHeader, NodeBlobMsgpackEncoding)
 	data = append(data, js...)
 	h := fmt.Sprintf("%x", blake2b.Sum256(data))
 	return h, data

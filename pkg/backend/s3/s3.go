@@ -360,8 +360,10 @@ L:
 	for {
 		select {
 		case <-b.stop:
+			log.Debug("worker stopped")
 			break L
 		default:
+			// log.Debug("polling")
 			blb := &blob.Blob{}
 			ok, deqFunc, err := b.uploadQueue.Dequeue(blb)
 			if err != nil {
@@ -416,8 +418,10 @@ L:
 	for {
 		select {
 		case <-b.stop:
+			log.Debug("worker stopped")
 			break L
 		default:
+			// log.Debug("polling")
 			blb := &blob.Blob{}
 			ok, deqFunc, err := b.deleteQueue.Dequeue(blb)
 			if err != nil {
@@ -460,8 +464,10 @@ L:
 	for {
 		select {
 		case <-b.stop:
+			log.Debug("worker stopped")
 			break L
 		default:
+			// log.Debug("polling")
 			blb := &blob.Blob{}
 			ok, deqFunc, err := b.downloadQueue.Dequeue(blb)
 			if err != nil {
@@ -474,7 +480,7 @@ L:
 					defer b.wg.Done()
 
 					b.downloadMutex.Lock()
-					defer b.downloadMutex.Lock()
+					defer b.downloadMutex.Unlock()
 					if _, err := b.downloadRemoteBlob(blob.Extra.(string)); err != nil {
 						deqFunc(false)
 						return err
@@ -544,12 +550,17 @@ func (b *S3Backend) GetRemoteRef(pref string) (string, error) {
 }
 
 func (b *S3Backend) Close() {
+	b.log.Debug("stopping workers")
 	b.stop <- struct{}{}
 	b.stop <- struct{}{}
 	b.stop <- struct{}{}
+	b.log.Debug("waiting for waitgroup")
 	b.wg.Wait()
+	b.log.Debug("done")
 	b.uploadQueue.Close()
 	b.downloadQueue.Close()
 	b.deleteQueue.Close()
+	b.log.Debug("queues closed")
 	b.index.Close()
+	b.log.Debug("s3 backend closed")
 }

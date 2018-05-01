@@ -159,25 +159,30 @@ func New(conf *config.Config) (*Server, error) {
 		logger.Debug("waiting for the waitgroup...")
 		wg.Wait()
 		logger.Debug("waitgroup done")
-
-		if err := rootBlobstore.Close(); err != nil {
-			return err
-		}
-		if err := rootKvstore.Close(); err != nil {
-			return err
-		}
-		if err := cstash.Close(); err != nil {
-			return err
-		}
 		if err := filetree.Close(); err != nil {
 			return err
 		}
+		logger.Debug("filetree closed")
 		if err := docstore.Close(); err != nil {
 			return err
 		}
+		logger.Debug("docstore closed")
 		if err := apps.Close(); err != nil {
 			return err
 		}
+		logger.Debug("apps closed")
+		if err := cstash.Close(); err != nil {
+			return err
+		}
+		logger.Debug("stash closed")
+		if err := rootKvstore.Close(); err != nil {
+			return err
+		}
+		logger.Debug("root kv closed")
+		if err := rootBlobstore.Close(); err != nil {
+			return err
+		}
+		logger.Debug("root bs closed")
 		return nil
 	}
 	return s, nil
