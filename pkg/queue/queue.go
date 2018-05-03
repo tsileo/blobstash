@@ -51,20 +51,25 @@ func (q *Queue) Remove() error {
 }
 
 // Enqueue the given `item`. Must be JSON serializable.
-func (q *Queue) Enqueue(item interface{}) error {
+func (q *Queue) Enqueue(item interface{}) (*id.ID, error) {
 	id, err := id.New(time.Now().Unix())
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	js, err := json.Marshal(item)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	q.db.Set(id.Raw(), js)
 
-	return nil
+	return id, nil
+}
+
+// InstantDequeue remove the given ID from the queue directly
+func (q *Queue) InstantDequeue(id *id.ID) error {
+	return q.db.Delete(id.Raw())
 }
 
 // Dequeue the older item, unserialize the given item.
