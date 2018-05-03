@@ -28,6 +28,7 @@ import (
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/cache"
 	"a4.io/blobstash/pkg/config"
+	"a4.io/blobstash/pkg/docstore/id"
 	"a4.io/blobstash/pkg/hashutil"
 	"a4.io/blobstash/pkg/hub"
 	"a4.io/blobstash/pkg/queue"
@@ -45,6 +46,11 @@ import (
 
 var ErrWriteOnly = errors.New("backend is in read-only mode")
 
+type dlIndexItem struct {
+	blob *blob.Blob
+	id   *id.ID
+}
+
 type S3Backend struct {
 	log log.Logger
 
@@ -54,7 +60,7 @@ type S3Backend struct {
 	deleteQueue *queue.Queue
 
 	downloadQueue *queue.Queue
-	downloadIndex map[string]string
+	downloadIndex map[string]*dlIndexItem
 	downloadMutex sync.Mutex
 
 	encrypted bool
@@ -137,7 +143,7 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, dataCache *cache.Cache, 
 		uploadQueue:   uq,
 		downloadQueue: dq,
 		deleteQueue:   delq,
-		downloadIndex: map[string]string{},
+		downloadIndex: map[string]*dlIndexItem{},
 		index:         i,
 	}
 
@@ -194,17 +200,24 @@ func (b *S3Backend) newSyncRemoteBlobCallback(ctx context.Context, blob *blob.Bl
 	b.downloadMutex.Lock()
 	defer b.downloadMutex.Unlock()
 	b.log.Debug("newSyncRemoteBlobCallback", "blob", blob)
-	b.downloadIndex[blob.Hash] = blob.Extra.(string)
-	return b.downloadQueue.Enqueue(blob) // Extra is the S3 object key
+	id, err := b.downloadQueue.Enqueue(blob) // Extra is the S3 object key
+	if err != nil {
+		return err
+	}
+	b.downloadIndex[blob.Hash] = &dlIndexItem{blob: blob, id: id}
+	return nil
 }
 
 // BlobWaitingForDownload check if a blob is currently enqueued, if it's the case, it will download it and return it
 func (b *S3Backend) BlobWaitingForDownload(hash string) (bool, *blob.Blob, error) {
 	b.downloadMutex.Lock()
 	defer b.downloadMutex.Unlock()
-	if k, ok := b.downloadIndex[hash]; ok {
-		blb, err := b.downloadRemoteBlob(k)
+	if dlItem, ok := b.downloadIndex[hash]; ok {
+		blb, err := b.downloadRemoteBlob(dlItem.blob.Extra.(string))
 		if err != nil {
+			return false, nil, err
+		}
+		if err := b.uploadQueue.InstantDequeue(dlItem.id); err != nil {
 			return false, nil, err
 		}
 		return true, blb, nil
@@ -214,7 +227,10 @@ func (b *S3Backend) BlobWaitingForDownload(hash string) (bool, *blob.Blob, error
 
 func (b *S3Backend) newDeleteRemoteBlobCallback(ctx context.Context, _ *blob.Blob, ref interface{}) error {
 	b.log.Debug("newDeleteRemoteBlobCallback", "ref", ref)
-	return b.deleteQueue.Enqueue(&blob.Blob{Extra: ref})
+	if _, err := b.deleteQueue.Enqueue(&blob.Blob{Extra: ref}); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (b *S3Backend) downloadRemoteBlob(key string) (*blob.Blob, error) {
@@ -233,6 +249,8 @@ func (b *S3Backend) downloadRemoteBlob(key string) (*blob.Blob, error) {
 	}
 	blb := &blob.Blob{Hash: hash, Data: data}
 	if exists {
+
+		delete(b.downloadIndex, blb.Hash)
 		log.Debug("blob already exists", "hash", hash)
 		return blb, obj.Delete()
 	}
@@ -269,13 +287,17 @@ func (b *S3Backend) downloadRemoteBlob(key string) (*blob.Blob, error) {
 		return nil, err
 	}
 
+	delete(b.downloadIndex, blb.Hash)
 	log.Debug("remote blob saved", "hash", hash)
 
 	return blb, nil
 }
 
 func (b *S3Backend) Put(hash string) error {
-	return b.uploadQueue.Enqueue(&blob.Blob{Hash: hash})
+	if _, err := b.uploadQueue.Enqueue(&blob.Blob{Hash: hash}); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (b *S3Backend) reindex(bucket *s3util.Bucket, restore bool) error {
@@ -311,6 +333,8 @@ func (b *S3Backend) reindex(bucket *s3util.Bucket, restore bool) error {
 				b.log.Debug("blob already saved", "hash", hash)
 				return nil
 			}
+
+			// FIXME(tsileo): check if the blob is a "data blob" thanks to the new flag and skip the blob if needed
 
 			data, err := eblob.PlainText()
 			if err != nil {
@@ -511,6 +535,7 @@ L:
 			if ok {
 				if err := func(blob *blob.Blob) error {
 					t := time.Now()
+
 					b.wg.Add(1)
 					defer b.wg.Done()
 

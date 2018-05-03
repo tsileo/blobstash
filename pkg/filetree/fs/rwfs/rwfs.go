@@ -1999,12 +1999,14 @@ func (f *RWFile) Flush() fuse.Status {
 			return fuse.EIO
 		}
 
+		fmt.Printf("PREMSGPACK")
 		resp, err := f.fs.clientUtil.PatchMsgpack(
 			f.fs.remotePath(f.fs.dir(f.meta.Path)),
 			rawNode,
 			clientutil.WithQueryArgs(map[string]string{
 				"mtime": strconv.Itoa(int(rawNode.ModTime)),
 			}))
+		fmt.Printf("POSTMSGPACK")
 		if err != nil {
 			f.fs.logEIO(fmt.Errorf("upload failed: %v", err))
 			return fuse.EIO
