@@ -27,9 +27,12 @@ func TestQueue(t *testing.T) {
 	}
 	item1 := &Item{"ok"}
 	item2 := &Item{"ok2"}
-	check(q.Enqueue(item1))
-	time.Sleep(1 * time.Second)
-	check(q.Enqueue(item2))
+	_, err = q.Enqueue(item1)
+	check(err)
+	// FIXME test InstantDequeue
+	time.Sleep(time.Second)
+	_, err = q.Enqueue(item2)
+	check(err)
 
 	deq := &Item{}
 	ok, deqFunc, err := q.Dequeue(deq)
