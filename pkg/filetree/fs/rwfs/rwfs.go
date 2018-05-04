@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/dchest/blake2b"
 	"github.com/hanwen/go-fuse/fuse"
@@ -31,6 +30,7 @@ import (
 	"github.com/hanwen/go-fuse/fuse/pathfs"
 	"github.com/hashicorp/golang-lru"
 	"github.com/mitchellh/go-ps"
+	yaml "gopkg.in/yaml.v2"
 
 	"a4.io/blobstash/pkg/backend/s3/s3util"
 	"a4.io/blobstash/pkg/blob"
@@ -52,6 +52,45 @@ import (
 // - `-snapshot` mode that lock to the current version, very efficient, can specify a snapshot version `-at`
 // - RO mode
 
+type RemoteConfig struct {
+	Endpoint        string `yaml:"endpoint"`
+	Region          string `yaml:"region"`
+	Bucket          string `yaml:"bucket"`
+	AccessKeyID     string `yaml:"access_key_id"`
+	SecretAccessKey string `yaml:"secret_access_key"`
+	KeyFile         string `yaml:"key_file"`
+}
+
+type Profile struct {
+	RemoteConfig *RemoteConfig `yaml:"remote_config"`
+	Endpoint     string        `yaml:"endpoint"`
+	APIKey       string        `yaml:"api_key"`
+}
+
+type Config map[string]*Profile
+
+func loadProfile(configFile, name string) (*Profile, error) {
+	dat, err := ioutil.ReadFile(configFile)
+	switch {
+	case err == nil:
+	case os.IsNotExist(err):
+		return nil, nil
+	default:
+		return nil, err
+	}
+	out := Config{}
+	if err := yaml.Unmarshal(dat, out); err != nil {
+		return nil, err
+	}
+
+	prof, ok := out[name]
+	if !ok {
+		return nil, fmt.Errorf("profile %s not found", name)
+	}
+
+	return prof, nil
+}
+
 const revisionHeader = "BlobStash-Filetree-FS-Revision"
 
 func main() {
@@ -62,8 +101,8 @@ func main() {
 	syncDelay := flag.Duration("sync-delay", 5*time.Minute, "delay to wait after the last modification to initate a sync")
 	forceRemote := flag.Bool("force-remote", false, "force fetching data blobs from object storage")
 	disableRemote := flag.Bool("disable-remote", false, "disable fetching data blobs from object storage")
-
-	// FIXME(tsileo): a way to set the remote config via a special config file?
+	configFile := flag.String("config-file", filepath.Join(pathutil.ConfigDir(), "fs_client.yaml"), "confg file path")
+	configProfile := flag.String("config-profile", "default", "config profile name")
 
 	flag.Parse()
 	if flag.NArg() < 2 {
@@ -73,6 +112,17 @@ func main() {
 	}
 	mountpoint := flag.Arg(0)
 	ref := flag.Arg(1)
+
+	profile, err := loadProfile(*configFile, *configProfile)
+	if err != nil {
+		fmt.Printf("failed to load config profile %s at %s: %v\n", *configProfile, *configFile, err)
+		os.Exit(1)
+	}
+
+	if profile == nil {
+		fmt.Printf("please setup a config file at %s\n", *configFile)
+		os.Exit(1)
+	}
 
 	// Cache setup, follow XDG spec
 	cacheDir := filepath.Join(pathutil.CacheDir(), "fs", fmt.Sprintf("%s_%s", mountpoint, ref))
@@ -105,16 +155,14 @@ func main() {
 	}
 
 	// Setup the clients for BlobStash
-	host := os.Getenv("BLOBS_API_HOST")
-	apiKey := os.Getenv("BLOBS_API_KEY")
 	hostname, err := os.Hostname()
 	if err != nil {
 		fmt.Printf("failed to get hostname: %v\n", err)
 		os.Exit(1)
 	}
 
-	clientUtil := clientutil.NewClientUtil(host,
-		clientutil.WithAPIKey(apiKey),
+	clientUtil := clientutil.NewClientUtil(profile.Endpoint,
+		clientutil.WithAPIKey(profile.APIKey),
 		clientutil.WithHeader(ctxutil.FileTreeHostnameHeader, hostname),
 		clientutil.WithHeader(ctxutil.NamespaceHeader, "rwfs-"+ref),
 		clientutil.EnableMsgpack(),
@@ -135,7 +183,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	isHostLocal, err := iputil.IsPrivate(host)
+	isHostLocal, err := iputil.IsPrivate(profile.Endpoint)
 	if err != nil {
 		fmt.Printf("invalid BLOBS_API_HOST")
 		os.Exit(1)
@@ -150,7 +198,7 @@ func main() {
 		useRemote = isHostLocal
 	}
 
-	root, err := NewFileSystem(flag.Arg(1), flag.Arg(0), *debug, *roMode, cache, cacheDir, bs, kvs, clientUtil, useRemote)
+	root, err := NewFileSystem(flag.Arg(1), flag.Arg(0), *debug, *roMode, profile, cache, cacheDir, bs, kvs, clientUtil, useRemote)
 	if err != nil {
 		fmt.Printf("failed to initialize filesystem: %v\n", err)
 		os.Exit(1)
@@ -820,7 +868,7 @@ func (c *Cache) PutRemote(ctx context.Context, hash string, data []byte) error {
 
 	// Prepare the upload request
 	params := &s3.PutObjectInput{
-		Bucket:   aws.String(os.Getenv("BLOBS_S3_BUCKET")),
+		Bucket:   aws.String(c.fs.profile.RemoteConfig.Bucket),
 		Key:      aws.String("tmp/" + ehash),
 		Body:     bytes.NewReader(data),
 		Metadata: map[string]*string{},
@@ -917,7 +965,7 @@ func (c *Cache) GetRemote(ctx context.Context, hash string) ([]byte, error) {
 		c.fs.stats.CacheReqs++
 		c.fs.stats.Unlock()
 
-		obj, err := s3util.NewBucket(c.fs.s3, os.Getenv("BLOBS_S3_BUCKET")).GetObject(hash)
+		obj, err := s3util.NewBucket(c.fs.s3, c.fs.profile.RemoteConfig.Bucket).GetObject(hash)
 		if err != nil {
 			return nil, err
 		}
@@ -937,6 +985,8 @@ type FileSystem struct {
 	ref   string
 	debug bool
 	ro    bool
+
+	profile *Profile
 
 	debugVFS *DebugVFS
 
@@ -994,11 +1044,12 @@ type FDInfo struct {
 	CreatedAt  time.Time
 }
 
-func NewFileSystem(ref, mountpoint string, debug, ro bool, cache *Cache, cacheDir string, bs *blobstore.BlobStore, kvs *kvstore.KvStore, cu *clientutil.ClientUtil, useRemote bool) (*FileSystem, error) {
+func NewFileSystem(ref, mountpoint string, debug, ro bool, profile *Profile, cache *Cache, cacheDir string, bs *blobstore.BlobStore, kvs *kvstore.KvStore, cu *clientutil.ClientUtil, useRemote bool) (*FileSystem, error) {
 	fs := &FileSystem{
 		cache:      cache,
 		bs:         bs,
 		kvs:        kvs,
+		profile:    profile,
 		clientUtil: cu,
 		ref:        ref,
 		debug:      debug,
@@ -1023,15 +1074,26 @@ func NewFileSystem(ref, mountpoint string, debug, ro bool, cache *Cache, cacheDi
 	fs.rwLayer.fs = fs
 	cache.fs = fs
 
-	if kfile := os.Getenv("BLOBS_KEY_FILE"); kfile != "" {
+	if fs.profile.RemoteConfig != nil && fs.profile.RemoteConfig.KeyFile != "" {
 		var out [32]byte
-		data, err := ioutil.ReadFile(kfile)
+		data, err := ioutil.ReadFile(fs.profile.RemoteConfig.KeyFile)
 		if err != nil {
 			return nil, err
 		}
 		copy(out[:], data)
 		fs.key = &out
-		fs.s3 = s3.New(session.New(&aws.Config{Region: aws.String(os.Getenv("BLOBS_S3_REGION"))}))
+		if fs.profile.RemoteConfig.Endpoint != "" {
+			fs.s3, err = s3util.NewWithCustomEndoint(fs.profile.RemoteConfig.Region, fs.profile.RemoteConfig.Endpoint)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			fs.s3, err = s3util.New(fs.profile.RemoteConfig.Region)
+			if err != nil {
+				return nil, err
+			}
+
+		}
 	}
 
 	return fs, nil
