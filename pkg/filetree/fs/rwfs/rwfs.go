@@ -50,7 +50,6 @@ import (
 // TODO(tsileo):
 // - support file@<date> ; e.g.: file.txt@2017-5-4T21:30 ???
 // - `-snapshot` mode that lock to the current version, very efficient, can specify a snapshot version `-at`
-// - RO mode
 
 type RemoteConfig struct {
 	Endpoint        string `yaml:"endpoint"`
@@ -1278,6 +1277,20 @@ func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse
 		}, fuse.OK
 	}
 
+	// The node does not exists
+	// return nil, fuse.ENOENT
+	// If there's an @ in the name, it may be a request for an older version
+	if node == nil && strings.Contains(name, "@") {
+		// FIXME(tsileo): split on the last @
+		parts := strings.Split(name, "@")
+		fmt.Printf("parts=%q\n\n", parts)
+		name = parts[0]
+		node, err = fs.getNode(name)
+		if err != nil {
+			fs.logEIO(err)
+			return nil, fuse.EIO
+		}
+	}
 	if node == nil {
 		return nil, fuse.ENOENT
 	}
@@ -1385,6 +1398,20 @@ func (fs *FileSystem) Open(name string, flags uint32, fctx *fuse.Context) (nodef
 		fs.logEIO(fmt.Errorf("failed to get node: %v", err))
 		return nil, fuse.EIO
 	}
+
+	if node == nil && strings.Contains(name, "@") {
+		parts := strings.Split(name, "@")
+		fmt.Printf("parts=%q\n\n", parts)
+		name = parts[0]
+		// asOf := parts[1]
+		node, err = fs.getNode(name)
+		if err != nil {
+			fs.logEIO(fmt.Errorf("failed to get node: %v", err))
+			return nil, fuse.EIO
+		}
+	}
+
+	// FIXME(tsileo): read only if asOf is set
 
 	fs.rwLayer.mu.Lock()
 	_, rwExists := fs.rwLayer.cache[name]
