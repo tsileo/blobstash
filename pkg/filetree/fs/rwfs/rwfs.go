@@ -32,6 +32,7 @@ import (
 	"github.com/mitchellh/go-ps"
 	yaml "gopkg.in/yaml.v2"
 
+	"a4.io/blobstash/pkg/asof"
 	"a4.io/blobstash/pkg/backend/s3/s3util"
 	"a4.io/blobstash/pkg/blob"
 	bcache "a4.io/blobstash/pkg/cache"
@@ -45,6 +46,22 @@ import (
 	"a4.io/blobstash/pkg/filetree/writer"
 	"a4.io/blobstash/pkg/hashutil"
 	"a4.io/blobstash/pkg/iputil"
+)
+
+// Permissions bits for mode manipulation (borrowed from https://github.com/phayes/permbits/blob/master/permbits.go#L10)
+const (
+	setuid uint32 = 1 << (12 - 1 - iota)
+	setgid
+	sticky
+	userRead
+	userWrite
+	userExecute
+	groupRead
+	groupWrite
+	groupExecute
+	otherRead
+	otherWrite
+	otherExecute
 )
 
 // TODO(tsileo):
@@ -677,9 +694,13 @@ type Node struct {
 	ChangeTime string                 `json:"ctime" msgpack:"ct"`
 	RawMode    int                    `json:"mode" msgpack:"mo"`
 	RemoteRefs []*rnode.IndexValue    `json:"remote_refs,omitempty" msgpack:"rrfs,omitempty"`
+
+	// Set by the FS
+	AsOf int64 `json:"-" msgpack:"-"`
 }
 
 func (n *Node) Mode() uint32 {
+	// TODO(tsileo): handle asOf
 	if n.RawMode > 0 {
 		return uint32(n.RawMode)
 	}
@@ -1172,6 +1193,11 @@ func (fs *FileSystem) remotePath(path string) string {
 
 // getNode fetches the node at path from BlobStash, like a "remote stat".
 func (fs *FileSystem) getNode(path string) (*Node, error) {
+	return fs.getNodeAsOf(path, 0)
+}
+
+// getNode fetches the node at path from BlobStash, like a "remote stat".
+func (fs *FileSystem) getNodeAsOf(path string, asOf int64) (*Node, error) {
 	fs.stats.Lock()
 	fs.stats.RemoteStat++
 	fs.stats.Unlock()
@@ -1194,6 +1220,8 @@ func (fs *FileSystem) getNode(path string) (*Node, error) {
 	if err := clientutil.Unmarshal(resp, node); err != nil {
 		return nil, err
 	}
+
+	node.AsOf = asOf
 
 	return node, nil
 }
@@ -1234,6 +1262,24 @@ func (fs *FileSystem) logOP(opCode, path string, write bool, fctx *fuse.Context)
 		exec := fs.cache.findProcExec(fctx)
 		log.Printf("OP %s path=/%s pid=%d %s\n", opCode, path, fctx.Pid, exec)
 	}
+}
+
+func (fs *FileSystem) nameWithAsOf(oname string) (bool, int64, string) {
+	if !strings.Contains(oname, "@") {
+		return false, 0, oname
+	}
+	fparts := strings.Split(oname, "/")
+	fname := fparts[len(fparts)-1]
+	parts := strings.Split(fname, "@")
+	name := parts[0]
+	if asof.IsValid(parts[1]) {
+		asOf, err := asof.ParseAsOf(parts[1])
+		if err != nil {
+			return false, 0, oname
+		}
+		return true, asOf, name
+	}
+	return false, 0, oname
 }
 
 func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse.Status) {
@@ -1277,18 +1323,20 @@ func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse
 		}, fuse.OK
 	}
 
+	var asOf int64
+	var asOfRequested bool
+
 	// The node does not exists
 	// return nil, fuse.ENOENT
 	// If there's an @ in the name, it may be a request for an older version
-	if node == nil && strings.Contains(name, "@") {
-		// FIXME(tsileo): split on the last @
-		parts := strings.Split(name, "@")
-		fmt.Printf("parts=%q\n\n", parts)
-		name = parts[0]
-		node, err = fs.getNode(name)
-		if err != nil {
-			fs.logEIO(err)
-			return nil, fuse.EIO
+	if node == nil {
+		asOfRequested, asOf, name = fs.nameWithAsOf(name)
+		if asOfRequested {
+			node, err = fs.getNodeAsOf(name, asOf)
+			if err != nil {
+				fs.logEIO(err)
+				return nil, fuse.EIO
+			}
 		}
 	}
 	if node == nil {
@@ -1304,9 +1352,15 @@ func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse
 		}, fuse.OK
 	}
 
+	mode := fuse.S_IFREG | node.Mode()
+	if asOfRequested {
+		// An older version is request, remove the write bits
+		mode &^= uint32(userWrite | groupWrite | otherWrite)
+	}
+
 	// The node is a file
 	return &fuse.Attr{
-		Mode:  fuse.S_IFREG | node.Mode(),
+		Mode:  mode,
 		Size:  uint64(node.Size),
 		Ctime: node.Ctime(),
 		Mtime: node.Mtime(),
@@ -1399,19 +1453,23 @@ func (fs *FileSystem) Open(name string, flags uint32, fctx *fuse.Context) (nodef
 		return nil, fuse.EIO
 	}
 
-	if node == nil && strings.Contains(name, "@") {
-		parts := strings.Split(name, "@")
-		fmt.Printf("parts=%q\n\n", parts)
-		name = parts[0]
-		// asOf := parts[1]
-		node, err = fs.getNode(name)
-		if err != nil {
-			fs.logEIO(fmt.Errorf("failed to get node: %v", err))
-			return nil, fuse.EIO
+	var asOf int64
+	var asOfRequested bool
+
+	if node == nil {
+		asOfRequested, asOf, name = fs.nameWithAsOf(name)
+		if asOfRequested {
+			node, err = fs.getNodeAsOf(name, asOf)
+			if err != nil {
+				fs.logEIO(fmt.Errorf("failed to get node: %v", err))
+				return nil, fuse.EIO
+			}
 		}
 	}
 
-	// FIXME(tsileo): read only if asOf is set
+	if asOfRequested && flags&fuse.O_ANYWRITE != 0 {
+		return nil, fuse.EPERM
+	}
 
 	fs.rwLayer.mu.Lock()
 	_, rwExists := fs.rwLayer.cache[name]
@@ -1552,6 +1610,11 @@ func (fs *FileSystem) Unlink(name string, fctx *fuse.Context) fuse.Status {
 		return fuse.EPERM
 	}
 
+	if asOfRequested, _, _ := fs.nameWithAsOf(name); asOfRequested {
+		// Cannot delete an old file version/revision
+		return fuse.EPERM
+	}
+
 	if err := fs.rwLayer.Unlink(name); err != nil {
 		fs.logEIO(err)
 		return fuse.EIO
@@ -1637,6 +1700,16 @@ func (fs *FileSystem) Rename(oldPath string, newPath string, fctx *fuse.Context)
 		return fuse.EPERM
 	}
 
+	if asOfRequested, _, _ := fs.nameWithAsOf(oldPath); asOfRequested {
+		// Cannot rename an old file version/revision
+		return fuse.EPERM
+	}
+
+	if asOfRequested, _, _ := fs.nameWithAsOf(newPath); asOfRequested {
+		// Cannot rename an old file version/revision
+		return fuse.EPERM
+	}
+
 	if err := fs.rwLayer.Rename(oldPath, newPath); err != nil {
 		fs.logEIO(err)
 		return fuse.EIO
@@ -1716,6 +1789,12 @@ func (fs *FileSystem) Access(name string, mode uint32, fctx *fuse.Context) fuse.
 func (fs *FileSystem) Create(path string, flags uint32, mode uint32, fctx *fuse.Context) (nodefs.File, fuse.Status) {
 	fs.logOP("Create", path, true, fctx)
 	if fs.ro {
+		return nil, fuse.EPERM
+	}
+
+	// XXX(tsileo): Prevent creating file that looks like "as of" request for now
+	// TODO(tsileo): make it optional (the "as of" support)
+	if asOfRequested, _, _ := fs.nameWithAsOf(path); asOfRequested {
 		return nil, fuse.EPERM
 	}
 
