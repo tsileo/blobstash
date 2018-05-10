@@ -129,7 +129,7 @@ type FS struct {
 	Name string `json:"-"`
 	Ref  string `json:"ref"`
 
-	ft *FileTree `json:"-"`
+	ft *FileTree
 }
 
 // New initializes the `DocStoreExt`
@@ -217,8 +217,8 @@ type Node struct {
 	RemoteRefs []*rnode.IndexValue    `json:"remote_refs,omitempty" msgpack:"rrfs,omitempty"`
 
 	Meta   *rnode.RawNode `json:"-" msgpack:"-"`
-	parent *Node          `json:"-" msgpack:"-"`
-	fs     *FS            `json:"-" msgpack:"-"`
+	parent *Node
+	fs     *FS
 
 	URL string `json:"url,omitempty" msgpack:"u,omitempty"`
 }
@@ -635,7 +635,7 @@ func (ft *FileTree) uploadHandler() func(http.ResponseWriter, *http.Request) {
 }
 
 type Info struct {
-	Image *imginfo.Image `json:"image",omitempty`
+	Image *imginfo.Image `json:"image,omitempty"`
 }
 
 func (ft *FileTree) fetchInfo(reader io.ReadSeeker, filename, hash string) (*Info, error) {

@@ -821,7 +821,6 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				basicQuery:      q.Get("query"),
 			}, cursor, limit, true, asOf)
 			if err != nil {
-				panic(err)
 				docstore.logger.Error("query failed", "err", err)
 				httputil.Error(w, err)
 				return

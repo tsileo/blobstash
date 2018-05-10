@@ -233,5 +233,4 @@ func fromJSON(L *lua.LState, value interface{}) lua.LValue {
 		}
 		panic(fmt.Errorf("unsupported type %+v", converted))
 	}
-	return lua.LNil
 }

@@ -68,7 +68,7 @@ func (o *Oplog) Register(r *mux.Router, basicAuth func(http.Handler) http.Handle
 
 func (o *Oplog) init() {
 	// Start the SSE broker worker
-	o.broker.start()
+	go o.broker.start()
 	// Register to the new blob event
 	o.hub.Subscribe(hub.NewBlob, "oplog", o.newBlobCallback)
 	o.hub.Subscribe(hub.FiletreeFSUpdate, "oplog", o.filetreeFSUpdateCallback)
@@ -99,39 +99,37 @@ type Broker struct {
 }
 
 func (b *Broker) start() {
-	go func() {
-		for {
-			select {
-			case s := <-b.newClients:
-				// There is a new client attached and we
-				// want to start sending them messages.
-				b.mu.Lock()
-				b.clients[s] = true
-				b.mu.Unlock()
-				b.log.Debug("added new client")
+	for {
+		select {
+		case s := <-b.newClients:
+			// There is a new client attached and we
+			// want to start sending them messages.
+			b.mu.Lock()
+			b.clients[s] = true
+			b.mu.Unlock()
+			b.log.Debug("added new client")
 
-			case s := <-b.defunctClients:
-				// A client has dettached and we want to
-				// stop sending them messages.
-				b.mu.Lock()
-				delete(b.clients, s)
-				b.mu.Unlock()
-				close(s)
-				b.log.Debug("removed client")
+		case s := <-b.defunctClients:
+			// A client has dettached and we want to
+			// stop sending them messages.
+			b.mu.Lock()
+			delete(b.clients, s)
+			b.mu.Unlock()
+			close(s)
+			b.log.Debug("removed client")
 
-			case op := <-b.ops:
-				// There is a new message to send.  For each
-				// attached client, push the new message
-				// into the client's message channel.
-				b.mu.Lock()
-				for s, _ := range b.clients {
-					s <- op
-				}
-				b.mu.Unlock()
-				b.log.Info("message sent", "op", op, "clients_count", len(b.clients))
+		case op := <-b.ops:
+			// There is a new message to send.  For each
+			// attached client, push the new message
+			// into the client's message channel.
+			b.mu.Lock()
+			for s, _ := range b.clients {
+				s <- op
 			}
+			b.mu.Unlock()
+			b.log.Info("message sent", "op", op, "clients_count", len(b.clients))
 		}
-	}()
+	}
 }
 
 func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {

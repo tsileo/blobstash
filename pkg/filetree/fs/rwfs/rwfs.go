@@ -1244,10 +1244,10 @@ func (*FileSystem) OnUnmount() {}
 
 func (fs *FileSystem) logEIO(err error) {
 	panic(err)
-	log.Printf("EIO error: %+v\n", err)
-	fs.stats.Lock()
-	defer fs.stats.Unlock()
-	fs.stats.Eios++
+	//log.Printf("EIO error: %+v\n", err)
+	//fs.stats.Lock()
+	//defer fs.stats.Unlock()
+	//fs.stats.Eios++
 }
 
 func (fs *FileSystem) logOP(opCode, path string, write bool, fctx *fuse.Context) {

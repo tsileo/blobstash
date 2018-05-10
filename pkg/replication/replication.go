@@ -47,10 +47,10 @@ type Replication struct {
 
 	conf *config.ReplicateFrom
 
-	wg sync.WaitGroup
+	wg *sync.WaitGroup
 }
 
-func New(logger log.Logger, conf *config.Config, bs store.BlobStore, s *bsync.Sync, wg sync.WaitGroup) (*Replication, error) {
+func New(logger log.Logger, conf *config.Config, bs store.BlobStore, s *bsync.Sync, wg *sync.WaitGroup) (*Replication, error) {
 	logger.Debug("init")
 	rep := &Replication{
 		conf:        conf.ReplicateFrom,

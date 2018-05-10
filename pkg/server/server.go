@@ -61,7 +61,7 @@ type Server struct {
 
 	hostWhitelist map[string]bool
 	shutdown      chan struct{}
-	wg            sync.WaitGroup
+	wg            *sync.WaitGroup
 }
 
 func New(conf *config.Config) (*Server, error) {
@@ -74,7 +74,7 @@ func New(conf *config.Config) (*Server, error) {
 		conf:          conf,
 		hostWhitelist: map[string]bool{},
 		log:           logger,
-		wg:            wg,
+		wg:            &wg,
 		shutdown:      make(chan struct{}),
 	}
 	authFunc, basicAuth := middleware.NewBasicAuth(conf)
@@ -131,7 +131,7 @@ func New(conf *config.Config) (*Server, error) {
 
 	// Enable replication if set in the config
 	if conf.ReplicateFrom != nil {
-		if _, err := replication.New(logger.New("app", "replication"), conf, rootBlobstore, synctable, wg); err != nil {
+		if _, err := replication.New(logger.New("app", "replication"), conf, rootBlobstore, synctable, &wg); err != nil {
 			return nil, fmt.Errorf("failed to initialize replication app: %v", err)
 		}
 	}
