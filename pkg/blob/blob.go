@@ -27,7 +27,7 @@ type SizedBlobRef struct {
 
 type Blob struct {
 	Hash  string      `json:"h"`
-	Data  []byte      `json":"-"`
+	Data  []byte      `json:"-"`
 	Extra interface{} `json:"e,omitempty"`
 }
 

@@ -22,18 +22,18 @@ func getWidthHeight(f io.Reader) (int, int, error) {
 }
 
 type Image struct {
-	Width  int       `json:"width",omtempty`
-	Height int       `json:"height",omtempty`
-	Exif   *ExifInfo `json:"exif",omitempty`
+	Width  int       `json:"width,omitempty"`
+	Height int       `json:"height,omitempty"`
+	Exif   *ExifInfo `json:"exif,omitempty"`
 }
 
 type ExifInfo struct {
-	Datetime  string  `json:"datetime",omitempty`
-	Make      string  `json:"make",omitempty`
-	Model     string  `json:"model",omitempty`
-	LensModel string  `json:"lens_model",omitempty`
-	GPSLat    float64 `json:"gps_lat",omitempty`
-	GPSLng    float64 `json:"gps_lng",omitempty`
+	Datetime  string  `json:"datetime,omitempty"`
+	Make      string  `json:"make,omitempty"`
+	Model     string  `json:"model,omitempty"`
+	LensModel string  `json:"lens_model,omitempty"`
+	GPSLat    float64 `json:"gps_lat,omitempty"`
+	GPSLng    float64 `json:"gps_lng,omitempty"`
 }
 
 func parseExif(f io.Reader) (*ExifInfo, error) {
