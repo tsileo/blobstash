@@ -1202,7 +1202,10 @@ func (fs *FileSystem) getNodeAsOf(path string, asOf int64) (*Node, error) {
 	fs.stats.RemoteStat++
 	fs.stats.Unlock()
 
-	resp, err := fs.clientUtil.Get(fs.remotePath(path))
+	resp, err := fs.clientUtil.Get(
+		fs.remotePath(path),
+		clientutil.WithQueryArg("as_of", strconv.FormatInt(asOf, 10)),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1332,6 +1335,7 @@ func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse
 	if node == nil {
 		asOfRequested, asOf, name = fs.nameWithAsOf(name)
 		if asOfRequested {
+			log.Printf("\"asOf\" requested (%s): %v\n", name, asOf)
 			node, err = fs.getNodeAsOf(name, asOf)
 			if err != nil {
 				fs.logEIO(err)
@@ -1973,7 +1977,7 @@ func NewRWFile(ctx context.Context, fctx *fuse.Context, fs *FileSystem, path str
 		meta = newRWFileMeta(fs, node, path)
 		fs.rwLayer.cache[path] = meta
 		if i, ok := fs.rwLayer.index[meta.parent]; ok {
-			i = append(i, meta)
+			fs.rwLayer.index[meta.parent] = append(i, meta)
 		} else {
 			fs.rwLayer.index[meta.parent] = []*RWFileMeta{meta}
 		}

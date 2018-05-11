@@ -1160,6 +1160,9 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 				panic(err)
 			}
 			data, err := msgpack.Marshal(ndoc)
+			if err != nil {
+				panic(err)
+			}
 
 			// TODO(tsileo): also check for reserved keys here
 

@@ -105,7 +105,9 @@ func (r *Range) first() ([]byte, []byte, error) {
 	}
 
 	r.enum, _, err = r.db.db.Seek(r.Min)
-	// FIXME(tsileo): handle err
+	if err != nil && err != io.EOF {
+		return nil, nil, err
+	}
 	return r.enum.Next()
 }
 

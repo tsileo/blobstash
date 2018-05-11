@@ -128,6 +128,7 @@ type Snapshot struct {
 type FS struct {
 	Name string `json:"-"`
 	Ref  string `json:"ref"`
+	AsOf int64  `json:"-"`
 
 	ft *FileTree
 }
@@ -446,7 +447,7 @@ func (ft *FileTree) fetchDir(ctx context.Context, n *Node, depth, maxDepth int) 
 }
 
 // FS fetch the FileSystem by name, returns an empty one if not found
-func (ft *FileTree) FS(ctx context.Context, name, prefixFmt string, newState bool, asOf int) (*FS, error) {
+func (ft *FileTree) FS(ctx context.Context, name, prefixFmt string, newState bool, asOf int64) (*FS, error) {
 	fs := &FS{}
 	if !newState {
 		if asOf == 0 {
@@ -465,7 +466,7 @@ func (ft *FileTree) FS(ctx context.Context, name, prefixFmt string, newState boo
 			}
 		} else {
 			// Set the existing ref
-			kvv, _, err := ft.kvStore.Versions(ctx, fmt.Sprintf(prefixFmt, name), strconv.Itoa(asOf), 1)
+			kvv, _, err := ft.kvStore.Versions(ctx, fmt.Sprintf(prefixFmt, name), strconv.FormatInt(asOf, 10), 1)
 			switch err {
 			case nil:
 				if len(kvv.Versions) > 0 {
@@ -480,6 +481,7 @@ func (ft *FileTree) FS(ctx context.Context, name, prefixFmt string, newState boo
 		}
 	}
 	fs.Name = name
+	fs.AsOf = asOf
 	fs.ft = ft
 	return fs, nil
 }
@@ -771,14 +773,19 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 		if p := r.URL.Query().Get("prefix"); p != "" {
 			prefixFmt = p + ":%s"
 		}
-		var mtime int64
+		var mtime, asOf int64
 		var err error
-		if st := r.URL.Query().Get("mtime"); st != "" {
-			mtime, err = strconv.ParseInt(st, 10, 0)
-			if err != nil {
-				panic(err)
-			}
+		q := httputil.NewQuery(r.URL.Query())
+
+		mtime, err = q.GetInt64Default("mtime", 0)
+		if err != nil {
+			panic(err)
 		}
+		asOf, err = q.GetInt64Default("as_of", 0)
+		if err != nil {
+			panic(err)
+		}
+
 		var fs *FS
 		switch refType {
 		case "ref":
@@ -787,7 +794,7 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 				ft:  ft,
 			}
 		case "fs":
-			fs, err = ft.FS(ctx, fsName, prefixFmt, false, 0)
+			fs, err = ft.FS(ctx, fsName, prefixFmt, false, asOf)
 			if err != nil {
 				panic(err)
 			}

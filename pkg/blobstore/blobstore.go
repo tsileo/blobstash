@@ -226,8 +226,8 @@ func (bs *BlobStore) GetEncoded(ctx context.Context, hash string) ([]byte, error
 				if err != nil {
 					return nil, err
 				}
-				if err := bs.dataCache.Add(hash, blob); err != nil {
-					return nil, err
+				if cerr := bs.dataCache.Add(hash, blob); cerr != nil {
+					return nil, cerr
 				}
 				blob = snappy.Encode(nil, blob)
 				err = nil

@@ -105,9 +105,9 @@ func (docstore *DocStore) Col(collection string) *Collection {
 }
 
 func (col *Collection) Insert(ctx context.Context, idoc interface{}, opts *InsertOpts) (*ID, error) {
-	if opts == nil {
-		opts = DefaultInsertOpts()
-	}
+	//if opts == nil {
+	//	opts = DefaultInsertOpts()
+	//}
 	var js []byte
 	var err error
 	var payload io.Reader

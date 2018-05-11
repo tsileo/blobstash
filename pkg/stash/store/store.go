@@ -274,10 +274,6 @@ func (p *KvStoreProxy) Keys(ctx context.Context, start, end string, limit int) (
 		tmp = append(tmp, &sortHelper{kv, false})
 	}
 
-	if limit > 0 && len(kvs) > limit {
-		kvs = kvs[0:limit]
-	}
-
 	// Sort everything
 	sort.Slice(tmp, func(i, j int) bool {
 		return tmp[i].Item.(*vkv.KeyValue).Key < tmp[j].Item.(*vkv.KeyValue).Key

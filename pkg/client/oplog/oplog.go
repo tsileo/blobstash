@@ -98,6 +98,4 @@ func (o *Oplog) Notify(ctx context.Context, ops chan<- *Op, connCallback func())
 			}
 		}
 	}
-
-	return nil
 }
