@@ -294,6 +294,68 @@ func main() {
 	os.Exit(0)
 }
 
+// inputFile is a temp file used to take "user input" via the VFS (`$ echo 1 >> .fs/vfs/option`)
+// the first flush with data will trigger the specified callback
+type inputFile struct {
+	fs *FileSystem
+	nodefs.File
+	f *os.File
+
+	flushCallback func([]byte) error
+
+	flushed bool
+}
+
+func newInputFile(fs *FileSystem, cb func([]byte) error) (*inputFile, error) {
+	f, err := ioutil.TempFile("", "blobstash_rwfs")
+	if err != nil {
+		return nil, err
+	}
+	lf := nodefs.NewLoopbackFile(f)
+	return &inputFile{
+		fs:            fs,
+		File:          lf,
+		f:             f,
+		flushCallback: cb,
+	}, nil
+}
+
+// Flush implements the flush interface
+func (f *inputFile) Flush() fuse.Status {
+	f.fs.mu.Lock()
+	defer f.fs.mu.Unlock()
+
+	if status := f.File.Flush(); status != fuse.OK {
+		if status == fuse.EIO {
+			f.fs.logEIO(fmt.Errorf("loopback file %+v failed with status %v", f, status))
+		}
+		return status
+	}
+
+	if _, err := f.f.Seek(0, os.SEEK_SET); err != nil {
+		return fuse.EIO
+	}
+
+	data, err := ioutil.ReadAll(f.f)
+	if err != nil && err != io.EOF {
+		return fuse.EIO
+	}
+
+	if !f.flushed && len(data) > 0 && f.flushCallback != nil {
+		if err := f.flushCallback(data); err != nil {
+			return fuse.EIO
+		}
+		f.flushed = true
+	}
+
+	if err := os.Remove(f.f.Name()); err != nil {
+		return fuse.EIO
+	}
+
+	return fuse.OK
+}
+
+// DebugVFS holds the VFS manager (mounted at `.fs/`)
 type DebugVFS struct {
 	fs    *FileSystem
 	Path  string
@@ -353,6 +415,12 @@ func newDebugVFS(fs *FileSystem) *DebugVFS {
 			"last_revision": newVFSEntry(func() interface{} {
 				return fs.lastRevision
 			}),
+			"commit": func(name string, _ *fuse.Context) (nodefs.File, error) {
+				return newInputFile(fs, func(data []byte) error {
+					log.Printf("COMMMIIITTTT: %s\n", data)
+					return nil
+				})
+			},
 		},
 	}
 }
@@ -362,8 +430,12 @@ func (dvfs *DebugVFS) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, bool
 		return dvfs.attr, true
 	}
 	if _, ok := dvfs.index[filepath.Base(name)]; ok {
+		mode := uint32(fuse.S_IFREG | 0444)
+		if filepath.Base(name) == "commit" {
+			mode = fuse.S_IFREG | 0644
+		}
 		return &fuse.Attr{
-			Mode:  fuse.S_IFREG | 0444,
+			Mode:  mode,
 			Mtime: uint64(dvfs.fs.stats.startedAt.Unix()),
 			Ctime: uint64(dvfs.fs.stats.startedAt.Unix()),
 		}, true
@@ -1150,7 +1222,10 @@ mark_filetree_node(ref)
 	// FIXME(tsileo): make the stash name configurable
 	resp, err := fs.clientUtil.PostMsgpack(
 		fmt.Sprintf("/api/stash/rwfs-%s/_gc", fs.ref),
-		map[string]interface{}{"script": gcScript, "remote_refs": fs.cache.remoteRefs},
+		map[string]interface{}{
+			"script":      gcScript,
+			"remote_refs": fs.cache.remoteRefs,
+		},
 	)
 	if err != nil {
 		// FIXME(tsileo): find a better way to handle this?
