@@ -6,8 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	_ "github.com/dchest/blake2b"
-
 	"a4.io/blobstash/pkg/client/blobstore"
 	"a4.io/blobstash/pkg/filetree/filetreeutil/node"
 	"a4.io/blobstash/pkg/filetree/reader/filereader"

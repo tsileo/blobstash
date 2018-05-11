@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 )
 
-// configDir find the best config directory
+// ConfigDir find the best config directory
 // following XDG Base Directory Specification
 // http://standards.freedesktop.org/basedir-spec/basedir-spec-0.6.html
 // These environment variable are checked in this order:
@@ -31,7 +31,7 @@ func ConfigDir() string {
 	return filepath.Join(os.Getenv("HOME"), ".config", "blobstash")
 }
 
-// varDir find the best var directory
+// VarDir find the best var directory
 // These environment variable are checked in this order:
 // - $BLOBSTASH_CONFIG_DIR
 // And will fallback to:
@@ -43,7 +43,7 @@ func VarDir() string {
 	return filepath.Join(os.Getenv("HOME"), "var", "blobstash")
 }
 
-// cacheDir return current user cache directory
+// CacheDir return current user cache directory
 // following XDG Base Directory Specification
 // http://standards.freedesktop.org/basedir-spec/basedir-spec-0.6.html
 // These environment variable are checked in this order:

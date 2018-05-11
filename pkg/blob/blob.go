@@ -13,18 +13,14 @@ var (
 	// FIXME(tsileo): #blobstash/doc\n header
 )
 
-// FIXME(tsileo): remove this
-type NamespacedBlobRef struct {
-	Hash      string
-	Size      int
-	Namespace string
-}
-
+// SizedBlobRef holds a blob hash and its size
 type SizedBlobRef struct {
 	Hash string `json:"hash"`
 	Size int    `json:"size"`
 }
 
+// Blob holds a blob hash/data pair
+// Extra is here to temporarily attach related data
 type Blob struct {
 	Hash  string      `json:"h"`
 	Data  []byte      `json:"-"`
@@ -36,6 +32,7 @@ func (b *Blob) String() string {
 	return b.Hash
 }
 
+// New initializes a new blob
 func New(data []byte) *Blob {
 	return &Blob{
 		Data: data,
@@ -43,6 +40,7 @@ func New(data []byte) *Blob {
 	}
 }
 
+// Check ensures the hash match the data
 func (b *Blob) Check() error {
 	chash := hashutil.Compute(b.Data)
 	if b.Hash != chash {
@@ -51,6 +49,7 @@ func (b *Blob) Check() error {
 	return nil
 }
 
+// IsMeta returns true if the blob contains "meta blob (an encoded internal data)
 func (b *Blob) IsMeta() bool {
 	if len(b.Data) < len(metaHeader) {
 		return false
@@ -61,6 +60,7 @@ func (b *Blob) IsMeta() bool {
 	return false
 }
 
+// IsFiletreeNode returns true if the blob contains a filetree node (an encoded file/dir meta data)
 func (b *Blob) IsFiletreeNode() bool {
 	if len(b.Data) < len(nodeHeader) {
 		return false

@@ -42,7 +42,7 @@ func (node *node) String() string {
 	return fmt.Sprintf("[node %v done=%v, meta=%+v, err=%v]", node.path, node.done, node.meta, node.err)
 }
 
-// Recursively read the directory and
+// DirExplorer recursively reads the directory and
 // send/route the files/directories to the according channel for processing
 func (up *Uploader) DirExplorer(path string, pnode *node, nodes chan<- *node) {
 	pnode.mu.Lock()
@@ -78,7 +78,7 @@ func (up *Uploader) DirExplorer(path string, pnode *node, nodes chan<- *node) {
 	return
 }
 
-// DirWriter reads the directory and upload it.
+// DirWriterNode reads the directory and upload it.
 func (up *Uploader) DirWriterNode(node *node) {
 	node.mu.Lock()
 	defer node.mu.Unlock()

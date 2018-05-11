@@ -17,7 +17,7 @@ import (
 	"fmt"
 )
 
-// Cursor hold a hex/byte representation of a timestamp and a hash
+// ID hold a hex/byte representation of a timestamp and a hash
 type ID struct {
 	data    []byte
 	hash    string // The hash is not part of the ID but it can be attached to the ID
@@ -47,11 +47,12 @@ func (id *ID) Flag() byte {
 	return id.flag
 }
 
+// SetVersion ties a version to the ID (not stored anywhere else)
 func (id *ID) SetVersion(v int64) {
 	id.version = v
 }
 
-// TODO(tsileo): make version an int64
+// Version returns the version tied to the ID (if any)
 func (id *ID) Version() int64 {
 	return id.version
 }

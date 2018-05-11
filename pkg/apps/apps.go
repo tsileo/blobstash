@@ -60,8 +60,9 @@ func (app *App) reload() error {
 	}
 	app.index = map[string]os.FileInfo{}
 	if err := filepath.Walk(app.path, app.visit); err != nil {
-		return err
+		return fmt.Errorf("failed to visit dir %s: %v", path, err)
 	}
+
 	return nil
 }
 

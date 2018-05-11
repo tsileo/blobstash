@@ -5,7 +5,6 @@ import (
 
 	"github.com/yuin/gopher-lua"
 
-	_ "a4.io/blobstash/pkg/blobstore"
 	"a4.io/blobstash/pkg/filetree"
 	"a4.io/blobstash/pkg/filetree/writer"
 	"a4.io/blobstash/pkg/stash/store"
@@ -45,6 +44,7 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore) func(*lua.LState) 
 	}
 }
 
+// Setup loads the filetree Lua module
 func Setup(L *lua.LState, ft *filetree.FileTree, bs store.BlobStore) {
 	L.PreloadModule("filetree", setupFileTree(ft, bs))
 }

@@ -9,7 +9,7 @@ import (
 	"a4.io/blobstash/pkg/stash/store"
 )
 
-func setupBlobStore(L *lua.LState, bs store.BlobStore, ctx context.Context) func(*lua.LState) int {
+func setupBlobStore(ctx context.Context, L *lua.LState, bs store.BlobStore) func(*lua.LState) int {
 	return func(L *lua.LState) int {
 		// register functions to the table
 		mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
@@ -45,6 +45,6 @@ func setupBlobStore(L *lua.LState, bs store.BlobStore, ctx context.Context) func
 	}
 }
 
-func Setup(L *lua.LState, bs store.BlobStore, ctx context.Context) {
-	L.PreloadModule("blobstore", setupBlobStore(L, bs, ctx))
+func Setup(L *lua.LState, bs store.BlobStore) {
+	L.PreloadModule("blobstore", setupBlobStore(context.TODO(), L, bs))
 }
