@@ -62,8 +62,8 @@
     "service/s3",
     "service/sts"
   ]
-  revision = "cb873de7862ba08c63e82f37ffebc5ba02d87d26"
-  version = "v1.13.38"
+  revision = "31a85efbe3bc741eb539d6310c8e66030b7c5cb7"
+  version = "v1.13.47"
 
 [[projects]]
   branch = "master"
@@ -124,7 +124,7 @@
   branch = "master"
   name = "github.com/cznic/mathutil"
   packages = ["."]
-  revision = "7764e6a2216aaa02c36f75aad62538d39c2962c2"
+  revision = "ca4c9f2c136954238c3158b92de72078c7672ecc"
 
 [[projects]]
   branch = "master"
@@ -154,7 +154,7 @@
   branch = "master"
   name = "github.com/evanphx/json-patch"
   packages = ["."]
-  revision = "9fa11df836c7537e8ad3d1639fa0d396559a7bab"
+  revision = "9f095e0732475147cbb029ffd99634b386d06651"
 
 [[projects]]
   name = "github.com/go-ini/ini"
@@ -177,8 +177,8 @@
 [[projects]]
   name = "github.com/golang/protobuf"
   packages = ["proto"]
-  revision = "925541529c1fa6821df4e44ce2723319eb2be768"
-  version = "v1.0.0"
+  revision = "b4deda0973fb4c70b50d226b1af49f3da59f5265"
+  version = "v1.1.0"
 
 [[projects]]
   branch = "master"
@@ -370,13 +370,13 @@
     "scrypt",
     "ssh/terminal"
   ]
-  revision = "b49d69b5da943f7ef3c9cf91c8777c1f78a0cc3c"
+  revision = "2d027ae1dddd4694d54f7a8b6cbe78dca8720226"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
   packages = ["context"]
-  revision = "5f9ae10d9af5b1c89ae6904293b14b064d4ada23"
+  revision = "2491c5de3490fced2f6cff376127c667efeed857"
 
 [[projects]]
   branch = "master"
@@ -385,7 +385,7 @@
     "unix",
     "windows"
   ]
-  revision = "f67ecc163a74fbeea4cb1db0a101dcd07201464a"
+  revision = "d0faeb539838e250bd0a9db4182d48d4a1915181"
 
 [[projects]]
   name = "google.golang.org/appengine"
@@ -418,6 +418,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "92eb560250f9e6f5237d2b9c72c84f921c8f876bb8cbebd7598e57bd07f52387"
+  inputs-digest = "83b6436edd88aea823c0cf4d7f8adf8f268715965801a941bd2369f02cd3ac78"
   solver-name = "gps-cdcl"
   solver-version = 1
