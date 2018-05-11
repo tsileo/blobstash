@@ -38,7 +38,7 @@ func GC(ctx context.Context, h *hub.Hub, s *stash.Stash, script string, remoteRe
 	L.PreloadModule("msgpack", loadMsgpack)
 	L.PreloadModule("node", loadNode)
 	kvsLua.Setup(L, s.KvStore(), ctx)
-	bsLua.Setup(L, s.BlobStore(), ctx)
+	bsLua.Setup(L, s.BlobStore())
 
 	if err := L.DoString(`
 local msgpack = require('msgpack')

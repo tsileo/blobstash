@@ -311,7 +311,7 @@ func (docstore *DocStore) Collections() ([]string, error) {
 			break
 		}
 		var col string
-		for kv := range res {
+		for _, kv := range res {
 			// Key = <docstore:{collection}:{_id}>
 			col = strings.Split(kv.Key, ":")[1]
 			index[col] = struct{}{}
