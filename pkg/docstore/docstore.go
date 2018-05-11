@@ -57,20 +57,21 @@ import (
 // - do we need to check if the doc is already indexed?
 
 var (
-	PrefixKey    = "docstore:"
-	PrefixKeyFmt = PrefixKey + "%s"
-	KeyFmt       = PrefixKeyFmt + ":%s"
+	prefixKey    = "docstore:"
+	prefixKeyFmt = prefixKey + "%s"
+	keyFmt       = prefixKeyFmt + ":%s"
 
 	PrefixIndexKeyFmt = "docstore-index:%s"
 	IndexKeyFmt       = PrefixIndexKeyFmt + ":%s"
 
 	// XXX(tsileo): remove or re-implement fine-grained permission
-	PermName           = "docstore"
-	PermCollectionName = "docstore:collection"
-	PermWrite          = "write"
-	PermRead           = "read"
+	//PermName           = "docstore"
+	//PermCollectionName = "docstore:collection"
+	//PermWrite          = "write"
+	//PermRead           = "read"
 )
 
+// ErrUnprocessableEntity is returned when a document is faulty
 var ErrUnprocessableEntity = errors.New("unprocessable entity")
 
 var reservedKeys = map[string]struct{}{
@@ -92,14 +93,14 @@ func idFromKey(col, key string) (*id.ID, error) {
 }
 
 const (
-	FlagNoop byte = iota // Default flag
-	FlagDeleted
+	flagNoop byte = iota // Default flag
+	flagDeleted
 )
 
 const (
-	PointerBlobJSON = "@blobs/json:" // FIXME(tsileo): document the Pointer feature
+	pointerBlobJSON = "@blobs/json:" // FIXME(tsileo): document the Pointer feature
 	// PointerBlobRef     = "@blobs/ref:"  // FIXME(tsileo): implements this like a @filetree/ref
-	PointerFiletreeRef = "@filetree/ref:"
+	pointerFiletreeRef = "@filetree/ref:"
 	//PointerURLInfo     = "@url/info:" // XXX(tsileo): fetch OG meta data or at least title, optionally screenshot???
 	// TODO(tsileo): implements PointerKvRef
 	// PointerKvRef = "@kv/ref:"
@@ -118,6 +119,7 @@ type executionStats struct {
 	Index             string `json:"index"`
 }
 
+// DocStore holds the docstore manager
 type DocStore struct {
 	kvStore   store.KvStore
 	blobStore store.BlobStore
@@ -191,7 +193,7 @@ func (docstore *DocStore) Close() error {
 	return nil
 }
 
-// RegisterRoute registers all the HTTP handlers for the extension
+// Register registers all the HTTP handlers for the extension
 func (docstore *DocStore) Register(r *mux.Router, basicAuth func(http.Handler) http.Handler) {
 	r.Handle("/", basicAuth(http.HandlerFunc(docstore.collectionsHandler())))
 	r.Handle("/_stored_queries", basicAuth(http.HandlerFunc(docstore.storedQueriesHandler())))
@@ -224,38 +226,38 @@ func (docstore *DocStore) fetchPointers(doc map[string]interface{}) (map[string]
 			continue
 		case string:
 			switch {
-			case strings.HasPrefix(vv, PointerBlobJSON):
+			case strings.HasPrefix(vv, pointerBlobJSON):
 				if _, ok := pointers[vv]; ok {
 					// The reference has already been fetched
 					continue
 				}
 				// XXX(tsileo): here and at other place, add a util func in hashutil to detect invalid string length at least
-				blob, err := docstore.blobStore.Get(context.TODO(), vv[len(PointerBlobJSON):])
+				blob, err := docstore.blobStore.Get(context.TODO(), vv[len(pointerBlobJSON):])
 				if err != nil {
-					return nil, fmt.Errorf("failed to fetch JSON ref: \"%v => %v\": %v", PointerBlobJSON, v, err)
+					return nil, fmt.Errorf("failed to fetch JSON ref: \"%v => %v\": %v", pointerBlobJSON, v, err)
 				}
 				p := map[string]interface{}{}
 				if err := json.Unmarshal(blob, &p); err != nil {
-					return nil, fmt.Errorf("failed to unmarshal blob  \"%v => %v\": %v", PointerBlobJSON, v, err)
+					return nil, fmt.Errorf("failed to unmarshal blob  \"%v => %v\": %v", pointerBlobJSON, v, err)
 				}
 				pointers[vv] = p
-			case strings.HasPrefix(vv, PointerFiletreeRef):
+			case strings.HasPrefix(vv, pointerFiletreeRef):
 				if _, ok := pointers[vv]; ok {
 					// The reference has already been fetched
 					continue
 				}
 				// XXX(tsileo): here and at other place, add a util func in hashutil to detect invalid string length at least
-				hash := vv[len(PointerFiletreeRef):]
+				hash := vv[len(pointerFiletreeRef):]
 				// TODO(tsileo): call filetree to get a node
 				// blob, err := docstore.blobStore.Get(context.TODO(), hash)
 				// if err != nil {
-				// 	return nil, fmt.Errorf("failed to fetch JSON ref: \"%v => %v\": %v", PointerFiletreeRef, v, err)
+				// 	return nil, fmt.Errorf("failed to fetch JSON ref: \"%v => %v\": %v", pointerFiletreeRef, v, err)
 				// }
 
 				// // Reconstruct the Meta
 				// var p map[string]interface{}
 				// if err := json.Unmarshal(blob, &p); err != nil {
-				// 	return nil, fmt.Errorf("failed to unmarshal meta  \"%v => %v\": %v", PointerBlobJSON, v, err)
+				// 	return nil, fmt.Errorf("failed to unmarshal meta  \"%v => %v\": %v", pointerBlobJSON, v, err)
 				// }
 				node, err := docstore.filetree.Node(context.TODO(), hash)
 				if err != nil {
@@ -309,7 +311,7 @@ func (docstore *DocStore) Collections() ([]string, error) {
 			break
 		}
 		var col string
-		for _, kv := range res {
+		for kv := range res {
 			// Key = <docstore:{collection}:{_id}>
 			col = strings.Split(kv.Key, ":")[1]
 			index[col] = struct{}{}
@@ -488,7 +490,7 @@ func isQueryAll(q string) bool {
 func (docstore *DocStore) Insert(collection string, doc *map[string]interface{}) (*id.ID, error) {
 	// FIXME(tsileo): fix the pointer mess
 
-	docFlag := FlagNoop
+	docFlag := flagNoop
 
 	// If there's already an "_id" field in the doc, remove it
 	if _, ok := (*doc)["_id"]; ok {
@@ -535,7 +537,7 @@ func (docstore *DocStore) Insert(collection string, doc *map[string]interface{})
 
 	// Create a pointer in the key-value store
 	if _, err := docstore.kvStore.Put(
-		ctx, fmt.Sprintf(KeyFmt, collection, _id.String()), hash, []byte{docFlag}, now.UnixNano(),
+		ctx, fmt.Sprintf(keyFmt, collection, _id.String()), hash, []byte{docFlag}, now.UnixNano(),
 	); err != nil {
 		return nil, err
 	}
@@ -588,6 +590,8 @@ func addSpecialFields(doc map[string]interface{}, _id *id.ID) {
 		doc["_updated"] = time.Unix(0, int64(updated)).UTC().Format(time.RFC3339)
 	}
 }
+
+// LuaQuery performs a Lua query
 func (docstore *DocStore) LuaQuery(L *lua.LState, lfunc *lua.LFunction, collection string, cursor string, limit int) ([]map[string]interface{}, map[string]interface{}, string, error) {
 	query := &query{
 		lfunc: lfunc,
@@ -599,6 +603,7 @@ func (docstore *DocStore) LuaQuery(L *lua.LState, lfunc *lua.LFunction, collecti
 	return docs, pointers, vkv.PrevKey(stats.LastID), nil
 }
 
+// Query performs a query
 func (docstore *DocStore) Query(collection string, query *query, cursor string, limit int, asOf int64) ([]map[string]interface{}, map[string]interface{}, *executionStats, error) {
 	docs, pointers, stats, err := docstore.query(nil, collection, query, cursor, limit, true, asOf)
 	if err != nil {
@@ -627,11 +632,11 @@ func (docstore *DocStore) query(L *lua.LState, collection string, query *query, 
 	// optz := optimizer.New(docstore.logger.New("module", "query optimizer"), indexes)
 
 	// Handle the cursor
-	start := fmt.Sprintf(KeyFmt, collection, "\xff")
+	start := fmt.Sprintf(keyFmt, collection, "\xff")
 	if cursor != "" {
-		start = fmt.Sprintf(KeyFmt, collection, cursor)
+		start = fmt.Sprintf(keyFmt, collection, cursor)
 	}
-	end := fmt.Sprintf(KeyFmt, collection, "")
+	end := fmt.Sprintf(keyFmt, collection, "")
 
 	// Tweak the query limit
 	fetchLimit := limit
@@ -724,7 +729,7 @@ QUERY:
 				if _id, docPointers, err = docstore.Fetch(collection, _id.String(), &doc, fetchPointers, -1); err != nil {
 
 					// The document is deleted skip it
-					if _id.Flag() == FlagDeleted {
+					if _id.Flag() == flagDeleted {
 						continue
 					}
 					// TODO(tsileo): why catch ErrNotFound? should panic?
@@ -921,10 +926,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 	}
 }
 
-// FIXME(ts): A way to make pointers optional?
-
-// Fetch a single document into `res` and returns the `id.ID`
-// Start acts like a cursor.
+// FetchVersions returns all verions/revisions for the given doc ID
 func (docstore *DocStore) FetchVersions(collection, sid string, start int64, limit int, fetchPointers bool) ([]map[string]interface{}, map[string]interface{}, int64, error) {
 	var cursor int64
 	// TODO(tsileo): better output than a slice of `map[string]interface{}`
@@ -934,7 +936,7 @@ func (docstore *DocStore) FetchVersions(collection, sid string, start int64, lim
 
 	// Fetch the KV versions entry for this _id
 	// XXX(tsileo): use int64 for start/end
-	kvv, _, err := docstore.kvStore.Versions(context.TODO(), fmt.Sprintf(KeyFmt, collection, sid), strconv.FormatInt(start, 10), limit)
+	kvv, _, err := docstore.kvStore.Versions(context.TODO(), fmt.Sprintf(keyFmt, collection, sid), strconv.FormatInt(start, 10), limit)
 	// FIXME(tsileo): return the cursor from Versions
 	if err != nil {
 		return nil, nil, cursor, err
@@ -1000,7 +1002,7 @@ func (docstore *DocStore) Fetch(collection, sid string, res interface{}, fetchPo
 	}
 
 	// Fetch the VKV entry for this _id
-	kv, err := docstore.kvStore.Get(context.TODO(), fmt.Sprintf(KeyFmt, collection, sid), version)
+	kv, err := docstore.kvStore.Get(context.TODO(), fmt.Sprintf(keyFmt, collection, sid), version)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1084,7 +1086,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			var doc, pointers map[string]interface{}
 
 			if _id, pointers, err = docstore.Fetch(collection, sid, &doc, true, -1); err != nil {
-				if err == vkv.ErrNotFound || _id.Flag() == FlagDeleted {
+				if err == vkv.ErrNotFound || _id.Flag() == flagDeleted {
 					// Document doesn't exist, returns a status 404
 					w.WriteHeader(http.StatusNotFound)
 					return
@@ -1173,7 +1175,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 				panic(err)
 			}
 
-			if _, err := docstore.kvStore.Put(ctx, fmt.Sprintf(KeyFmt, collection, _id.String()), hash, []byte{_id.Flag()}, -1); err != nil {
+			if _, err := docstore.kvStore.Put(ctx, fmt.Sprintf(keyFmt, collection, _id.String()), hash, []byte{_id.Flag()}, -1); err != nil {
 				panic(err)
 			}
 
@@ -1201,7 +1203,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			doc := map[string]interface{}{}
 			_id, _, err = docstore.Fetch(collection, sid, &doc, false, -1)
 			if err != nil {
-				if err == vkv.ErrNotFound || _id.Flag() == FlagDeleted {
+				if err == vkv.ErrNotFound || _id.Flag() == flagDeleted {
 					// Document doesn't exist, returns a status 404
 					w.WriteHeader(http.StatusNotFound)
 					return
@@ -1229,7 +1231,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			}
 
 			// Field/key starting with `_` are forbidden, remove them
-			for k, _ := range newDoc {
+			for k := range newDoc {
 				if _, ok := reservedKeys[k]; ok {
 					delete(newDoc, k)
 				}
@@ -1249,7 +1251,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 				panic(err)
 			}
 
-			if _, err := docstore.kvStore.Put(ctx, fmt.Sprintf(KeyFmt, collection, _id.String()), hash, []byte{_id.Flag()}, -1); err != nil {
+			if _, err := docstore.kvStore.Put(ctx, fmt.Sprintf(keyFmt, collection, _id.String()), hash, []byte{_id.Flag()}, -1); err != nil {
 				panic(err)
 			}
 			w.Header().Set("ETag", _id.Hash())
@@ -1269,7 +1271,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 
 			_id, _, err := docstore.Fetch(collection, sid, nil, false, -1)
 			if err != nil {
-				if err == vkv.ErrNotFound || _id.Flag() == FlagDeleted {
+				if err == vkv.ErrNotFound || _id.Flag() == flagDeleted {
 					// Document doesn't exist, returns a status 404
 					w.WriteHeader(http.StatusNotFound)
 					return
@@ -1278,7 +1280,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			}
 
 			// FIXME(tsileo): empty the key, and hanlde it in the get/query
-			if _, err := docstore.kvStore.Put(context.TODO(), fmt.Sprintf(KeyFmt, collection, sid), "", []byte{FlagDeleted}, -1); err != nil {
+			if _, err := docstore.kvStore.Put(context.TODO(), fmt.Sprintf(keyFmt, collection, sid), "", []byte{flagDeleted}, -1); err != nil {
 				panic(err)
 			}
 
@@ -1334,7 +1336,7 @@ func (docstore *DocStore) docVersionsHandler() func(http.ResponseWriter, *http.R
 
 			docs, pointers, cursor, err := docstore.FetchVersions(collection, sid, cursor, limit, fetchPointers)
 			if err != nil {
-				if err == vkv.ErrNotFound || _id.Flag() == FlagDeleted {
+				if err == vkv.ErrNotFound || _id.Flag() == flagDeleted {
 					// Document doesn't exist, returns a status 404
 					w.WriteHeader(http.StatusNotFound)
 					return

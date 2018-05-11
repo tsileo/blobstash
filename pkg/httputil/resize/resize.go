@@ -16,6 +16,7 @@ import (
 	"a4.io/blobstash/pkg/cache"
 )
 
+// Resize dynamically resizes an image
 func Resize(cache *cache.Cache, hash, name string, f io.ReadSeeker, r *http.Request) (io.ReadSeeker, bool, error) {
 	swi := r.URL.Query().Get("w")
 	lname := strings.ToLower(name)

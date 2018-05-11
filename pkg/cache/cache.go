@@ -1,3 +1,4 @@
+// Package cache implements a disk-backed LRU cache for "big" binary blob
 package cache // import "a4.io/blobstash/pkg/cache"
 
 import (
@@ -14,6 +15,7 @@ import (
 	"github.com/cznic/kv"
 )
 
+// Cache holds a cache instance, backed by a single file and an in-memory list
 type Cache struct {
 	evict       *list.List
 	items       map[string]*list.Element
@@ -45,6 +47,7 @@ type element struct {
 	lastAccess int64
 }
 
+// New initializes a new LRU cache
 func New(dir, name string, maxSize int) (*Cache, error) {
 	if !(maxSize > 0) {
 		return nil, fmt.Errorf("maxSize should be greater than 0")
@@ -98,10 +101,12 @@ func New(dir, name string, maxSize int) (*Cache, error) {
 	return cache, nil
 }
 
+// Close closes the cache
 func (c *Cache) Close() error {
 	return c.db.Close()
 }
 
+// Stat returns true if the key is stored
 func (c *Cache) Stat(key string) (bool, error) {
 	bkey := append([]byte(key), []byte(":")...)
 	_, ok, err := c.db.Seek(buildKey(bkey, 0))
@@ -111,6 +116,7 @@ func (c *Cache) Stat(key string) (bool, error) {
 	return ok, nil
 }
 
+// Get returns the given key if present
 func (c *Cache) Get(key string) ([]byte, bool, error) {
 	if elm, ok := c.items[key]; ok {
 		c.evict.MoveToFront(elm)
@@ -198,6 +204,7 @@ func (c *Cache) dbSet(key string, value []byte) error {
 	return nil
 }
 
+// Add adds/updates the given key/value pair
 func (c *Cache) Add(key string, value []byte) error {
 	lastAccess := time.Now().UnixNano()
 	ts := make([]byte, 16)
@@ -253,10 +260,12 @@ func (c *Cache) doEviction() error {
 	return nil
 }
 
+// Len returns the number of items stored
 func (c *Cache) Len() int {
 	return len(c.items)
 }
 
+// Size returns the disk usage of the cache file
 func (c *Cache) Size() int {
 	return c.currentSize
 }

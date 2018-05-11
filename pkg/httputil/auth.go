@@ -13,6 +13,7 @@ import (
 // BasicRealm is used when setting the WWW-Authenticate response header.
 var BasicRealm = "Authorization Required"
 
+// BasicAuthFunc implements a checker for HTTP Basic Authentication scheme
 func BasicAuthFunc(username string, password string) func(*http.Request) bool {
 	return func(req *http.Request) bool {
 		// fmt.Printf("\n\nINSIDE BASICAUTH %+v\n\n", req)

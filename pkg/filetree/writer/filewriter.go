@@ -72,10 +72,12 @@ func (up *Uploader) writeReader(f io.Reader, meta *rnode.RawNode) error { // (*W
 	// return writeResult, nil
 }
 
+// PutFileRename uploads and renames the file at the given path
 func (up *Uploader) PutFileRename(path, filename string, extraMeta bool) (*rnode.RawNode, error) { // , *WriteResult, error) {
 	return up.putFile(path, filename, extraMeta)
 }
 
+// PutFile uploads the file at the given path
 func (up *Uploader) PutFile(path string) (*rnode.RawNode, error) { // , *WriteResult, error) {
 	_, filename := filepath.Split(path)
 	return up.putFile(path, filename, true)
@@ -149,6 +151,7 @@ func (up *Uploader) putFile(path, filename string, extraMeta bool) (*rnode.RawNo
 	return meta, nil
 }
 
+// PutMeta uploads a raw node
 func (up *Uploader) PutMeta(meta *rnode.RawNode) error {
 	ctx := context.TODO()
 	mhash, mjs := meta.Encode()
@@ -171,6 +174,7 @@ func (up *Uploader) PutMeta(meta *rnode.RawNode) error {
 	return nil
 }
 
+// RenameMeta performs an efficient rename
 func (up *Uploader) RenameMeta(meta *rnode.RawNode, name string) error {
 	ctx := context.TODO()
 	meta.Name = filepath.Base(name)
@@ -194,7 +198,7 @@ func (up *Uploader) RenameMeta(meta *rnode.RawNode, name string) error {
 	return nil
 }
 
-// fmt.Sprintf("%x", blake2b.Sum256(js))
+// PutReader uploads a reader
 func (up *Uploader) PutReader(name string, reader io.Reader, data map[string]interface{}) (*rnode.RawNode, error) { // *WriteResult, error) {
 	ctx := context.TODO()
 	up.StartUpload()

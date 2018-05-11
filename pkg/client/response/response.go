@@ -14,7 +14,7 @@ type KeyValueVersions struct {
 	Versions []*KeyValue `json:"versions"`
 }
 
-// KeyResponse is a wrapper for a list of key value pairs
+// KeysResponse is a wrapper for a list of key value pairs
 type KeysResponse struct {
 	Keys []*KeyValue `json:"keys"`
 }

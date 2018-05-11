@@ -230,7 +230,6 @@ func (bs *BlobStore) GetEncoded(ctx context.Context, hash string) ([]byte, error
 					return nil, cerr
 				}
 				blob = snappy.Encode(nil, blob)
-				err = nil
 				break
 			}
 		}

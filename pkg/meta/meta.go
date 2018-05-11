@@ -13,23 +13,26 @@ import (
 )
 
 var (
-	MetaBlobHeader   = "#blobstash/meta\n"
-	MetaBlobVersion  = 1
-	MetaBlobOverhead = len(MetaBlobHeader)
+	metaBlobHeader   = "#blobstash/meta\n"
+	metaBlobVersion  = 1
+	metaBlobOverhead = len(metaBlobHeader)
 )
 
+// MetaData is the interface that must be implemented by the different meta data types
 type MetaData interface {
 	Type() string
 	Dump() ([]byte, error)
 	// Load([]byte)
 }
 
+// Meta holds the meta manager
 type Meta struct {
 	log        log.Logger
 	applyFuncs map[string]func(string, []byte) error // map[<metadata type>]<load func>
 	hub        *hub.Hub
 }
 
+// New initializes a meta manager
 func New(logger log.Logger, chub *hub.Hub) (*Meta, error) {
 	meta := &Meta{
 		log:        logger,
@@ -66,9 +69,9 @@ func (m *Meta) RegisterApplyFunc(t string, f func(string, []byte) error) {
 func (m *Meta) Build(data MetaData) (*blob.Blob, error) {
 	var buf bytes.Buffer
 	// <meta blob header> + <meta blob version> + <type size> + <type bytes> + <data size> + <data>
-	buf.Write([]byte(MetaBlobHeader))
+	buf.Write([]byte(metaBlobHeader))
 	tmp := make([]byte, 4)
-	binary.BigEndian.PutUint32(tmp[:], uint32(MetaBlobVersion))
+	binary.BigEndian.PutUint32(tmp[:], uint32(metaBlobVersion))
 	buf.Write(tmp)
 	binary.BigEndian.PutUint32(tmp[:], uint32(len(data.Type())))
 	buf.Write(tmp)
@@ -85,19 +88,22 @@ func (m *Meta) Build(data MetaData) (*blob.Blob, error) {
 	return metaBlob, nil
 }
 
+// Scan does nothing for the moment
 func (m *Meta) Scan() error {
 	// FIXME(ts): Scan
 	return nil
 }
 
+// IsMetaBlob returns true if the blob is "mata blob" (an encoded internal piece of data.
+// It returns the meta type as a string, and the blob if the blob is an actual meta blob.
 func IsMetaBlob(blob []byte) (string, []byte, bool) { // returns (string, bool) string => meta type
 	// TODO add a test with a tiny blob
-	if len(blob) < MetaBlobOverhead {
+	if len(blob) < metaBlobOverhead {
 		return "", nil, false
 	}
-	if bytes.Equal(blob[0:MetaBlobOverhead], []byte(MetaBlobHeader)) {
-		typeLen := int(binary.BigEndian.Uint32(blob[MetaBlobOverhead+4 : MetaBlobOverhead+8]))
-		return string(blob[MetaBlobOverhead+8 : MetaBlobOverhead+8+typeLen]), blob[MetaBlobOverhead+12+typeLen : len(blob)], true
+	if bytes.Equal(blob[0:metaBlobOverhead], []byte(metaBlobHeader)) {
+		typeLen := int(binary.BigEndian.Uint32(blob[metaBlobOverhead+4 : metaBlobOverhead+8]))
+		return string(blob[metaBlobOverhead+8 : metaBlobOverhead+8+typeLen]), blob[metaBlobOverhead+12+typeLen : len(blob)], true
 	}
 	return "", nil, false
 }

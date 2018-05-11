@@ -39,16 +39,32 @@ const (
 )
 
 var (
-	ErrEmptyBewit         = errors.New("Empty bewit")
-	ErrInvalidMethod      = errors.New("Invalid method")
-	ErrInvalidEncoding    = errors.New("Invalid bewit encoding")
-	ErrInvalidPayload     = errors.New("Invalid bewit payload")
+	// ErrEmptyBewit is returned when no bewit info is present in the URL
+	ErrEmptyBewit = errors.New("Empty bewit")
+
+	// ErrInvalidMethod is returned when the HTTP method is not supported (only GET is supported)
+	ErrInvalidMethod = errors.New("Invalid method")
+
+	// ErrInvalidEncoding is returned when the bewit cannot be decoded
+	ErrInvalidEncoding = errors.New("Invalid bewit encoding")
+
+	// ErrInvalidPayload is returned when the payload could not be decoded
+	ErrInvalidPayload = errors.New("Invalid bewit payload")
+
+	// ErrUnknowCredentials is returned when the credientials is not matching the one configured
 	ErrUnknownCredentials = errors.New("Unknown credentials")
-	ErrInvalidTimestamp   = errors.New("Invalid timestamp")
-	ErrAccessExpired      = errors.New("Access expired")
-	ErrBadMac             = errors.New("Bad mac")
+
+	// ErrInvalidTimestamp is returned when the timestamp could not be decoded
+	ErrInvalidTimestamp = errors.New("Invalid timestamp")
+
+	// ErrAccessExpired is returned when the link is no longer valid
+	ErrAccessExpired = errors.New("Access expired")
+
+	// ErrBadMac is returned when the computed mac doest not match
+	ErrBadMac = errors.New("Bad mac")
 )
 
+// Cred holds a key ID/secret
 type Cred struct {
 	ID  string
 	Key []byte
@@ -78,6 +94,7 @@ func computeMac(creds *Cred, expiration, method, resource string) string {
 	return base64.StdEncoding.EncodeToString([]byte(mac.Sum(nil)))
 }
 
+// Bewit adds the query args to the given URL, will for valid for the given TTL
 func Bewit(creds *Cred, url *url.URL, ttl time.Duration) error {
 	expiration := strconv.FormatInt(time.Now().Add(ttl).Unix(), 10)
 	resource := buildResource(url)
@@ -107,6 +124,7 @@ func buildResource(url *url.URL) string {
 	return resource
 }
 
+// Validate valides an HTTP requests against the given credential
 func Validate(req *http.Request, creds *Cred) error {
 	now := time.Now()
 
