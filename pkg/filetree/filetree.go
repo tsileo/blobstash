@@ -185,6 +185,8 @@ func (ft *FileTree) Register(r *mux.Router, root *mux.Router, basicAuth func(htt
 	fileHandler := http.HandlerFunc(ft.fileHandler())
 
 	r.Handle("/fs", basicAuth(http.HandlerFunc(ft.fsRootHandler())))
+	r.Handle("/commit/{type}/{name}", basicAuth(http.HandlerFunc(ft.commitHandler())))
+	r.Handle("/versions/{type}/{name}", basicAuth(http.HandlerFunc(ft.versionsHandler())))
 	r.Handle("/fs/{type}/{name}/", basicAuth(http.HandlerFunc(ft.fsHandler())))
 	r.Handle("/fs/{type}/{name}/{path:.+}", basicAuth(http.HandlerFunc(ft.fsHandler())))
 	// r.Handle("/fs", http.HandlerFunc(ft.fsHandler()))
@@ -444,6 +446,31 @@ func (ft *FileTree) fetchDir(ctx context.Context, n *Node, depth, maxDepth int) 
 		}
 	}
 	return nil
+}
+
+// Commit duplicate the last snapshot and add a commit message
+func (fs *FS) commit(ctx context.Context, prefixFmt, message string) (int64, error) {
+	kv, err := fs.ft.kvStore.Get(ctx, fmt.Sprintf(prefixFmt, fs.Name), -1)
+	if err != nil && err != vkv.ErrNotFound {
+		return 0, err
+	}
+	snap := &Snapshot{}
+	if err := msgpack.Unmarshal(kv.Data, snap); err != nil {
+		return 0, err
+	}
+	snap.Message = message
+
+	snapEncoded, err := msgpack.Marshal(snap)
+	if err != nil {
+		return 0, err
+	}
+	newRev, err := fs.ft.kvStore.Put(ctx, fmt.Sprintf(prefixFmt, fs.Name), kv.HexHash(), snapEncoded, -1)
+	if err != nil {
+		return 0, err
+	}
+
+	return newRev.Version, nil
+
 }
 
 // FS fetch the FileSystem by name, returns an empty one if not found
@@ -756,6 +783,114 @@ func (ft *FileTree) addRemoteRefs(r *http.Request, n *Node) error {
 	n.RemoteRefs = rrefs
 
 	return nil
+}
+
+func (ft *FileTree) versionsHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+
+		}
+		ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
+
+		vars := mux.Vars(r)
+		fsName := vars["name"]
+		refType := vars["type"]
+		prefixFmt := FSKeyFmt
+		if p := r.URL.Query().Get("prefix"); p != "" {
+			prefixFmt = p + ":%s"
+		}
+
+		var err error
+		var fs *FS
+		switch refType {
+		case "ref":
+			fs = &FS{
+				Ref: fsName,
+				ft:  ft,
+			}
+		case "fs":
+			fs, err = ft.FS(ctx, fsName, prefixFmt, false, 0)
+			if err != nil {
+				panic(err)
+			}
+		default:
+			panic(fmt.Errorf("Unknown type \"%s\"", refType))
+		}
+
+		kvv, _, err := ft.kvStore.Versions(ctx, fmt.Sprintf(prefixFmt, fs.Name), "0", -1)
+		switch err {
+		case nil:
+		case vkv.ErrNotFound:
+		default:
+			panic(err)
+		}
+		versions := []*Snapshot{}
+		for _, kv := range kvv.Versions {
+			snap := &Snapshot{
+				CreatedAt: kv.Version,
+				Ref:       kv.HexHash(),
+			}
+			if err := msgpack.Unmarshal(kv.Data, snap); err != nil {
+				panic(err)
+			}
+			versions = append(versions, snap)
+		}
+
+		httputil.MarshalAndWrite(r, w, map[string]interface{}{
+			"versions": versions,
+		})
+		return
+	}
+}
+
+func (ft *FileTree) commitHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+
+		}
+		ctx := r.Context()
+
+		vars := mux.Vars(r)
+		fsName := vars["name"]
+		refType := vars["type"]
+		prefixFmt := FSKeyFmt
+		if p := r.URL.Query().Get("prefix"); p != "" {
+			prefixFmt = p + ":%s"
+		}
+
+		var err error
+		var fs *FS
+		switch refType {
+		case "ref":
+			fs = &FS{
+				Ref: fsName,
+				ft:  ft,
+			}
+		case "fs":
+			fs, err = ft.FS(ctx, fsName, prefixFmt, false, 0)
+			if err != nil {
+				panic(err)
+			}
+		default:
+			panic(fmt.Errorf("Unknown type \"%s\"", refType))
+		}
+
+		message, err := httputil.Read(r)
+		if err != nil {
+			panic(err)
+		}
+
+		revision, err := fs.commit(ctx, prefixFmt, string(message))
+		if err != nil {
+			panic(err)
+		}
+
+		w.Header().Add("BlobStash-Filetree-FS-Revision", strconv.FormatInt(revision, 10))
+		w.WriteHeader(http.StatusNoContent)
+
+	}
 }
 
 func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {

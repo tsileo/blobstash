@@ -45,6 +45,6 @@ func setupBlobStore(ctx context.Context, L *lua.LState, bs store.BlobStore) func
 	}
 }
 
-func Setup(L *lua.LState, bs store.BlobStore) {
-	L.PreloadModule("blobstore", setupBlobStore(context.TODO(), L, bs))
+func Setup(ctx context.Context, L *lua.LState, bs store.BlobStore) {
+	L.PreloadModule("blobstore", setupBlobStore(ctx, L, bs))
 }

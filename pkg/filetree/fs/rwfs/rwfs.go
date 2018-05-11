@@ -322,8 +322,9 @@ func newInputFile(fs *FileSystem, cb func([]byte) error) (*inputFile, error) {
 
 // Flush implements the flush interface
 func (f *inputFile) Flush() fuse.Status {
-	f.fs.mu.Lock()
-	defer f.fs.mu.Unlock()
+	if f.flushed {
+		return fuse.OK
+	}
 
 	if status := f.File.Flush(); status != fuse.OK {
 		if status == fuse.EIO {
@@ -417,7 +418,24 @@ func newDebugVFS(fs *FileSystem) *DebugVFS {
 			}),
 			"commit": func(name string, _ *fuse.Context) (nodefs.File, error) {
 				return newInputFile(fs, func(data []byte) error {
-					log.Printf("COMMMIIITTTT: %s\n", data)
+					log.Printf("COMMMIIITTTT: \"%s\" len=%d\n", data, len(data))
+					//if err := fs.GC(); err != nil {
+					//	return err
+					//}
+					resp, err := fs.clientUtil.Post(
+						fmt.Sprintf("/api/filetree/commit/fs/%s", fs.ref),
+						data,
+					)
+					if err != nil {
+						return err
+					}
+					defer resp.Body.Close()
+
+					if err := clientutil.ExpectStatusCode(resp, http.StatusNoContent); err != nil {
+						// FIXME(tsileo): find a better way to handle this?
+						return err
+					}
+					log.Printf("commit done\n")
 					return nil
 				})
 			},
