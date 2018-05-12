@@ -182,7 +182,7 @@ func (p *KvStoreProxy) Versions(ctx context.Context, key, start string, limit in
 	})
 
 	// Slice it if it's too big
-	if len(tmp) > 0 && len(tmp) > limit {
+	if limit > 0 && len(tmp) > 0 && len(tmp) > limit {
 		tmp = tmp[0:limit]
 	}
 

@@ -192,6 +192,10 @@ func EnableMsgpack() func(*http.Request) error {
 	return WithHeader("Accept", "application/msgpack")
 }
 
+func EnableJSON() func(*http.Request) error {
+	return WithHeader("Accept", "application/json")
+}
+
 func EnableSnappyEncoding() func(*http.Request) error {
 	return WithHeader("Accept-Encoding", "snappy")
 }

@@ -118,11 +118,11 @@ func (bs *BlobStore) Put(ctx context.Context, hash string, data []byte) error {
 
 // TODO(tsileo): a way to create a snapshot without modifying anything (and forcing the datactx before)
 type Snapshot struct {
-	Ref       string `msgpack:"-"`
-	CreatedAt int64  `msgpack:"-"`
+	Ref       string `msgpack:"-" json:"ref"`
+	CreatedAt int64  `msgpack:"-" json:"created_at"`
 
-	Hostname string `msgpack:"h"`
-	Message  string `msgpack:"m,omitempty"`
+	Hostname string `msgpack:"h" json:"hostname,omitempty"`
+	Message  string `msgpack:"m,omitempty" json:"message,omitempty"`
 }
 
 type FS struct {

@@ -416,12 +416,40 @@ func newDebugVFS(fs *FileSystem) *DebugVFS {
 			"last_revision": newVFSEntry(func() interface{} {
 				return fs.lastRevision
 			}),
+			"revisions.json": newVFSEntry(func() interface{} {
+				resp, err := fs.clientUtil.Get(
+					fmt.Sprintf("/api/filetree/versions/fs/%s", fs.ref),
+					clientutil.EnableJSON(),
+				)
+				if err != nil {
+					return err
+				}
+				defer resp.Body.Close()
+
+				if err := clientutil.ExpectStatusCode(resp, http.StatusOK); err != nil {
+					return err
+				}
+
+				out, err := clientutil.Decode(resp)
+				if err != nil {
+					return err
+				}
+
+				return string(out)
+
+			}),
+			// TODO(tsileo): "revisions"/"revisions.json" VFSEntry, also support @revisions/@revisions.json and @latest
 			"commit": func(name string, _ *fuse.Context) (nodefs.File, error) {
 				return newInputFile(fs, func(data []byte) error {
-					log.Printf("COMMMIIITTTT: \"%s\" len=%d\n", data, len(data))
-					//if err := fs.GC(); err != nil {
-					//	return err
-					//}
+					// FIXME(tsileo): check why it does work without the fs.stats.updated, deadlock?
+					if fs.stats.updated {
+						if err := fs.GC(); err != nil {
+							return err
+						}
+					}
+					log.Printf("GC done\n")
+
+					//time.Sleep(3 * time.Second)
 					resp, err := fs.clientUtil.Post(
 						fmt.Sprintf("/api/filetree/commit/fs/%s", fs.ref),
 						data,
@@ -435,6 +463,9 @@ func newDebugVFS(fs *FileSystem) *DebugVFS {
 						// FIXME(tsileo): find a better way to handle this?
 						return err
 					}
+
+					fs.updateLastRevision(resp)
+
 					log.Printf("commit done\n")
 					return nil
 				})
@@ -453,6 +484,7 @@ func (dvfs *DebugVFS) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, bool
 			mode = fuse.S_IFREG | 0644
 		}
 		return &fuse.Attr{
+			Size:  0,
 			Mode:  mode,
 			Mtime: uint64(dvfs.fs.stats.startedAt.Unix()),
 			Ctime: uint64(dvfs.fs.stats.startedAt.Unix()),
