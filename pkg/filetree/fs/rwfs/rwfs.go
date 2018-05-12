@@ -1232,7 +1232,7 @@ func NewFileSystem(ref, mountpoint string, debug, ro bool, profile *Profile, cac
 		copy(out[:], data)
 		fs.key = &out
 		if fs.profile.RemoteConfig.Endpoint != "" {
-			fs.s3, err = s3util.NewWithCustomEndoint(fs.profile.RemoteConfig.Region, fs.profile.RemoteConfig.Endpoint)
+			fs.s3, err = s3util.NewWithCustomEndoint(fs.profile.RemoteConfig.AccessKeyID, fs.profile.RemoteConfig.SecretAccessKey, fs.profile.RemoteConfig.Region, fs.profile.RemoteConfig.Endpoint)
 			if err != nil {
 				return nil, err
 			}

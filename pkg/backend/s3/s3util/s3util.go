@@ -19,6 +19,7 @@ import (
 	"a4.io/blobstash/pkg/blob"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -72,8 +73,9 @@ func New(region string) (*s3.S3, error) {
 	return s3.New(sess), nil
 }
 
-func NewWithCustomEndoint(region, url string) (*s3.S3, error) {
+func NewWithCustomEndoint(accessKey, secretKey, region, url string) (*s3.S3, error) {
 	defaultResolver := endpoints.DefaultResolver()
+	creds := credentials.NewStaticCredentials(accessKey, secretKey, "")
 	s3CustResolverFn := func(service, region string, optFns ...func(*endpoints.Options)) (endpoints.ResolvedEndpoint, error) {
 		if service == "s3" {
 			return endpoints.ResolvedEndpoint{
@@ -85,8 +87,9 @@ func NewWithCustomEndoint(region, url string) (*s3.S3, error) {
 	}
 	sess, err := session.NewSessionWithOptions(session.Options{
 		Config: aws.Config{
-			Region:           aws.String(region),
+			Region:           aws.String("us-east-1"),
 			EndpointResolver: endpoints.ResolverFunc(s3CustResolverFn),
+			Credentials:      creds,
 		},
 	})
 	if err != nil {

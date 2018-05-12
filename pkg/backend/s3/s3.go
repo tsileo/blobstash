@@ -91,7 +91,7 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, dataCache *cache.Cache, 
 
 	var s3svc *s3.S3
 	if conf.S3Repl.Endpoint != "" {
-		s3svc, err = s3util.NewWithCustomEndoint(region, conf.S3Repl.Endpoint)
+		s3svc, err = s3util.NewWithCustomEndoint(conf.S3Repl.AccessKey, conf.S3Repl.SecretKey, region, conf.S3Repl.Endpoint)
 		if err != nil {
 			return nil, err
 		}
