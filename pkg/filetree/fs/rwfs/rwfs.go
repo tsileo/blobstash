@@ -401,6 +401,13 @@ func newDebugVFS(fs *FileSystem) *DebugVFS {
 			"fds": newVFSEntry(func() interface{} {
 				return fs.stats.OpenedFds
 			}),
+			"fds_index.json": newVFSEntry(func() interface{} {
+				js, err := json.Marshal(fs.stats.FDIndex)
+				if err != nil {
+					panic(err)
+				}
+				return string(js)
+			}),
 			"fds_rw": newVFSEntry(func() interface{} {
 				return fs.stats.RWOpenedFds
 			}),
@@ -484,7 +491,7 @@ func (dvfs *DebugVFS) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, bool
 			mode = fuse.S_IFREG | 0644
 		}
 		return &fuse.Attr{
-			Size:  0,
+			Size:  1,
 			Mode:  mode,
 			Mtime: uint64(dvfs.fs.stats.startedAt.Unix()),
 			Ctime: uint64(dvfs.fs.stats.startedAt.Unix()),
@@ -694,11 +701,11 @@ func (rl *rwLayer) Release(meta *RWFileMeta) error {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
-	// If there's no other opened file, delete the rwfile cache
-	if err := os.Remove(meta.loopbackPath); err != nil {
+	// If there's no other opened file, delete the rwfile cache (it may have been deleted manually via unlink before)
+	if err := os.Remove(meta.loopbackPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to release rwfile: %v", err)
 	}
-	if err := os.Remove(meta.loopbackPath + ".json"); err != nil {
+	if err := os.Remove(meta.loopbackPath + ".json"); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to release rwfile (json): %v", err)
 	}
 
@@ -1179,10 +1186,10 @@ type FSStats struct {
 
 // FDInfo holds informations about an opened file descriptor
 type FDInfo struct {
-	Pid        int
-	Executable string // Executable name from the PID
-	Path       string // Path of the opened file on the FS
-	Writable   bool
+	Pid        int    `json:"pid"`
+	Executable string `json:"executable"` // Executable name from the PID
+	Path       string `json:"path"`       // Path of the opened file on the FS
+	Writable   bool   `json:"writable"`
 	CreatedAt  time.Time
 }
 
