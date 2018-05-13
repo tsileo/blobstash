@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"text/tabwriter"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -361,12 +362,24 @@ type DebugVFS struct {
 	fs    *FileSystem
 	Path  string
 	attr  *fuse.Attr
-	index map[string]func(string, *fuse.Context) (nodefs.File, error)
+	index map[string]map[string]func(string, *fuse.Context) (nodefs.File, error)
 }
 
 func newVFSEntry(content func() interface{}) func(string, *fuse.Context) (nodefs.File, error) {
 	return func(name string, _ *fuse.Context) (nodefs.File, error) {
-		return nodefs.NewDataFile([]byte(fmt.Sprintf("%v", content()))), nil
+		out := content()
+		switch data := out.(type) {
+		case string:
+			return nodefs.NewDataFile([]byte(data)), nil
+		case []byte:
+			return nodefs.NewDataFile(data), nil
+		default:
+			js, err := json.Marshal(out)
+			if err != nil {
+				return nil, err
+			}
+			return nodefs.NewDataFile(js), nil
+		}
 	}
 }
 
@@ -380,102 +393,112 @@ func newDebugVFS(fs *FileSystem) *DebugVFS {
 			Mtime: uint64(fs.stats.startedAt.Unix()),
 			Ctime: uint64(fs.stats.startedAt.Unix()),
 		},
-		// FIXME(tsileo): more fine grained directory a la /proc on Linux,
-		// also find a way to handle the /fs/new_snapshot file (write a comment in it and it snapshot+sync the stash
-		// TODO(tsileo): find a way to list info about the opened FDs (one file per FD with the PID,
-		// path...)
-		index: map[string]func(string, *fuse.Context) (nodefs.File, error){
-			"debug.json": func(name string, _ *fuse.Context) (nodefs.File, error) {
-				js, err := json.Marshal(&fs.stats)
-				if err != nil {
-					return nil, err
-				}
-				return nodefs.NewDataFile(js), nil
+		// XXX: "virtual directories" must have an `nil` entry in the parent (except the root)
+		index: map[string]map[string]func(string, *fuse.Context) (nodefs.File, error){
+			"/counters": {
+				"zero": newVFSEntry(func() interface{} {
+					return 0
+				}),
+				"ops": newVFSEntry(func() interface{} {
+					return fs.stats.Ops
+				}),
+				"eios": newVFSEntry(func() interface{} {
+					return fs.stats.Eios
+				}),
 			},
-			"ref": newVFSEntry(func() interface{} {
-				return fs.stats.Ref
-			}),
-			"eios": newVFSEntry(func() interface{} {
-				return fs.stats.Eios
-			}),
-			"fds": newVFSEntry(func() interface{} {
-				return fs.stats.OpenedFds
-			}),
-			"fds_index.json": newVFSEntry(func() interface{} {
-				js, err := json.Marshal(fs.stats.FDIndex)
-				if err != nil {
-					panic(err)
-				}
-				return string(js)
-			}),
-			"fds_rw": newVFSEntry(func() interface{} {
-				return fs.stats.RWOpenedFds
-			}),
-			"ops": newVFSEntry(func() interface{} {
-				return fs.stats.Ops
-			}),
-			"synced": newVFSEntry(func() interface{} {
-				return !fs.stats.updated
-			}),
-			"last_mod": newVFSEntry(func() interface{} {
-				return fs.stats.lastMod.Unix()
-			}),
-			"last_revision": newVFSEntry(func() interface{} {
-				return fs.lastRevision
-			}),
-			"revisions.json": newVFSEntry(func() interface{} {
-				resp, err := fs.clientUtil.Get(
-					fmt.Sprintf("/api/filetree/versions/fs/%s", fs.ref),
-					clientutil.EnableJSON(),
-				)
-				if err != nil {
-					return err
-				}
-				defer resp.Body.Close()
-
-				if err := clientutil.ExpectStatusCode(resp, http.StatusOK); err != nil {
-					return err
-				}
-
-				out, err := clientutil.Decode(resp)
-				if err != nil {
-					return err
-				}
-
-				return string(out)
-
-			}),
-			// TODO(tsileo): "revisions"/"revisions.json" VFSEntry, also support @revisions/@revisions.json and @latest
-			"commit": func(name string, _ *fuse.Context) (nodefs.File, error) {
-				return newInputFile(fs, func(data []byte) error {
-					// FIXME(tsileo): check why it does work without the fs.stats.updated, deadlock?
-					if fs.stats.updated {
-						if err := fs.GC(); err != nil {
-							return err
-						}
+			"/": {
+				"counters": nil,
+				"debug.json": newVFSEntry(func() interface{} {
+					return &fs.stats
+				}),
+				"ref": newVFSEntry(func() interface{} {
+					return fs.stats.Ref
+				}),
+				"fds_count": newVFSEntry(func() interface{} {
+					return fs.stats.OpenedFds
+				}),
+				"fds_index.json": newVFSEntry(func() interface{} {
+					return fs.stats.FDIndex
+				}),
+				"opened_files.json": newVFSEntry(func() interface{} {
+					return fs.stats.FDIndex
+				}),
+				"opened_files": newVFSEntry(func() interface{} {
+					var buf bytes.Buffer
+					w := tabwriter.NewWriter(&buf, 0, 8, 0, '\t', 0)
+					fmt.Fprintln(w, "id\tcreated_at\texecutable\tpath\twritable\t")
+					for fdID, fdInfo := range fs.stats.FDIndex {
+						fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t", fdID, fdInfo.CreatedAt.Format(time.RFC3339), fdInfo.Executable, fdInfo.Path, fdInfo.Writable)
 					}
-					log.Printf("GC done\n")
-
-					//time.Sleep(3 * time.Second)
-					resp, err := fs.clientUtil.Post(
-						fmt.Sprintf("/api/filetree/commit/fs/%s", fs.ref),
-						data,
+					w.Flush()
+					return buf.Bytes()
+				}),
+				"fds_rw": newVFSEntry(func() interface{} {
+					return fs.stats.RWOpenedFds
+				}),
+				"synced": newVFSEntry(func() interface{} {
+					return !fs.stats.updated
+				}),
+				"last_mod": newVFSEntry(func() interface{} {
+					return fs.stats.lastMod.Unix()
+				}),
+				"last_revision": newVFSEntry(func() interface{} {
+					return fs.lastRevision
+				}),
+				"revisions.json": newVFSEntry(func() interface{} {
+					resp, err := fs.clientUtil.Get(
+						fmt.Sprintf("/api/filetree/versions/fs/%s", fs.ref),
+						clientutil.EnableJSON(),
 					)
 					if err != nil {
 						return err
 					}
 					defer resp.Body.Close()
 
-					if err := clientutil.ExpectStatusCode(resp, http.StatusNoContent); err != nil {
-						// FIXME(tsileo): find a better way to handle this?
+					if err := clientutil.ExpectStatusCode(resp, http.StatusOK); err != nil {
 						return err
 					}
 
-					fs.updateLastRevision(resp)
+					out, err := clientutil.Decode(resp)
+					if err != nil {
+						return err
+					}
 
-					log.Printf("commit done\n")
-					return nil
-				})
+					return out
+
+				}),
+				// TODO(tsileo): "revisions"/"revisions.json" VFSEntry, also support @revisions/@revisions.json and @latest
+				"commit": func(name string, _ *fuse.Context) (nodefs.File, error) {
+					return newInputFile(fs, func(data []byte) error {
+						// FIXME(tsileo): check why it does work without the fs.stats.updated, deadlock?
+						if fs.stats.updated {
+							if err := fs.GC(); err != nil {
+								return err
+							}
+						}
+						log.Printf("GC done\n")
+
+						//time.Sleep(3 * time.Second)
+						resp, err := fs.clientUtil.Post(
+							fmt.Sprintf("/api/filetree/commit/fs/%s", fs.ref),
+							data,
+						)
+						if err != nil {
+							return err
+						}
+						defer resp.Body.Close()
+
+						if err := clientutil.ExpectStatusCode(resp, http.StatusNoContent); err != nil {
+							// FIXME(tsileo): find a better way to handle this?
+							return err
+						}
+
+						fs.updateLastRevision(resp)
+
+						log.Printf("commit done\n")
+						return nil
+					})
+				},
 			},
 		},
 	}
@@ -485,38 +508,75 @@ func (dvfs *DebugVFS) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, bool
 	if name == dvfs.Path {
 		return dvfs.attr, true
 	}
-	if _, ok := dvfs.index[filepath.Base(name)]; ok {
-		mode := uint32(fuse.S_IFREG | 0444)
-		if filepath.Base(name) == "commit" {
-			mode = fuse.S_IFREG | 0644
+	if len(name) <= len(dvfs.Path) {
+		return nil, false
+	}
+	if dir, ok := dvfs.index[filepath.Dir(name[len(dvfs.Path):])]; ok {
+		if ffunc, fok := dir[filepath.Base(name)]; fok {
+			if ffunc == nil {
+				return &fuse.Attr{
+					Mode:  fuse.S_IFDIR | 0755,
+					Mtime: uint64(dvfs.fs.stats.startedAt.Unix()),
+					Ctime: uint64(dvfs.fs.stats.startedAt.Unix()),
+				}, true
+			}
+			mode := uint32(fuse.S_IFREG | 0444)
+			if filepath.Base(name) == "commit" {
+				mode = fuse.S_IFREG | 0644
+			}
+			return &fuse.Attr{
+				Size:  1,
+				Mode:  mode,
+				Mtime: uint64(dvfs.fs.stats.startedAt.Unix()),
+				Ctime: uint64(dvfs.fs.stats.startedAt.Unix()),
+			}, true
 		}
-		return &fuse.Attr{
-			Size:  1,
-			Mode:  mode,
-			Mtime: uint64(dvfs.fs.stats.startedAt.Unix()),
-			Ctime: uint64(dvfs.fs.stats.startedAt.Unix()),
-		}, true
 	}
 	return nil, false
 }
 
 func (dvfs *DebugVFS) Open(name string, fctx *fuse.Context) (nodefs.File, error) {
-	if f, ok := dvfs.index[filepath.Base(name)]; ok {
-		return f(name, fctx)
+	if len(name) <= len(dvfs.Path) {
+		return nil, nil
+	}
+
+	if dir, ok := dvfs.index[filepath.Dir(name[len(dvfs.Path):])]; ok {
+		if ffunc, fok := dir[filepath.Base(name)]; fok && ffunc != nil {
+			return ffunc(name, fctx)
+		}
 	}
 	return nil, nil
 }
 
 func (dvfs *DebugVFS) OpenDir(name string, fctx *fuse.Context) ([]fuse.DirEntry, bool) {
-	if name != dvfs.Path {
+	if !strings.HasPrefix(name, dvfs.Path) {
+		return nil, false
+	}
+	if len(name) < len(dvfs.Path) {
 		return nil, false
 	}
 	output := []fuse.DirEntry{}
-	for k, _ := range dvfs.index {
-		output = append(output, fuse.DirEntry{
-			Name: k,
-			Mode: fuse.S_IFREG | 0444,
-		})
+	dirPath := name[len(dvfs.Path):]
+	if _, ok := dvfs.index[dirPath]; !ok {
+		dirPath = filepath.Dir(name[len(dvfs.Path):])
+		if dirPath == "." {
+			dirPath = "/"
+		}
+	}
+	if dir, ok := dvfs.index[dirPath]; ok {
+		for k, ffunc := range dir {
+			if ffunc == nil {
+				output = append(output, fuse.DirEntry{
+					Name: k,
+					Mode: fuse.S_IFDIR | 0755,
+				})
+			} else {
+				output = append(output, fuse.DirEntry{
+					Name: k,
+					Mode: fuse.S_IFREG | 0444,
+				})
+			}
+		}
 	}
 	return output, true
 }
