@@ -428,7 +428,7 @@ func newDebugVFS(fs *FileSystem) *DebugVFS {
 					w := tabwriter.NewWriter(&buf, 0, 8, 0, '\t', 0)
 					fmt.Fprintln(w, "id\tcreated_at\texecutable\tpath\twritable\t")
 					for fdID, fdInfo := range fs.stats.FDIndex {
-						fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t", fdID, fdInfo.CreatedAt.Format(time.RFC3339), fdInfo.Executable, fdInfo.Path, fdInfo.Writable)
+						fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%v\t", fdID, fdInfo.CreatedAt.Format(time.RFC3339), fdInfo.Executable, fdInfo.Path, fdInfo.Writable)
 					}
 					w.Flush()
 					return buf.Bytes()
@@ -1549,7 +1549,7 @@ func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse
 	}
 
 	mode := fuse.S_IFREG | node.Mode()
-	if asOfRequested {
+	if asOfRequested || fs.ro {
 		// An older version is request, remove the write bits
 		mode &^= uint32(userWrite | groupWrite | otherWrite)
 	}
