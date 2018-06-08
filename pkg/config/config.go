@@ -61,6 +61,15 @@ func (s3 *S3Repl) Key() (*[32]byte, error) {
 	return &out, nil
 }
 
+type GitServerConfig struct {
+	Namespaces map[string]*GitNamespaceConf `yaml:"namespaces"`
+}
+
+type GitNamespaceConf struct {
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+}
+
 // Config holds the configuration items
 type Config struct {
 	init     bool
@@ -73,6 +82,8 @@ type Config struct {
 	ExpvarListen string `yaml:"expvar_server_listen"`
 
 	ExtraApacheCombinedLogs string `yaml:"extra_apache_combined_logs"`
+
+	GitServer *GitServerConfig `yaml:"git_server"`
 
 	APIKey     string  `yaml:"api_key"`
 	SharingKey string  `yaml:"sharing_key"`

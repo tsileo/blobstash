@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	pol = chunker.Pol(0x3c657535c4d6f5)
+	Pol = chunker.Pol(0x3c657535c4d6f5)
 )
 
 func (up *Uploader) writeReader(f io.Reader, meta *rnode.RawNode) error { // (*WriteResult, error) {
@@ -29,7 +29,7 @@ func (up *Uploader) writeReader(f io.Reader, meta *rnode.RawNode) error { // (*W
 	// Prepare the reader to compute the hash on the fly
 	fullHash := blake2b.New256()
 	freader := io.TeeReader(f, fullHash)
-	chunkSplitter := chunker.New(freader, pol)
+	chunkSplitter := chunker.New(freader, Pol)
 	// TODO don't read one byte at a time if meta.Size < chunker.ChunkMinSize
 	// Prepare the blob writer
 	var size uint

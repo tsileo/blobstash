@@ -20,6 +20,7 @@ import (
 	"a4.io/blobstash/pkg/docstore"
 	"a4.io/blobstash/pkg/expvarserver"
 	"a4.io/blobstash/pkg/filetree"
+	"a4.io/blobstash/pkg/gitserver"
 	"a4.io/blobstash/pkg/httputil"
 	"a4.io/blobstash/pkg/hub"
 	"a4.io/blobstash/pkg/kvstore"
@@ -153,6 +154,12 @@ func New(conf *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to initialize filetree app: %v", err)
 	}
 	apps.Register(s.router.PathPrefix("/api/apps").Subrouter(), s.router, basicAuth)
+
+	git, err := gitserver.New(logger.New("app", "gitserver"), conf, kvstore, blobstore, hub)
+	if err != nil {
+
+	}
+	git.Register(s.router.PathPrefix("/git").Subrouter(), s.router, basicAuth)
 
 	// Setup the closeFunc
 	s.closeFunc = func() error {

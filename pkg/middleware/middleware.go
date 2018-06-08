@@ -2,6 +2,7 @@ package middleware // import "a4.io/blobstash/pkg/middleware"
 
 import (
 	"expvar"
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
@@ -65,12 +66,14 @@ func NewBasicAuth(conf *config.Config) (func(*http.Request) bool, func(http.Hand
 	authFunc := httputil.BasicAuthFunc("", conf.APIKey)
 	return authFunc, func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			fmt.Printf("headers=%+v\n", r.Header)
 			if authFunc(r) {
 				apiAuthSuccess.Add(1)
 				next.ServeHTTP(w, r)
 				return
 			}
 			apiAuthFailure.Add(1)
+			w.Header().Set("WWW-Authenticate", "Basic realm=\"BlobStash\"")
 			httputil.WriteJSONError(w, http.StatusUnauthorized, http.StatusText(http.StatusUnauthorized))
 		})
 	}
