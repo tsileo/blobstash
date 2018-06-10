@@ -144,7 +144,7 @@ func (s *storage) Reference(name plumbing.ReferenceName) (*plumbing.Reference, e
 		}
 		return nil, err
 	}
-	if kv.Data == nil || len(lv.Data) == 0 {
+	if kv.Data == nil || len(kv.Data) == 0 {
 		// Check if the reference has been removed
 		return nil, plumbing.ErrReferenceNotFound
 
