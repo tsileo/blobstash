@@ -39,7 +39,7 @@ for i in range(DOCS_COUNT):
 
 for doc in docs:
     rdoc = col2.get_by_id(doc['_id'])
-    assert rdoc == doc
+    assert rdoc == doc, f"{rdoc!r} != {doc!r}"
 
 rdocs = []
 for rdoc in col2.query():
