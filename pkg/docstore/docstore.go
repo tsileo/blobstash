@@ -34,7 +34,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dchest/blake2b"
 	"github.com/evanphx/json-patch"
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
@@ -42,7 +41,6 @@ import (
 	"github.com/vmihailenco/msgpack"
 	"github.com/yuin/gopher-lua"
 
-	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/docstore/id"
 	"a4.io/blobstash/pkg/filetree"
@@ -516,28 +514,17 @@ func (docstore *DocStore) Insert(collection string, doc *map[string]interface{})
 		return nil, err
 	}
 
-	// Store the payload (JSON data) in a blob
-	hash := fmt.Sprintf("%x", blake2b.Sum256(data))
-
-	ctx := context.Background()
-
-	blob := &blob.Blob{Hash: hash, Data: data}
-	if err := docstore.blobStore.Put(ctx, blob); err != nil {
-		return nil, err
-	}
-
 	// Build the ID and add some meta data
 	now := time.Now().UTC()
 	_id, err := id.New(now.UnixNano())
 	if err != nil {
 		return nil, err
 	}
-	_id.SetHash(hash)
 	_id.SetFlag(docFlag)
 
 	// Create a pointer in the key-value store
 	if _, err := docstore.kvStore.Put(
-		ctx, fmt.Sprintf(keyFmt, collection, _id.String()), hash, []byte{docFlag}, now.UnixNano(),
+		context.TODO(), fmt.Sprintf(keyFmt, collection, _id.String()), "", append([]byte{docFlag}, data...), now.UnixNano(),
 	); err != nil {
 		return nil, err
 	}
@@ -582,7 +569,7 @@ func (q *query) isMatchAll() bool {
 
 func addSpecialFields(doc map[string]interface{}, _id *id.ID) {
 	doc["_id"] = _id
-	doc["_hash"] = _id.Hash()
+	doc["_version"] = _id.VersionString()
 
 	doc["_created"] = time.Unix(0, _id.Ts()).UTC().Format(time.RFC3339)
 	updated := _id.Version()
@@ -907,7 +894,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 
 			// Output some headers
 			w.Header().Set("BlobStash-DocStore-Doc-Id", _id.String())
-			w.Header().Set("BlobStash-DocStore-Doc-Hash", _id.Hash())
+			w.Header().Set("BlobStash-DocStore-Doc-Version", _id.VersionString())
 			w.Header().Set("BlobStash-DocStore-Doc-CreatedAt", strconv.FormatInt(_id.Ts(), 10))
 
 			created := time.Unix(0, _id.Ts()).UTC().Format(time.RFC3339)
@@ -915,7 +902,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			httputil.MarshalAndWrite(r, w, map[string]interface{}{
 				"_id":      _id.String(),
 				"_created": created,
-				"_hash":    _id.Hash(),
+				"_hash":    _id.VersionString(),
 			},
 				httputil.WithStatusCode(http.StatusCreated))
 			return
@@ -954,24 +941,16 @@ func (docstore *DocStore) FetchVersions(collection, sid string, start int64, lim
 		var doc map[string]interface{}
 		// Extract the hash (first byte is the Flag)
 		// XXX(tsileo): add/handle a `Deleted` flag
-		hash := kv.HexHash()
 		// kv.Value[1:len(kv.Value)]
 
-		// Fetch the blob
-		blob, err := docstore.blobStore.Get(context.TODO(), hash)
-		if err != nil {
-			return nil, nil, cursor, fmt.Errorf("failed to fetch blob %v", hash)
-		}
-
 		// Build the doc
-		if err := msgpack.Unmarshal(blob, &doc); err != nil {
-			return nil, nil, cursor, fmt.Errorf("failed to unmarshal blob: %s", blob)
+		if err := msgpack.Unmarshal(kv.Data[1:], &doc); err != nil {
+			return nil, nil, cursor, fmt.Errorf("failed to unmarshal blob")
 		}
 		_id, err := id.FromHex(sid)
 		if err != nil {
 			panic(err)
 		}
-		_id.SetHash(kv.HexHash())
 		_id.SetVersion(kv.Version)
 		addSpecialFields(doc, _id)
 
@@ -987,7 +966,6 @@ func (docstore *DocStore) FetchVersions(collection, sid string, start int64, lim
 
 		docs = append(docs, doc)
 		cursor = kv.Version - 1
-		// _id.SetHash(hash)
 		// _id.SetFlag(byte(kv.Data[0]))
 		// _id.SetVersion(kv.Version)
 
@@ -1015,14 +993,7 @@ func (docstore *DocStore) Fetch(collection, sid string, res interface{}, fetchPo
 
 	// Extract the hash (first byte is the Flag)
 	// XXX(tsileo): add/handle a `Deleted` flag
-	hash := kv.HexHash()
-	// kv.Value[1:len(kv.Value)]
-
-	// Fetch the blob
-	blob, err := docstore.blobStore.Get(context.TODO(), hash)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to fetch blob %v", hash)
-	}
+	blob := kv.Data[1:]
 
 	var pointers map[string]interface{}
 
@@ -1056,7 +1027,6 @@ func (docstore *DocStore) Fetch(collection, sid string, res interface{}, fetchPo
 		// Just the copy if JSON if a []byte is provided
 		*idoc = append(*idoc, js...)
 	}
-	_id.SetHash(hash)
 	_id.SetFlag(kv.Data[0])
 	_id.SetVersion(kv.Version)
 	return _id, pointers, nil
@@ -1095,14 +1065,14 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			}
 
 			// FIXME(tsileo): fix-precondition, suport If-Match
-			if hash := r.Header.Get("If-None-Match"); hash != "" {
-				if hash == _id.Hash() {
+			if etag := r.Header.Get("If-None-Match"); etag != "" {
+				if etag == _id.VersionString() {
 					w.WriteHeader(http.StatusNotModified)
 					return
 				}
 			}
 
-			w.Header().Set("ETag", _id.Hash())
+			w.Header().Set("ETag", _id.VersionString())
 			addSpecialFields(doc, _id)
 
 			if r.Method == "GET" {
@@ -1133,8 +1103,8 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			}
 
 			// FIXME(tsileo): make it required?
-			if hash := r.Header.Get("If-Match"); hash != "" {
-				if _id.Hash() != hash {
+			if etag := r.Header.Get("If-Match"); etag != "" {
+				if etag != _id.VersionString() {
 					w.WriteHeader(http.StatusPreconditionFailed)
 					return
 				}
@@ -1168,25 +1138,20 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 
 			// TODO(tsileo): also check for reserved keys here
 
-			// Compute the Blake2B hash and save the blob
-			hash := fmt.Sprintf("%x", blake2b.Sum256(data))
-			blob := &blob.Blob{Hash: hash, Data: data}
-			if err := docstore.blobStore.Put(ctx, blob); err != nil {
+			nkv, err := docstore.kvStore.Put(ctx, fmt.Sprintf(keyFmt, collection, _id.String()), "", append([]byte{_id.Flag()}, data...), -1)
+			if err != nil {
 				panic(err)
 			}
+			_id.SetVersion(nkv.Version)
 
-			if _, err := docstore.kvStore.Put(ctx, fmt.Sprintf(keyFmt, collection, _id.String()), hash, []byte{_id.Flag()}, -1); err != nil {
-				panic(err)
-			}
-
-			w.Header().Set("ETag", _id.Hash())
+			w.Header().Set("ETag", _id.VersionString())
 
 			created := time.Unix(0, _id.Ts()).UTC().Format(time.RFC3339)
 
 			httputil.MarshalAndWrite(r, w, map[string]interface{}{
 				"_id":      _id.String(),
 				"_created": created,
-				"_hash":    _id.Hash(),
+				"_version": _id.VersionString(),
 			})
 
 			return
@@ -1212,8 +1177,8 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			}
 
 			// If-Match is optional for POST request
-			if hash := r.Header.Get("If-Match"); hash != "" {
-				if _id.Hash() != hash {
+			if etag := r.Header.Get("If-Match"); etag != "" {
+				if etag != _id.VersionString() {
 					w.WriteHeader(http.StatusPreconditionFailed)
 					return
 				}
@@ -1244,24 +1209,17 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 
 			docstore.logger.Debug("Update", "_id", sid, "new_doc", newDoc)
 
-			// Compute the Blake2B hash and save the blob
-			hash := fmt.Sprintf("%x", blake2b.Sum256(data))
-			blob := &blob.Blob{Hash: hash, Data: data}
-			if err := docstore.blobStore.Put(ctx, blob); err != nil {
+			if _, err := docstore.kvStore.Put(ctx, fmt.Sprintf(keyFmt, collection, _id.String()), "", append([]byte{_id.Flag()}, data...), -1); err != nil {
 				panic(err)
 			}
-
-			if _, err := docstore.kvStore.Put(ctx, fmt.Sprintf(keyFmt, collection, _id.String()), hash, []byte{_id.Flag()}, -1); err != nil {
-				panic(err)
-			}
-			w.Header().Set("ETag", _id.Hash())
+			w.Header().Set("ETag", _id.VersionString())
 
 			created := time.Unix(0, _id.Ts()).UTC().Format(time.RFC3339)
 
 			httputil.MarshalAndWrite(r, w, map[string]interface{}{
 				"_id":      _id.String(),
 				"_created": created,
-				"_hash":    _id.Hash(),
+				"_hash":    _id.VersionString(),
 			})
 
 			return
@@ -1291,7 +1249,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 
 		// FIXME(tsileo): put these headers at the top as at this point, the status is already written
 		w.Header().Set("BlobStash-DocStore-Doc-Id", sid)
-		w.Header().Set("BlobStash-DocStore-Doc-Hash", _id.Hash())
+		w.Header().Set("BlobStash-DocStore-Doc-Version", _id.VersionString())
 		w.Header().Set("BlobStash-DocStore-Doc-CreatedAt", strconv.FormatInt(_id.Ts(), 10))
 	}
 }

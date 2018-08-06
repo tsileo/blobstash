@@ -28,8 +28,8 @@
     "trie/xfast",
     "trie/yfast"
   ]
-  revision = "511e37352fb4690049a9fadebb243cb46e06c069"
-  version = "v1.0.47"
+  revision = "f338bf48899950e415caffa02222a7273fbdeaf6"
+  version = "v1.0.48"
 
 [[projects]]
   name = "github.com/aws/aws-sdk-go"
@@ -53,6 +53,7 @@
     "aws/signer/v4",
     "internal/sdkio",
     "internal/sdkrand",
+    "internal/sdkuri",
     "internal/shareddefaults",
     "private/protocol",
     "private/protocol/eventstream",
@@ -65,8 +66,8 @@
     "service/s3",
     "service/sts"
   ]
-  revision = "c9af76f2478f81c6566d0f7f4d522254ec7c0b52"
-  version = "v1.14.3"
+  revision = "f70339bb6af843c8ab1974381b3f4fcaee2b1a41"
+  version = "v1.15.5"
 
 [[projects]]
   branch = "master"
@@ -170,13 +171,13 @@
   branch = "master"
   name = "github.com/evanphx/json-patch"
   packages = ["."]
-  revision = "94e38aa1586e8a6c8a75770bddf5ff84c48a106b"
+  revision = "f195058310bd062ea7c754a834f0ff43b4b63afb"
 
 [[projects]]
   name = "github.com/go-ini/ini"
   packages = ["."]
-  revision = "06f5f3d67269ccec1fe5fe4134ba6e982984f7f5"
-  version = "v1.37.0"
+  revision = "358ee7663966325963d4e8b2e1fbd570c5195153"
+  version = "v1.38.1"
 
 [[projects]]
   name = "github.com/go-martini/martini"
@@ -217,8 +218,8 @@
 [[projects]]
   name = "github.com/gorilla/handlers"
   packages = ["."]
-  revision = "90663712d74cb411cbef281bc1e08c19d1a76145"
-  version = "v1.3.0"
+  revision = "7e0847f9db758cdebd26c149d0ae9d5d0b9c98ce"
+  version = "v1.4.0"
 
 [[projects]]
   name = "github.com/gorilla/mux"
@@ -350,8 +351,8 @@
 [[projects]]
   name = "github.com/sirupsen/logrus"
   packages = ["."]
-  revision = "c155da19408a8799da419ed3eeb0cb5db0ad5dbc"
-  version = "v1.0.5"
+  revision = "3e01752db0189b9157070a0e1668a620f9a85da2"
+  version = "v1.0.6"
 
 [[projects]]
   name = "github.com/src-d/gcfg"
@@ -368,7 +369,7 @@
   branch = "master"
   name = "github.com/unrolled/secure"
   packages = ["."]
-  revision = "a1cf62cc2159fff407728f118c41aece76c397fa"
+  revision = "8287f3899c8e3d490748e18fe7d438629132914e"
 
 [[projects]]
   name = "github.com/urfave/negroni"
@@ -382,8 +383,8 @@
     ".",
     "codes"
   ]
-  revision = "6ab02c0ddf38d837488a746aa8709f6ecffc2fde"
-  version = "v3.3.2"
+  revision = "b5e691b1eb52a28c05e67ab9df303626c095c23b"
+  version = "v3.3.3"
 
 [[projects]]
   branch = "master"
@@ -394,7 +395,7 @@
     "parse",
     "pm"
   ]
-  revision = "b0fa786cf4ea360285924c4a7fd42325be57aec8"
+  revision = "46796da1b0b4794e1e341883a399f12cc7574b55"
 
 [[projects]]
   branch = "master"
@@ -403,6 +404,7 @@
     "acme",
     "acme/autocert",
     "cast5",
+    "internal/subtle",
     "nacl/secretbox",
     "openpgp",
     "openpgp/armor",
@@ -416,13 +418,13 @@
     "scrypt",
     "ssh/terminal"
   ]
-  revision = "8ac0e0d97ce45cd83d1d7243c060cb8461dda5e9"
+  revision = "56440b844dfe139a8ac053f4ecac0b20b79058f4"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
   packages = ["context"]
-  revision = "1e491301e022f8f977054da4c2d852decd59571f"
+  revision = "f4c29de78a2a91c00474a2e689954305c350adf9"
 
 [[projects]]
   branch = "master"
@@ -431,7 +433,7 @@
     "unix",
     "windows"
   ]
-  revision = "9527bec2660bd847c050fda93a0f0c6dee0800bb"
+  revision = "0ffbfd41fbef8ffcf9b62b0b0aa3a5873ed7a4fe"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -459,8 +461,8 @@
     "internal/modules",
     "internal/remote_api"
   ]
-  revision = "150dc57a1b433e64154302bdc40b6bb8aefa313a"
-  version = "v1.0.0"
+  revision = "b1f26356af11148e710935ed1ac8a7f5702c7612"
+  version = "v1.1.0"
 
 [[projects]]
   name = "gopkg.in/inconshreveable/log15.v2"
@@ -476,8 +478,8 @@
     "helper/polyfill",
     "osfs"
   ]
-  revision = "df053870ae7070b0350624ba5a22161ba3796cc0"
-  version = "v4.1.1"
+  revision = "83cf655d40b15b427014d7875d10850f96edba14"
+  version = "v4.2.0"
 
 [[projects]]
   name = "gopkg.in/src-d/go-git.v4"
@@ -512,8 +514,8 @@
     "utils/merkletrie/internal/frame",
     "utils/merkletrie/noder"
   ]
-  revision = "b23570073eaee3489e5e3d666f22ba5cbeb53243"
-  version = "v4.4.1"
+  revision = "3bd5e82b2512d85becae9677fa06b5a973fd4cfb"
+  version = "v4.5.0"
 
 [[projects]]
   name = "gopkg.in/warnings.v0"

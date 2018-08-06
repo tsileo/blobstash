@@ -15,6 +15,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"strconv"
 )
 
 // ID hold a hex/byte representation of a timestamp and a hash
@@ -57,14 +58,8 @@ func (id *ID) Version() int64 {
 	return id.version
 }
 
-// SetHash allow to temporarily attach the document hash to the ID
-func (id *ID) SetHash(hash string) {
-	id.hash = hash
-}
-
-// Hash returns the ataached hash
-func (id *ID) Hash() string {
-	return id.hash
+func (id *ID) VersionString() string {
+	return strconv.FormatInt(id.version, 10)
 }
 
 // Raw returns the raw cursor
