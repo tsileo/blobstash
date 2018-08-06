@@ -72,6 +72,96 @@ func (h *LuaHook) Execute(doc map[string]interface{}) (map[string]interface{}, e
 	return newDoc, nil
 }
 
+func (h *LuaHook) ExecuteNoResult(doc map[string]interface{}) error {
+	if err := h.L.CallByParam(lua.P{
+		Fn:      h.hookFunc,
+		NRet:    0,
+		Protect: true,
+	}, luautil.InterfaceToLValue(h.L, doc)); err != nil {
+		fmt.Printf("failed to call pre put hook func: %+v %+v\n", doc, err)
+		return err
+	}
+	return nil
+}
+
+func (h *LuaHook) ExecuteReduce(key string, docs []map[string]interface{}) (map[string]interface{}, error) {
+	if err := h.L.CallByParam(lua.P{
+		Fn:      h.hookFunc,
+		NRet:    1,
+		Protect: true,
+	}, lua.LString(key), luautil.InterfaceToLValue(h.L, docs)); err != nil {
+		fmt.Printf("failed to call pre put hook func: %+v %+v\n", docs, err)
+		return nil, err
+	}
+	newDoc := luautil.TableToMap(h.L.Get(-1).(*lua.LTable))
+	h.L.Pop(1)
+	return newDoc, nil
+}
+
+type MapReduceEngine struct {
+	L *lua.LState
+
+	M *LuaHook // Map
+	R *LuaHook // Reduce
+	// F *LuaHook // Finalize, not useful now as reduce is only called once per key
+
+	emitted map[string][]map[string]interface{}
+
+	sync.Mutex
+}
+
+func (mre *MapReduceEngine) Map(doc map[string]interface{}) error {
+	if err := mre.M.ExecuteNoResult(doc); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (mre *MapReduceEngine) Reduce() error {
+	mre.Lock()
+	defer mre.Unlock()
+	for key, values := range mre.emitted {
+		newValues, err := mre.R.ExecuteReduce(key, values)
+		if err != nil {
+			return err
+		}
+		mre.emitted[key] = []map[string]interface{}{newValues}
+	}
+	return nil
+}
+
+func (mre *MapReduceEngine) Finalize() (map[string]map[string]interface{}, error) {
+	// TOOD(tsileo): support finalize
+	out := map[string]map[string]interface{}{}
+	for k, values := range mre.emitted {
+		out[k] = values[0]
+	}
+	return out, nil
+}
+
+func (mre *MapReduceEngine) Close() { mre.L.Close() }
+
+func (mre *MapReduceEngine) emit(L *lua.LState) int {
+	key := L.ToString(1)
+	value := luautil.TableToMap(L.ToTable(2))
+	if _, ok := mre.emitted[key]; ok {
+		mre.emitted[key] = append(mre.emitted[key], value)
+	} else {
+		mre.emitted[key] = []map[string]interface{}{value}
+	}
+	return 0
+}
+
+func NewMapReduceEngine() *MapReduceEngine {
+	state := lua.NewState()
+	mre := &MapReduceEngine{
+		L:       state,
+		emitted: map[string][]map[string]interface{}{},
+	}
+	state.SetGlobal("emit", state.NewFunction(mre.emit))
+	return mre
+}
+
 type LuaHooks struct {
 	hooks  map[string]map[string]*LuaHook
 	L      *lua.LState
