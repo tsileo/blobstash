@@ -120,6 +120,9 @@ func (mre *MapReduceEngine) Map(doc map[string]interface{}) error {
 	}
 	mre.Lock()
 	defer mre.Unlock()
+	if mre.reduced {
+		return fmt.Errorf("already reduced")
+	}
 	if err := mre.M.ExecuteNoResult(doc); err != nil {
 		return err
 	}
@@ -201,6 +204,7 @@ func (mre *MapReduceEngine) emit(L *lua.LState) int {
 	return 0
 }
 
+// SetupMap loads the map function (as a string, the code must return a function)
 func (mre *MapReduceEngine) SetupMap(code string) error {
 	hook, err := NewLuaHook(mre.L, code)
 	if err != nil {
@@ -211,6 +215,7 @@ func (mre *MapReduceEngine) SetupMap(code string) error {
 	return nil
 }
 
+// SetupReduce loads the reduce function (as a string, the code must return a function)
 func (mre *MapReduceEngine) SetupReduce(code string) error {
 	hook, err := NewLuaHook(mre.L, code)
 	if err != nil {
@@ -221,8 +226,12 @@ func (mre *MapReduceEngine) SetupReduce(code string) error {
 	return nil
 }
 
+// Duplicate returns a new `MapReduceEngine` with the same map and reduce hook as the current instance.
 func (mre *MapReduceEngine) Duplicate() (*MapReduceEngine, error) {
 	n := NewMapReduceEngine()
+	if mre.mapCode == "" || mre.reduceCode == "" {
+		return nil, fmt.Errorf("a map reduce engine must be configured before duplication")
+	}
 	if err := n.SetupMap(mre.mapCode); err != nil {
 		return nil, err
 	}
