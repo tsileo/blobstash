@@ -169,6 +169,8 @@ func (mre *MapReduceEngine) Reduce(other *MapReduceEngine) error {
 					return err
 				}
 				mre.emitted[k] = []map[string]interface{}{newValues}
+			} else {
+				mre.emitted[k] = vs
 			}
 		}
 	}
