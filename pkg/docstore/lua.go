@@ -105,21 +105,31 @@ type MapReduceEngine struct {
 	R *LuaHook // Reduce
 	// F *LuaHook // Finalize, not useful now as reduce is only called once per key
 
+	mapCode, reduceCode string
+
+	reduced bool
+
 	emitted map[string][]map[string]interface{}
 
 	sync.Mutex
 }
 
 func (mre *MapReduceEngine) Map(doc map[string]interface{}) error {
+	if mre.M == nil {
+		return fmt.Errorf("Map hook no set")
+	}
+	mre.Lock()
+	defer mre.Unlock()
 	if err := mre.M.ExecuteNoResult(doc); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (mre *MapReduceEngine) Reduce() error {
-	mre.Lock()
-	defer mre.Unlock()
+func (mre *MapReduceEngine) reduce() error {
+	if mre.R == nil {
+		return fmt.Errorf("Reduce hook no set")
+	}
 	for key, values := range mre.emitted {
 		newValues, err := mre.R.ExecuteReduce(key, values)
 		if err != nil {
@@ -127,13 +137,52 @@ func (mre *MapReduceEngine) Reduce() error {
 		}
 		mre.emitted[key] = []map[string]interface{}{newValues}
 	}
+	mre.reduced = true
+	return nil
+}
+
+func (mre *MapReduceEngine) Reduce(other *MapReduceEngine) error {
+	if mre.R == nil {
+		return fmt.Errorf("Reduce hook no set")
+	}
+	mre.Lock()
+	defer mre.Unlock()
+	if !mre.reduced {
+		if err := mre.reduce(); err != nil {
+			return err
+		}
+	}
+
+	if other != nil {
+		if !other.reduced {
+			if err := other.reduce(); err != nil {
+				return err
+			}
+		}
+		for k, vs := range other.emitted {
+			if cvs, ok := mre.emitted[k]; ok {
+				newValues, err := mre.R.ExecuteReduce(k, append(cvs, vs...))
+				if err != nil {
+					return err
+				}
+				mre.emitted[k] = []map[string]interface{}{newValues}
+			}
+		}
+	}
+
 	return nil
 }
 
 func (mre *MapReduceEngine) Finalize() (map[string]map[string]interface{}, error) {
 	// TOOD(tsileo): support finalize
+	if !mre.reduced {
+		return nil, fmt.Errorf("must reduce first")
+	}
 	out := map[string]map[string]interface{}{}
 	for k, values := range mre.emitted {
+		if len(values) > 1 {
+			return nil, fmt.Errorf("expected only 1 value per key, got %d", len(values))
+		}
 		out[k] = values[0]
 	}
 	return out, nil
@@ -150,6 +199,37 @@ func (mre *MapReduceEngine) emit(L *lua.LState) int {
 		mre.emitted[key] = []map[string]interface{}{value}
 	}
 	return 0
+}
+
+func (mre *MapReduceEngine) SetupMap(code string) error {
+	hook, err := NewLuaHook(mre.L, code)
+	if err != nil {
+		return err
+	}
+	mre.mapCode = code
+	mre.M = hook
+	return nil
+}
+
+func (mre *MapReduceEngine) SetupReduce(code string) error {
+	hook, err := NewLuaHook(mre.L, code)
+	if err != nil {
+		return err
+	}
+	mre.reduceCode = code
+	mre.R = hook
+	return nil
+}
+
+func (mre *MapReduceEngine) Duplicate() (*MapReduceEngine, error) {
+	n := NewMapReduceEngine()
+	if err := n.SetupMap(mre.mapCode); err != nil {
+		return nil, err
+	}
+	if err := n.SetupReduce(mre.reduceCode); err != nil {
+		return nil, err
+	}
+	return n, nil
 }
 
 func NewMapReduceEngine() *MapReduceEngine {
