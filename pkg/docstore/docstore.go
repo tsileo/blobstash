@@ -76,7 +76,7 @@ var reservedKeys = map[string]struct{}{
 	"_id":      struct{}{},
 	"_updated": struct{}{},
 	"_created": struct{}{},
-	"_hash":    struct{}{},
+	"_version": struct{}{},
 	"_hooks":   struct{}{},
 }
 
@@ -523,11 +523,13 @@ func (docstore *DocStore) Insert(collection string, doc *map[string]interface{})
 	_id.SetFlag(docFlag)
 
 	// Create a pointer in the key-value store
-	if _, err := docstore.kvStore.Put(
+	kv, err := docstore.kvStore.Put(
 		context.TODO(), fmt.Sprintf(keyFmt, collection, _id.String()), "", append([]byte{docFlag}, data...), now.UnixNano(),
-	); err != nil {
+	)
+	if err != nil {
 		return nil, err
 	}
+	_id.SetVersion(kv.Version)
 
 	// Index the doc if needed
 	// if err := docstore.IndexDoc(collection, _id, doc); err != nil {
@@ -902,7 +904,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			httputil.MarshalAndWrite(r, w, map[string]interface{}{
 				"_id":      _id.String(),
 				"_created": created,
-				"_hash":    _id.VersionString(),
+				"_version": _id.VersionString(),
 			},
 				httputil.WithStatusCode(http.StatusCreated))
 			return
@@ -1209,9 +1211,11 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 
 			docstore.logger.Debug("Update", "_id", sid, "new_doc", newDoc)
 
-			if _, err := docstore.kvStore.Put(ctx, fmt.Sprintf(keyFmt, collection, _id.String()), "", append([]byte{_id.Flag()}, data...), -1); err != nil {
+			kv, err := docstore.kvStore.Put(ctx, fmt.Sprintf(keyFmt, collection, _id.String()), "", append([]byte{_id.Flag()}, data...), -1)
+			if err != nil {
 				panic(err)
 			}
+			_id.SetVersion(kv.Version)
 			w.Header().Set("ETag", _id.VersionString())
 
 			created := time.Unix(0, _id.Ts()).UTC().Format(time.RFC3339)
@@ -1219,7 +1223,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			httputil.MarshalAndWrite(r, w, map[string]interface{}{
 				"_id":      _id.String(),
 				"_created": created,
-				"_hash":    _id.VersionString(),
+				"_version": _id.VersionString(),
 			})
 
 			return
