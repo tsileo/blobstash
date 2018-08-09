@@ -32,6 +32,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/evanphx/json-patch"
@@ -197,6 +198,7 @@ func (docstore *DocStore) Register(r *mux.Router, basicAuth func(http.Handler) h
 	r.Handle("/_stored_queries", basicAuth(http.HandlerFunc(docstore.storedQueriesHandler())))
 
 	r.Handle("/{collection}", basicAuth(http.HandlerFunc(docstore.docsHandler())))
+	r.Handle("/{collection}/_map_reduce", basicAuth(http.HandlerFunc(docstore.mapReduceHandler())))
 	// r.Handle("/{collection}/_indexes", middlewares.Auth(http.HandlerFunc(docstore.indexesHandler())))
 	r.Handle("/{collection}/{_id}", basicAuth(http.HandlerFunc(docstore.docHandler())))
 	r.Handle("/{collection}/{_id}/_versions", basicAuth(http.HandlerFunc(docstore.docVersionsHandler())))
@@ -908,6 +910,171 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			},
 				httputil.WithStatusCode(http.StatusCreated))
 			return
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+	}
+}
+
+// JSON input for the map reduce endpoint
+type mapReduceInput struct {
+	Map      string                 `json:"map"`
+	MapScope map[string]interface{} `json:"map_scope"`
+
+	Reduce      string                 `json:"reduce"`
+	ReduceScope map[string]interface{} `json:"reduce_scope"`
+}
+
+func (docstore *DocStore) mapReduceHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := httputil.NewQuery(r.URL.Query())
+		vars := mux.Vars(r)
+		collection := vars["collection"]
+		if collection == "" {
+			httputil.WriteJSONError(w, http.StatusInternalServerError, "Missing collection in the URL")
+			return
+		}
+		switch r.Method {
+		case "POST":
+			input := &mapReduceInput{}
+			if err := json.NewDecoder(r.Body).Decode(input); err != nil {
+				panic(httputil.NewPublicErrorFmt("Invalid JSON input"))
+			}
+
+			var asOf int64
+			var err error
+			if v := q.Get("as_of"); v != "" {
+				t, err := time.Parse("2006-1-2 15:4:5", v)
+				if err != nil {
+					panic(err)
+				}
+				asOf = t.UTC().UnixNano()
+			}
+			if asOf == 0 {
+				asOf, err = q.GetInt64Default("as_of_nano", 0)
+				if err != nil {
+					panic(err)
+				}
+			}
+
+			// Parse the query (JSON-encoded)
+			var queryArgs interface{}
+			jsQuery := q.Get("stored_query_args")
+			if jsQuery != "" {
+				if err := json.Unmarshal([]byte(jsQuery), &queryArgs); err != nil {
+					httputil.WriteJSONError(w, http.StatusInternalServerError, "Failed to decode JSON query")
+					return
+				}
+			}
+
+			rootMre := NewMapReduceEngine()
+			defer rootMre.Close()
+			if err := rootMre.SetupReduce(input.Reduce); err != nil {
+				panic(err)
+			}
+			if err := rootMre.SetupMap(input.Map); err != nil {
+				panic(err)
+			}
+			fmt.Printf("rootMre %+v\n", rootMre)
+
+			batches := make(chan *MapReduceEngine)
+
+			// Set some meta headers to help the client build subsequent query
+			// (iterator/cursor handling)
+			hasMore := true
+			var cursor string
+			// Batch size
+			limit := 50
+			q := &query{
+				storedQueryArgs: queryArgs,
+				storedQuery:     q.Get("stored_query"),
+				script:          q.Get("script"),
+				basicQuery:      q.Get("query"),
+			}
+
+			var wg sync.WaitGroup
+			for {
+				// Fetch a page
+				docs, _, stats, err := docstore.query(nil, collection, q, cursor, limit, true, asOf)
+				if err != nil {
+					docstore.logger.Error("query failed", "err", err)
+					httputil.Error(w, err)
+					return
+				}
+
+				// Process the batch in parallel
+				fmt.Printf("ROOT MRE %+v\n", rootMre)
+				newMre, err := rootMre.Duplicate()
+				if err != nil {
+					panic(err)
+				}
+				wg.Add(1)
+				go func(doc []map[string]interface{}, mre *MapReduceEngine) {
+					defer wg.Done()
+					// XXX(tsileo): pass the pointers in the Lua map?
+
+					// Call Map for each document
+					for _, doc := range docs {
+						if err := mre.Map(doc); err != nil {
+							mre.err = err
+							batches <- mre
+							return
+						}
+					}
+					if err := mre.Reduce(nil); err != nil {
+						mre.err = err
+					}
+					batches <- mre
+				}(docs, newMre)
+
+				// Guess if they're are still results on client-side,
+				// by checking if NReturned < limit, we can deduce there's no more results.
+				// The cursor should be the start of the next query
+				if stats.NReturned < limit {
+					hasMore = false
+				}
+
+				if !hasMore {
+					break
+				}
+				cursor = vkv.PrevKey(stats.LastID)
+			}
+
+			// Reduce the batches into a single one
+			done := make(chan error)
+			go func() {
+				for batch := range batches {
+					if batch.err != nil {
+						done <- batch.err
+						return
+					}
+					if err := rootMre.Reduce(batch); err != nil {
+						done <- err
+						return
+					}
+				}
+				done <- nil
+			}()
+			wg.Wait()
+			close(batches)
+
+			if err := <-done; err != nil {
+				docstore.logger.Error("reduce failed", "err", err)
+				httputil.Error(w, err)
+				return
+			}
+
+			result, err := rootMre.Finalize()
+			if err != nil {
+				docstore.logger.Error("finalize failed", "err", err)
+				httputil.Error(w, err)
+				return
+			}
+			// Write the JSON response (encoded if requested)
+			httputil.MarshalAndWrite(r, w, &map[string]interface{}{
+				"data": result,
+			})
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return

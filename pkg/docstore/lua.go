@@ -99,7 +99,8 @@ func (h *LuaHook) ExecuteReduce(key string, docs []map[string]interface{}) (map[
 }
 
 type MapReduceEngine struct {
-	L *lua.LState
+	L   *lua.LState
+	err error
 
 	M *LuaHook // Map
 	R *LuaHook // Reduce
@@ -219,6 +220,7 @@ func (mre *MapReduceEngine) SetupMap(code string) error {
 
 // SetupReduce loads the reduce function (as a string, the code must return a function)
 func (mre *MapReduceEngine) SetupReduce(code string) error {
+	fmt.Printf("SetupReduce %s\n", code)
 	hook, err := NewLuaHook(mre.L, code)
 	if err != nil {
 		return err
@@ -232,7 +234,7 @@ func (mre *MapReduceEngine) SetupReduce(code string) error {
 func (mre *MapReduceEngine) Duplicate() (*MapReduceEngine, error) {
 	n := NewMapReduceEngine()
 	if mre.mapCode == "" || mre.reduceCode == "" {
-		return nil, fmt.Errorf("a map reduce engine must be configured before duplication")
+		return nil, fmt.Errorf("a map reduce engine must be configured before duplication: %+v", mre)
 	}
 	if err := n.SetupMap(mre.mapCode); err != nil {
 		return nil, err
