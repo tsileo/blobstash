@@ -20,9 +20,7 @@ script:
 # FIXME(tsileo): re-enable the cross compile
 # - ./extras/cross_compile.sh
 # Run the integrations tests
-- pip install git+https://github.com/tsileo/blobstash-python-base.git
-- pip install git+https://github.com/tsileo/blobstash-python-filetree.git
-- pip install git+https://github.com/tsileo/blobstash-python-docstore.git
+- pip install git+https://github.com/tsileo/blobstash-python.git
 # FIXME(tsileo): import the new tests from blobstash-base
 # - python3 integration_tests/blobstore_kvstore.py
 - python3 integration_tests/docstore.py
