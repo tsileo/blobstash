@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/vmihailenco/msgpack"
@@ -112,7 +111,6 @@ func PrevKey(key string) string {
 
 type DB struct {
 	rdb *rangedb.RangeDB
-	mu  sync.Mutex
 }
 
 // New creates a new database.
@@ -154,8 +152,6 @@ func (db *DB) get(key string) (*KeyValue, error) {
 }
 
 func (db *DB) Put(kv *KeyValue) error {
-	// db.mu.Lock()
-	// defer db.mu.Unlock()
 	kv.SchemaVersion = schemaVersion
 
 	if kv.Version < 1 {
@@ -287,6 +283,7 @@ func (db *DB) keys(start, end string, limit int, reverse bool) ([]*KeyValue, str
 	out := []*KeyValue{}
 
 	c := db.rdb.Range(append([]byte{FlagKey}, []byte(start)...), append([]byte{FlagKey}, []byte(end)...), reverse)
+	defer c.Close()
 
 	// Iterate the range
 	k, v, err := c.Next()
@@ -340,6 +337,7 @@ func (db *DB) Versions(key string, start, end int64, limit int) (*KeyValueVersio
 	rstart := buildVkey(kvkey, start)
 	rend := buildVkey(kvkey, end)
 	c := db.rdb.Range(rstart, rend, true)
+	defer c.Close()
 
 	// Iterate the range
 	_, v, err := c.Next()

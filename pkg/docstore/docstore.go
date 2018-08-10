@@ -976,12 +976,39 @@ func (docstore *DocStore) mapReduceHandler() func(http.ResponseWriter, *http.Req
 			if err := rootMre.SetupMap(input.Map); err != nil {
 				panic(err)
 			}
-			fmt.Printf("rootMre %+v\n", rootMre)
 
 			batches := make(chan *MapReduceEngine)
 
-			// Set some meta headers to help the client build subsequent query
-			// (iterator/cursor handling)
+			// Reduce the batches into a single one as they're done
+			// TODO(tsileo): find a way to interrupt the pipeline on error
+			inFlight := 6
+			limiter := make(chan struct{}, inFlight)
+			errc := make(chan error, inFlight)
+			stop := make(chan struct{}, inFlight)
+
+			// Prepare the process of the batch result
+			go func() {
+				var discard bool
+				for batch := range batches {
+					if discard {
+						continue
+					}
+					if batch.err != nil {
+						// propagate the error
+						discard = true
+						stop <- struct{}{}
+						errc <- batch.err
+					}
+					if err := rootMre.Reduce(batch); err != nil {
+						// propagate the error
+						discard = true
+						stop <- struct{}{}
+						errc <- err
+					}
+				}
+				errc <- nil
+			}()
+
 			hasMore := true
 			var cursor string
 			// Batch size
@@ -994,72 +1021,73 @@ func (docstore *DocStore) mapReduceHandler() func(http.ResponseWriter, *http.Req
 			}
 
 			var wg sync.WaitGroup
+		QUERY_LOOP:
 			for {
-				// Fetch a page
-				docs, _, stats, err := docstore.query(nil, collection, q, cursor, limit, true, asOf)
-				if err != nil {
-					docstore.logger.Error("query failed", "err", err)
-					httputil.Error(w, err)
-					return
-				}
+				select {
+				case <-stop:
+					break QUERY_LOOP
+				default:
+					// Fetch a page
+					if !hasMore {
+						time.Sleep(50 * time.Millisecond)
+						break
+					}
+					docs, _, stats, err := docstore.query(nil, collection, q, cursor, limit, true, asOf)
+					if err != nil {
+						docstore.logger.Error("query failed", "err", err)
+						httputil.Error(w, err)
+						return
+					}
 
-				// Process the batch in parallel
-				fmt.Printf("ROOT MRE %+v\n", rootMre)
-				newMre, err := rootMre.Duplicate()
-				if err != nil {
-					panic(err)
-				}
-				wg.Add(1)
-				go func(doc []map[string]interface{}, mre *MapReduceEngine) {
-					defer wg.Done()
-					// XXX(tsileo): pass the pointers in the Lua map?
+					// Process the batch in parallel
+					wg.Add(1)
+					limiter <- struct{}{}
+					go func(doc []map[string]interface{}) {
+						defer func() {
+							wg.Done()
+							<-limiter
 
-					// Call Map for each document
-					for _, doc := range docs {
-						if err := mre.Map(doc); err != nil {
-							mre.err = err
-							batches <- mre
-							return
+						}()
+						mre, err := rootMre.Duplicate()
+						if err != nil {
+							panic(err)
 						}
-					}
-					if err := mre.Reduce(nil); err != nil {
-						mre.err = err
-					}
-					batches <- mre
-				}(docs, newMre)
+						defer mre.Close()
 
-				// Guess if they're are still results on client-side,
-				// by checking if NReturned < limit, we can deduce there's no more results.
-				// The cursor should be the start of the next query
-				if stats.NReturned < limit {
-					hasMore = false
-				}
+						// XXX(tsileo): pass the pointers in the Lua map?
 
-				if !hasMore {
-					break
+						// Call Map for each document
+						for _, doc := range docs {
+							if err := mre.Map(doc); err != nil {
+								mre.err = err
+
+								batches <- mre
+								return
+							}
+						}
+						if err := mre.Reduce(nil); err != nil {
+							mre.err = err
+						}
+						batches <- mre
+					}(docs)
+
+					// Guess if they're are still results on client-side,
+					// by checking if NReturned < limit, we can deduce there's no more results.
+					// The cursor should be the start of the next query
+					if stats.NReturned < limit {
+						hasMore = false
+						break QUERY_LOOP
+					}
+
+					cursor = vkv.PrevKey(stats.LastID)
 				}
-				cursor = vkv.PrevKey(stats.LastID)
 			}
 
-			// Reduce the batches into a single one
-			done := make(chan error)
-			go func() {
-				for batch := range batches {
-					if batch.err != nil {
-						done <- batch.err
-						return
-					}
-					if err := rootMre.Reduce(batch); err != nil {
-						done <- err
-						return
-					}
-				}
-				done <- nil
-			}()
 			wg.Wait()
 			close(batches)
 
-			if err := <-done; err != nil {
+			// Wait for the reduce step to be done
+			if err := <-errc; err != nil {
 				docstore.logger.Error("reduce failed", "err", err)
 				httputil.Error(w, err)
 				return

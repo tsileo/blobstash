@@ -17,12 +17,13 @@ func check(e error) {
 func getRange(t *testing.T, db *RangeDB, start, end []byte, r bool) [][]byte {
 	var out [][]byte
 	c := db.Range(start, end, r)
+	defer c.Close()
 
 	k, v, err := c.Next()
-	t.Logf("err after next=%+v %+v %+v", err, k, v)
+	t.Logf("err after next=%s %s|%+v %s %s", start, end, err, k, v)
 	for ; err == nil; k, v, err = c.Next() {
 		out = append(out, k)
-		t.Logf("k=%s, v=%s", k, v)
+		t.Logf("getRange k=%s, v=%s\n", k, v)
 	}
 	if err == io.EOF {
 		t.Logf("EOF")
@@ -55,8 +56,10 @@ func TestDBBasic(t *testing.T) {
 
 	r1 := getRange(t, db, []byte("hello010"), []byte("hello030"), false)
 	if !reflect.DeepEqual(r1, out[10:31]) {
-		t.Errorf("range check failed")
+		t.Errorf("range check failed %q %q", r1, out[10:31])
 	}
+
+	t.Logf("OK")
 
 	r2 := getRange(t, db, []byte("hello"), []byte("hello\xff"), false)
 	if !reflect.DeepEqual(r2, out) {
@@ -72,7 +75,7 @@ func TestDBBasic(t *testing.T) {
 	r3 := getRange(t, db, []byte("hello080"), []byte("hello\xff"), true)
 	t.Logf("len r3=%d", len(r3))
 	if !reflect.DeepEqual(r3, out[0:20]) {
-		t.Errorf("range check failed")
+		t.Errorf("range check failed %q %q", r3, out[0:20])
 	}
 
 	r4 := getRange(t, db, []byte("hello"), []byte("hello\xff"), true)

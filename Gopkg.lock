@@ -367,6 +367,25 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/syndtr/goleveldb"
+  packages = [
+    "leveldb",
+    "leveldb/cache",
+    "leveldb/comparer",
+    "leveldb/errors",
+    "leveldb/filter",
+    "leveldb/iterator",
+    "leveldb/journal",
+    "leveldb/memdb",
+    "leveldb/opt",
+    "leveldb/storage",
+    "leveldb/table",
+    "leveldb/util"
+  ]
+  revision = "c4c61651e9e37fa117f53c5a906d3b63090d8445"
+
+[[projects]]
+  branch = "master"
   name = "github.com/unrolled/secure"
   packages = ["."]
   revision = "8287f3899c8e3d490748e18fe7d438629132914e"
@@ -532,6 +551,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "76a111e819d308af360e860b17576273d2ebae3f0fdf2100a4686cc7f4734bf3"
+  inputs-digest = "04ffcbeefd9d0e4c5ba202f4740d95a341c3b2d9fde8146833dce69b1d877819"
   solver-name = "gps-cdcl"
   solver-version = 1

@@ -16,6 +16,7 @@ import (
 	"github.com/restic/chunker"
 	"github.com/vmihailenco/msgpack"
 	"gopkg.in/src-d/go-git.v4/plumbing"
+	"gopkg.in/src-d/go-git.v4/plumbing/object"
 	"gopkg.in/src-d/go-git.v4/plumbing/protocol/packp"
 	"gopkg.in/src-d/go-git.v4/plumbing/storer"
 	"gopkg.in/src-d/go-git.v4/plumbing/transport"
@@ -80,6 +81,7 @@ func (gs *GitServer) checkNamespace(w http.ResponseWriter, r *http.Request, ns s
 
 // RegisterRoute registers all the HTTP handlers for the extension
 func (gs *GitServer) Register(r *mux.Router, root *mux.Router, basicAuth func(http.Handler) http.Handler) {
+	r.Handle("/{ns}/{repo}.git", http.HandlerFunc(gs.gitRepoHandler))
 	r.Handle("/{ns}/{repo}.git/info/refs", http.HandlerFunc(gs.gitInfoRefsHandler))
 	r.Handle("/{ns}/{repo}.git/{service}", http.HandlerFunc(gs.gitServiceHandler))
 }
@@ -324,6 +326,35 @@ func (gs *GitServer) getEndpoint(path string) (*transport.Endpoint, error) {
 		return nil, err
 	}
 	return ep, nil
+}
+
+func (gs *GitServer) gitRepoHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	vars := mux.Vars(r)
+
+	if ok := gs.checkNamespace(w, r, vars["ns"]); !ok {
+		return
+	}
+
+	storage := newStorage(vars["ns"], vars["repo"], gs.blobStore, gs.kvStore)
+	ref, err := storage.Reference(plumbing.Master)
+	if err != nil {
+		panic(err)
+	}
+	commit, err := object.GetCommit(storage, ref.Hash())
+	//obj, err := storage.EncodedObject(plumbing.CommitObject, ref.Hash())
+	if err != nil {
+		panic(err)
+	}
+	//reader, _ := obj.Reader()
+	//data, err := ioutil.ReadAll(reader)
+	//if err != nil {
+	//		panic(err)
+	//	}
+	fmt.Printf("REF=%+v\nOBJ=%+v\n", ref, commit)
 }
 
 func (gs *GitServer) gitInfoRefsHandler(w http.ResponseWriter, r *http.Request) {

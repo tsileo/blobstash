@@ -1,40 +1,30 @@
 package rangedb // import "a4.io/blobstash/pkg/rangedb"
 
 import (
-	"bytes"
 	"io"
 	"os"
-	"sync"
 
-	"github.com/cznic/kv"
+	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/syndtr/goleveldb/leveldb/errors"
+	"github.com/syndtr/goleveldb/leveldb/iterator"
+	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
 type RangeDB struct {
-	db   *kv.DB
+	db   *leveldb.DB
 	path string
-	mu   *sync.Mutex
 }
 
 // New creates a new database.
 func New(path string) (*RangeDB, error) {
 	var err error
-	var kvdb *kv.DB
-	if path != "" {
-		createOpen := kv.Open
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			createOpen = kv.Create
-		}
-		kvdb, err = createOpen(path, &kv.Options{})
-	} else {
-		kvdb, err = kv.CreateMem(&kv.Options{})
-	}
+	db, err := leveldb.OpenFile(path, nil)
 	if err != nil {
 		return nil, err
 	}
 	return &RangeDB{
-		db:   kvdb,
+		db:   db,
 		path: path,
-		mu:   new(sync.Mutex),
 	}, nil
 }
 
@@ -51,98 +41,87 @@ func (db *RangeDB) Destroy() error {
 }
 
 func (db *RangeDB) Set(k, v []byte) error {
-	db.mu.Lock()
-	defer db.mu.Unlock()
-	if err := db.db.Set(k, v); err != nil {
-		return err
-	}
-	return nil
+	return db.db.Put(k, v, nil)
 }
 
 func (db *RangeDB) Get(k []byte) ([]byte, error) {
-	return db.db.Get(nil, k)
+	v, err := db.db.Get(k, nil)
+	if err != nil {
+		if err == errors.ErrNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return v, nil
+}
+
+// NextKey returns the next key for lexigraphical (key = NextKey(lastkey))
+func NextKey(bkey []byte) []byte {
+	i := len(bkey)
+	for i > 0 {
+		i--
+		bkey[i]++
+		if bkey[i] != 0 {
+			break
+		}
+	}
+	return bkey
 }
 
 type Range struct {
 	Reverse  bool
 	Min, Max []byte
 	db       *RangeDB
-	enum     *kv.Enumerator
+	it       iterator.Iterator
+	first    bool
 }
 
 func (db *RangeDB) Range(min, max []byte, reverse bool) *Range {
+	iter := db.db.NewIterator(&util.Range{Start: min, Limit: NextKey(max)}, nil)
 	return &Range{
+		it:      iter,
 		Min:     min,
 		Max:     max,
 		Reverse: reverse,
 		db:      db,
+		first:   true,
 	}
 }
 
-func (r *Range) first() ([]byte, []byte, error) {
-	var err error
-	if r.Reverse {
-		r.enum, _, err = r.db.db.Seek(r.Max)
-		if err != nil {
-
-			return nil, nil, err
-		}
-		k, v, err := r.enum.Prev()
-		if err == io.EOF {
-			r.enum, err = r.db.db.SeekLast()
-			if err == io.EOF {
-				return nil, nil, io.EOF
-			}
-			k, v, err = r.enum.Prev()
-		}
-		if err != nil {
-			return nil, nil, err
-		}
-		if bytes.Compare(k, r.Max) > 0 {
-			k, v, err = r.enum.Prev()
-		}
-		return k, v, err
-	}
-
-	r.enum, _, err = r.db.db.Seek(r.Min)
-	if err != nil && err != io.EOF {
-		return nil, nil, err
-	}
-	return r.enum.Next()
-}
-
-func (r *Range) next() ([]byte, []byte, error) {
-	if r.enum == nil {
-		return r.first()
-	}
-	if r.Reverse {
-		return r.enum.Prev()
-	}
-	return r.enum.Next()
-}
-
-func cut(k []byte, i int) []byte {
-	if len(k) < i {
-		return k
-	}
-	return k[0:i]
+func buildKv(it iterator.Iterator) ([]byte, []byte, error) {
+	k := make([]byte, len(it.Key()))
+	copy(k[:], it.Key())
+	v := make([]byte, len(it.Value()))
+	copy(v[:], it.Value())
+	return k, v, nil
 }
 
 func (r *Range) Next() ([]byte, []byte, error) {
-	r.db.mu.Lock()
-	defer r.db.mu.Unlock()
+	if !r.Reverse {
+		if r.it.Next() {
+			return buildKv(r.it)
+		}
 
-	k, v, err := r.next()
-	if r.shouldContinue(k) {
-		return k, v, err
+	} else {
+		if r.first {
+			if r.it.Last() {
+				r.first = false
+				return buildKv(r.it)
+			}
+		} else {
+			if r.it.Prev() {
+				return buildKv(r.it)
+			}
+		}
+	}
+	r.it.Release()
+	if err := r.it.Error(); err != nil {
+		return nil, nil, err
 	}
 	return nil, nil, io.EOF
 }
 
-func (r *Range) shouldContinue(key []byte) bool {
-	if r.Reverse {
-		return key != nil && bytes.Compare(key, r.Min) >= 0 && bytes.Compare(key, r.Max) <= 0
-	}
-
-	return key != nil && bytes.Compare(key, r.Max) <= 0
+func (r *Range) Close() error {
+	r.it.Release()
+	return r.it.Error()
 }

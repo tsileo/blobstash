@@ -2,6 +2,7 @@ package docstore
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os/exec"
@@ -24,6 +25,8 @@ import (
 	"a4.io/gluapp/util"
 	"a4.io/gluarequire2"
 )
+
+var closedError = errors.New("map reduce engine closed")
 
 type QueryMatcher interface {
 	Match(map[string]interface{}) (bool, error)
@@ -99,8 +102,9 @@ func (h *LuaHook) ExecuteReduce(key string, docs []map[string]interface{}) (map[
 }
 
 type MapReduceEngine struct {
-	L   *lua.LState
-	err error
+	L      *lua.LState
+	closed bool
+	err    error
 
 	M *LuaHook // Map
 	R *LuaHook // Reduce
@@ -119,6 +123,9 @@ func (mre *MapReduceEngine) Map(doc map[string]interface{}) error {
 	if mre.M == nil {
 		return fmt.Errorf("Map hook no set")
 	}
+	if mre.closed {
+		return closedError
+	}
 	mre.Lock()
 	defer mre.Unlock()
 	if mre.reduced {
@@ -134,6 +141,9 @@ func (mre *MapReduceEngine) reduce() error {
 	if mre.R == nil {
 		return fmt.Errorf("Reduce hook no set")
 	}
+	if mre.closed {
+		return closedError
+	}
 	for key, values := range mre.emitted {
 		newValues, err := mre.R.ExecuteReduce(key, values)
 		if err != nil {
@@ -145,9 +155,13 @@ func (mre *MapReduceEngine) reduce() error {
 	return nil
 }
 
+// other can be an already closed engine
 func (mre *MapReduceEngine) Reduce(other *MapReduceEngine) error {
 	if mre.R == nil {
 		return fmt.Errorf("Reduce hook no set")
+	}
+	if mre.closed {
+		return closedError
 	}
 	mre.Lock()
 	defer mre.Unlock()
@@ -194,7 +208,10 @@ func (mre *MapReduceEngine) Finalize() (map[string]map[string]interface{}, error
 	return out, nil
 }
 
-func (mre *MapReduceEngine) Close() { mre.L.Close() }
+func (mre *MapReduceEngine) Close() {
+	mre.closed = true
+	mre.L.Close()
+}
 
 func (mre *MapReduceEngine) emit(L *lua.LState) int {
 	key := L.ToString(1)
@@ -220,7 +237,6 @@ func (mre *MapReduceEngine) SetupMap(code string) error {
 
 // SetupReduce loads the reduce function (as a string, the code must return a function)
 func (mre *MapReduceEngine) SetupReduce(code string) error {
-	fmt.Printf("SetupReduce %s\n", code)
 	hook, err := NewLuaHook(mre.L, code)
 	if err != nil {
 		return err
