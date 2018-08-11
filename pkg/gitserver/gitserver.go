@@ -26,6 +26,7 @@ import (
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/filetree/writer"
 	"a4.io/blobstash/pkg/hashutil"
+	"a4.io/blobstash/pkg/httputil"
 	"a4.io/blobstash/pkg/hub"
 	"a4.io/blobstash/pkg/stash/store"
 	"a4.io/blobstash/pkg/vkv"
@@ -81,6 +82,8 @@ func (gs *GitServer) checkNamespace(w http.ResponseWriter, r *http.Request, ns s
 
 // RegisterRoute registers all the HTTP handlers for the extension
 func (gs *GitServer) Register(r *mux.Router, root *mux.Router, basicAuth func(http.Handler) http.Handler) {
+	r.Handle("/", http.HandlerFunc(gs.rootHandler))
+	r.Handle("/{ns}", http.HandlerFunc(gs.nsHandler))
 	r.Handle("/{ns}/{repo}.git", http.HandlerFunc(gs.gitRepoHandler))
 	r.Handle("/{ns}/{repo}.git/info/refs", http.HandlerFunc(gs.gitInfoRefsHandler))
 	r.Handle("/{ns}/{repo}.git/{service}", http.HandlerFunc(gs.gitServiceHandler))
@@ -328,6 +331,103 @@ func (gs *GitServer) getEndpoint(path string) (*transport.Endpoint, error) {
 	return ep, nil
 }
 
+type LogBuilder struct {
+	commits []*object.Commit
+}
+
+func (b *LogBuilder) process(c *object.Commit) error {
+	b.commits = append(b.commits, c)
+	parents := c.Parents()
+	defer parents.Close()
+	return parents.ForEach(b.process)
+}
+
+func buildCommitLogs(s *storage, h plumbing.Hash) []*object.Commit {
+	commit, err := object.GetCommit(s, h)
+	//obj, err := storage.EncodedObject(plumbing.CommitObject, ref.Hash())
+	if err != nil {
+		panic(err)
+	}
+	lb := &LogBuilder{[]*object.Commit{commit}}
+	parents := commit.Parents()
+	defer parents.Close()
+	if err := parents.ForEach(lb.process); err != nil {
+		panic(err)
+	}
+	return lb.commits
+}
+
+func (gs *GitServer) rootHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	namespaces, err := gs.namespaces()
+	if err != nil {
+		panic(err)
+	}
+	httputil.MarshalAndWrite(r, w, map[string]interface{}{
+		"data": namespaces,
+	})
+
+}
+
+func (gs *GitServer) namespaces() ([]string, error) {
+	namespaces := []string{}
+
+	// FIXME(tsileo): list namespaces from the kvstore `_git:` like in the nsHandler
+
+	for ns, _ := range gs.conf.GitServer.Namespaces {
+		namespaces = append(namespaces, ns)
+	}
+	return namespaces, nil
+}
+
+func (gs *GitServer) repositories(ns string) ([]string, error) {
+	repos := []string{}
+	// We cannot afford to index the repository (will waste space to keep a separate
+	// kv collection) and having a temp index is complicated
+	prefix := fmt.Sprintf("_git:%s:", ns)
+	for {
+		keys, _, err := gs.kvStore.Keys(context.TODO(), prefix, "\xff", 1)
+		if err != nil {
+			return nil, err
+		}
+		if len(keys) == 0 || !strings.HasPrefix(keys[0].Key, prefix) {
+			break
+		}
+		repo := strings.Split(keys[0].Key, "/")[0]
+		repo = repo[len(prefix):]
+		repos = append(repos, repo)
+		prefix = vkv.NextKey(prefix)
+	}
+	return repos, nil
+}
+
+func (gs *GitServer) nsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	vars := mux.Vars(r)
+
+	if ok := gs.checkNamespace(w, r, vars["ns"]); !ok {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	repos, err := gs.repositories(vars["ns"])
+	if err != nil {
+		panic(err)
+	}
+
+	httputil.MarshalAndWrite(r, w, map[string]interface{}{
+		"data": repos,
+	})
+
+}
+
 func (gs *GitServer) gitRepoHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -344,17 +444,13 @@ func (gs *GitServer) gitRepoHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		panic(err)
 	}
-	commit, err := object.GetCommit(storage, ref.Hash())
-	//obj, err := storage.EncodedObject(plumbing.CommitObject, ref.Hash())
-	if err != nil {
-		panic(err)
-	}
+	commits := buildCommitLogs(storage, ref.Hash())
 	//reader, _ := obj.Reader()
 	//data, err := ioutil.ReadAll(reader)
 	//if err != nil {
-	//		panic(err)
-	//	}
-	fmt.Printf("REF=%+v\nOBJ=%+v\n", ref, commit)
+	//	panic(err)
+	//}
+	fmt.Printf("REF=%+v\nOBJ=%+v\n", ref, commits)
 }
 
 func (gs *GitServer) gitInfoRefsHandler(w http.ResponseWriter, r *http.Request) {
