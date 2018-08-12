@@ -406,6 +406,12 @@
   version = "v3.3.3"
 
 [[projects]]
+  name = "github.com/xeonx/timeago"
+  packages = ["."]
+  revision = "49df971d6c5d5b073f921e8c580fbb6a0bb629c1"
+  version = "v1.0.0-rc2"
+
+[[projects]]
   branch = "master"
   name = "github.com/yuin/gopher-lua"
   packages = [
@@ -551,6 +557,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "04ffcbeefd9d0e4c5ba202f4740d95a341c3b2d9fde8146833dce69b1d877819"
+  inputs-digest = "9ca061f0c7c7d915bb277127b5c6b25e8f47b85dbf8e1eca0786f534ebab4121"
   solver-name = "gps-cdcl"
   solver-version = 1
