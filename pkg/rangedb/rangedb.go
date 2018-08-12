@@ -96,6 +96,13 @@ func buildKv(it iterator.Iterator) ([]byte, []byte, error) {
 	return k, v, nil
 }
 
+func (r *Range) Seek(k []byte) ([]byte, []byte, error) {
+	if r.it.Seek(k) {
+		return buildKv(r.it)
+	}
+	return nil, nil, io.EOF
+}
+
 func (r *Range) Next() ([]byte, []byte, error) {
 	if !r.Reverse {
 		if r.it.Next() {

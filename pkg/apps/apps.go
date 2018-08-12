@@ -21,6 +21,8 @@ import (
 	"a4.io/blobstash/pkg/docstore"
 	docstoreLua "a4.io/blobstash/pkg/docstore/lua"
 	"a4.io/blobstash/pkg/filetree"
+	"a4.io/blobstash/pkg/gitserver"
+	gitserverLua "a4.io/blobstash/pkg/gitserver/lua"
 	"a4.io/blobstash/pkg/httputil"
 	"a4.io/blobstash/pkg/hub"
 	"a4.io/gluapp"
@@ -32,6 +34,7 @@ import (
 type Apps struct {
 	apps            map[string]*App
 	config          *config.Config
+	gs              *gitserver.GitServer
 	ft              *filetree.FileTree
 	docstore        *docstore.DocStore
 	hub             *hub.Hub
@@ -120,6 +123,7 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 			SetupState: func(L *lua.LState) error {
 				docstore.SetLuaGlobals(L)
 				docstoreLua.Setup(L, apps.docstore)
+				gitserverLua.Setup(L, apps.gs)
 				return nil
 			},
 		})
@@ -181,12 +185,13 @@ func (app *App) serve(ctx context.Context, p string, w http.ResponseWriter, req 
 }
 
 // New initializes the Apps manager
-func New(logger log.Logger, conf *config.Config, ft *filetree.FileTree, ds *docstore.DocStore, chub *hub.Hub, hostWhitelister func(...string)) (*Apps, error) {
+func New(logger log.Logger, conf *config.Config, ft *filetree.FileTree, ds *docstore.DocStore, gs *gitserver.GitServer, chub *hub.Hub, hostWhitelister func(...string)) (*Apps, error) {
 	// var err error
 	apps := &Apps{
 		apps:            map[string]*App{},
 		ft:              ft,
 		log:             logger,
+		gs:              gs,
 		config:          conf,
 		hub:             chub,
 		docstore:        ds,

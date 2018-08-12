@@ -224,6 +224,8 @@ func fromJSON(L *lua.LState, value interface{}) lua.LValue {
 	case nil:
 		return lua.LNil
 	default:
+		// FIXME(tsileo): create a parser for `lua:"key_name"` and build a table by iterating the field a converting value!
+		// or a ToLua(L) lua.LValue interface?
 		if s, ok := converted.(fmt.Stringer); ok {
 			return lua.LString(s.String())
 		}

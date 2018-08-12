@@ -149,17 +149,17 @@ func New(conf *config.Config) (*Server, error) {
 	}
 	docstore.Register(s.router.PathPrefix("/api/docstore").Subrouter(), basicAuth)
 
-	apps, err := apps.New(logger.New("app", "apps"), conf, filetree, docstore, hub, s.whitelistHosts)
+	git, err := gitserver.New(logger.New("app", "gitserver"), conf, kvstore, blobstore, hub)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize git server app: %v", err)
+	}
+	git.Register(s.router.PathPrefix("/git").Subrouter(), s.router, basicAuth)
+
+	apps, err := apps.New(logger.New("app", "apps"), conf, filetree, docstore, git, hub, s.whitelistHosts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize filetree app: %v", err)
 	}
 	apps.Register(s.router.PathPrefix("/api/apps").Subrouter(), s.router, basicAuth)
-
-	git, err := gitserver.New(logger.New("app", "gitserver"), conf, kvstore, blobstore, hub)
-	if err != nil {
-
-	}
-	git.Register(s.router.PathPrefix("/git").Subrouter(), s.router, basicAuth)
 
 	// Setup the closeFunc
 	s.closeFunc = func() error {

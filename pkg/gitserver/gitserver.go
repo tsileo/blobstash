@@ -363,7 +363,7 @@ func (gs *GitServer) rootHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	namespaces, err := gs.namespaces()
+	namespaces, err := gs.Namespaces()
 	if err != nil {
 		panic(err)
 	}
@@ -373,7 +373,7 @@ func (gs *GitServer) rootHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (gs *GitServer) namespaces() ([]string, error) {
+func (gs *GitServer) Namespaces() ([]string, error) {
 	namespaces := []string{}
 
 	// FIXME(tsileo): list namespaces from the kvstore `_git:` like in the nsHandler
@@ -384,7 +384,7 @@ func (gs *GitServer) namespaces() ([]string, error) {
 	return namespaces, nil
 }
 
-func (gs *GitServer) repositories(ns string) ([]string, error) {
+func (gs *GitServer) Repositories(ns string) ([]string, error) {
 	repos := []string{}
 	// We cannot afford to index the repository (will waste space to keep a separate
 	// kv collection) and having a temp index is complicated
@@ -417,7 +417,7 @@ func (gs *GitServer) nsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	repos, err := gs.repositories(vars["ns"])
+	repos, err := gs.Repositories(vars["ns"])
 	if err != nil {
 		panic(err)
 	}
@@ -426,6 +426,55 @@ func (gs *GitServer) nsHandler(w http.ResponseWriter, r *http.Request) {
 		"data": repos,
 	})
 
+}
+
+type GitRepoSummary struct {
+	CommitsCount int
+	Commits      []*object.Commit
+	Branches     []*RefSummary
+	Tags         []*RefSummary
+}
+
+type RefSummary struct {
+	Ref    *plumbing.Reference
+	Commit *object.Commit
+}
+
+func (gs *GitServer) RepoSummary(ns, repo string) (*GitRepoSummary, error) {
+	summary := &GitRepoSummary{}
+
+	storage := newStorage(ns, repo, gs.blobStore, gs.kvStore)
+	refs, err := storage.IterReferences()
+	if err != nil {
+		return nil, err
+	}
+	if err := refs.ForEach(func(ref *plumbing.Reference) error {
+		if ref.Name().IsTag() {
+			commit, err := object.GetCommit(storage, ref.Hash())
+			if err != nil {
+				return fmt.Errorf("failed to fetch tag: %+v", err)
+			}
+			summary.Tags = append(summary.Tags, &RefSummary{Ref: ref, Commit: commit})
+		}
+		if ref.Name().IsBranch() {
+			commit, err := object.GetCommit(storage, ref.Hash())
+			if err != nil {
+				return err
+			}
+			summary.Branches = append(summary.Branches, &RefSummary{Ref: ref, Commit: commit})
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	ref, err := storage.Reference(plumbing.Master)
+	if err != nil {
+		return nil, err
+	}
+	commits := buildCommitLogs(storage, ref.Hash())
+	summary.CommitsCount = len(commits)
+	summary.Commits = commits[0:25]
+	return summary, nil
 }
 
 func (gs *GitServer) gitRepoHandler(w http.ResponseWriter, r *http.Request) {
@@ -439,12 +488,39 @@ func (gs *GitServer) gitRepoHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	summary := &GitRepoSummary{}
+
 	storage := newStorage(vars["ns"], vars["repo"], gs.blobStore, gs.kvStore)
+	refs, err := storage.IterReferences()
+	if err != nil {
+		panic(err)
+	}
+	if err := refs.ForEach(func(ref *plumbing.Reference) error {
+		if ref.Name().IsTag() {
+			commit, err := object.GetCommit(storage, ref.Hash())
+			if err != nil {
+				return fmt.Errorf("failed to fetch tag: %+v", err)
+			}
+			summary.Tags = append(summary.Tags, &RefSummary{Ref: ref, Commit: commit})
+		}
+		if ref.Name().IsBranch() {
+			commit, err := object.GetCommit(storage, ref.Hash())
+			if err != nil {
+				return err
+			}
+			summary.Branches = append(summary.Branches, &RefSummary{Ref: ref, Commit: commit})
+		}
+		return nil
+	}); err != nil {
+		panic(err)
+	}
 	ref, err := storage.Reference(plumbing.Master)
 	if err != nil {
 		panic(err)
 	}
 	commits := buildCommitLogs(storage, ref.Hash())
+	summary.Commits = commits
+	fmt.Printf("SUMMARY: %+v\n", summary)
 	//reader, _ := obj.Reader()
 	//data, err := ioutil.ReadAll(reader)
 	//if err != nil {
