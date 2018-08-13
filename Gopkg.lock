@@ -317,6 +317,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/phayes/permbits"
+  packages = ["."]
+  revision = "529f712b661aa1075f21a3d7380f3a998556c1a2"
+
+[[projects]]
+  branch = "master"
   name = "github.com/phyber/negroni-gzip"
   packages = ["gzip"]
   revision = "ef6356a5d02936b65ca8e60b604ed6b078aac8d3"
@@ -557,6 +563,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "9ca061f0c7c7d915bb277127b5c6b25e8f47b85dbf8e1eca0786f534ebab4121"
+  inputs-digest = "a9842bb7182ed1059bc534fe11aaab6d2093b4a3dfcef8377acbb621417ed655"
   solver-name = "gps-cdcl"
   solver-version = 1
