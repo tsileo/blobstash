@@ -1,8 +1,13 @@
 package lua // import "a4.io/blobstash/pkg/gitserver/lua"
 
 import (
+	"os"
+	"time"
+
+	"github.com/phayes/permbits"
 	"github.com/xeonx/timeago"
 	"github.com/yuin/gopher-lua"
+	"gopkg.in/src-d/go-git.v4/plumbing"
 	"gopkg.in/src-d/go-git.v4/plumbing/object"
 
 	"a4.io/blobstash/pkg/apps/luautil"
@@ -49,8 +54,14 @@ func setupGitServer(gs *gitserver.GitServer) func(*lua.LState) int {
 func Setup(L *lua.LState, gs *gitserver.GitServer) {
 	mtCol := L.NewTypeMetatable("repo")
 	L.SetField(mtCol, "__index", L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
-		"name":    repoName,
-		"summary": repoSummary,
+		"name":       repoName,
+		"refs":       repoRefs,
+		"summary":    repoSummary,
+		"tree":       repoTree,
+		"log":        repoLog,
+		"get_commit": repoGetCommit,
+		"get_tree":   repoGetTree,
+		"get_file":   repoGetFile,
 	}))
 	L.PreloadModule("gitserver", setupGitServer(gs))
 }
@@ -78,17 +89,109 @@ func repoName(L *lua.LState) int {
 	return 1
 }
 
-func convertCommit(L *lua.LState, commit *object.Commit) *lua.LTable {
-	tbl := L.CreateTable(0, 4)
-	tbl.RawSetH(lua.LString("time_ago"), lua.LString(timeago.English.Format(commit.Committer.When)))
-	tbl.RawSetH(lua.LString("message"), lua.LString(commit.Message))
-	tbl.RawSetH(lua.LString("author_name"), lua.LString(commit.Committer.Name))
-	tbl.RawSetH(lua.LString("author_email"), lua.LString(commit.Committer.Email))
+func convertFile(L *lua.LState, file *object.File) *lua.LTable {
+	tbl := L.CreateTable(0, 3)
+	var contents string
+	var err error
+	isBinary := lua.LTrue
+	gisBinary, err := file.IsBinary()
+	if err != nil {
+		panic(err)
+	}
+	if !gisBinary {
+		isBinary = lua.LFalse
+		contents, err = file.Contents()
+		if err != nil {
+			panic(err)
+		}
+
+	}
+	tbl.RawSetH(lua.LString("hash"), lua.LString(file.Name))
+	tbl.RawSetH(lua.LString("contents"), lua.LString(contents))
+	tbl.RawSetH(lua.LString("is_binary"), isBinary)
 	return tbl
 }
+
+func convertCommit(L *lua.LState, commit *object.Commit, withPatch bool) *lua.LTable {
+	cntWithPatch := 0
+	if withPatch {
+		cntWithPatch = 3
+	}
+	tbl := L.CreateTable(0, 12+cntWithPatch)
+	tbl.RawSetH(lua.LString("hash"), lua.LString(commit.Hash.String()))
+	tbl.RawSetH(lua.LString("message"), lua.LString(commit.Message))
+	// Author
+	tbl.RawSetH(lua.LString("author_time_ago"), lua.LString(timeago.English.Format(commit.Author.When)))
+	tbl.RawSetH(lua.LString("author_time"), lua.LString(commit.Author.When.Format(time.RFC3339)))
+	tbl.RawSetH(lua.LString("author_name"), lua.LString(commit.Author.Name))
+	tbl.RawSetH(lua.LString("author_email"), lua.LString(commit.Author.Email))
+	// Comitter
+	tbl.RawSetH(lua.LString("comitter_time_ago"), lua.LString(timeago.English.Format(commit.Committer.When)))
+	tbl.RawSetH(lua.LString("comitter_time"), lua.LString(commit.Committer.When.Format(time.RFC3339)))
+	tbl.RawSetH(lua.LString("comitter_name"), lua.LString(commit.Committer.Name))
+	tbl.RawSetH(lua.LString("comitter_email"), lua.LString(commit.Committer.Email))
+
+	tbl.RawSetH(lua.LString("tree_hash"), lua.LString(commit.TreeHash.String()))
+	if len(commit.ParentHashes) > 0 {
+		tbl.RawSetH(lua.LString("parent_hash"), lua.LString(commit.ParentHashes[0].String()))
+	}
+
+	if withPatch && len(commit.ParentHashes) > 0 {
+		ci := commit.Parents()
+		defer ci.Close()
+		parentCommit, err := ci.Next()
+		if err != nil {
+			panic(err)
+		}
+		parentTree, err := parentCommit.Tree()
+		if err != nil {
+			panic(err)
+		}
+		tree, err := commit.Tree()
+		if err != nil {
+			panic(err)
+		}
+		changes, err := parentTree.Diff(tree)
+		if err != nil {
+			panic(err)
+		}
+		patch, err := changes.Patch()
+		if err != nil {
+			panic(err)
+		}
+		var filesChanged, additions, deletions int
+		stats := patch.Stats()
+		lfilestats := L.CreateTable(len(stats), 0)
+		for _, fstat := range stats {
+			filesChanged++
+			additions += fstat.Addition
+			deletions += fstat.Deletion
+			lfilestats.Append(newFileStat(L, fstat.Name, fstat.Addition, fstat.Deletion))
+		}
+		lstats := L.CreateTable(0, 3)
+		lstats.RawSetH(lua.LString("files_changed"), lua.LNumber(filesChanged))
+		lstats.RawSetH(lua.LString("additions"), lua.LNumber(additions))
+		lstats.RawSetH(lua.LString("deletions"), lua.LNumber(deletions))
+
+		tbl.RawSetH(lua.LString("stats"), lstats)
+		tbl.RawSetH(lua.LString("file_stats"), lfilestats)
+		tbl.RawSetH(lua.LString("patch"), lua.LString(patch.String()))
+	}
+
+	return tbl
+}
+func newFileStat(L *lua.LState, name string, additions, deletions int) *lua.LTable {
+	stats := L.CreateTable(0, 3)
+	stats.RawSetH(lua.LString("name"), lua.LString(name))
+	stats.RawSetH(lua.LString("additions"), lua.LNumber(additions))
+	stats.RawSetH(lua.LString("deletions"), lua.LNumber(deletions))
+	return stats
+}
+
 func convertRefSummary(L *lua.LState, refSummary *gitserver.RefSummary) *lua.LTable {
-	tbl := L.CreateTable(0, 5)
+	tbl := L.CreateTable(0, 6)
 	tbl.RawSetH(lua.LString("commit_time_ago"), lua.LString(timeago.English.Format(refSummary.Commit.Committer.When)))
+	tbl.RawSetH(lua.LString("commit_hash"), lua.LString(refSummary.Commit.Hash.String()))
 	tbl.RawSetH(lua.LString("commit_message"), lua.LString(refSummary.Commit.Message))
 	tbl.RawSetH(lua.LString("commit_author_name"), lua.LString(refSummary.Commit.Committer.Name))
 	tbl.RawSetH(lua.LString("commit_author_email"), lua.LString(refSummary.Commit.Committer.Email))
@@ -96,12 +199,25 @@ func convertRefSummary(L *lua.LState, refSummary *gitserver.RefSummary) *lua.LTa
 	return tbl
 }
 
-func repoSummary(L *lua.LState) int {
+func convertTreeEntry(L *lua.LState, treeEntry *object.TreeEntry) *lua.LTable {
+	tbl := L.CreateTable(0, 4)
+	tbl.RawSetH(lua.LString("name"), lua.LString(treeEntry.Name))
+	tbl.RawSetH(lua.LString("mode"), lua.LString(permbits.FileMode(os.FileMode(treeEntry.Mode)).String()))
+	isFile := lua.LFalse
+	if treeEntry.Mode.IsFile() {
+		isFile = lua.LTrue
+	}
+	tbl.RawSetH(lua.LString("is_file"), isFile)
+	tbl.RawSetH(lua.LString("hash"), lua.LString(treeEntry.Hash.String()))
+	return tbl
+}
+
+func repoRefs(L *lua.LState) int {
 	repo := checkRepo(L)
 	if repo == nil {
 		return 0
 	}
-	summary, err := repo.gs.RepoSummary(repo.ns, repo.name)
+	summary, err := repo.gs.RepoRefs(repo.ns, repo.name)
 	if err != nil {
 		panic(err)
 	}
@@ -113,15 +229,113 @@ func repoSummary(L *lua.LState) int {
 	for _, refSummary := range summary.Tags {
 		tagsTbl.Append(convertRefSummary(L, refSummary))
 	}
-	commitsTbl := L.CreateTable(len(summary.Commits), 0)
-	for _, commit := range summary.Commits {
-		commitsTbl.Append(convertCommit(L, commit))
-	}
-	tbl := L.CreateTable(0, 4)
+	tbl := L.CreateTable(0, 2)
 	tbl.RawSetH(lua.LString("branches"), branchesTbl)
 	tbl.RawSetH(lua.LString("tags"), tagsTbl)
+	L.Push(tbl)
+	return 1
+}
+
+func repoSummary(L *lua.LState) int {
+	repo := checkRepo(L)
+	if repo == nil {
+		return 0
+	}
+	summary, err := repo.gs.RepoSummary(repo.ns, repo.name)
+	if err != nil {
+		panic(err)
+	}
+	commitsTbl := L.CreateTable(len(summary.Commits), 0)
+	for _, commit := range summary.Commits {
+		commitsTbl.Append(convertCommit(L, commit, false))
+	}
+	tbl := L.CreateTable(0, 4)
+	if summary.Readme != nil {
+		tbl.RawSetH(lua.LString("readme"), convertFile(L, summary.Readme))
+	} else {
+		tbl.RawSetH(lua.LString("readme"), lua.LNil)
+	}
 	tbl.RawSetH(lua.LString("commits"), commitsTbl)
 	tbl.RawSetH(lua.LString("commits_count"), lua.LNumber(summary.CommitsCount))
 	L.Push(tbl)
+	return 1
+}
+
+func repoLog(L *lua.LState) int {
+	repo := checkRepo(L)
+	if repo == nil {
+		return 0
+	}
+	commits, err := repo.gs.RepoLog(repo.ns, repo.name)
+	if err != nil {
+		panic(err)
+	}
+	tbl := L.CreateTable(len(commits), 0)
+	for _, commit := range commits {
+		tbl.Append(convertCommit(L, commit, false))
+	}
+	L.Push(tbl)
+	return 1
+
+}
+
+func repoTree(L *lua.LState) int {
+	repo := checkRepo(L)
+	if repo == nil {
+		return 0
+	}
+	tree, err := repo.gs.RepoTree(repo.ns, repo.name)
+	if err != nil {
+		panic(err)
+	}
+	tbl := L.CreateTable(len(tree.Entries), 0)
+	for _, entry := range tree.Entries {
+		tbl.Append(convertTreeEntry(L, &entry))
+	}
+	L.Push(tbl)
+	return 1
+
+}
+func repoGetTree(L *lua.LState) int {
+	repo := checkRepo(L)
+	if repo == nil {
+		return 0
+	}
+	tree, err := repo.gs.RepoGetTree(repo.ns, repo.name, L.ToString(2))
+	if err != nil {
+		panic(err)
+	}
+	tbl := L.CreateTable(len(tree.Entries), 0)
+	for _, entry := range tree.Entries {
+		tbl.Append(convertTreeEntry(L, &entry))
+	}
+	L.Push(tbl)
+	return 1
+}
+
+func repoGetCommit(L *lua.LState) int {
+	repo := checkRepo(L)
+	if repo == nil {
+		return 0
+	}
+	hash := plumbing.NewHash(L.ToString(2))
+	commit, err := repo.gs.RepoCommit(repo.ns, repo.name, hash)
+	if err != nil {
+		panic(err)
+	}
+	L.Push(convertCommit(L, commit, true))
+	return 1
+}
+func repoGetFile(L *lua.LState) int {
+	repo := checkRepo(L)
+	if repo == nil {
+		return 0
+	}
+	hash := plumbing.NewHash(L.ToString(2))
+	file, err := repo.gs.RepoGetFile(repo.ns, repo.name, hash)
+	if err != nil {
+		panic(err)
+	}
+	L.Push(convertFile(L, file))
 	return 1
 }

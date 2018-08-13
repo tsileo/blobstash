@@ -428,11 +428,15 @@ func (gs *GitServer) nsHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
+type GitRepoRefs struct {
+	Branches []*RefSummary
+	Tags     []*RefSummary
+}
+
 type GitRepoSummary struct {
 	CommitsCount int
 	Commits      []*object.Commit
-	Branches     []*RefSummary
-	Tags         []*RefSummary
+	Readme       *object.File
 }
 
 type RefSummary struct {
@@ -440,8 +444,60 @@ type RefSummary struct {
 	Commit *object.Commit
 }
 
-func (gs *GitServer) RepoSummary(ns, repo string) (*GitRepoSummary, error) {
-	summary := &GitRepoSummary{}
+func (gs *GitServer) RepoGetFile(ns, repo string, hash plumbing.Hash) (*object.File, error) {
+	storage := newStorage(ns, repo, gs.blobStore, gs.kvStore)
+
+	blob, err := object.GetBlob(storage, hash)
+	if err != nil {
+		return nil, err
+	}
+
+	return object.NewFile(hash.String(), 0644, blob), nil
+}
+
+func (gs *GitServer) RepoGetTree(ns, repo, hash string) (*object.Tree, error) {
+	storage := newStorage(ns, repo, gs.blobStore, gs.kvStore)
+	tree, err := object.GetTree(storage, plumbing.NewHash(hash))
+	if err != nil {
+		return nil, err
+	}
+	return tree, nil
+}
+
+func (gs *GitServer) RepoTree(ns, repo string) (*object.Tree, error) {
+	storage := newStorage(ns, repo, gs.blobStore, gs.kvStore)
+	ref, err := storage.Reference(plumbing.Master)
+	if err != nil {
+		return nil, err
+	}
+	commit, err := object.GetCommit(storage, ref.Hash())
+	if err != nil {
+		return nil, err
+	}
+	return commit.Tree()
+}
+
+func (gs *GitServer) RepoLog(ns, repo string) ([]*object.Commit, error) {
+	storage := newStorage(ns, repo, gs.blobStore, gs.kvStore)
+	ref, err := storage.Reference(plumbing.Master)
+	if err != nil {
+		return nil, err
+	}
+	commits := buildCommitLogs(storage, ref.Hash())
+	return commits, nil
+}
+
+func (gs *GitServer) RepoCommit(ns, repo string, hash plumbing.Hash) (*object.Commit, error) {
+	storage := newStorage(ns, repo, gs.blobStore, gs.kvStore)
+	commit, err := object.GetCommit(storage, hash)
+	if err != nil {
+		panic(err)
+	}
+	return commit, nil
+}
+
+func (gs *GitServer) RepoRefs(ns, repo string) (*GitRepoRefs, error) {
+	summary := &GitRepoRefs{}
 
 	storage := newStorage(ns, repo, gs.blobStore, gs.kvStore)
 	refs, err := storage.IterReferences()
@@ -467,13 +523,42 @@ func (gs *GitServer) RepoSummary(ns, repo string) (*GitRepoSummary, error) {
 	}); err != nil {
 		return nil, err
 	}
+	return summary, nil
+}
+
+func (gs *GitServer) RepoSummary(ns, repo string) (*GitRepoSummary, error) {
+	summary := &GitRepoSummary{}
+
+	storage := newStorage(ns, repo, gs.blobStore, gs.kvStore)
+
 	ref, err := storage.Reference(plumbing.Master)
 	if err != nil {
 		return nil, err
 	}
+	commit, err := object.GetCommit(storage, ref.Hash())
+	if err != nil {
+		panic(err)
+	}
+	tree, err := commit.Tree()
+	if err != nil {
+		panic(err)
+	}
+	for _, treeEntry := range tree.Entries {
+		if strings.HasSuffix(treeEntry.Name, "README.md") ||
+			strings.HasSuffix(treeEntry.Name, "README.rst") ||
+			strings.HasSuffix(treeEntry.Name, "README.txt") ||
+			strings.HasSuffix(treeEntry.Name, "README") {
+			f, err := tree.File(treeEntry.Name)
+			if err != nil {
+				panic(err)
+			}
+			summary.Readme = f
+		}
+	}
+
 	commits := buildCommitLogs(storage, ref.Hash())
 	summary.CommitsCount = len(commits)
-	summary.Commits = commits[0:25]
+	summary.Commits = commits[0:3]
 	return summary, nil
 }
 
@@ -491,29 +576,6 @@ func (gs *GitServer) gitRepoHandler(w http.ResponseWriter, r *http.Request) {
 	summary := &GitRepoSummary{}
 
 	storage := newStorage(vars["ns"], vars["repo"], gs.blobStore, gs.kvStore)
-	refs, err := storage.IterReferences()
-	if err != nil {
-		panic(err)
-	}
-	if err := refs.ForEach(func(ref *plumbing.Reference) error {
-		if ref.Name().IsTag() {
-			commit, err := object.GetCommit(storage, ref.Hash())
-			if err != nil {
-				return fmt.Errorf("failed to fetch tag: %+v", err)
-			}
-			summary.Tags = append(summary.Tags, &RefSummary{Ref: ref, Commit: commit})
-		}
-		if ref.Name().IsBranch() {
-			commit, err := object.GetCommit(storage, ref.Hash())
-			if err != nil {
-				return err
-			}
-			summary.Branches = append(summary.Branches, &RefSummary{Ref: ref, Commit: commit})
-		}
-		return nil
-	}); err != nil {
-		panic(err)
-	}
 	ref, err := storage.Reference(plumbing.Master)
 	if err != nil {
 		panic(err)
