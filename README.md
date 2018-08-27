@@ -68,7 +68,7 @@ You can also enable a S3 compatible gateway to manage your files.
 
 ## Git HTTP backend
 
-You can store Git repositories 
+You can store Git repositories via HTTP, and all the data will be deduplicated. 
 
 ### Getting Started
 
@@ -87,6 +87,12 @@ To backup a Git repository, just add a new remote (new repositories will be crea
 ```shell
 $ git remote add blobstash https://tom:mypass@myinstance.com/git/myns/myrepo.git
 $ git push blobstash
+```
+
+For big repositories, you may need to tweak the maximum body size for HTTP requests:
+
+```shell
+$ git config --global http.postBuffer 1048576000
 ```
 
 To restore a Git repository:
