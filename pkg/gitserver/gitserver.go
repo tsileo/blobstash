@@ -82,11 +82,11 @@ func (gs *GitServer) checkNamespace(w http.ResponseWriter, r *http.Request, ns s
 
 // RegisterRoute registers all the HTTP handlers for the extension
 func (gs *GitServer) Register(r *mux.Router, root *mux.Router, basicAuth func(http.Handler) http.Handler) {
-	r.Handle("/", http.HandlerFunc(gs.rootHandler))
-	r.Handle("/{ns}", http.HandlerFunc(gs.nsHandler))
-	r.Handle("/{ns}/{repo}.git", http.HandlerFunc(gs.gitRepoHandler))
-	r.Handle("/{ns}/{repo}.git/info/refs", http.HandlerFunc(gs.gitInfoRefsHandler))
-	r.Handle("/{ns}/{repo}.git/{service}", http.HandlerFunc(gs.gitServiceHandler))
+	r.Handle("/", basicAuth(http.HandlerFunc(gs.rootHandler)))
+	r.Handle("/{ns}", basicAuth(http.HandlerFunc(gs.nsHandler)))
+	r.Handle("/{ns}/{repo}.git", basicAuth(http.HandlerFunc(gs.gitRepoHandler)))
+	root.Handle("/git/{ns}/{repo}.git/info/refs", http.HandlerFunc(gs.gitInfoRefsHandler))
+	root.Handle("/git/{ns}/{repo}.git/{service}", http.HandlerFunc(gs.gitServiceHandler))
 }
 
 type storage struct {
@@ -363,14 +363,22 @@ func (gs *GitServer) rootHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	limit := 50
+
 	namespaces, err := gs.Namespaces()
 	if err != nil {
 		panic(err)
 	}
+
 	httputil.MarshalAndWrite(r, w, map[string]interface{}{
 		"data": namespaces,
+		"pagination": map[string]interface{}{
+			"cursor":   "",
+			"has_more": len(namespaces) == limit,
+			"count":    len(namespaces),
+			"per_page": limit,
+		},
 	})
-
 }
 
 func (gs *GitServer) Namespaces() ([]string, error) {
@@ -412,20 +420,33 @@ func (gs *GitServer) nsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	vars := mux.Vars(r)
 
-	if ok := gs.checkNamespace(w, r, vars["ns"]); !ok {
+	limit := 50
+
+	ns := vars["ns"]
+	if gs.conf.GitServer == nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	conf := gs.conf.GitServer.Namespaces[ns]
+	if conf == nil {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	repos, err := gs.Repositories(vars["ns"])
+	repos, err := gs.Repositories(ns)
 	if err != nil {
 		panic(err)
 	}
 
 	httputil.MarshalAndWrite(r, w, map[string]interface{}{
 		"data": repos,
+		"pagination": map[string]interface{}{
+			"cursor":   "",
+			"has_more": len(repos) == limit,
+			"count":    len(repos),
+			"per_page": limit,
+		},
 	})
-
 }
 
 type GitRepoRefs struct {
@@ -569,7 +590,14 @@ func (gs *GitServer) gitRepoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	vars := mux.Vars(r)
 
-	if ok := gs.checkNamespace(w, r, vars["ns"]); !ok {
+	ns := vars["ns"]
+	if gs.conf.GitServer == nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	conf := gs.conf.GitServer.Namespaces[ns]
+	if conf == nil {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
@@ -589,6 +617,10 @@ func (gs *GitServer) gitRepoHandler(w http.ResponseWriter, r *http.Request) {
 	//	panic(err)
 	//}
 	fmt.Printf("REF=%+v\nOBJ=%+v\n", ref, commits)
+	httputil.MarshalAndWrite(r, w, map[string]interface{}{
+		"data": summary,
+	})
+
 }
 
 func (gs *GitServer) gitInfoRefsHandler(w http.ResponseWriter, r *http.Request) {

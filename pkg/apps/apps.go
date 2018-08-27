@@ -20,6 +20,7 @@ import (
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/docstore"
 	docstoreLua "a4.io/blobstash/pkg/docstore/lua"
+	"a4.io/blobstash/pkg/extra"
 	"a4.io/blobstash/pkg/filetree"
 	"a4.io/blobstash/pkg/gitserver"
 	gitserverLua "a4.io/blobstash/pkg/gitserver/lua"
@@ -124,6 +125,7 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 				docstore.SetLuaGlobals(L)
 				docstoreLua.Setup(L, apps.docstore)
 				gitserverLua.Setup(L, apps.gs)
+				extra.Setup(L)
 				return nil
 			},
 		})

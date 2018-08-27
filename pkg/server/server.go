@@ -153,7 +153,7 @@ func New(conf *config.Config) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize git server app: %v", err)
 	}
-	git.Register(s.router.PathPrefix("/git").Subrouter(), s.router, basicAuth)
+	git.Register(s.router.PathPrefix("/api/git").Subrouter(), s.router, basicAuth)
 
 	apps, err := apps.New(logger.New("app", "apps"), conf, filetree, docstore, git, hub, s.whitelistHosts)
 	if err != nil {

@@ -66,15 +66,99 @@ Files can be streamed easily, range requests are supported, EXIF metadata automa
 
 You can also enable a S3 compatible gateway to manage your files.
 
+## Git HTTP backend
+
+You can store Git repositories 
+
+### Getting Started
+
+To enable the Git HTTP API, you need to setup a namespace first:
+
+```yaml
+git_server:
+  namespaces:
+     myns:
+       username: 'tom'
+       password: 'mypass'
+```
+
+To backup a Git repository, just add a new remote (new repositories will be created automatically):
+
+```shell
+$ git remote add blobstash https://tom:mypass@myinstance.com/git/myns/myrepo.git
+$ git push blobstash
+```
+
+To restore a Git repository:
+
+```shell
+$ git clone https://thomas:123@myinstance.com/git/myns/myrepo.git
+```
+
+You can also access Git repositories using the [Admin UI](https://github.com/tsileo/blobstash-admin).
+
+### HTTP API
+
+All the examples are using [HTTPie](https://httpie.org/).
+
+#### GET /api/git
+
+List all the namespaces.
+
+##### Example
+
+```shell
+$ http --auth :apikey GET https://myinstance.com/api/git
+```
+
+##### Response
+
+```json
+{
+    "data": [
+        "myns"
+    ], 
+    "pagination": {
+        "count": 1, 
+        "cursor": "", 
+        "has_more": false, 
+        "per_page": 50
+    }
+}
+```
+
+#### GET /api/git/:ns
+
+List all the repositories for the given namespace.
+
+##### Example
+
+```shell
+$ http --auth :apikey GET https://myinstance.com/api/git/myns
+```
+
+##### Response
+
+
+```json
+{
+    "data": [
+        "myrepo"
+    ], 
+    "pagination": {
+        "count": 1, 
+        "cursor": "", 
+        "has_more": false, 
+        "per_page": 50
+    }
+}
+```
+
 ## Contribution
 
 Pull requests are welcome but open an issue to start a discussion before starting something consequent.
 
 Feel free to open an issue if you have any ideas/suggestions!
-
-## Donation
-
-[![Flattr this git repo](http://api.flattr.com/button/flattr-badge-large.png)](https://flattr.com/submit/auto?user_id=tsileo&url=https%3A%2F%2Fgithub.com%2Ftsileo%2Fblobstash)
 
 ## License
 
