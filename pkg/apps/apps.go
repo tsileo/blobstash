@@ -26,6 +26,8 @@ import (
 	gitserverLua "a4.io/blobstash/pkg/gitserver/lua"
 	"a4.io/blobstash/pkg/httputil"
 	"a4.io/blobstash/pkg/hub"
+	kvLua "a4.io/blobstash/pkg/kvstore/lua"
+	"a4.io/blobstash/pkg/stash/store"
 	"a4.io/gluapp"
 )
 
@@ -38,6 +40,7 @@ type Apps struct {
 	gs              *gitserver.GitServer
 	ft              *filetree.FileTree
 	docstore        *docstore.DocStore
+	kvs             store.KvStore
 	hub             *hub.Hub
 	hostWhitelister func(...string)
 	log             log.Logger
@@ -124,6 +127,7 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 			SetupState: func(L *lua.LState) error {
 				docstore.SetLuaGlobals(L)
 				docstoreLua.Setup(L, apps.docstore)
+				kvLua.Setup(L, apps.kvs, context.TODO())
 				gitserverLua.Setup(L, apps.gs)
 				extra.Setup(L)
 				return nil
@@ -187,7 +191,7 @@ func (app *App) serve(ctx context.Context, p string, w http.ResponseWriter, req 
 }
 
 // New initializes the Apps manager
-func New(logger log.Logger, conf *config.Config, ft *filetree.FileTree, ds *docstore.DocStore, gs *gitserver.GitServer, chub *hub.Hub, hostWhitelister func(...string)) (*Apps, error) {
+func New(logger log.Logger, conf *config.Config, kvs store.KvStore, ft *filetree.FileTree, ds *docstore.DocStore, gs *gitserver.GitServer, chub *hub.Hub, hostWhitelister func(...string)) (*Apps, error) {
 	// var err error
 	apps := &Apps{
 		apps:            map[string]*App{},
@@ -195,6 +199,7 @@ func New(logger log.Logger, conf *config.Config, ft *filetree.FileTree, ds *docs
 		log:             logger,
 		gs:              gs,
 		config:          conf,
+		kvs:             kvs,
 		hub:             chub,
 		docstore:        ds,
 		hostWhitelister: hostWhitelister,

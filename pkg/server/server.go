@@ -155,7 +155,7 @@ func New(conf *config.Config) (*Server, error) {
 	}
 	git.Register(s.router.PathPrefix("/api/git").Subrouter(), s.router, basicAuth)
 
-	apps, err := apps.New(logger.New("app", "apps"), conf, filetree, docstore, git, hub, s.whitelistHosts)
+	apps, err := apps.New(logger.New("app", "apps"), conf, kvstore, filetree, docstore, git, hub, s.whitelistHosts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize filetree app: %v", err)
 	}
