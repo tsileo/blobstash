@@ -28,8 +28,8 @@
     "trie/xfast",
     "trie/yfast"
   ]
-  revision = "f338bf48899950e415caffa02222a7273fbdeaf6"
-  version = "v1.0.48"
+  revision = "f07cbe3f82ca2fd6e5ab94afce65fe43319f675f"
+  version = "v1.0.50"
 
 [[projects]]
   name = "github.com/aws/aws-sdk-go"
@@ -66,8 +66,8 @@
     "service/s3",
     "service/sts"
   ]
-  revision = "f70339bb6af843c8ab1974381b3f4fcaee2b1a41"
-  version = "v1.15.5"
+  revision = "56018901efd0b8084af1fb83b7e2604aba53f143"
+  version = "v1.15.31"
 
 [[projects]]
   branch = "master"
@@ -150,6 +150,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/dustin/go-humanize"
+  packages = ["."]
+  revision = "9f541cc9db5d55bce703bd99987c9d5cb8eea45e"
+
+[[projects]]
+  branch = "master"
   name = "github.com/edsrzf/mmap-go"
   packages = ["."]
   revision = "0bce6a6887123b67a60366d2c9fe2dfb74289d2e"
@@ -171,13 +177,13 @@
   branch = "master"
   name = "github.com/evanphx/json-patch"
   packages = ["."]
-  revision = "f195058310bd062ea7c754a834f0ff43b4b63afb"
+  revision = "36442dbdb585210f8d5a1b45e67aa323c197d5c4"
 
 [[projects]]
   name = "github.com/go-ini/ini"
   packages = ["."]
-  revision = "358ee7663966325963d4e8b2e1fbd570c5195153"
-  version = "v1.38.1"
+  revision = "5cf292cae48347c2490ac1a58fe36735fb78df7e"
+  version = "v1.38.2"
 
 [[projects]]
   name = "github.com/go-martini/martini"
@@ -188,14 +194,14 @@
 [[projects]]
   name = "github.com/go-stack/stack"
   packages = ["."]
-  revision = "259ab82a6cad3992b4e21ff5cac294ccb06474bc"
-  version = "v1.7.0"
+  revision = "2fee6af1a9795aafbe0253a0cfbdf668e1fb8a9a"
+  version = "v1.8.0"
 
 [[projects]]
   name = "github.com/golang/protobuf"
   packages = ["proto"]
-  revision = "b4deda0973fb4c70b50d226b1af49f3da59f5265"
-  version = "v1.1.0"
+  revision = "aa810b61a9c79d51363740d207bb46cf8e620ed5"
+  version = "v1.2.0"
 
 [[projects]]
   branch = "master"
@@ -239,13 +245,13 @@
   version = "v20170619"
 
 [[projects]]
-  branch = "master"
   name = "github.com/hashicorp/golang-lru"
   packages = [
     ".",
     "simplelru"
   ]
-  revision = "0fb14efe8c47ae851c0034ed7a448854d3d34cf3"
+  revision = "20f1fb78b0740ba8c3cb143a61e86ba5c8669768"
+  version = "v0.5.0"
 
 [[projects]]
   name = "github.com/inconshreveable/log15"
@@ -253,8 +259,8 @@
     ".",
     "ext"
   ]
-  revision = "0decfc6c20d9ca0ad143b0e89dcaa20f810b4fb3"
-  version = "v2.13"
+  revision = "67afb5ed74ec82fd7ac8f49d27c509ac6f991970"
+  version = "v2.14"
 
 [[projects]]
   branch = "master"
@@ -294,8 +300,8 @@
 [[projects]]
   name = "github.com/mattn/go-isatty"
   packages = ["."]
-  revision = "0360b2af4f38e8d38c7fce2a9f4e702702d73a39"
-  version = "v0.0.3"
+  revision = "6ca4dbf54d38eea1a992b3c722a76a5d1c4cb25c"
+  version = "v0.0.4"
 
 [[projects]]
   branch = "master"
@@ -319,7 +325,7 @@
   branch = "master"
   name = "github.com/phayes/permbits"
   packages = ["."]
-  revision = "529f712b661aa1075f21a3d7380f3a998556c1a2"
+  revision = "59f2482cd4603d9795e7b2385448d5d7f42fdeee"
 
 [[projects]]
   branch = "master"
@@ -388,7 +394,7 @@
     "leveldb/table",
     "leveldb/util"
   ]
-  revision = "c4c61651e9e37fa117f53c5a906d3b63090d8445"
+  revision = "ae2bd5eed72d46b28834ec3f60db3a3ebedd8dbd"
 
 [[projects]]
   branch = "master"
@@ -399,8 +405,8 @@
 [[projects]]
   name = "github.com/urfave/negroni"
   packages = ["."]
-  revision = "5dbbc83f748fc3ad38585842b0aedab546d0ea1e"
-  version = "v0.3.0"
+  revision = "c6a59be0ce122566695fbd5e48a77f8f10c8a63a"
+  version = "v1.0.0"
 
 [[projects]]
   name = "github.com/vmihailenco/msgpack"
@@ -414,8 +420,8 @@
 [[projects]]
   name = "github.com/xeonx/timeago"
   packages = ["."]
-  revision = "49df971d6c5d5b073f921e8c580fbb6a0bb629c1"
-  version = "v1.0.0-rc2"
+  revision = "714e6695c468c22fb6431a914d8c5f9d19fa2367"
+  version = "v1.0.0-rc3"
 
 [[projects]]
   branch = "master"
@@ -426,7 +432,7 @@
     "parse",
     "pm"
   ]
-  revision = "46796da1b0b4794e1e341883a399f12cc7574b55"
+  revision = "b942cacc89fe49895d145e8b360612a9a51d0423"
 
 [[projects]]
   branch = "master"
@@ -449,13 +455,13 @@
     "scrypt",
     "ssh/terminal"
   ]
-  revision = "56440b844dfe139a8ac053f4ecac0b20b79058f4"
+  revision = "0709b304e793a5edb4a2c0145f281ecdc20838a4"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
   packages = ["context"]
-  revision = "f4c29de78a2a91c00474a2e689954305c350adf9"
+  revision = "161cd47e91fd58ac17490ef4d742dc98bb4cf60e"
 
 [[projects]]
   branch = "master"
@@ -464,7 +470,7 @@
     "unix",
     "windows"
   ]
-  revision = "0ffbfd41fbef8ffcf9b62b0b0aa3a5873ed7a4fe"
+  revision = "4526dd3c8b56729dc6b5a24d9dafb1915e89945b"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -498,8 +504,8 @@
 [[projects]]
   name = "gopkg.in/inconshreveable/log15.v2"
   packages = ["."]
-  revision = "0decfc6c20d9ca0ad143b0e89dcaa20f810b4fb3"
-  version = "v2.13"
+  revision = "67afb5ed74ec82fd7ac8f49d27c509ac6f991970"
+  version = "v2.14"
 
 [[projects]]
   name = "gopkg.in/src-d/go-billy.v4"
@@ -509,8 +515,8 @@
     "helper/polyfill",
     "osfs"
   ]
-  revision = "83cf655d40b15b427014d7875d10850f96edba14"
-  version = "v4.2.0"
+  revision = "59952543636f55de3f860b477b615093d5c2c3e4"
+  version = "v4.2.1"
 
 [[projects]]
   name = "gopkg.in/src-d/go-git.v4"
@@ -545,8 +551,8 @@
     "utils/merkletrie/internal/frame",
     "utils/merkletrie/noder"
   ]
-  revision = "3bd5e82b2512d85becae9677fa06b5a973fd4cfb"
-  version = "v4.5.0"
+  revision = "d3cec13ac0b195bfb897ed038a08b5130ab9969e"
+  version = "v4.7.0"
 
 [[projects]]
   name = "gopkg.in/warnings.v0"
@@ -563,6 +569,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "a9842bb7182ed1059bc534fe11aaab6d2093b4a3dfcef8377acbb621417ed655"
+  inputs-digest = "658c4150cee9b1fafa9c1d783c39c450289a3341c41bb606f76ee6a2924f9e50"
   solver-name = "gps-cdcl"
   solver-version = 1

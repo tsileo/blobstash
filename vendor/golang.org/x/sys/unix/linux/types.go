@@ -505,6 +505,7 @@ const (
 	IFLA_ADDRESS         = C.IFLA_ADDRESS
 	IFLA_BROADCAST       = C.IFLA_BROADCAST
 	IFLA_IFNAME          = C.IFLA_IFNAME
+	IFLA_INFO_KIND       = C.IFLA_INFO_KIND
 	IFLA_MTU             = C.IFLA_MTU
 	IFLA_LINK            = C.IFLA_LINK
 	IFLA_QDISC           = C.IFLA_QDISC
@@ -573,6 +574,13 @@ const (
 	RTA_FLOW             = C.RTA_FLOW
 	RTA_CACHEINFO        = C.RTA_CACHEINFO
 	RTA_TABLE            = C.RTA_TABLE
+	RTA_MARK             = C.RTA_MARK
+	RTA_MFC_STATS        = C.RTA_MFC_STATS
+	RTA_VIA              = C.RTA_VIA
+	RTA_NEWDST           = C.RTA_NEWDST
+	RTA_PREF             = C.RTA_PREF
+	RTA_ENCAP_TYPE       = C.RTA_ENCAP_TYPE
+	RTA_ENCAP            = C.RTA_ENCAP
 	RTN_UNSPEC           = C.RTN_UNSPEC
 	RTN_UNICAST          = C.RTN_UNICAST
 	RTN_LOCAL            = C.RTN_LOCAL
