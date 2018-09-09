@@ -3,6 +3,7 @@ package lua // import "a4.io/blobstash/pkg/kvstore/lua"
 import (
 	"context"
 	"strconv"
+	"time"
 
 	"github.com/yuin/gopher-lua"
 
@@ -11,9 +12,10 @@ import (
 )
 
 func convertKv(L *lua.LState, kv *vkv.KeyValue) *lua.LTable {
-	tbl := L.CreateTable(0, 4)
+	tbl := L.CreateTable(0, 5)
 	tbl.RawSetH(lua.LString("key"), lua.LString(kv.Key))
 	tbl.RawSetH(lua.LString("version"), lua.LString(strconv.FormatInt(kv.Version, 10)))
+	tbl.RawSetH(lua.LString("version_human"), lua.LString(time.Unix(0, kv.Version).Format(time.RFC3339)))
 	tbl.RawSetH(lua.LString("ref"), lua.LString(kv.HexHash()))
 	tbl.RawSetH(lua.LString("data"), lua.LString(kv.Data))
 	return tbl

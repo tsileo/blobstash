@@ -133,6 +133,10 @@ type FS struct {
 	ft *FileTree
 }
 
+func NewFS(ref string, ft *FileTree) *FS {
+	return &FS{Ref: ref, ft: ft}
+}
+
 // New initializes the `DocStoreExt`
 func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bool, kvStore store.KvStore, blobStore store.BlobStore, chub *hub.Hub, remoteFetcher func(string) (string, error)) (*FileTree, error) {
 	logger.Debug("init")
@@ -425,6 +429,35 @@ func MetaToNode(m *rnode.RawNode) (*Node, error) {
 		}
 	}
 	return n, nil
+}
+
+type NodeInfo struct {
+	Name, Ref string
+}
+
+// fetchDir recursively fetch dir children
+func (ft *FileTree) bruteforcePath(ctx context.Context, n *Node, target string) ([]*NodeInfo, error) {
+	path := []*NodeInfo{&NodeInfo{n.Name, n.Hash}}
+	if n.Type == rnode.Dir {
+		for _, ref := range n.Meta.Refs {
+			if ref.(string) == target {
+				return path, nil
+			}
+
+			cn, err := ft.nodeByRef(ctx, ref.(string))
+			if err != nil {
+				return nil, err
+			}
+			out, err := ft.bruteforcePath(ctx, cn, target)
+			if err != nil {
+				return nil, err
+			}
+			if len(out) > 0 {
+				return append(path, out...), nil
+			}
+		}
+	}
+	return nil, nil
 }
 
 // fetchDir recursively fetch dir children
@@ -724,22 +757,13 @@ func (ft *FileTree) fsRootHandler() func(http.ResponseWriter, *http.Request) {
 		nodes := []*Node{}
 
 		prefix := r.URL.Query().Get("prefix")
-		if prefix != "" {
-			prefix = prefix + ":%s"
-		} else {
-			prefix = FSKeyFmt
-		}
-		prefix = prefix[0 : len(prefix)-2]
-
-		keys, _, err := ft.kvStore.Keys(ctx, prefix, prefix+"\xff", 0)
+		it, err := ft.IterFS(ctx, prefix)
 		if err != nil {
 			panic(err)
 		}
-		// Put(context.TODO(), fmt.Sprintf(FSKeyFmt, n.fs.Name), "", js, -1); err != nil {
-
-		for _, kv := range keys {
-			data := strings.Split(kv.Key, ":")
-			fs := &FS{Name: data[len(data)-1], Ref: kv.HexHash(), ft: ft}
+		for _, fsInfo := range it {
+			fmt.Printf("fsInfo=%+v\n", fsInfo)
+			fs := &FS{Name: fsInfo.Name, Ref: fsInfo.Ref, ft: ft}
 			node, _, _, err := fs.Path(ctx, "/", false, 0)
 			if err != nil {
 				panic(err)
@@ -748,6 +772,27 @@ func (ft *FileTree) fsRootHandler() func(http.ResponseWriter, *http.Request) {
 		}
 		httputil.MarshalAndWrite(r, w, nodes)
 	}
+}
+
+type FSInfo struct {
+	Name string
+	Ref  string
+}
+
+func (ft *FileTree) IterFS(ctx context.Context, start string) ([]*FSInfo, error) {
+	out := []*FSInfo{}
+
+	prefix := fmt.Sprintf("_filetree:fs:%s", start)
+	keys, _, err := ft.kvStore.Keys(ctx, prefix, prefix+"\xff", 0)
+	if err != nil {
+		return nil, err
+	}
+	for _, kv := range keys {
+		data := strings.Split(kv.Key, ":")
+		fsInfo := &FSInfo{Name: data[len(data)-1], Ref: kv.HexHash()}
+		out = append(out, fsInfo)
+	}
+	return out, nil
 }
 
 func fixPath(p string) string {
@@ -1323,6 +1368,14 @@ func (ft *FileTree) publicHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
+func (ft *FileTree) GetSemiPrivateLink(n *Node) (string, string, error) {
+	u := &url.URL{Path: fmt.Sprintf("/%s/%s", n.Type[0:1], n.Hash)}
+	if err := bewit.Bewit(ft.sharingCred, u, ft.shareTTL); err != nil {
+		panic(err)
+	}
+	return u.String() + "&dl=1", u.String() + "&dl=0", nil
+}
+
 // Fetch a Node outside any FS
 func (ft *FileTree) nodeHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -1442,6 +1495,26 @@ func (ft *FileTree) Node(ctx context.Context, hash string) (*Node, error) {
 		return nil, err
 	}
 	node.Info = info
+
+	return node, nil
+}
+
+func (ft *FileTree) BruteforcePath(ctx context.Context, root, target string) ([]*NodeInfo, error) {
+	rootNode, err := ft.nodeByRef(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	return ft.bruteforcePath(ctx, rootNode, target)
+}
+
+func (ft *FileTree) NodeWithChildren(ctx context.Context, hash string) (*Node, error) {
+	node, err := ft.nodeByRef(ctx, hash)
+	if err != nil {
+		return nil, err
+	}
+	if err := ft.fetchDir(ctx, node, 1, 1); err != nil {
+		return nil, err
+	}
 
 	return node, nil
 }

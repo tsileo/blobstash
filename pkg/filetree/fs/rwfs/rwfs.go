@@ -1554,6 +1554,7 @@ func (fs *FileSystem) GetAttr(name string, fctx *fuse.Context) (*fuse.Attr, fuse
 		mode &^= uint32(userWrite | groupWrite | otherWrite)
 	}
 
+	fmt.Printf("\n\n\n\nMODE=%v\n%+v\n", node.Mode(), node)
 	// The node is a file
 	return &fuse.Attr{
 		Mode:  mode,

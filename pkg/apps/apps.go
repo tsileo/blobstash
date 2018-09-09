@@ -17,11 +17,14 @@ import (
 	"github.com/yuin/gopher-lua"
 
 	"a4.io/blobstash/pkg/blob"
+	"a4.io/blobstash/pkg/blobstore"
+	blobstoreLua "a4.io/blobstash/pkg/blobstore/lua"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/docstore"
 	docstoreLua "a4.io/blobstash/pkg/docstore/lua"
 	"a4.io/blobstash/pkg/extra"
 	"a4.io/blobstash/pkg/filetree"
+	filetreeLua "a4.io/blobstash/pkg/filetree/lua"
 	"a4.io/blobstash/pkg/gitserver"
 	gitserverLua "a4.io/blobstash/pkg/gitserver/lua"
 	"a4.io/blobstash/pkg/httputil"
@@ -39,6 +42,7 @@ type Apps struct {
 	config          *config.Config
 	gs              *gitserver.GitServer
 	ft              *filetree.FileTree
+	bs              *blobstore.BlobStore
 	docstore        *docstore.DocStore
 	kvs             store.KvStore
 	hub             *hub.Hub
@@ -126,6 +130,8 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 			Entrypoint: app.entrypoint,
 			SetupState: func(L *lua.LState) error {
 				docstore.SetLuaGlobals(L)
+				blobstoreLua.Setup(context.TODO(), L, apps.bs)
+				filetreeLua.Setup(L, apps.ft, apps.bs)
 				docstoreLua.Setup(L, apps.docstore)
 				kvLua.Setup(L, apps.kvs, context.TODO())
 				gitserverLua.Setup(L, apps.gs)
@@ -191,13 +197,14 @@ func (app *App) serve(ctx context.Context, p string, w http.ResponseWriter, req 
 }
 
 // New initializes the Apps manager
-func New(logger log.Logger, conf *config.Config, kvs store.KvStore, ft *filetree.FileTree, ds *docstore.DocStore, gs *gitserver.GitServer, chub *hub.Hub, hostWhitelister func(...string)) (*Apps, error) {
+func New(logger log.Logger, conf *config.Config, bs *blobstore.BlobStore, kvs store.KvStore, ft *filetree.FileTree, ds *docstore.DocStore, gs *gitserver.GitServer, chub *hub.Hub, hostWhitelister func(...string)) (*Apps, error) {
 	// var err error
 	apps := &Apps{
 		apps:            map[string]*App{},
 		ft:              ft,
 		log:             logger,
 		gs:              gs,
+		bs:              bs,
 		config:          conf,
 		kvs:             kvs,
 		hub:             chub,
