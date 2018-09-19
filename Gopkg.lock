@@ -66,8 +66,8 @@
     "service/s3",
     "service/sts"
   ]
-  revision = "56018901efd0b8084af1fb83b7e2604aba53f143"
-  version = "v1.15.31"
+  revision = "3dd4f56d3cb9d194293525540562216f81bd3f27"
+  version = "v1.15.37"
 
 [[projects]]
   branch = "master"
@@ -174,10 +174,10 @@
   version = "v1.9.0"
 
 [[projects]]
-  branch = "master"
   name = "github.com/evanphx/json-patch"
   packages = ["."]
-  revision = "36442dbdb585210f8d5a1b45e67aa323c197d5c4"
+  revision = "72bf35d0ff611848c1dc9df0f976c81192392fa5"
+  version = "v4.1.0"
 
 [[projects]]
   name = "github.com/go-ini/ini"
@@ -400,7 +400,7 @@
   branch = "master"
   name = "github.com/unrolled/secure"
   packages = ["."]
-  revision = "8287f3899c8e3d490748e18fe7d438629132914e"
+  revision = "f340ee86eb8bb577158a1570ac8f37b63438b1bd"
 
 [[projects]]
   name = "github.com/urfave/negroni"
@@ -432,7 +432,7 @@
     "parse",
     "pm"
   ]
-  revision = "b942cacc89fe49895d145e8b360612a9a51d0423"
+  revision = "799fa34954fbf844a6c25ea3b061bfd56f73bd10"
 
 [[projects]]
   branch = "master"
@@ -455,13 +455,13 @@
     "scrypt",
     "ssh/terminal"
   ]
-  revision = "0709b304e793a5edb4a2c0145f281ecdc20838a4"
+  revision = "0e37d006457bf46f9e6692014ba72ef82c33022c"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
   packages = ["context"]
-  revision = "161cd47e91fd58ac17490ef4d742dc98bb4cf60e"
+  revision = "26e67e76b6c3f6ce91f7c52def5af501b4e0f3a2"
 
 [[projects]]
   branch = "master"
@@ -470,7 +470,7 @@
     "unix",
     "windows"
   ]
-  revision = "4526dd3c8b56729dc6b5a24d9dafb1915e89945b"
+  revision = "1561086e645b2809fb9f8a1e2a38160bf8d53bf4"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -498,8 +498,8 @@
     "internal/modules",
     "internal/remote_api"
   ]
-  revision = "b1f26356af11148e710935ed1ac8a7f5702c7612"
-  version = "v1.1.0"
+  revision = "ae0ab99deb4dc413a2b4bd6c8bdd0eb67f1e4d06"
+  version = "v1.2.0"
 
 [[projects]]
   name = "gopkg.in/inconshreveable/log15.v2"
