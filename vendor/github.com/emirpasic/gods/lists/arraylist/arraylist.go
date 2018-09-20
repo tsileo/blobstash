@@ -11,9 +11,10 @@ package arraylist
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/emirpasic/gods/lists"
 	"github.com/emirpasic/gods/utils"
-	"strings"
 )
 
 func assertListImplementation() {
@@ -98,6 +99,19 @@ func (list *List) Values() []interface{} {
 	return newElements
 }
 
+//IndexOf returns index of provided element
+func (list *List) IndexOf(value interface{}) int {
+	if list.size == 0 {
+		return -1
+	}
+	for index, element := range list.elements {
+		if element == value {
+			return index
+		}
+	}
+	return -1
+}
+
 // Empty returns true if list does not contain any elements.
 func (list *List) Empty() bool {
 	return list.size == 0
@@ -145,14 +159,24 @@ func (list *List) Insert(index int, values ...interface{}) {
 	l := len(values)
 	list.growBy(l)
 	list.size += l
-	// Shift old to right
-	for i := list.size - 1; i >= index+l; i-- {
-		list.elements[i] = list.elements[i-l]
+	copy(list.elements[index+l:], list.elements[index:list.size-l])
+	copy(list.elements[index:], values)
+}
+
+// Set the value at specified index
+// Does not do anything if position is negative or bigger than list's size
+// Note: position equal to list's size is valid, i.e. append.
+func (list *List) Set(index int, value interface{}) {
+
+	if !list.withinRange(index) {
+		// Append
+		if index == list.size {
+			list.Add(value)
+		}
+		return
 	}
-	// Insert new
-	for i, value := range values {
-		list.elements[index+i] = value
-	}
+
+	list.elements[index] = value
 }
 
 // String returns a string representation of container

@@ -11,9 +11,10 @@ package doublylinkedlist
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/emirpasic/gods/lists"
 	"github.com/emirpasic/gods/utils"
-	"strings"
 )
 
 func assertListImplementation() {
@@ -173,6 +174,19 @@ func (list *List) Values() []interface{} {
 	return values
 }
 
+//IndexOf returns index of provided element
+func (list *List) IndexOf(value interface{}) int {
+	if list.size == 0 {
+		return -1
+	}
+	for index, element := range list.Values() {
+		if element == value {
+			return index
+		}
+	}
+	return -1
+}
+
 // Empty returns true if list does not contain any elements.
 func (list *List) Empty() bool {
 	return list.size == 0
@@ -277,6 +291,37 @@ func (list *List) Insert(index int, values ...interface{}) {
 		oldNextElement.prev = beforeElement
 		beforeElement.next = oldNextElement
 	}
+}
+
+// Set value at specified index position
+// Does not do anything if position is negative or bigger than list's size
+// Note: position equal to list's size is valid, i.e. append.
+func (list *List) Set(index int, value interface{}) {
+
+	if !list.withinRange(index) {
+		// Append
+		if index == list.size {
+			list.Add(value)
+		}
+		return
+	}
+
+	var foundElement *element
+	// determine traversal direction, last to first or first to last
+	if list.size-index < index {
+		foundElement = list.last
+		for e := list.size - 1; e != index; {
+			fmt.Println("Set last", index, value, foundElement, foundElement.prev)
+			e, foundElement = e-1, foundElement.prev
+		}
+	} else {
+		foundElement = list.first
+		for e := 0; e != index; {
+			e, foundElement = e+1, foundElement.next
+		}
+	}
+
+	foundElement.value = value
 }
 
 // String returns a string representation of container

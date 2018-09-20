@@ -66,8 +66,8 @@
     "service/s3",
     "service/sts"
   ]
-  revision = "3dd4f56d3cb9d194293525540562216f81bd3f27"
-  version = "v1.15.37"
+  revision = "949f7800d745d1df9af349380e5deec8de206144"
+  version = "v1.15.38"
 
 [[projects]]
   branch = "master"
@@ -170,8 +170,8 @@
     "trees/binaryheap",
     "utils"
   ]
-  revision = "f6c17b524822278a87e3b3bd809fec33b51f5b46"
-  version = "v1.9.0"
+  revision = "370f7ab252bf7f9f3e8832a0d67c06aee657d027"
+  version = "v1.10.0"
 
 [[projects]]
   name = "github.com/evanphx/json-patch"
@@ -355,6 +355,12 @@
   revision = "8d986c03457a2057c7b0fb0a48113f7dd48f9619"
 
 [[projects]]
+  name = "github.com/ryanuber/go-glob"
+  packages = ["."]
+  revision = "572520ed46dbddaed19ea3d9541bdd0494163693"
+  version = "v0.1"
+
+[[projects]]
   name = "github.com/sergi/go-diff"
   packages = ["diffmatchpatch"]
   revision = "1744e2970ca51c86172c8190fadad617561ed6e7"
@@ -436,6 +442,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/zpatrick/rbac"
+  packages = ["."]
+  revision = "d2c4f050cf28ba176e48e9b0ca3d58f2b59ff6ee"
+
+[[projects]]
+  branch = "master"
   name = "golang.org/x/crypto"
   packages = [
     "acme",
@@ -470,7 +482,7 @@
     "unix",
     "windows"
   ]
-  revision = "1561086e645b2809fb9f8a1e2a38160bf8d53bf4"
+  revision = "d641721ec2dead6fe5ca284096fe4b1fcd49e427"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -569,6 +581,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "658c4150cee9b1fafa9c1d783c39c450289a3341c41bb606f76ee6a2924f9e50"
+  inputs-digest = "49bae911dca9bb58e683a430ed6d9141574f60a63d0afc0c25dc6c3e4a5f2871"
   solver-name = "gps-cdcl"
   solver-version = 1
