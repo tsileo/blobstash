@@ -35,9 +35,27 @@ func (bs *BlobStoreAPI) uploadHandler() func(http.ResponseWriter, *http.Request)
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
+			if !auth.Can(
+				r,
+				perms.Action(perms.Write, perms.Blob),
+				perms.Resource(perms.BlobStore, perms.Blob),
+			) {
+				auth.Forbidden(w)
+				return
+			}
 			// FIXME(tsileo): download the content from r.URL.Query().Get("url") and upload it, returns its ref
+
 		//POST takes the uploaded file(s) and saves it to disk.
 		case "POST":
+			if !auth.Can(
+				r,
+				perms.Action(perms.Write, perms.Blob),
+				perms.Resource(perms.BlobStore, perms.Blob),
+			) {
+				auth.Forbidden(w)
+				return
+			}
+
 			ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 
 			//parse the multipart form in the request
@@ -84,6 +102,14 @@ func (bs *BlobStoreAPI) blobHandler() func(http.ResponseWriter, *http.Request) {
 		vars := mux.Vars(r)
 		switch r.Method {
 		case "GET":
+			if !auth.Can(
+				r,
+				perms.Action(perms.Read, perms.Blob),
+				perms.ResourceWithID(perms.BlobStore, perms.Blob, vars["hash"]),
+			) {
+				auth.Forbidden(w)
+				return
+			}
 			// FIXME(tsileo): clean this case, skip a decoding/encoding round and return the bytes as is from the
 			// backend storage
 			if r.Header.Get("Accept-Encoding") == "snappy" {
@@ -112,6 +138,15 @@ func (bs *BlobStoreAPI) blobHandler() func(http.ResponseWriter, *http.Request) {
 			httputil.Write(r, w, blob)
 			return
 		case "HEAD":
+			if !auth.Can(
+				r,
+				perms.Action(perms.Stat, perms.Blob),
+				perms.ResourceWithID(perms.BlobStore, perms.Blob, vars["hash"]),
+			) {
+				auth.Forbidden(w)
+				return
+			}
+
 			exists, err := bs.bs.Stat(ctx, vars["hash"])
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -123,6 +158,15 @@ func (bs *BlobStoreAPI) blobHandler() func(http.ResponseWriter, *http.Request) {
 			httputil.WriteJSONError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
 			return
 		case "POST":
+			if !auth.Can(
+				r,
+				perms.Action(perms.Write, perms.Blob),
+				perms.ResourceWithID(perms.BlobStore, perms.Blob, vars["hash"]),
+			) {
+				auth.Forbidden(w)
+				return
+			}
+
 			blob, err := httputil.Read(r)
 			if err != nil {
 				httputil.Error(w, err)
@@ -153,7 +197,6 @@ func (bs *BlobStoreAPI) enumerateHandler() func(http.ResponseWriter, *http.Reque
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
-			ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 			if !auth.Can(
 				r,
 				perms.Action(perms.List, perms.Blob),
@@ -162,6 +205,7 @@ func (bs *BlobStoreAPI) enumerateHandler() func(http.ResponseWriter, *http.Reque
 				auth.Forbidden(w)
 				return
 			}
+			ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 			q := httputil.NewQuery(r.URL.Query())
 			limit, err := q.GetInt("limit", 50, 1000)
 			if err != nil {

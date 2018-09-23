@@ -1,3 +1,6 @@
 listen: ':8050'
-api_key: '123'
+auth:
+ - id: 'root'
+   password: '123'
+   roles: 'admin'
 data_dir: 'blobstash_data/'

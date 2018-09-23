@@ -101,7 +101,6 @@ type Config struct {
 
 	GitServer *GitServerConfig `yaml:"git_server"`
 
-	APIKey     string  `yaml:"api_key"`
 	SharingKey string  `yaml:"sharing_key"`
 	DataDir    string  `yaml:"data_dir"`
 	S3Repl     *S3Repl `yaml:"s3_replication"`
