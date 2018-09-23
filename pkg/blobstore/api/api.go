@@ -8,10 +8,12 @@ import (
 	"github.com/gorilla/mux"
 
 	"a4.io/blobsfile"
+	"a4.io/blobstash/pkg/auth"
 	mblob "a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/ctxutil"
 	"a4.io/blobstash/pkg/hashutil"
 	"a4.io/blobstash/pkg/httputil"
+	"a4.io/blobstash/pkg/perms"
 	"a4.io/blobstash/pkg/stash/store"
 )
 
@@ -152,6 +154,14 @@ func (bs *BlobStoreAPI) enumerateHandler() func(http.ResponseWriter, *http.Reque
 		switch r.Method {
 		case "GET":
 			ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
+			if !auth.Can(
+				r,
+				perms.Action(perms.List, perms.Blob),
+				perms.Resource(perms.BlobStore, perms.Blob),
+			) {
+				auth.Forbidden(w)
+				return
+			}
 			q := httputil.NewQuery(r.URL.Query())
 			limit, err := q.GetInt("limit", 50, 1000)
 			if err != nil {

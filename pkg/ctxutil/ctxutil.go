@@ -2,6 +2,8 @@ package ctxutil // import "a4.io/blobstash/pkg/ctxutil"
 
 import (
 	"context"
+
+	"a4.io/blobstash/pkg/auth"
 )
 
 const (
@@ -16,6 +18,7 @@ const (
 	stashNamekey = iota
 	filetreeHostnameKey
 	namespaceKey
+	authKey
 )
 
 func WithStashName(ctx context.Context, name string) context.Context {
@@ -43,4 +46,17 @@ func WithNamespace(ctx context.Context, namespace string) context.Context {
 func Namespace(ctx context.Context) (string, bool) {
 	namespace, ok := ctx.Value(namespaceKey).(string)
 	return namespace, ok
+}
+
+type actionResource struct {
+	action, resource string
+}
+
+func WithAuth(ctx context.Context, a *auth.Auth) context.Context {
+	return context.WithValue(ctx, authKey, a)
+}
+
+func Auth(ctx context.Context) (*auth.Auth, bool) {
+	a, ok := ctx.Value(authKey).(*auth.Auth)
+	return a, ok
 }

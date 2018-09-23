@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 
+	"a4.io/blobstash/pkg/auth"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/httputil"
 
@@ -54,7 +55,7 @@ func CorsMiddleware(next http.Handler) http.Handler {
 
 func NewBasicAuth(conf *config.Config) (func(*http.Request) bool, func(http.Handler) http.Handler) {
 	// FIXME(tsileo): clean this, and load passfrom config
-	if conf.APIKey == "" {
+	if len(conf.Auth) == 0 {
 		return nil, func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				next.ServeHTTP(w, r)
@@ -63,7 +64,7 @@ func NewBasicAuth(conf *config.Config) (func(*http.Request) bool, func(http.Hand
 		}
 
 	}
-	authFunc := httputil.BasicAuthFunc("", conf.APIKey)
+	authFunc := auth.Check
 	return authFunc, func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			fmt.Printf("headers=%+v\n", r.Header)

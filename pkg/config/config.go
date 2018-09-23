@@ -70,6 +70,19 @@ type GitNamespaceConf struct {
 	Password string `yaml:"password"`
 }
 
+type BasicAuth struct {
+	ID       string `yaml:"id"`
+	Roles    string `yaml:"roles"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+}
+
+type Role struct {
+	Name     string `yaml:"name"`
+	Action   string `yaml:"action"`
+	Resource string `yaml:"resource"`
+}
+
 // Config holds the configuration items
 type Config struct {
 	init     bool
@@ -78,6 +91,9 @@ type Config struct {
 	// TLS     bool     `yaml:"tls"`
 	AutoTLS bool     `yaml:"tls_auto"`
 	Domains []string `yaml:"tls_domains"`
+
+	Roles []*Role `yaml:"roles"`
+	Auth  []*BasicAuth
 
 	ExpvarListen string `yaml:"expvar_server_listen"`
 

@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	"a4.io/blobstash/pkg/apps"
+	"a4.io/blobstash/pkg/auth"
 	"a4.io/blobstash/pkg/blobstore"
 	blobStoreAPI "a4.io/blobstash/pkg/blobstore/api"
 	"a4.io/blobstash/pkg/config"
@@ -68,6 +69,9 @@ type Server struct {
 func New(conf *config.Config) (*Server, error) {
 	conf.Init()
 	logger := log.New("logger", "blobstash")
+	if err := auth.Setup(conf, logger.New("app", "perms")); err != nil {
+		return nil, fmt.Errorf("failed to setup auth: %v", err)
+	}
 	logger.SetHandler(log.LvlFilterHandler(conf.LogLvl(), log.StreamHandler(os.Stdout, log.TerminalFormat())))
 	var wg sync.WaitGroup
 	s := &Server{
