@@ -6,8 +6,10 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"a4.io/blobstash/pkg/auth"
 	"a4.io/blobstash/pkg/ctxutil"
 	"a4.io/blobstash/pkg/httputil"
+	"a4.io/blobstash/pkg/perms"
 	"a4.io/blobstash/pkg/stash/store"
 	"a4.io/blobstash/pkg/vkv"
 )
@@ -40,6 +42,15 @@ func (kv *KvStoreAPI) keysHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
+			if !auth.Can(
+				r,
+				perms.Action(perms.List, perms.KVEntry),
+				perms.Resource(perms.KvStore, perms.KVEntry),
+			) {
+				auth.Forbidden(w)
+				return
+			}
+
 			ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 			q := httputil.NewQuery(r.URL.Query())
 			start := q.GetDefault("cursor", "")
@@ -89,6 +100,15 @@ func (kv *KvStoreAPI) versionsHandler() func(http.ResponseWriter, *http.Request)
 		switch r.Method {
 		//POST takes the uploaded file(s) and saves it to disk.
 		case "GET", "HEAD":
+			if !auth.Can(
+				r,
+				perms.Action(perms.Read, perms.KVEntry),
+				perms.ResourceWithID(perms.KvStore, perms.KVEntry, key),
+			) {
+				auth.Forbidden(w)
+				return
+			}
+
 			ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 			limit, err := q.GetIntDefault("limit", 50)
 			if err != nil {
@@ -129,6 +149,15 @@ func (kv *KvStoreAPI) getHandler() func(http.ResponseWriter, *http.Request) {
 		key := mux.Vars(r)["key"]
 		switch r.Method {
 		case "GET", "HEAD":
+			if !auth.Can(
+				r,
+				perms.Action(perms.Read, perms.KVEntry),
+				perms.ResourceWithID(perms.KvStore, perms.KVEntry, key),
+			) {
+				auth.Forbidden(w)
+				return
+			}
+
 			ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 
 			q := httputil.NewQuery(r.URL.Query())
@@ -154,6 +183,15 @@ func (kv *KvStoreAPI) getHandler() func(http.ResponseWriter, *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			return
 		case "POST", "PUT":
+			if !auth.Can(
+				r,
+				perms.Action(perms.Write, perms.KVEntry),
+				perms.ResourceWithID(perms.KvStore, perms.KVEntry, key),
+			) {
+				auth.Forbidden(w)
+				return
+			}
+
 			ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 
 			// Parse the form value
