@@ -66,8 +66,8 @@
     "service/s3",
     "service/sts"
   ]
-  revision = "949f7800d745d1df9af349380e5deec8de206144"
-  version = "v1.15.38"
+  revision = "d8ab6d22cfd270ded73e7d59feba528ffd963edd"
+  version = "v1.15.40"
 
 [[projects]]
   branch = "master"
@@ -170,8 +170,8 @@
     "trees/binaryheap",
     "utils"
   ]
-  revision = "370f7ab252bf7f9f3e8832a0d67c06aee657d027"
-  version = "v1.10.0"
+  revision = "1615341f118ae12f353cc8a983f35b584342c9b3"
+  version = "v1.12.0"
 
 [[projects]]
   name = "github.com/evanphx/json-patch"
@@ -473,7 +473,7 @@
   branch = "master"
   name = "golang.org/x/net"
   packages = ["context"]
-  revision = "26e67e76b6c3f6ce91f7c52def5af501b4e0f3a2"
+  revision = "2f5d2388922f370f4355f327fcf4cfe9f5583908"
 
 [[projects]]
   branch = "master"
@@ -482,7 +482,7 @@
     "unix",
     "windows"
   ]
-  revision = "d641721ec2dead6fe5ca284096fe4b1fcd49e427"
+  revision = "d47a0f3392421c5624713c9a19fe781f651f8a50"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -527,8 +527,8 @@
     "helper/polyfill",
     "osfs"
   ]
-  revision = "59952543636f55de3f860b477b615093d5c2c3e4"
-  version = "v4.2.1"
+  revision = "982626487c60a5252e7d0b695ca23fb0fa2fd670"
+  version = "v4.3.0"
 
 [[projects]]
   name = "gopkg.in/src-d/go-git.v4"
@@ -581,6 +581,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "49bae911dca9bb58e683a430ed6d9141574f60a63d0afc0c25dc6c3e4a5f2871"
+  inputs-digest = "fb1079e7645f4fafe4702461e41e8899c9dff392664c0ab2a339151b5dff1c94"
   solver-name = "gps-cdcl"
   solver-version = 1

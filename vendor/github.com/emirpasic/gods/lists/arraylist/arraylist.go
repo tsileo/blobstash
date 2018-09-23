@@ -32,9 +32,13 @@ const (
 	shrinkFactor = float32(0.25) // shrink when size is 25% of capacity (0 means never shrink)
 )
 
-// New instantiates a new empty list
-func New() *List {
-	return &List{}
+// New instantiates a new list and adds the passed values, if any, to the list
+func New(values ...interface{}) *List {
+	list := &List{}
+	if len(values) > 0 {
+		list.Add(values...)
+	}
+	return list
 }
 
 // Add appends a value at the end of the list
@@ -57,7 +61,7 @@ func (list *List) Get(index int) (interface{}, bool) {
 	return list.elements[index], true
 }
 
-// Remove removes one or more elements from the list with the supplied indices.
+// Remove removes the element at the given index from the list.
 func (list *List) Remove(index int) {
 
 	if !list.withinRange(index) {
