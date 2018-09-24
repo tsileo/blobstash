@@ -21,6 +21,7 @@ import (
 	"github.com/vmihailenco/msgpack"
 
 	"a4.io/blobsfile"
+	"a4.io/blobstash/pkg/auth"
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/blobstore"
 	"a4.io/blobstash/pkg/cache"
@@ -35,6 +36,7 @@ import (
 	"a4.io/blobstash/pkg/httputil/bewit"
 	"a4.io/blobstash/pkg/httputil/resize"
 	"a4.io/blobstash/pkg/hub"
+	"a4.io/blobstash/pkg/perms"
 	"a4.io/blobstash/pkg/stash/store"
 	"a4.io/blobstash/pkg/vkv"
 )
@@ -184,6 +186,7 @@ func (ft *FileTree) Close() error {
 func (ft *FileTree) Register(r *mux.Router, root *mux.Router, basicAuth func(http.Handler) http.Handler) {
 	// Raw node endpoint
 	r.Handle("/node/{ref}", basicAuth(http.HandlerFunc(ft.nodeHandler())))
+	r.Handle("/node/{ref}/_snapshot", basicAuth(http.HandlerFunc(ft.nodeSnapshotHandler())))
 
 	// Public/semi-private handler
 	fileHandler := http.HandlerFunc(ft.fileHandler())
@@ -1442,6 +1445,67 @@ func (ft *FileTree) nodeHandler() func(http.ResponseWriter, *http.Request) {
 		httputil.MarshalAndWrite(r, w, map[string]interface{}{
 			"node": n,
 		})
+	}
+}
+
+type snapReq struct {
+	FS       string `json:"fs"`
+	Message  string `json:"message"`
+	Hostname string `json:"hostname"`
+}
+
+// Fetch a Node outside any FS
+func (ft *FileTree) nodeSnapshotHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		sreq := &snapReq{}
+		if err := httputil.Unmarshal(r, sreq); err != nil {
+			panic(err)
+		}
+
+		if !auth.Can(
+			r,
+			perms.Action(perms.Snapshot, perms.FS),
+			perms.ResourceWithID(perms.Filetree, perms.FS, sreq.FS),
+		) {
+			auth.Forbidden(w)
+			return
+		}
+
+		ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
+		vars := mux.Vars(r)
+
+		hash := vars["ref"]
+		n, err := ft.nodeByRef(ctx, hash)
+		if err != nil {
+			if err == clientutil.ErrBlobNotFound {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			panic(err)
+		}
+		if n.Type == "file" {
+			panic("cannot snapshot a file")
+		}
+
+		snap := &Snapshot{
+			Message:  sreq.Message,
+			Hostname: sreq.Hostname,
+		}
+
+		snapEncoded, err := msgpack.Marshal(snap)
+		if err != nil {
+			panic(err)
+		}
+		if _, err := ft.kvStore.Put(ctx, fmt.Sprintf(FSKeyFmt, sreq.FS), hash, snapEncoded, -1); err != nil {
+			panic(err)
+		}
+
+		// return newRev.Version, nil
+
 	}
 }
 
