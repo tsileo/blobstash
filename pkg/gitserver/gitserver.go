@@ -3,7 +3,6 @@ package gitserver // import "a4.io/blobstash/pkg/gitserver"
 import (
 	"bytes"
 	"context"
-	"crypto/subtle"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -22,12 +21,14 @@ import (
 	"gopkg.in/src-d/go-git.v4/plumbing/transport"
 	"gopkg.in/src-d/go-git.v4/plumbing/transport/server"
 
+	"a4.io/blobstash/pkg/auth"
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/filetree/writer"
 	"a4.io/blobstash/pkg/hashutil"
 	"a4.io/blobstash/pkg/httputil"
 	"a4.io/blobstash/pkg/hub"
+	"a4.io/blobstash/pkg/perms"
 	"a4.io/blobstash/pkg/stash/store"
 	"a4.io/blobstash/pkg/vkv"
 )
@@ -60,33 +61,13 @@ func (gs *GitServer) Close() error {
 	return nil
 }
 
-func (gs *GitServer) checkNamespace(w http.ResponseWriter, r *http.Request, ns string) bool {
-	if gs.conf.GitServer == nil {
-		return false
-	}
-	conf := gs.conf.GitServer.Namespaces[ns]
-	if conf == nil {
-		w.WriteHeader(http.StatusNotFound)
-		return false
-	}
-	user, pass, ok := r.BasicAuth()
-
-	if !ok || subtle.ConstantTimeCompare([]byte(user), []byte(conf.Username)) != 1 || subtle.ConstantTimeCompare([]byte(pass), []byte(conf.Password)) != 1 {
-		w.Header().Set("WWW-Authenticate", `Basic realm="BlobStash git server"`)
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(http.StatusText(http.StatusUnauthorized)))
-		return false
-	}
-	return true
-}
-
 // RegisterRoute registers all the HTTP handlers for the extension
 func (gs *GitServer) Register(r *mux.Router, root *mux.Router, basicAuth func(http.Handler) http.Handler) {
 	r.Handle("/", basicAuth(http.HandlerFunc(gs.rootHandler)))
 	r.Handle("/{ns}", basicAuth(http.HandlerFunc(gs.nsHandler)))
 	r.Handle("/{ns}/{repo}.git", basicAuth(http.HandlerFunc(gs.gitRepoHandler)))
-	root.Handle("/git/{ns}/{repo}.git/info/refs", http.HandlerFunc(gs.gitInfoRefsHandler))
-	root.Handle("/git/{ns}/{repo}.git/{service}", http.HandlerFunc(gs.gitServiceHandler))
+	root.Handle("/git/{ns}/{repo}.git/info/refs", basicAuth(http.HandlerFunc(gs.gitInfoRefsHandler)))
+	root.Handle("/git/{ns}/{repo}.git/{service}", basicAuth(http.HandlerFunc(gs.gitServiceHandler)))
 }
 
 type storage struct {
@@ -363,6 +344,15 @@ func (gs *GitServer) rootHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !auth.Can(
+		r,
+		perms.Action(perms.List, perms.GitNs),
+		perms.Resource(perms.GitServer, perms.GitNs),
+	) {
+		auth.Forbidden(w)
+		return
+	}
+
 	limit := 50
 
 	namespaces, err := gs.Namespaces()
@@ -384,11 +374,22 @@ func (gs *GitServer) rootHandler(w http.ResponseWriter, r *http.Request) {
 func (gs *GitServer) Namespaces() ([]string, error) {
 	namespaces := []string{}
 
-	// FIXME(tsileo): list namespaces from the kvstore `_git:` like in the nsHandler
-
-	for ns, _ := range gs.conf.GitServer.Namespaces {
-		namespaces = append(namespaces, ns)
+	// We cannot afford to index the repository (will waste space to keep a separate
+	// kv collection) and having a temp index is complicated
+	prefix := "_git:"
+	for {
+		keys, _, err := gs.kvStore.Keys(context.TODO(), prefix, "\xff", 1)
+		if err != nil {
+			return nil, err
+		}
+		if len(keys) == 0 || !strings.HasPrefix(keys[0].Key, prefix) {
+			break
+		}
+		dat := strings.Split(strings.Split(keys[0].Key, "/")[0], ":")
+		namespaces = append(namespaces, dat[1])
+		prefix = vkv.NextKey(fmt.Sprintf("_git:%s:", dat[1]))
 	}
+
 	return namespaces, nil
 }
 
@@ -423,6 +424,16 @@ func (gs *GitServer) nsHandler(w http.ResponseWriter, r *http.Request) {
 	limit := 50
 
 	ns := vars["ns"]
+
+	if !auth.Can(
+		r,
+		perms.Action(perms.List, perms.GitNs),
+		perms.ResourceWithID(perms.GitServer, perms.GitNs, ns),
+	) {
+		auth.Forbidden(w)
+		return
+	}
+
 	if gs.conf.GitServer == nil {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -591,6 +602,16 @@ func (gs *GitServer) gitRepoHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 
 	ns := vars["ns"]
+
+	if !auth.Can(
+		r,
+		perms.Action(perms.Read, perms.GitRepo),
+		perms.ResourceWithID(perms.GitServer, perms.GitRepo, fmt.Sprintf("%s/%s", ns, vars["repo"])),
+	) {
+		auth.Forbidden(w)
+		return
+	}
+
 	if gs.conf.GitServer == nil {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -630,7 +651,13 @@ func (gs *GitServer) gitInfoRefsHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	vars := mux.Vars(r)
 
-	if ok := gs.checkNamespace(w, r, vars["ns"]); !ok {
+	// TODO(tsileo): support read-only
+	if !auth.Can(
+		r,
+		perms.Action(perms.Write, perms.GitRepo),
+		perms.ResourceWithID(perms.GitServer, perms.GitRepo, fmt.Sprintf("%s/%s", vars["ns"], vars["repo"])),
+	) {
+		auth.Forbidden(w)
 		return
 	}
 
@@ -683,7 +710,13 @@ func (gs *GitServer) gitServiceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	vars := mux.Vars(r)
 
-	if ok := gs.checkNamespace(w, r, vars["ns"]); !ok {
+	// TODO(tsileo): support read-only
+	if !auth.Can(
+		r,
+		perms.Action(perms.Write, perms.GitRepo),
+		perms.ResourceWithID(perms.GitServer, perms.GitRepo, fmt.Sprintf("%s/%s", vars["ns"], vars["repo"])),
+	) {
+		auth.Forbidden(w)
 		return
 	}
 

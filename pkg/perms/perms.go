@@ -14,10 +14,11 @@ type ServiceName string
 
 // Actions
 const (
-	Read  ActionType = "read"
-	Stat  ActionType = "stat"
-	Write ActionType = "write"
-	List  ActionType = "list"
+	Read     ActionType = "read"
+	Stat     ActionType = "stat"
+	Write    ActionType = "write"
+	List     ActionType = "list"
+	Snapshot ActionType = "snapshot"
 )
 
 // Object types
@@ -26,6 +27,7 @@ const (
 	KVEntry ObjectType = "kv"
 	FS      ObjectType = "fs"
 	GitRepo ObjectType = "git-repo"
+	GitNs   ObjectType = "git-ns"
 )
 
 // Services
