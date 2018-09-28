@@ -66,6 +66,40 @@ Files can be streamed easily, range requests are supported, EXIF metadata automa
 
 You can also enable a S3 compatible gateway to manage your files.
 
+## Use Cases
+
+### Backups from external servers
+
+Setup an API key with limited permissions (in blobstash.yaml), just enough to save a snapshot of a tree:
+
+```yaml
+# [...]
+auth:
+ - id: 'my_backup_key'
+   password: 'my_api_key'
+   roles: 'backup_server1'
+roles:
+ - name: 'backup_server1'
+   perms:
+    - action: 'action:stat:blob'
+      resource: 'resource:blobstore:blob:*'
+    - action: 'action:write:blob'
+      resource: 'resource:blobstore:blob:*'
+    - action: 'action:snapshot:fs'
+      resource: 'resource:filetree:fs:server1'
+    - action: 'action:write:kv'
+      resource: 'resource:kvstore:kv:_filetree:fs:server1'
+    - action: 'action:gc:namespace'
+      resource: 'resource:stash:namespace:server1'
+```
+
+Then on "server1":
+
+```bash
+$ export BLOBS_API_HOST=https://my-blobstash-instance.com BLOBS_API_KEY=my_api_key
+$ blobstash-uploader server1 /path/to/data
+```
+
 ## Git HTTP backend
 
 You can store Git repositories via HTTP, and all the data will be deduplicated. 
