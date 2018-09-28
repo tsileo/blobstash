@@ -2,10 +2,19 @@ package perms
 
 import (
 	"testing"
+
+	"a4.io/blobstash/pkg/config"
 )
 
+func setupTestRole(name, action, resource string) *config.Role {
+	return &config.Role{
+		Name:  name,
+		Perms: []*config.Perm{&config.Perm{action, resource}},
+	}
+}
+
 func TestPerms(t *testing.T) {
-	if err := SetupRole("admin3", "action:*", "resource:*"); err != nil {
+	if err := SetupRole(setupTestRole("admin3", "action:*", "resource:*")); err != nil {
 		panic(err)
 	}
 
@@ -23,7 +32,7 @@ func TestPerms(t *testing.T) {
 }
 
 func TestPermsRoles(t *testing.T) {
-	if err := SetupRole("admin2", "action:*", "resource:*"); err != nil {
+	if err := SetupRole(setupTestRole("admin2", "action:*", "resource:*")); err != nil {
 		panic(err)
 	}
 
@@ -41,7 +50,7 @@ func TestPermsRoles(t *testing.T) {
 }
 
 func TestRedefineAdmin(t *testing.T) {
-	if err := SetupRole("admin", "action:read:blob", "resource:*"); err == nil {
+	if err := SetupRole(setupTestRole("admin", "action:read:blob", "resource:*")); err == nil {
 		t.Errorf("err should not be nil, got %v", err)
 	}
 }
