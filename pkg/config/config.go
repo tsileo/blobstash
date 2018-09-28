@@ -78,7 +78,11 @@ type BasicAuth struct {
 }
 
 type Role struct {
-	Name     string `yaml:"name"`
+	Name  string  `yaml:"name"`
+	Perms []*Perm `yaml:"permissions'`
+}
+
+type Perm struct {
 	Action   string `yaml:"action"`
 	Resource string `yaml:"resource"`
 }

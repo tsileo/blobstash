@@ -200,6 +200,10 @@ func EnableSnappyEncoding() func(*http.Request) error {
 	return WithHeader("Accept-Encoding", "snappy")
 }
 
+func WithNamespace(ns string) func(*http.Request) error {
+	return WithHeader("BlobStash-Namespace", ns)
+}
+
 type ClientUtil struct {
 	host    string
 	client  *http.Client

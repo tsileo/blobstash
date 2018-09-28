@@ -1500,12 +1500,16 @@ func (ft *FileTree) nodeSnapshotHandler() func(http.ResponseWriter, *http.Reques
 		if err != nil {
 			panic(err)
 		}
-		if _, err := ft.kvStore.Put(ctx, fmt.Sprintf(FSKeyFmt, sreq.FS), hash, snapEncoded, -1); err != nil {
+		newRev, err := ft.kvStore.Put(ctx, fmt.Sprintf(FSKeyFmt, sreq.FS), hash, snapEncoded, -1)
+		if err != nil {
 			panic(err)
 		}
 
 		// return newRev.Version, nil
-
+		httputil.MarshalAndWrite(r, w, map[string]interface{}{
+			"version": newRev.Version,
+			"ref":     hash,
+		})
 	}
 }
 

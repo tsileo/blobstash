@@ -19,15 +19,17 @@ const (
 	Write    ActionType = "write"
 	List     ActionType = "list"
 	Snapshot ActionType = "snapshot"
+	GC       ActionType = "gc"
 )
 
 // Object types
 const (
-	Blob    ObjectType = "blob"
-	KVEntry ObjectType = "kv"
-	FS      ObjectType = "fs"
-	GitRepo ObjectType = "git-repo"
-	GitNs   ObjectType = "git-ns"
+	Blob      ObjectType = "blob"
+	KVEntry   ObjectType = "kv"
+	FS        ObjectType = "fs"
+	GitRepo   ObjectType = "git-repo"
+	GitNs     ObjectType = "git-ns"
+	Namespace ObjectType = "namespace"
 )
 
 // Services
@@ -37,6 +39,7 @@ const (
 	DocStore  ServiceName = "docstore"
 	Filetree  ServiceName = "filetree"
 	GitServer ServiceName = "gitserver"
+	Stash     ServiceName = "stash"
 )
 
 // Action formats an action `<action_type>:<object_type>`
@@ -53,28 +56,34 @@ func Resource(service ServiceName, objectType ObjectType) string {
 }
 
 func init() {
-	SetupRole("admin", "action:*", "resource:*")
+	SetupRole(&config.Role{
+		Name:  "admin",
+		Perms: []*config.Perm{&config.Perm{Action: "action:*", Resource: "resource:*"}},
+	})
 }
 
 var roles = map[string]rbac.Role{}
 
-func SetupRole(name, action, resource string) error {
-	if _, used := roles[name]; used {
-		return fmt.Errorf("%q is already used", name)
+func SetupRole(r *config.Role) error {
+	if _, used := roles[r.Name]; used {
+		return fmt.Errorf("%q is already used", r.Name)
 	}
-	if !strings.HasPrefix(action, "action:") {
-		return fmt.Errorf("invalid action %q", action)
+	perms := rbac.Permissions{}
+	for _, p := range r.Perms {
+		if !strings.HasPrefix(p.Action, "action:") {
+			return fmt.Errorf("invalid action %q", p.Action)
+		}
+		if !strings.HasPrefix(p.Resource, "resource:") {
+			return fmt.Errorf("invalid resource %q", p.Resource)
+		}
+		perms = append(perms, rbac.NewGlobPermission(p.Action, p.Resource))
 	}
-	if !strings.HasPrefix(resource, "resource:") {
-		return fmt.Errorf("invalid resource %q", action)
-	}
+
 	role := rbac.Role{
-		RoleID: name,
-		Permissions: []rbac.Permission{
-			rbac.NewGlobPermission(action, resource),
-		},
+		RoleID:      r.Name,
+		Permissions: perms,
 	}
-	roles[name] = role
+	roles[r.Name] = role
 	return nil
 }
 
@@ -101,7 +110,7 @@ func GetRoles(k string) (rbac.Roles, error) {
 
 func Setup(conf *config.Config) error {
 	for _, role := range conf.Roles {
-		if err := SetupRole(role.Name, role.Action, role.Resource); err != nil {
+		if err := SetupRole(role); err != nil {
 			panic(err)
 		}
 	}
