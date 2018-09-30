@@ -20,6 +20,7 @@ const (
 	List     ActionType = "list"
 	Snapshot ActionType = "snapshot"
 	GC       ActionType = "gc"
+	Destroy  ActionType = "destroy"
 )
 
 // Object types

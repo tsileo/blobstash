@@ -1,4 +1,5 @@
 package auth // import "a4.io/blobstash/pkg/auth"
+
 import (
 	"crypto/subtle"
 	"encoding/base64"

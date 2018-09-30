@@ -396,6 +396,9 @@ func (client *ClientUtil) Do(method, path string, body io.Reader, options ...fun
 }
 
 func (client *ClientUtil) CheckAuth() (bool, error) {
+	if client.host == "" {
+		return false, fmt.Errorf("missing hostname")
+	}
 	resp, err := client.Get("/api/ping")
 	if err != nil {
 		return false, err

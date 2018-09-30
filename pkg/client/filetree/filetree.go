@@ -8,6 +8,7 @@ import (
 	"a4.io/blobstash/pkg/client/clientutil"
 )
 
+// Filetree client
 type Filetree struct {
 	client *clientutil.ClientUtil
 }
@@ -30,6 +31,7 @@ type snapResp struct {
 	Ref     string `json:"ref"`
 }
 
+// MakeSnaphot create a FS snapshot from a tree reference
 func (f *Filetree) MakeSnapshot(ref, fs, message string) (int64, error) {
 	h, err := os.Hostname()
 	if err != nil {
@@ -54,6 +56,7 @@ func (f *Filetree) MakeSnapshot(ref, fs, message string) (int64, error) {
 	return snap.Version, nil
 }
 
+// GC performs a garbage collection to save the latest filetreee snapshot
 func (f *Filetree) GC(ns, name string, rev int64) error {
 	gcScript := fmt.Sprintf(`
 local kvstore = require('kvstore')
