@@ -17,8 +17,11 @@ func usage() {
 	flag.PrintDefaults()
 }
 
+var snapMessage string
+
 func main() {
 	flag.Usage = usage
+	flag.StringVar(&snapMessage, "message", "", "Optional snapshot message")
 	flag.Parse()
 
 	if flag.NArg() != 2 {
@@ -81,7 +84,7 @@ func main() {
 	}
 
 	// Make a snaphot/create a FS entry for the given tree
-	rev, err := ft.MakeSnapshot(m.Hash, fsName, "")
+	rev, err := ft.MakeSnapshot(m.Hash, fsName, snapMessage)
 	if err != nil {
 		fmt.Printf("failed to create snapshot: %v\n", err)
 		os.Exit(1)
