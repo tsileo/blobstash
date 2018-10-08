@@ -2,6 +2,7 @@ package filetree // import "a4.io/blobstash/pkg/filetree"
 
 import (
 	"bytes"
+	"container/list"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -434,29 +435,70 @@ func MetaToNode(m *rnode.RawNode) (*Node, error) {
 	return n, nil
 }
 
-type NodeInfo struct {
-	Name, Ref string
-}
+// DFS performs a Depth-first search
+func (ft *FileTree) DFS(ctx context.Context, root *Node, fn func(*Node) (bool, error)) (*Node, error) {
+	// Check if the target is the root
+	found, err := fn(root)
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		return root, nil
+	}
 
-// fetchDir recursively fetch dir children
-func (ft *FileTree) bruteforcePath(ctx context.Context, n *Node, target string) ([]*NodeInfo, error) {
-	path := []*NodeInfo{&NodeInfo{n.Name, n.Hash}}
-	if n.Type == rnode.Dir {
-		for _, ref := range n.Meta.Refs {
-			if ref.(string) == target {
-				return path, nil
-			}
-
+	// Check each children as we discover it, and expand a directory as soon as it's discovered
+	if root.Type == rnode.Dir {
+		for _, ref := range root.Meta.Refs {
 			cn, err := ft.nodeByRef(ctx, ref.(string))
 			if err != nil {
 				return nil, err
 			}
-			out, err := ft.bruteforcePath(ctx, cn, target)
+			cn.parent = root
+			nfound, err := ft.DFS(ctx, cn, fn)
 			if err != nil {
 				return nil, err
 			}
-			if len(out) > 0 {
-				return append(path, out...), nil
+			if nfound != nil {
+				return nfound, nil
+			}
+		}
+	}
+
+	return nil, nil
+}
+
+// BFS performs a Breadth-first search
+func (ft *FileTree) BFS(ctx context.Context, root *Node, fn func(*Node) (bool, error)) (*Node, error) {
+	// create a FIFO queue for the graph traversal
+	// (list + PushBash + Font)
+	q := list.New()
+	q.PushBack(root)
+
+	for q.Len() > 0 {
+		// Dequeue
+		e := q.Front()
+		n := e.Value.(*Node)
+		q.Remove(e)
+		fmt.Printf("BFS %+v\n", n)
+
+		// Check if the target is the root
+		found, err := fn(n)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			return n, nil
+		}
+
+		// Enqueue the children to be expanded
+		if n.Type == rnode.Dir {
+			for _, ref := range n.Meta.Refs {
+				cn, err := ft.nodeByRef(ctx, ref.(string))
+				if err != nil {
+					return nil, err
+				}
+				cn.parent = n
+				q.PushBack(cn)
 			}
 		}
 	}
@@ -1515,20 +1557,6 @@ func (ft *FileTree) nodeSnapshotHandler() func(http.ResponseWriter, *http.Reques
 
 // nodeByRef fetch the blob containing the `meta.Meta` and convert it to a `Node`
 func (ft *FileTree) nodeByRef(ctx context.Context, hash string) (*Node, error) {
-	if cached, ok := ft.nodeCache.Get(hash); ok {
-		n := cached.(*Node)
-		// FIXME(tsileo): investigate a possible bug in PATCH that cause this
-		// if n.Hash != hash {
-		// panic("cache messed up")
-		// }
-		if n.Hash == hash {
-			if n.Children != nil && len(n.Children) > 0 {
-				n.Children = nil
-			}
-			return n, nil
-		}
-	}
-
 	blob, err := ft.blobStore.Get(ctx, hash)
 	if err != nil {
 		return nil, err
@@ -1543,8 +1571,6 @@ func (ft *FileTree) nodeByRef(ctx context.Context, hash string) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	ft.nodeCache.Add(hash, n)
 
 	return n, nil
 }
@@ -1567,12 +1593,48 @@ func (ft *FileTree) Node(ctx context.Context, hash string) (*Node, error) {
 	return node, nil
 }
 
+type NodeInfo struct {
+	Name, Ref string
+}
+
+func pathFromNode(ntarget, rootNode *Node) []*NodeInfo {
+	path := []*NodeInfo{}
+	if ntarget == nil || ntarget.parent == nil {
+		return path
+	}
+
+	// Build the path
+	ntarget = ntarget.parent
+
+	for ntarget.parent != nil {
+		path = append(path, &NodeInfo{ntarget.Name, ntarget.Hash})
+		ntarget = ntarget.parent
+	}
+	path = append(path, &NodeInfo{rootNode.Name, rootNode.Hash})
+
+	// Reverse the slice
+	for left, right := 0, len(path)-1; left < right; left, right = left+1, right-1 {
+		path[left], path[right] = path[right], path[left]
+	}
+	return path
+}
+
+// BruteforcePath builds the path from a children hash/ref
 func (ft *FileTree) BruteforcePath(ctx context.Context, root, target string) ([]*NodeInfo, error) {
 	rootNode, err := ft.nodeByRef(ctx, root)
 	if err != nil {
 		return nil, err
 	}
-	return ft.bruteforcePath(ctx, rootNode, target)
+
+	// Find the node by performing a BFS search
+	ntarget, err := ft.BFS(ctx, rootNode, func(n *Node) (bool, error) {
+		return n.Hash == target, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return pathFromNode(ntarget, rootNode), nil
 }
 
 func (ft *FileTree) NodeWithChildren(ctx context.Context, hash string) (*Node, error) {
