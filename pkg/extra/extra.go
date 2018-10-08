@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"path/filepath"
 
 	"github.com/yuin/gopher-lua"
 )
@@ -18,6 +19,19 @@ func setupExtra(e *Extra) func(*lua.LState) int {
 		mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
 			"noop": func(L *lua.LState) int {
 				return 0
+			},
+			"glob": func(L *lua.LState) int {
+				// match(<glob pattern>, <name>)
+				matched, err := filepath.Match(L.ToString(1), L.ToString(2))
+				if err != nil {
+					panic(err)
+				}
+				if matched {
+					L.Push(lua.LTrue)
+				} else {
+					L.Push(lua.LFalse)
+				}
+				return 1
 			},
 			"embed_http_resource": func(L *lua.LState) int {
 				url := L.ToString(1)

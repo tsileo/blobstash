@@ -193,6 +193,26 @@ $ http --auth :apikey GET https://myinstance.com/api/git/myns
     }
 }
 ```
+### Lua API
+
+#### Extra module
+
+- [`extra.glob(pattern, name)`](#extraglob)
+
+##### extra.glob(pattern, name)
+
+Parse URL into a table of key/value components.
+
+**Attributes**
+
+| Name    | Type   | Description |
+| ------- | ------ | ----------- |
+| pattern | String | Glob pattern |
+| name    | String | file name |
+
+**Returns**
+
+Boolean
 
 ## Contribution
 
