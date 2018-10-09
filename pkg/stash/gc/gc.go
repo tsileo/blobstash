@@ -10,9 +10,11 @@ import (
 	"a4.io/blobstash/pkg/apps/luautil"
 	"a4.io/blobstash/pkg/blob"
 	bsLua "a4.io/blobstash/pkg/blobstore/lua"
+	"a4.io/blobstash/pkg/extra"
 	"a4.io/blobstash/pkg/filetree/filetreeutil/node"
 	"a4.io/blobstash/pkg/hub"
 	kvsLua "a4.io/blobstash/pkg/kvstore/lua"
+	"a4.io/blobstash/pkg/luascripts"
 	"a4.io/blobstash/pkg/stash"
 )
 
@@ -39,50 +41,18 @@ func GC(ctx context.Context, h *hub.Hub, s *stash.Stash, script string, remoteRe
 	L.PreloadModule("node", loadNode)
 	kvsLua.Setup(L, s.KvStore(), ctx)
 	bsLua.Setup(ctx, L, s.BlobStore())
+	extra.Setup(L)
 
-	if err := L.DoString(`
-local msgpack = require('msgpack')
-local kvstore = require('kvstore')
-local blobstore = require('blobstore')
-local node = require('node')
-
-function mark_kv (key, version)
-  local h = kvstore.get_meta_blob(key, version)
-  if h ~= nil then
-    mark(h)
-    local _, ref, _ = kvstore.get(key, version)
-    if ref ~= '' then
-      mark(ref)
-    end
-  end
-end
-_G.mark_kv = mark_kv
-
-function mark_filetree_node (ref)
-  local data = blobstore.get(ref)
-  local cnode = node.decode(data)
-  mark(ref)
-  if cnode.t == 'dir' then
-    for _, childRef in ipairs(cnode.r) do
-      mark_filetree_node(childRef)
-    end
-  else
-    for _, contentRef in ipairs(cnode.r) do
-      mark(contentRef[2])
-    end
-  end
-end
-_G.mark_filetree_node = mark_filetree_node
-`); err != nil {
+	// Setup two global:
+	// - mark_kv(key, version)  -- version must be a String because we use nano ts
+	// - mark_filetree_node(ref)
+	if err := L.DoString(luascripts.Get("stash_gc.lua")); err != nil {
 		return err
 	}
-	// FIXME(tsileo): do like in the docstore, export code _G.mark_kv(key, version), _G.mark_fs_ref(ref)...
-	// and the option to load custom GC script from the filesystem like stored queries
 
 	if err := L.DoString(script); err != nil {
 		return err
 	}
-	fmt.Printf("Remote refs=%+v\n\nrefs=%+v\n\n", remoteRefs, refs)
 	for ref, _ := range refs {
 		// FIXME(tsileo): stat before get/put
 

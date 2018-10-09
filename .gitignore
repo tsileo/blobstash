@@ -11,3 +11,4 @@ config.json
 draft_*
 tmp_*
 ldb_*
+pkg/luascripts/files.go

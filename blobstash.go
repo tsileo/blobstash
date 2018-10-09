@@ -1,3 +1,4 @@
+//go:generate go run tools/genluaindex.go
 package main
 
 import (

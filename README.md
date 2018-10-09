@@ -197,11 +197,13 @@ $ http --auth :apikey GET https://myinstance.com/api/git/myns
 
 #### Extra module
 
-- [`extra.glob(pattern, name)`](#extraglob)
+- [`extra.glob(pattern, name)`](#extraglobpattern-name)
 
 ##### extra.glob(pattern, name)
 
-Parse URL into a table of key/value components.
+Parses the shell file name pattern/glob and reports wether the file name matches.
+
+Uses go's [filepath.Match](https://godoc.org/path/filepath#Match).
 
 **Attributes**
 
