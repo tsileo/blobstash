@@ -188,13 +188,14 @@ func (ft *FileTree) Register(r *mux.Router, root *mux.Router, basicAuth func(htt
 	// Raw node endpoint
 	r.Handle("/node/{ref}", basicAuth(http.HandlerFunc(ft.nodeHandler())))
 	r.Handle("/node/{ref}/_snapshot", basicAuth(http.HandlerFunc(ft.nodeSnapshotHandler())))
+	r.Handle("/node/{ref}/_search", basicAuth(http.HandlerFunc(ft.nodeSearchHandler())))
 
-	// Public/semi-private handler
-	fileHandler := http.HandlerFunc(ft.fileHandler())
+	// TODO(ts): deprecate this endpoint and use commit /_snapshot?
+	r.Handle("/commit/{type}/{name}", basicAuth(http.HandlerFunc(ft.commitHandler())))
+
+	r.Handle("/versions/{type}/{name}", basicAuth(http.HandlerFunc(ft.versionsHandler())))
 
 	r.Handle("/fs", basicAuth(http.HandlerFunc(ft.fsRootHandler())))
-	r.Handle("/commit/{type}/{name}", basicAuth(http.HandlerFunc(ft.commitHandler())))
-	r.Handle("/versions/{type}/{name}", basicAuth(http.HandlerFunc(ft.versionsHandler())))
 	r.Handle("/fs/{type}/{name}/", basicAuth(http.HandlerFunc(ft.fsHandler())))
 	r.Handle("/fs/{type}/{name}/{path:.+}", basicAuth(http.HandlerFunc(ft.fsHandler())))
 	// r.Handle("/fs", http.HandlerFunc(ft.fsHandler()))
@@ -205,6 +206,8 @@ func (ft *FileTree) Register(r *mux.Router, root *mux.Router, basicAuth func(htt
 
 	r.Handle("/upload", basicAuth(http.HandlerFunc(ft.uploadHandler())))
 
+	// Public/semi-private handler
+	fileHandler := http.HandlerFunc(ft.fileHandler())
 	// Hook the standard endpint
 	r.Handle("/file/{ref}", fileHandler)
 	// Enable shortcut path from the root
@@ -435,7 +438,30 @@ func MetaToNode(m *rnode.RawNode) (*Node, error) {
 	return n, nil
 }
 
-// DFS performs a Depth-first search
+// IterFS iterates the whole FS tree and executes `fn` on each node
+func (ft *FileTree) IterTree(ctx context.Context, root *Node, fn func(*Node, string) error) error {
+	return ft.iterTree(ctx, ft.DFS, root, fn)
+}
+
+// GraphSearchFunc is the interface type for the different graph transversal algorithms (BFS,DFS)
+type GraphSearchFunc = func(context.Context, *Node, func(*Node) (bool, error)) (*Node, error)
+
+// iterFS iterates the whole tree using the given graph search algo and executes `fn` on each node
+func (ft *FileTree) iterTree(ctx context.Context, sfunc GraphSearchFunc, root *Node, fn func(*Node, string) error) error {
+	if _, err := sfunc(ctx, root, func(n *Node) (bool, error) {
+		p := nodePath(n, root)
+		if err := fn(n, p); err != nil {
+			// Stop the search
+			return true, err
+		}
+		return false, nil
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+// DFS performs a (recursive) Depth-first search
 func (ft *FileTree) DFS(ctx context.Context, root *Node, fn func(*Node) (bool, error)) (*Node, error) {
 	// Check if the target is the root
 	found, err := fn(root)
@@ -446,21 +472,23 @@ func (ft *FileTree) DFS(ctx context.Context, root *Node, fn func(*Node) (bool, e
 		return root, nil
 	}
 
+	if root.Type == rnode.File {
+		return nil, nil
+	}
+
 	// Check each children as we discover it, and expand a directory as soon as it's discovered
-	if root.Type == rnode.Dir {
-		for _, ref := range root.Meta.Refs {
-			cn, err := ft.nodeByRef(ctx, ref.(string))
-			if err != nil {
-				return nil, err
-			}
-			cn.parent = root
-			nfound, err := ft.DFS(ctx, cn, fn)
-			if err != nil {
-				return nil, err
-			}
-			if nfound != nil {
-				return nfound, nil
-			}
+	for _, ref := range root.Meta.Refs {
+		cn, err := ft.nodeByRef(ctx, ref.(string))
+		if err != nil {
+			return nil, err
+		}
+		cn.parent = root
+		nfound, err := ft.DFS(ctx, cn, fn)
+		if err != nil {
+			return nil, err
+		}
+		if nfound != nil {
+			return nfound, nil
 		}
 	}
 
@@ -479,7 +507,6 @@ func (ft *FileTree) BFS(ctx context.Context, root *Node, fn func(*Node) (bool, e
 		e := q.Front()
 		n := e.Value.(*Node)
 		q.Remove(e)
-		fmt.Printf("BFS %+v\n", n)
 
 		// Check if the target is the root
 		found, err := fn(n)
@@ -502,6 +529,7 @@ func (ft *FileTree) BFS(ctx context.Context, root *Node, fn func(*Node) (bool, e
 			}
 		}
 	}
+
 	return nil, nil
 }
 
@@ -938,7 +966,6 @@ func (ft *FileTree) commitHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
-
 		}
 		ctx := r.Context()
 
@@ -1593,10 +1620,12 @@ func (ft *FileTree) Node(ctx context.Context, hash string) (*Node, error) {
 	return node, nil
 }
 
+// NodeInfo represents a node for the path/breadcrumbs
 type NodeInfo struct {
 	Name, Ref string
 }
 
+// Takes a child node and the root, return the list of `NodeInfo` from the root until the children
 func pathFromNode(ntarget, rootNode *Node) []*NodeInfo {
 	path := []*NodeInfo{}
 	if ntarget == nil || ntarget.parent == nil {
@@ -1617,6 +1646,22 @@ func pathFromNode(ntarget, rootNode *Node) []*NodeInfo {
 		path[left], path[right] = path[right], path[left]
 	}
 	return path
+}
+
+func nodePath(n, r *Node) string {
+	nis := pathFromNode(n, r)
+	p := []string{}
+	for _, ni := range nis {
+		if ni.Name == "_root" {
+			continue
+		}
+		p = append(p, ni.Name)
+	}
+	if n.Name == "_root" {
+		return "/"
+	}
+
+	return "/" + strings.Join(append(p, n.Name), "/")
 }
 
 // BruteforcePath builds the path from a children hash/ref
