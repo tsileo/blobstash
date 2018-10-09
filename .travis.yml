@@ -4,6 +4,7 @@ go:
 go_import_path: a4.io/blobstash
 install: true
 script:
+- go generate
 # Install Python3 (Anaconda looks like the easiest way in Travis)
 - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
 - bash Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/miniconda
@@ -13,7 +14,6 @@ script:
 # Run golang unit tests
 # - go get -v a4.io/blobstash/...
 # - cd $GOPATH/src/a4.io/blobstash
-- go generate
 - go install
 - cp -r $GOPATH/bin/blobstash .
 - go test $(go list ./... | grep pkg)
