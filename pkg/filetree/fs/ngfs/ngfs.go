@@ -396,8 +396,8 @@ func (fh *FileHandle) Reader() (*filereader.File, error) {
 	return fh.r, nil
 }
 
-func (fh File) Attr(ctx context.Context, a *fuse.Attr) error {
-	n, err := fh.FTNode()
+func (f File) Attr(ctx context.Context, a *fuse.Attr) error {
+	n, err := f.FTNode()
 	if err != nil {
 		return err
 	}

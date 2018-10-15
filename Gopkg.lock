@@ -23,6 +23,16 @@
   revision = "66e0eb2c6a9f11df92a9f12ef9863b33f8f252a2"
 
 [[projects]]
+  branch = "master"
+  name = "bazil.org/fuse"
+  packages = [
+    ".",
+    "fs",
+    "fuseutil"
+  ]
+  revision = "65cc252bf6691cb3c7014bcb2c8dc29de91e3a7e"
+
+[[projects]]
   name = "github.com/Workiva/go-datastructures"
   packages = [
     "trie/xfast",
@@ -67,8 +77,14 @@
     "service/s3",
     "service/sts"
   ]
-  revision = "dd947f47decb37a7c3bee72501bfc790701ab5ad"
-  version = "v1.15.50"
+  revision = "572272ee7c4503c8a32f79ec16b959c9e8a211c3"
+  version = "v1.15.55"
+
+[[projects]]
+  name = "github.com/beevik/etree"
+  packages = ["."]
+  revision = "9d7e8feddccb4ed1b8afb54e368bd323d2ff652c"
+  version = "v1.0.1"
 
 [[projects]]
   branch = "master"
@@ -156,10 +172,10 @@
   version = "v1.0.0"
 
 [[projects]]
-  branch = "master"
   name = "github.com/dustin/go-humanize"
   packages = ["."]
   revision = "9f541cc9db5d55bce703bd99987c9d5cb8eea45e"
+  version = "v1.0.0"
 
 [[projects]]
   branch = "master"
@@ -189,8 +205,8 @@
 [[projects]]
   name = "github.com/go-ini/ini"
   packages = ["."]
-  revision = "7b294651033cd7d9e7f0d9ffa1b75ed1e198e737"
-  version = "v1.38.3"
+  revision = "9c8236e659b76e87bf02044d06fde8683008ff3e"
+  version = "v1.39.0"
 
 [[projects]]
   name = "github.com/go-martini/martini"
@@ -305,6 +321,12 @@
   version = "v1.0.1"
 
 [[projects]]
+  name = "github.com/laurent22/ical-go"
+  packages = ["ical"]
+  revision = "4811ac5553eae5fed7cd5d7a9024727f1311b2a2"
+  version = "v0.1.0"
+
+[[projects]]
   name = "github.com/mattn/go-colorable"
   packages = ["."]
   revision = "167de6bfdfba052fa6b2d3664c8f5272e23c9072"
@@ -374,6 +396,21 @@
   version = "v0.1"
 
 [[projects]]
+  name = "github.com/samedi/caldav-go"
+  packages = [
+    ".",
+    "data",
+    "errs",
+    "files",
+    "global",
+    "handlers",
+    "ixml",
+    "lib"
+  ]
+  revision = "4d45d84038c6026578b403ceff7d3081dcd84efd"
+  version = "v3.0.0"
+
+[[projects]]
   name = "github.com/sergi/go-diff"
   packages = ["diffmatchpatch"]
   revision = "1744e2970ca51c86172c8190fadad617561ed6e7"
@@ -413,7 +450,7 @@
     "leveldb/table",
     "leveldb/util"
   ]
-  revision = "ae2bd5eed72d46b28834ec3f60db3a3ebedd8dbd"
+  revision = "6b91fda63f2e36186f1c9d0e48578defb69c5d43"
 
 [[projects]]
   branch = "master"
@@ -480,13 +517,13 @@
     "scrypt",
     "ssh/terminal"
   ]
-  revision = "e3636079e1a4c1f337f212cc5cd2aca108f6c900"
+  revision = "0c41d7ab0a0ee717d4590a44bcb987dfd9e183eb"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
   packages = ["context"]
-  revision = "146acd28ed5894421fb5aac80ca93bc1b1f46f87"
+  revision = "49bb7cea24b1df9410e1712aa6433dae904ff66a"
 
 [[projects]]
   branch = "master"
@@ -495,7 +532,7 @@
     "unix",
     "windows"
   ]
-  revision = "4497e2df6f9e69048a54498c7affbbec3294ad47"
+  revision = "fa43e7bc11baaae89f3f902b2b4d832b68234844"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -594,6 +631,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "3adc537b9bc49000ce8643f1218cf3cbf9a8b9289ab0c133c4cd614a51ef1284"
+  inputs-digest = "50352a17c25258ae9f4747b8778210cc9f764c8f91e4d450036aa4ef5f6428b4"
   solver-name = "gps-cdcl"
   solver-version = 1
