@@ -63,7 +63,7 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore) func(*lua.LState) 
 			},
 			"fs": func(L *lua.LState) int {
 				fs := filetree.NewFS(L.ToString(1), ft)
-				node, _, _, err := fs.Path(context.TODO(), "/", false, 0)
+				node, _, _, err := fs.Path(context.TODO(), "/", 1, false, 0)
 				if err != nil {
 					panic(err)
 				}

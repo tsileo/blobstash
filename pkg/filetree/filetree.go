@@ -647,7 +647,7 @@ func (fs *FS) Root(ctx context.Context, create bool, mtime int64) (*Node, error)
 }
 
 // Path returns the `Node` at the given path, create it if requested
-func (fs *FS) Path(ctx context.Context, path string, create bool, mtime int64) (*Node, *rnode.RawNode, bool, error) {
+func (fs *FS) Path(ctx context.Context, path string, depth int, create bool, mtime int64) (*Node, *rnode.RawNode, bool, error) {
 	var found bool
 	node, err := fs.Root(ctx, create, mtime)
 	if err != nil {
@@ -657,7 +657,7 @@ func (fs *FS) Path(ctx context.Context, path string, create bool, mtime int64) (
 	var cmeta *rnode.RawNode
 	node.fs = fs
 	node.parent = nil
-	if err := fs.ft.fetchDir(ctx, node, 1, 1); err != nil {
+	if err := fs.ft.fetchDir(ctx, node, 1, depth); err != nil {
 		return nil, nil, found, err
 	}
 	if path == "/" {
@@ -837,7 +837,7 @@ func (ft *FileTree) fsRootHandler() func(http.ResponseWriter, *http.Request) {
 		for _, fsInfo := range it {
 			fmt.Printf("fsInfo=%+v\n", fsInfo)
 			fs := &FS{Name: fsInfo.Name, Ref: fsInfo.Ref, ft: ft}
-			node, _, _, err := fs.Path(ctx, "/", false, 0)
+			node, _, _, err := fs.Path(ctx, "/", 1, false, 0)
 			if err != nil {
 				panic(err)
 			}
@@ -1037,6 +1037,10 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 		if err != nil {
 			panic(err)
 		}
+		depth, err := q.GetInt("depth", 1, 5)
+		if err != nil {
+			panic(err)
+		}
 
 		var fs *FS
 		switch refType {
@@ -1055,7 +1059,7 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 		}
 		switch r.Method {
 		case "GET", "HEAD":
-			node, _, _, err := fs.Path(ctx, path, false, mtime)
+			node, _, _, err := fs.Path(ctx, path, depth, false, mtime)
 			switch err {
 			case nil:
 			case clientutil.ErrBlobNotFound:
@@ -1087,7 +1091,7 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 		case "POST":
 			// FIXME(tsileo): add a way to upload a file as public ? like AWS S3 public-read canned ACL
 			// Add a new node in the FS at the given path
-			node, _, created, err := fs.Path(ctx, path, true, mtime)
+			node, _, created, err := fs.Path(ctx, path, 1, true, mtime)
 			if err != nil {
 				panic(err)
 			}
@@ -1157,7 +1161,7 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 					panic(err)
 				}
 			}
-			node, _, _, err := fs.Path(ctx, path, true, mtime)
+			node, _, _, err := fs.Path(ctx, path, 1, true, mtime)
 			if err != nil {
 				if err == blobsfile.ErrBlobNotFound {
 					w.WriteHeader(http.StatusNotFound)
@@ -1205,6 +1209,13 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 					}
 					newChild.Mode = uint32(newMode)
 				}
+				if smodtime := r.Header.Get("BlobStash-Filetree-Patch-ModTime"); smodtime != "" {
+					newModTime, err := strconv.ParseInt(smodtime, 10, 0)
+					if err != nil {
+						panic(err)
+					}
+					newChild.ModTime = int64(newModTime)
+				}
 
 			} else {
 				// Decode the raw node from the request body
@@ -1247,13 +1258,16 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 
 		case "DELETE":
 			// Delete the node
-			node, _, _, err := fs.Path(ctx, path, false, mtime)
+			node, _, _, err := fs.Path(ctx, path, 1, false, mtime)
 			if err != nil {
 				if err == blobsfile.ErrBlobNotFound {
 					w.WriteHeader(http.StatusNotFound)
 					return
 				}
-				panic(err)
+				// FIXME FIXME FIXME
+				w.WriteHeader(http.StatusNotFound)
+				return
+				//panic(err)
 			}
 
 			if hash := r.Header.Get("If-Match"); hash != "" {
@@ -1413,7 +1427,7 @@ func (ft *FileTree) publicHandler() func(http.ResponseWriter, *http.Request) {
 		default:
 			panic(fmt.Errorf("Unknown type \"%s\"", refType))
 		}
-		node, _, _, err := fs.Path(ctx, path, false, mtime)
+		node, _, _, err := fs.Path(ctx, path, 1, false, mtime)
 		switch err {
 		case nil:
 		case clientutil.ErrBlobNotFound:

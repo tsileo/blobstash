@@ -115,7 +115,7 @@ func main() {
 	debug := flag.Bool("debug", false, "print debugging messages.")
 	resetCache := flag.Bool("reset-cache", false, "remove the local cache before starting.")
 	roMode := flag.Bool("ro", false, "read-only mode")
-	syncDelay := flag.Duration("sync-delay", 5*time.Minute, "delay to wait after the last modification to initate a sync")
+	//syncDelay := flag.Duration("sync-delay", 5*time.Minute, "delay to wait after the last modification to initate a sync")
 	forceRemote := flag.Bool("force-remote", false, "force fetching data blobs from object storage")
 	disableRemote := flag.Bool("disable-remote", false, "disable fetching data blobs from object storage")
 	configFile := flag.String("config-file", filepath.Join(pathutil.ConfigDir(), "fs_client.yaml"), "confg file path")
@@ -258,20 +258,20 @@ func main() {
 	log.Println("mounted successfully")
 
 	// Start a loop to make a GC 10 minutes after the last modification (if any)
-	go func() {
-		ticker := time.NewTicker(30 * time.Second)
-		for tick := range ticker.C {
-			root.stats.Lock()
-			if !root.stats.lastMod.IsZero() && root.stats.updated {
-				if tick.Sub(root.stats.lastMod) > *syncDelay {
-					if err := root.GC(); err != nil {
-						panic(err)
-					}
-				}
-			}
-			root.stats.Unlock()
-		}
-	}()
+	//go func() {
+	//	ticker := time.NewTicker(30 * time.Second)
+	//	for tick := range ticker.C {
+	//		root.stats.Lock()
+	//		if !root.stats.lastMod.IsZero() && root.stats.updated {
+	//			if tick.Sub(root.stats.lastMod) > *syncDelay {
+	//				if err := root.GC(); err != nil {
+	//					panic(err)
+	//				}
+	//			}
+	//		}
+	//		root.stats.Unlock()
+	//	}
+	//}()
 
 	// Be ready to cleanup if we receive a kill signal
 	cs := make(chan os.Signal, 1)
@@ -586,7 +586,10 @@ type rwLayer struct {
 
 	path string
 
+	// by path
 	cache map[string]*RWFileMeta
+
+	// dir children
 	index map[string][]*RWFileMeta
 
 	mu sync.Mutex

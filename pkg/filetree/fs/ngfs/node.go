@@ -6,12 +6,13 @@ import (
 	rnode "a4.io/blobstash/pkg/filetree/filetreeutil/node"
 )
 
-type Node struct {
+// node represents a FileTree node
+type node struct {
 	Name       string                 `json:"name" msgpack:"n"`
 	Ref        string                 `json:"ref" msgpack:"r"`
 	Size       int                    `json:"size" msgpack:"s,omitempty"`
 	Type       string                 `json:"type" msgpack:"t"`
-	Children   []*Node                `json:"children" msgpack:"c,omitempty"`
+	Children   []*node                `json:"children" msgpack:"c,omitempty"`
 	Metadata   map[string]interface{} `json:"metadata" msgpack:"md,omitempty"`
 	ModTime    string                 `json:"mtime" msgpack:"mt"`
 	ChangeTime string                 `json:"ctime" msgpack:"ct"`
@@ -22,7 +23,8 @@ type Node struct {
 	AsOf int64 `json:"-" msgpack:"-"`
 }
 
-func (n *Node) Mode() uint32 {
+// mode returns the node file mode
+func (n *node) mode() uint32 {
 	// TODO(tsileo): handle asOf
 	if n.RawMode > 0 {
 		return uint32(n.RawMode)
@@ -34,7 +36,8 @@ func (n *Node) Mode() uint32 {
 	}
 }
 
-func (n *Node) Hash() string {
+// hash returns the file content hash (blake2b)
+func (n *node) hash() string {
 	if len(n.Metadata) == 0 {
 		// It happens for empty file
 		return "69217a3079908094e11121d042354a7c1f55b6482ca1a51e1b250dfd1ed0eef9"
@@ -42,15 +45,18 @@ func (n *Node) Hash() string {
 	return n.Metadata["blake2b-hash"].(string)
 }
 
-func (n *Node) IsDir() bool {
+// isDir returns true if the node is a dir
+func (n *node) isDir() bool {
 	return n.Type == rnode.Dir
 }
 
-func (n *Node) IsFile() bool {
+// is File returns true if the node is a file
+func (n *node) isFile() bool {
 	return n.Type == rnode.File
 }
 
-func (n *Node) Mtime() uint64 {
+// mtime returns the node mtime timestsamp
+func (n *node) mtime() uint64 {
 	if n.ModTime != "" {
 		t, err := time.Parse(time.RFC3339, n.ModTime)
 		if err != nil {
@@ -61,7 +67,8 @@ func (n *Node) Mtime() uint64 {
 	return 0
 }
 
-func (n *Node) Ctime() uint64 {
+// ctime returns the node ctime timestamp
+func (n *node) ctime() uint64 {
 	if n.ChangeTime != "" {
 		t, err := time.Parse(time.RFC3339, n.ChangeTime)
 		if err != nil {

@@ -142,8 +142,10 @@ func NewFileRemote(ctx context.Context, bs BlobStore, meta *node.RawNode, ivs []
 }
 
 func (f *File) Close() error {
-	if f.lru != nil {
-		f.lru.Purge()
+	if f != nil {
+		if f.lru != nil {
+			f.lru.Purge()
+		}
 	}
 	return nil
 }
@@ -175,14 +177,19 @@ func (f *File) read(offset int64, cnt int) ([]byte, error) {
 	var err error
 	written := 0
 
+	// if offset == f.size {
+	// 	return nil, io.EOF
+	// }
+
 	if len(f.lmrange) == 0 {
 		panic(fmt.Errorf("FakeFile %+v lmrange empty", f))
 	}
 
 	tiv := f.trie.Successor(uint64(offset)).(*IndexValue)
-	if tiv.Index == offset {
-		tiv = f.trie.Successor(uint64(offset + 1)).(*IndexValue)
-	}
+	//if tiv.Index == offset {
+	//	tiv = f.trie.Successor(uint64(offset + 1)).(*IndexValue)
+	//}
+
 	for _, iv := range f.lmrange[tiv.I:] {
 		if offset > iv.Index {
 			continue
