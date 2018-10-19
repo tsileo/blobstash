@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -11,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"text/tabwriter"
 	"time"
 
 	"a4.io/blobstash/pkg/client/blobstore"
@@ -27,6 +30,8 @@ import (
 	"golang.org/x/net/context"
 	yaml "gopkg.in/yaml.v2"
 )
+
+var startedAt = time.Now()
 
 func usage() {
 	fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
@@ -195,6 +200,9 @@ func main() {
 		clientUtil: clientUtil,
 		kvs:        kvs,
 		ref:        ref,
+		counters:   newCounters(),
+		openedFds:  map[fuse.NodeID]*fdDebug{},
+		openLogs:   []*fdDebug{},
 	}
 	blobfs.bs, err = newCache(bs, cacheDir)
 	if err != nil {
@@ -226,7 +234,14 @@ type FS struct {
 	bs         blobStore
 	clientUtil *clientutil.ClientUtil
 	ref        string
-	root       *dir
+	root       *fs.Tree
+	ftRoot     *dir
+
+	openedFds map[fuse.NodeID]*fdDebug
+	openLogs  []*fdDebug
+	mu        sync.Mutex
+
+	counters *counters
 }
 
 // remotePath the API path for the FileTree API
@@ -271,24 +286,78 @@ func (fs *FS) getNodeAsOf(path string, depth int, asOf int64) (*node, error) {
 }
 
 // Root returns the root node of the FS
-func (fs *FS) Root() (fs.Node, error) {
+func (cfs *FS) Root() (fs.Node, error) {
 	// Check if there's a cached root
-	if fs.root != nil {
-		return fs.root, nil
+	if cfs.root != nil {
+		return cfs.root, nil
 	}
 
 	// Create a dummy dir that will be our root ref
-	fs.root = &dir{
+	cfs.root = &fs.Tree{}
+	ftRoot, err := cfs.FTRoot()
+	if err != nil {
+		return nil, err
+	}
+	cfs.root.Add("current", ftRoot)
+
+	// TODO(tsileo): add "tag" to snapshot instead of message, and `Mkdir tags/mytag` to create a new tags
+	cfs.root.Add("tags", &fs.Tree{})
+
+	// TODO(tsileo): list all verisons YYYY-MM-DDTHH:MM:SS
+	cfs.root.Add("versions", &fs.Tree{})
+
+	// TODO(tsileo): magic "at/2018/myfile", "at/now" to get current RO snapshot
+	cfs.root.Add("at", &fs.Tree{})
+
+	// TODO(tsileo): last 100 most recently modified files by mtime
+	cfs.root.Add("recent", &fs.Tree{})
+
+	statsTree := &fs.Tree{}
+	statsTree.Add("started_at", &dataNode{data: []byte(startedAt.Format(time.RFC3339))})
+	statsTree.Add("fds.json", &dataNode{f: func() ([]byte, error) {
+		for _, d := range cfs.openedFds {
+			if d.OpenedAt == "" {
+				d.OpenedAt = d.openedAt.Format(time.RFC3339)
+			}
+		}
+		return json.Marshal(cfs.openedFds)
+	}})
+	statsTree.Add("fds", &dataNode{f: func() ([]byte, error) {
+		var buf bytes.Buffer
+		w := tabwriter.NewWriter(&buf, 0, 0, 1, ' ', tabwriter.TabIndent)
+		for _, d := range cfs.openedFds {
+			fmt.Fprintln(w, fmt.Sprintf("%s\t%d\t%s\t%v\t%s", d.Path, d.PID, d.PName, d.RW, d.openedAt.Format(time.RFC3339)))
+		}
+		w.Flush()
+		return buf.Bytes(), nil
+	}})
+	// TODO(tsileo): a file that dumps the opened fds with tabwriter AND json ; that execute a callback func to build the handle
+	statsTree.Add("counters", cfs.counters.Tree)
+	// TODO(tsileo): /proc like debug VFS
+	cfs.root.Add(".stats", statsTree)
+
+	return cfs.root, nil
+}
+
+// FTRoot returns the FileTree node root
+func (fs *FS) FTRoot() (fs.Node, error) {
+	// Check if there's a cached root
+	if fs.ftRoot != nil {
+		return fs.ftRoot, nil
+	}
+
+	// Create a dummy dir that will be our root ref
+	fs.ftRoot = &dir{
 		path: "/",
 		fs:   fs,
 		node: nil,
 	}
 
 	// Actually loads it
-	if err := fs.root.preloadRoot(); err != nil {
+	if err := fs.ftRoot.preloadFTRoot(); err != nil {
 		return nil, err
 	}
-	return fs.root, nil
+	return fs.ftRoot, nil
 }
 
 // dir implements fs.Node and represents a FileTree directory
@@ -349,7 +418,7 @@ func (d *dir) Attr(ctx context.Context, a *fuse.Attr) error {
 // Special preloading for the root that fetch the root tree with a depth of 2
 // (meaning we fetch the directories of the directories inside the root).
 // The root will be cached, and the same struct will always be returned.
-func (d *dir) preloadRoot() error {
+func (d *dir) preloadFTRoot() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -413,7 +482,7 @@ func (d *dir) loadChildren() {
 
 // Lookup implements the fs.NodeRequestLookuper interface
 func (d *dir) Lookup(ctx context.Context, name string) (fs.Node, error) {
-	fmt.Printf("Lookup %s %s\n", d.path, name)
+	// lazy load the remote node
 	n, err := d.FTNode()
 	if err != nil {
 		return nil, err
@@ -421,32 +490,38 @@ func (d *dir) Lookup(ctx context.Context, name string) (fs.Node, error) {
 	if n == nil {
 		return nil, fuse.ENOENT
 	}
+
+	// fetch the children (local index)
 	if d.children == nil {
 		d.loadChildren()
 	}
+
+	// update the index
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if node, ok := d.children[name]; ok {
 		return node, nil
 	}
-	fmt.Printf("Lookup not found\n")
+
 	return nil, fuse.ENOENT
 }
 
 // ReadDirAll implements the fs.HandleReadDirAller interface
 func (d *dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
+	// lazy loads the remote node
 	n, err := d.FTNode()
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("ReadDirAll(%s) %v\n", d.path, d.node)
 	if n == nil {
 		return nil, fuse.ENOENT
 	}
+	// load the children (local index)
 	if d.children == nil {
 		d.loadChildren()
 	}
 
+	// Build the response
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	out := []fuse.Dirent{}
@@ -459,14 +534,16 @@ func (d *dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 
 		}
 	}
+
 	return out, nil
 }
 
 // Mkdir implements the fs.NodeMkdirer interface
 func (d *dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
-	fmt.Printf("Mkdir %s %s\n", d.path, req.Name)
+	// new mtime for the parent dir
 	mtime := time.Now().Unix()
 
+	// initialize an empty dir node
 	node := &rnode.RawNode{
 		Version: rnode.V1,
 		Type:    rnode.Dir,
@@ -474,6 +551,7 @@ func (d *dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 		ModTime: mtime,
 	}
 
+	// patch dir to insert the new empty dir
 	resp, err := d.fs.clientUtil.PatchMsgpack(
 		d.fs.remotePath(d.path),
 		node,
@@ -489,6 +567,7 @@ func (d *dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 		return nil, err
 	}
 
+	// initialize the FS node and update the local dir
 	newDir := &dir{path: filepath.Join(d.path, req.Name), fs: d.fs, node: nil, parent: d}
 	d.mu.Lock()
 	if d.children == nil {
@@ -587,8 +666,10 @@ func (d *dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 // Create implements the fs.NodeCreater interface
 func (d *dir) Create(ctx context.Context, req *fuse.CreateRequest, res *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
 	fmt.Printf("Create %v %s\n", d, req.Name)
+	// mtime for the parent dir
 	mtime := time.Now().Unix()
 
+	// Initialize an empty file node
 	node := &rnode.RawNode{
 		Type:    rnode.File,
 		Name:    req.Name,
@@ -597,6 +678,7 @@ func (d *dir) Create(ctx context.Context, req *fuse.CreateRequest, res *fuse.Cre
 		Mode:    uint32(req.Mode),
 	}
 
+	// Patch the parent dir
 	resp, err := d.fs.clientUtil.PatchMsgpack(
 		d.fs.remotePath(d.path),
 		node,
@@ -611,25 +693,41 @@ func (d *dir) Create(ctx context.Context, req *fuse.CreateRequest, res *fuse.Cre
 		return nil, nil, err
 	}
 
+	// Initialize the file node
 	f := &file{
 		path:   filepath.Join(d.path, req.Name),
 		fs:     d.fs,
 		node:   nil,
 		parent: d,
 	}
+
+	// Update the local dir
 	d.mu.Lock()
 	if d.children == nil {
 		d.children = map[string]fs.Node{}
 	}
 	d.children[req.Name] = f
 	f.fds++
+	d.fs.openedFds[req.Node] = &fdDebug{
+		Path:     d.path,
+		PID:      req.Pid,
+		PName:    getProcName(req.Pid),
+		RW:       true,
+		openedAt: time.Now(),
+	}
+	d.fs.openLogs = append(d.fs.openLogs, d.fs.openedFds[req.Node])
+	if len(d.fs.openLogs) > 50 {
+		d.fs.openLogs = d.fs.openLogs[:50]
+	}
 	d.mu.Unlock()
 
+	// Initialize a temporary file for the RW handle
 	tmp, err := ioutil.TempFile("", fmt.Sprintf("blobfs-%s-", req.Name))
 	if err != nil {
 		return nil, nil, err
 	}
 
+	// Initialize the RW handle
 	fh := &rwFileHandle{
 		f:   f,
 		tmp: tmp,
@@ -641,8 +739,10 @@ func (d *dir) Create(ctx context.Context, req *fuse.CreateRequest, res *fuse.Cre
 
 // Remove implements the fs.NodeRemover interface
 func (d *dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
-	fmt.Printf("Remove %s\n", req.Name)
+	// mtime for the parent dir
 	mtime := time.Now().Unix()
+
+	// Remove the node from the dir in the index server/BlobStash
 	resp, err := d.fs.clientUtil.Delete(
 		d.fs.remotePath(filepath.Join(d.path, req.Name)),
 		clientutil.WithQueryArg("mtime", strconv.FormatInt(mtime, 10)),
@@ -656,9 +756,12 @@ func (d *dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 		fmt.Printf("err=%+v\n", err)
 		return err
 	}
+
+	// Update the local node
 	d.mu.Lock()
 	delete(d.children, req.Name)
 	d.mu.Unlock()
+
 	return nil
 }
 
@@ -692,7 +795,6 @@ var _ fs.NodeFsyncer = (*file)(nil)
 
 // Fsync implements the fs.NodeFsyncer interface
 func (f *file) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
-	fmt.Printf("Flush %s %+v\n", f.path, f)
 	return nil
 }
 
@@ -700,13 +802,19 @@ func (f *file) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
 func (f *file) FTNode() (*node, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
+	// Returns the cached node if it's already there
 	if f.node != nil {
 		return f.node, nil
 	}
+
+	// Loads it from BlobStash
 	n, err := f.fs.getNode(f.path)
 	if err != nil {
 		return nil, err
 	}
+
+	// Cache it
 	f.node = n
 	return n, nil
 }
@@ -812,26 +920,48 @@ func (f *file) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	fmt.Printf("Open %v %+v %s write=%v\n", f, f.node, f.path, req.Flags&fuse.OpenFlags(os.O_WRONLY|os.O_RDWR|os.O_APPEND|os.O_CREATE) != 0)
 	fmt.Printf("current handler=%+v\n", f.h)
 
+	// Update the opened file descriptor counter
 	f.fds++
+	f.fs.mu.Lock()
+	f.fs.openedFds[req.Node] = &fdDebug{
+		Path:     f.path,
+		PID:      req.Pid,
+		PName:    getProcName(req.Pid),
+		RW:       req.Flags&fuse.OpenFlags(os.O_WRONLY|os.O_RDWR|os.O_APPEND|os.O_CREATE) != 0,
+		openedAt: time.Now(),
+	}
+	f.fs.openLogs = append([]*fdDebug{f.fs.openedFds[req.Node]}, f.fs.openLogs...)
+	if len(f.fs.openLogs) > 50 {
+		f.fs.openLogs = f.fs.openLogs[:50]
+	}
+	f.fs.mu.Unlock()
+
+	// Short circuit the open if this file is already open for write
 	if f.h != nil {
 		fmt.Printf("Returning already openfile\n")
 		return f.h, nil
 	}
 
+	// Lazy loads the remote node if needed
 	if _, err := f.FTNode(); err != nil {
 		return nil, err
 	}
 
+	// Open RW
 	if req.Flags&fuse.OpenFlags(os.O_WRONLY|os.O_RDWR|os.O_APPEND|os.O_CREATE) != 0 {
+		// Create a temporary file
 		tmp, err := ioutil.TempFile("", fmt.Sprintf("blobfs-%s-", filepath.Base(f.path)))
 		if err != nil {
 			return nil, err
 		}
 
+		// Initialize a reader for initializing/loading the node content into the temp file
 		r, err := f.Reader()
 		if err != nil {
 			return nil, err
 		}
+
+		// Copy the reader into the temp file if needed
 		f.mu.Lock()
 		defer f.mu.Unlock()
 
@@ -843,6 +973,7 @@ func (f *file) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 			}
 		}
 
+		// Initialize the RW handler
 		rwHandle := &rwFileHandle{
 			f:   f,
 			tmp: tmp,
@@ -863,6 +994,7 @@ func (f *file) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 		r = f.h.tmp
 	}
 
+	// Initialize a RO handle
 	fh := &fileHandle{
 		f: f,
 		r: r,
@@ -889,6 +1021,7 @@ var _ fs.HandleReleaser = (*fileHandle)(nil)
 
 // Reader returns a fileReader for the remote node
 func (f *file) Reader() (fileReader, error) {
+	// Fetch the remote node
 	n, err := f.FTNode()
 	if err != nil {
 		return nil, err
@@ -896,6 +1029,8 @@ func (f *file) Reader() (fileReader, error) {
 	if n == nil {
 		return nil, nil
 	}
+
+	// Fetch the reference blob to decode the "raw meta"
 	blob, err := f.fs.bs.Get(context.Background(), n.Ref)
 	if err != nil {
 		return nil, err
@@ -905,40 +1040,64 @@ func (f *file) Reader() (fileReader, error) {
 		return nil, fmt.Errorf("failed to build node from blob \"%s\": %v", blob, err)
 	}
 
-	r := filereader.NewFile(context.Background(), f.fs.bs, meta, nil)
-	return r, nil
+	// Instanciate the filereader
+	return filereader.NewFile(context.Background(), f.fs.bs, meta, nil), nil
 }
 
 // Release implements the fs.HandleReleaser interface
 func (fh *fileHandle) Release(ctx context.Context, req *fuse.ReleaseRequest) error {
-	fmt.Printf("Release %s\n", fh.f.path)
 	fh.f.mu.Lock()
 	defer fh.f.mu.Unlock()
+
+	// Close the reader if it was opened
 	if fh.r != nil {
 		fh.r.Close()
 		fh.r = nil
 	}
-	fh.f.fds--
+
+	// Update the opened file descriptor counter
 	// TODO(tsileo): release the rwFileHandler here too if it was used?
+	fh.f.fds--
+	fh.f.fs.mu.Lock()
+	if _, ok := fh.f.fs.openedFds[req.Node]; ok {
+		delete(fh.f.fs.openedFds, req.Node)
+	}
+	fh.f.fs.mu.Unlock()
+
 	return nil
 }
 
 // Read implements the fs.HandleReader interface
 func (fh *fileHandle) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
-	fmt.Printf("Read RO %s\n", fh.f.path)
 	var err error
 	var r fileReader
 	if fh.f.h != nil {
+		// Short circuit the read operation to the RW handle
 		r = fh.f.h.tmp
 	} else {
-		r, err = fh.f.Reader()
+		// Shortcut for empty file
+		if fh.f.node.Size == 0 {
+			return nil
+		}
+
+		// Lazy-loads the reader
+		if fh.r != nil {
+			r = fh.r
+		} else {
+			r, err = fh.f.Reader()
+			if err != nil {
+				return err
+			}
+			fh.r = r
+		}
 	}
-	if err != nil {
-		return err
-	}
+
+	// No reader, the file was just created
 	if r == nil {
 		return nil
 	}
+
+	// Perform the read operation on the fileReader
 	buf := make([]byte, req.Size)
 	n, err := r.ReadAt(buf, req.Offset)
 	if err != nil {
@@ -1033,6 +1192,12 @@ func (f *rwFileHandle) Release(ctx context.Context, req *fuse.ReleaseRequest) er
 	defer f.f.mu.Unlock()
 
 	f.f.fds--
+	f.f.fs.mu.Lock()
+	if _, ok := f.f.fs.openedFds[req.Node]; ok {
+		delete(f.f.fs.openedFds, req.Node)
+	}
+	f.f.fs.mu.Unlock()
+
 	if f.f.fds == 0 {
 		f.tmp.Close()
 		if err := os.Remove(f.tmp.Name()); err != nil {
