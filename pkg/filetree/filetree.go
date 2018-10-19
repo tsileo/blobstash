@@ -936,6 +936,13 @@ func (ft *FileTree) versionsHandler() func(http.ResponseWriter, *http.Request) {
 			panic(fmt.Errorf("Unknown type \"%s\"", refType))
 		}
 
+		q := httputil.NewQuery(r.URL.Query())
+
+		limit, err := q.GetInt("limit", 50, 1000)
+		if err != nil {
+			panic(err)
+		}
+
 		kvv, _, err := ft.kvStore.Versions(ctx, fmt.Sprintf(prefixFmt, fs.Name), "0", -1)
 		switch err {
 		case nil:
@@ -953,6 +960,9 @@ func (ft *FileTree) versionsHandler() func(http.ResponseWriter, *http.Request) {
 				panic(err)
 			}
 			versions = append(versions, snap)
+			if len(versions) == limit {
+				break
+			}
 		}
 
 		httputil.MarshalAndWrite(r, w, map[string]interface{}{

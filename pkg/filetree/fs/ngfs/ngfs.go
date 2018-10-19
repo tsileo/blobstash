@@ -10,9 +10,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"sync"
+	"syscall"
 	"text/tabwriter"
 	"time"
 
@@ -208,16 +210,28 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = fs.Serve(c, blobfs)
-	if err != nil {
-		log.Fatal(err)
-	}
+	defer blobfs.bs.(*cache).Close()
+	go func() {
+		err = fs.Serve(c, blobfs)
+		if err != nil {
+			log.Fatal(err)
+		}
 
-	// check if the mount process has an error to report
-	<-c.Ready
-	if err := c.MountError; err != nil {
-		log.Fatal(err)
-	}
+		// check if the mount process has an error to report
+		<-c.Ready
+		if err := c.MountError; err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	cs := make(chan os.Signal, 1)
+	signal.Notify(cs, os.Interrupt,
+		syscall.SIGINT,
+		syscall.SIGTERM,
+		syscall.SIGQUIT)
+	<-cs
+	fmt.Printf("Unmounting...")
+	fuse.Unmount(mountpoint)
 }
 
 // blobStore is the blobstore client interface
@@ -251,7 +265,7 @@ func (fs *FS) remotePath(path string) string {
 
 // getNode fetches the node at path from BlobStash, like a "remote stat".
 func (fs *FS) getNode(path string, asOf int64) (*node, error) {
-	return fs.getNodeAsOf(path, 1, 0)
+	return fs.getNodeAsOf(path, 1, asOf)
 }
 
 // getNode fetches the node at path from BlobStash, like a "remote stat".
@@ -308,14 +322,11 @@ func (cfs *FS) Root() (fs.Node, error) {
 	}
 	cfs.root.Add("current", ftRoot)
 
-	// TODO(tsileo): add "tag" to snapshot instead of message, and `Mkdir tags/mytag` to create a new tags
-	// cfs.root.Add("tags", &fs.Tree{})
+	// magic dir that list all versions, YYYY-MM-DDTHH:MM:SS
+	cfs.root.Add("versions", &versionsDir{cfs})
 
-	// TODO(tsileo): list all verisons YYYY-MM-DDTHH:MM:SS
-	// cfs.root.Add("versions", &fs.Tree{})
-
-	// TODO(tsileo): magic "at/2018/myfile", "at/now" to get current RO snapshot
-	// cfs.root.Add("at", &fs.Tree{})
+	// Time travel magic dir: "at/2018/myfile", "at/-40h/myfile"
+	cfs.root.Add("at", &atDir{cfs})
 
 	// Last 100 opened files (locally tracked only)
 	cfs.root.Add("recent", &recentDir{cfs, &cfs.openLogs})
@@ -455,15 +466,19 @@ func (d *dir) preloadFTRoot() error {
 	defer d.mu.Unlock()
 
 	// Fetch the root node with a depth=2
-	n, err := d.fs.getNodeAsOf(d.path, 2, 0)
+	n, err := d.fs.getNodeAsOf(d.path, 2, d.asOf)
 	if err != nil {
 		return err
 	}
 	// Cache the node
 	d.node = n
+	if d.node == nil {
+		return nil
+	}
 
 	d.children = map[string]fs.Node{}
 	for _, child := range d.node.Children {
+		child.AsOf = d.asOf
 		// We can set the node directly, and directories will contains children because we asked
 		// for a depth=2 when requesting the root dir
 		if child.isFile() {
@@ -472,6 +487,7 @@ func (d *dir) preloadFTRoot() error {
 				fs:     d.fs,
 				node:   child,
 				parent: d,
+				ro:     d.ro,
 			}
 		} else {
 			d.children[child.Name] = &dir{
@@ -479,6 +495,7 @@ func (d *dir) preloadFTRoot() error {
 				fs:     d.fs,
 				node:   child,
 				parent: d,
+				ro:     d.ro,
 			}
 			// "load"/setup the children index, as we already have the children within the node
 			d.children[child.Name].(*dir).loadChildren()
@@ -492,12 +509,14 @@ func (d *dir) preloadFTRoot() error {
 func (d *dir) loadChildren() {
 	d.children = map[string]fs.Node{}
 	for _, child := range d.node.Children {
+		child.AsOf = d.asOf
 		if child.isFile() {
 			d.children[child.Name] = &file{
 				path:   filepath.Join(d.path, child.Name),
 				fs:     d.fs,
 				node:   child,
 				parent: d,
+				ro:     d.ro,
 			}
 		} else {
 			// The node is set to nil for directories because we haven't fetched to children
@@ -506,6 +525,7 @@ func (d *dir) loadChildren() {
 				fs:     d.fs,
 				node:   nil,
 				parent: d,
+				ro:     d.ro,
 			}
 		}
 	}
