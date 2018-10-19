@@ -316,7 +316,7 @@ func (cfs *FS) Root() (fs.Node, error) {
 	cfs.root.Add("at", &fs.Tree{})
 
 	// TODO(tsileo): last 100 most recently modified files by mtime
-	cfs.root.Add("recent", &fs.Tree{})
+	cfs.root.Add("recent", &recentDir{cfs, &cfs.openLogs})
 
 	// Debug VFS mounted a /.stats
 	statsTree := &fs.Tree{}
@@ -745,8 +745,8 @@ func (d *dir) Create(ctx context.Context, req *fuse.CreateRequest, res *fuse.Cre
 		openedAt: time.Now(),
 	}
 	d.fs.openLogs = append(d.fs.openLogs, d.fs.openedFds[req.Node])
-	if len(d.fs.openLogs) > 50 {
-		d.fs.openLogs = d.fs.openLogs[:50]
+	if len(d.fs.openLogs) > 100 {
+		d.fs.openLogs = d.fs.openLogs[:100]
 	}
 	d.mu.Unlock()
 
@@ -799,6 +799,9 @@ func (d *dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 type file struct {
 	// absolute path
 	path string
+
+	// read-only mode
+	ro bool
 
 	// FS ref
 	fs *FS
@@ -969,8 +972,8 @@ func (f *file) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 		openedAt: time.Now(),
 	}
 	f.fs.openLogs = append([]*fdDebug{f.fs.openedFds[req.Node]}, f.fs.openLogs...)
-	if len(f.fs.openLogs) > 50 {
-		f.fs.openLogs = f.fs.openLogs[:50]
+	if len(f.fs.openLogs) > 100 {
+		f.fs.openLogs = f.fs.openLogs[:100]
 	}
 	f.fs.mu.Unlock()
 
