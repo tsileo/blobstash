@@ -292,6 +292,12 @@ func (cfs *FS) Root() (fs.Node, error) {
 		return cfs.root, nil
 	}
 
+	cfs.counters.register("open")
+	cfs.counters.register("open-ro")
+	cfs.counters.register("open-ro-error")
+	cfs.counters.register("open-rw")
+	cfs.counters.register("open-rw-error")
+
 	// Create a dummy dir that will be our root ref
 	cfs.root = &fs.Tree{}
 	ftRoot, err := cfs.FTRoot()
@@ -312,6 +318,7 @@ func (cfs *FS) Root() (fs.Node, error) {
 	// TODO(tsileo): last 100 most recently modified files by mtime
 	cfs.root.Add("recent", &fs.Tree{})
 
+	// Debug VFS mounted a /.stats
 	statsTree := &fs.Tree{}
 	statsTree.Add("started_at", &dataNode{data: []byte(startedAt.Format(time.RFC3339))})
 	statsTree.Add("fds.json", &dataNode{f: func() ([]byte, error) {
@@ -331,9 +338,24 @@ func (cfs *FS) Root() (fs.Node, error) {
 		w.Flush()
 		return buf.Bytes(), nil
 	}})
-	// TODO(tsileo): a file that dumps the opened fds with tabwriter AND json ; that execute a callback func to build the handle
+	statsTree.Add("open_logs", &dataNode{f: func() ([]byte, error) {
+		var buf bytes.Buffer
+		w := tabwriter.NewWriter(&buf, 0, 0, 1, ' ', tabwriter.TabIndent)
+		for _, d := range cfs.openLogs {
+			fmt.Fprintln(w, fmt.Sprintf("%s\t%d\t%s\t%v\t%s", d.Path, d.PID, d.PName, d.RW, d.openedAt.Format(time.RFC3339)))
+		}
+		w.Flush()
+		return buf.Bytes(), nil
+	}})
+	statsTree.Add("open_logs.json", &dataNode{f: func() ([]byte, error) {
+		for _, d := range cfs.openLogs {
+			if d.OpenedAt == "" {
+				d.OpenedAt = d.openedAt.Format(time.RFC3339)
+			}
+		}
+		return json.Marshal(cfs.openLogs)
+	}})
 	statsTree.Add("counters", cfs.counters.Tree)
-	// TODO(tsileo): /proc like debug VFS
 	cfs.root.Add(".stats", statsTree)
 
 	return cfs.root, nil
@@ -666,6 +688,10 @@ func (d *dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 // Create implements the fs.NodeCreater interface
 func (d *dir) Create(ctx context.Context, req *fuse.CreateRequest, res *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
 	fmt.Printf("Create %v %s\n", d, req.Name)
+
+	d.fs.counters.incr("open")
+	d.fs.counters.incr("open-rw")
+
 	// mtime for the parent dir
 	mtime := time.Now().Unix()
 
@@ -685,11 +711,13 @@ func (d *dir) Create(ctx context.Context, req *fuse.CreateRequest, res *fuse.Cre
 		clientutil.WithQueryArg("mtime", strconv.FormatInt(mtime, 10)),
 	)
 	if err != nil {
+		d.fs.counters.incr("open-rw-error")
 		return nil, nil, err
 	}
 	defer resp.Body.Close()
 
 	if err := clientutil.ExpectStatusCode(resp, http.StatusOK); err != nil {
+		d.fs.counters.incr("open-rw-error")
 		return nil, nil, err
 	}
 
@@ -708,6 +736,7 @@ func (d *dir) Create(ctx context.Context, req *fuse.CreateRequest, res *fuse.Cre
 	}
 	d.children[req.Name] = f
 	f.fds++
+
 	d.fs.openedFds[req.Node] = &fdDebug{
 		Path:     d.path,
 		PID:      req.Pid,
@@ -724,6 +753,7 @@ func (d *dir) Create(ctx context.Context, req *fuse.CreateRequest, res *fuse.Cre
 	// Initialize a temporary file for the RW handle
 	tmp, err := ioutil.TempFile("", fmt.Sprintf("blobfs-%s-", req.Name))
 	if err != nil {
+		d.fs.counters.incr("open-rw-error")
 		return nil, nil, err
 	}
 
@@ -920,6 +950,14 @@ func (f *file) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	fmt.Printf("Open %v %+v %s write=%v\n", f, f.node, f.path, req.Flags&fuse.OpenFlags(os.O_WRONLY|os.O_RDWR|os.O_APPEND|os.O_CREATE) != 0)
 	fmt.Printf("current handler=%+v\n", f.h)
 
+	isRW := req.Flags&fuse.OpenFlags(os.O_WRONLY|os.O_RDWR|os.O_APPEND|os.O_CREATE) != 0
+	f.fs.counters.incr("open")
+	if isRW {
+		f.fs.counters.incr("open-rw")
+	} else {
+		f.fs.counters.incr("open-ro")
+	}
+
 	// Update the opened file descriptor counter
 	f.fds++
 	f.fs.mu.Lock()
@@ -927,7 +965,7 @@ func (f *file) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 		Path:     f.path,
 		PID:      req.Pid,
 		PName:    getProcName(req.Pid),
-		RW:       req.Flags&fuse.OpenFlags(os.O_WRONLY|os.O_RDWR|os.O_APPEND|os.O_CREATE) != 0,
+		RW:       isRW,
 		openedAt: time.Now(),
 	}
 	f.fs.openLogs = append([]*fdDebug{f.fs.openedFds[req.Node]}, f.fs.openLogs...)
@@ -944,6 +982,12 @@ func (f *file) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 
 	// Lazy loads the remote node if needed
 	if _, err := f.FTNode(); err != nil {
+		if isRW {
+			f.fs.counters.incr("open-rw-error")
+		} else {
+			f.fs.counters.incr("open-ro-error")
+		}
+
 		return nil, err
 	}
 
@@ -952,12 +996,14 @@ func (f *file) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 		// Create a temporary file
 		tmp, err := ioutil.TempFile("", fmt.Sprintf("blobfs-%s-", filepath.Base(f.path)))
 		if err != nil {
+			f.fs.counters.incr("open-rw-error")
 			return nil, err
 		}
 
 		// Initialize a reader for initializing/loading the node content into the temp file
 		r, err := f.Reader()
 		if err != nil {
+			f.fs.counters.incr("open-rw-error")
 			return nil, err
 		}
 
@@ -969,6 +1015,7 @@ func (f *file) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 			defer r.Close()
 
 			if _, err := io.Copy(tmp, r); err != nil {
+				f.fs.counters.incr("open-rw-error")
 				return nil, err
 			}
 		}
