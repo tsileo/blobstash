@@ -250,7 +250,7 @@ func (fs *FS) remotePath(path string) string {
 }
 
 // getNode fetches the node at path from BlobStash, like a "remote stat".
-func (fs *FS) getNode(path string) (*node, error) {
+func (fs *FS) getNode(path string, asOf int64) (*node, error) {
 	return fs.getNodeAsOf(path, 1, 0)
 }
 
@@ -300,6 +300,8 @@ func (cfs *FS) Root() (fs.Node, error) {
 
 	// Create a dummy dir that will be our root ref
 	cfs.root = &fs.Tree{}
+
+	// the read-write root will be mounted a /current
 	ftRoot, err := cfs.FTRoot()
 	if err != nil {
 		return nil, err
@@ -307,15 +309,15 @@ func (cfs *FS) Root() (fs.Node, error) {
 	cfs.root.Add("current", ftRoot)
 
 	// TODO(tsileo): add "tag" to snapshot instead of message, and `Mkdir tags/mytag` to create a new tags
-	cfs.root.Add("tags", &fs.Tree{})
+	// cfs.root.Add("tags", &fs.Tree{})
 
 	// TODO(tsileo): list all verisons YYYY-MM-DDTHH:MM:SS
-	cfs.root.Add("versions", &fs.Tree{})
+	// cfs.root.Add("versions", &fs.Tree{})
 
 	// TODO(tsileo): magic "at/2018/myfile", "at/now" to get current RO snapshot
-	cfs.root.Add("at", &fs.Tree{})
+	// cfs.root.Add("at", &fs.Tree{})
 
-	// TODO(tsileo): last 100 most recently modified files by mtime
+	// Last 100 opened files (locally tracked only)
 	cfs.root.Add("recent", &recentDir{cfs, &cfs.openLogs})
 
 	// Debug VFS mounted a /.stats
@@ -388,6 +390,9 @@ type dir struct {
 	fs   *FS
 	node *node
 
+	ro   bool
+	asOf int64
+
 	mu       sync.Mutex
 	children map[string]fs.Node
 	parent   *dir
@@ -407,7 +412,7 @@ func (d *dir) FTNode() (*node, error) {
 	if d.node != nil {
 		return d.node, nil
 	}
-	n, err := d.fs.getNode(d.path)
+	n, err := d.fs.getNode(d.path, d.asOf)
 	if err != nil {
 		return nil, err
 	}
@@ -434,6 +439,11 @@ func (d *dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	} else {
 		a.Mode = os.ModeDir | 0755
 	}
+
+	if d.ro || d.asOf > 0 {
+		a.Mode &^= os.FileMode(userWrite | groupWrite | otherWrite)
+	}
+
 	return nil
 }
 
@@ -562,6 +572,10 @@ func (d *dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 
 // Mkdir implements the fs.NodeMkdirer interface
 func (d *dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
+	if d.ro || d.asOf > 0 {
+		return nil, fuse.EPERM
+	}
+
 	// new mtime for the parent dir
 	mtime := time.Now().Unix()
 
@@ -603,7 +617,11 @@ func (d *dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 
 // Rename implements the fs.NodeRenamer interface
 func (d *dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Node) error {
-	fmt.Printf("Rename %s %+v\n", d.path, req)
+	if d.ro || d.asOf > 0 {
+		return fuse.EPERM
+	}
+
+	// mtime for the modifications
 	mtime := time.Now().Unix()
 
 	d.mu.Lock()
@@ -687,7 +705,9 @@ func (d *dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 
 // Create implements the fs.NodeCreater interface
 func (d *dir) Create(ctx context.Context, req *fuse.CreateRequest, res *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
-	fmt.Printf("Create %v %s\n", d, req.Name)
+	if d.ro || d.asOf > 0 {
+		return nil, nil, fuse.EPERM
+	}
 
 	d.fs.counters.incr("open")
 	d.fs.counters.incr("open-rw")
@@ -769,6 +789,10 @@ func (d *dir) Create(ctx context.Context, req *fuse.CreateRequest, res *fuse.Cre
 
 // Remove implements the fs.NodeRemover interface
 func (d *dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
+	if d.ro || d.asOf > 0 {
+		return fuse.EPERM
+	}
+
 	// mtime for the parent dir
 	mtime := time.Now().Unix()
 
@@ -801,7 +825,8 @@ type file struct {
 	path string
 
 	// read-only mode
-	ro bool
+	ro   bool
+	asOf int64
 
 	// FS ref
 	fs *FS
@@ -842,7 +867,7 @@ func (f *file) FTNode() (*node, error) {
 	}
 
 	// Loads it from BlobStash
-	n, err := f.fs.getNode(f.path)
+	n, err := f.fs.getNode(f.path, f.asOf)
 	if err != nil {
 		return nil, err
 	}
@@ -889,6 +914,11 @@ func (f *file) Attr(ctx context.Context, a *fuse.Attr) error {
 		a.Blocks = a.Size/512 + 1
 	}
 
+	// the file is read-only, remove the write bits
+	if f.ro || f.asOf > 0 {
+		a.Mode &^= os.FileMode(userWrite | groupWrite | otherWrite)
+	}
+
 	fmt.Printf("Attr %v %v %+v\n", f, n, a)
 	return nil
 }
@@ -900,6 +930,10 @@ func (f *file) Access(ctx context.Context, req *fuse.AccessRequest) error {
 
 // Setattr implements the fs.NodeSetattrer
 func (f *file) Setattr(ctx context.Context, req *fuse.SetattrRequest, res *fuse.SetattrResponse) error {
+	if f.ro || f.asOf > 0 {
+		return fuse.EPERM
+	}
+
 	n, err := f.FTNode()
 	if err != nil {
 		return err
@@ -954,6 +988,10 @@ func (f *file) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	fmt.Printf("current handler=%+v\n", f.h)
 
 	isRW := req.Flags&fuse.OpenFlags(os.O_WRONLY|os.O_RDWR|os.O_APPEND|os.O_CREATE) != 0
+	if (f.ro || f.asOf > 0) && isRW {
+		return nil, fuse.EPERM
+	}
+
 	f.fs.counters.incr("open")
 	if isRW {
 		f.fs.counters.incr("open-rw")
