@@ -33,6 +33,8 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
+const revisionHeader = "BlobStash-Filetree-FS-Revision"
+
 var startedAt = time.Now()
 
 func usage() {
@@ -99,8 +101,6 @@ func loadProfile(configFile, name string) (*Profile, error) {
 
 	return prof, nil
 }
-
-const revisionHeader = "BlobStash-Filetree-FS-Revision"
 
 func main() {
 	// Scans the arg list and sets up flags
@@ -230,7 +230,13 @@ func main() {
 		syscall.SIGTERM,
 		syscall.SIGQUIT)
 	<-cs
-	fmt.Printf("Unmounting...")
+	fmt.Printf("GC...")
+	if err := blobfs.GC(); err != nil {
+		fmt.Printf("\nGC failed err=%v\n", err)
+	} else {
+		fmt.Printf("done\n")
+	}
+	fmt.Printf("Unmounting...\n")
 	fuse.Unmount(mountpoint)
 }
 
@@ -256,6 +262,68 @@ type FS struct {
 	mu        sync.Mutex
 
 	counters *counters
+
+	lastRevision int64
+	muLastRev    sync.Mutex
+}
+
+// FIXME(tsileo): use it, and a ticker with a debounce
+func (fs *FS) updateLastRevision(resp *http.Response) {
+	fs.muLastRev.Lock()
+	defer fs.muLastRev.Unlock()
+	rev := resp.Header.Get(revisionHeader)
+	if rev == "" {
+		panic("missing FS revision in response")
+	}
+	var err error
+	fs.lastRevision, err = strconv.ParseInt(rev, 10, 0)
+	if err != nil {
+		panic("invalid FS revision")
+	}
+}
+
+func (fs *FS) GC() error {
+	fs.muLastRev.Lock()
+	defer fs.muLastRev.Unlock()
+
+	if fs.lastRevision == 0 {
+		return nil
+	}
+
+	gcScript := fmt.Sprintf(`
+local kvstore = require('kvstore')
+
+local key = "_filetree:fs:%s"
+local version = "%d"
+local _, ref, _ = kvstore.get(key, version)
+
+-- mark the actual KV entry
+mark_kv(key, version)
+
+-- mark the whole tree
+mark_filetree_node(ref)
+`, fs.ref, fs.lastRevision)
+
+	// FIXME(tsileo): make the stash name configurable
+	resp, err := fs.clientUtil.PostMsgpack(
+		fmt.Sprintf("/api/stash/rwfs-%s/_gc", fs.ref),
+		map[string]interface{}{
+			"script": gcScript,
+			// "remote_refs": fs.cache.remoteRefs,
+		},
+	)
+	if err != nil {
+		// FIXME(tsileo): find a better way to handle this?
+		return err
+	}
+	defer resp.Body.Close()
+
+	if err := clientutil.ExpectStatusCode(resp, http.StatusNoContent); err != nil {
+		// FIXME(tsileo): find a better way to handle this?
+		return err
+	}
+
+	return nil
 }
 
 // remotePath the API path for the FileTree API
@@ -334,6 +402,9 @@ func (cfs *FS) Root() (fs.Node, error) {
 	// Debug VFS mounted a /.stats
 	statsTree := &fs.Tree{}
 	statsTree.Add("started_at", &dataNode{data: []byte(startedAt.Format(time.RFC3339))})
+	statsTree.Add("last_revision", &dataNode{f: func() ([]byte, error) {
+		return []byte(strconv.FormatInt(cfs.lastRevision, 10)), nil
+	}})
 	statsTree.Add("fds.json", &dataNode{f: func() ([]byte, error) {
 		for _, d := range cfs.openedFds {
 			if d.OpenedAt == "" {
@@ -623,6 +694,9 @@ func (d *dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 		return nil, err
 	}
 
+	// Update the FS "revision" (the kv entry version) for later GC
+	d.fs.updateLastRevision(resp)
+
 	// initialize the FS node and update the local dir
 	newDir := &dir{path: filepath.Join(d.path, req.Name), fs: d.fs, node: nil, parent: d}
 	d.mu.Lock()
@@ -697,6 +771,9 @@ func (d *dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 		return err
 	}
 
+	// Update the FS "revision" (the kv entry version) for later GC
+	d.fs.updateLastRevision(resp)
+
 	d.mu.Lock()
 	delete(d.children, req.OldName)
 	d.mu.Unlock()
@@ -760,6 +837,9 @@ func (d *dir) Create(ctx context.Context, req *fuse.CreateRequest, res *fuse.Cre
 		d.fs.counters.incr("open-rw-error")
 		return nil, nil, err
 	}
+
+	// Update the FS "revision" (the kv entry version) for later GC
+	d.fs.updateLastRevision(resp)
 
 	// Initialize the file node
 	f := &file{
@@ -830,6 +910,9 @@ func (d *dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 		fmt.Printf("err=%+v\n", err)
 		return err
 	}
+
+	// Update the FS "revision" (the kv entry version) for later GC
+	d.fs.updateLastRevision(resp)
 
 	// Update the local node
 	d.mu.Lock()
@@ -994,6 +1077,9 @@ func (f *file) Setattr(ctx context.Context, req *fuse.SetattrRequest, res *fuse.
 		if err := clientutil.ExpectStatusCode(resp, http.StatusOK); err != nil {
 			return err
 		}
+
+		// Update the FS "revision" (the kv entry version) for later GC
+		f.fs.updateLastRevision(resp)
 
 		fmt.Printf("Setattr %v %v\n", f, req)
 	}
@@ -1283,6 +1369,9 @@ func (f *rwFileHandle) Flush(ctx context.Context, req *fuse.FlushRequest) error 
 	if err := clientutil.ExpectStatusCode(resp, http.StatusOK); err != nil {
 		return err
 	}
+
+	// Update the FS "revision" (the kv entry version) for later GC
+	f.f.fs.updateLastRevision(resp)
 
 	// Reset the cached FileTree node
 	f.f.node = nil

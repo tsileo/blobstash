@@ -21,12 +21,16 @@ function mark_filetree_node (ref)
   local cnode = node.decode(data)
   mark(ref)
   if cnode.t == 'dir' then
-    for _, childRef in ipairs(cnode.r) do
-      mark_filetree_node(childRef)
+    if cnode.r then
+      for _, childRef in ipairs(cnode.r) do
+        mark_filetree_node(childRef)
+      end
     end
   else
-    for _, contentRef in ipairs(cnode.r) do
-      mark(contentRef[2])
+    if cnode.r then
+      for _, contentRef in ipairs(cnode.r) do
+        mark(contentRef[2])
+      end
     end
   end
 end
