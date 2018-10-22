@@ -19,7 +19,7 @@ type cache struct {
 
 // newCache initializes a new cache instance
 func newCache(bs *blobstore.BlobStore, path string) (*cache, error) {
-	blobsCache, err := bcache.New(path, "blobs.cache", (5*1024)<<20) // 1GB on-disk LRU cache
+	blobsCache, err := bcache.New(path, "blobs.cache", (5*1024)<<20) // 5GB on-disk LRU cache TODO(tsileo): make it configurable
 	if err != nil {
 		return nil, err
 	}

@@ -105,7 +105,7 @@ func main() {
 	//debug := flag.Bool("debug", false, "print debugging messages.")
 	resetCache := flag.Bool("reset-cache", false, "remove the local cache before starting.")
 	//roMode := flag.Bool("ro", false, "read-only mode")
-	//syncDelay := flag.Duration("sync-delay", 5*time.Minute, "delay to wait after the last modification to initate a sync")
+	syncDelay := flag.Duration("sync-delay", 5*time.Minute, "delay to wait after the last modification to initate a sync")
 	//forceRemote := flag.Bool("force-remote", false, "force fetching data blobs from object storage")
 	//disableRemote := flag.Bool("disable-remote", false, "disable fetching data blobs from object storage")
 	configFile := flag.String("config-file", filepath.Join(pathutil.ConfigDir(), "fs_client.yaml"), "confg file path")
@@ -222,6 +222,25 @@ func main() {
 		log.Fatal(err)
 	}
 	defer blobfs.bs.(*cache).Close()
+
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		for _ = range ticker.C {
+			blobfs.muLastRev.Lock()
+			currentRev := blobfs.lastRevision
+			blobfs.muLastRev.Unlock()
+
+			fmt.Printf("sync ticker, current_rev=%d last_sync_rev=%d\n", currentRev, blobfs.lastSyncRev)
+			if currentRev > 0 && currentRev > blobfs.lastSyncRev {
+				if time.Now().UTC().Sub(time.Unix(0, currentRev)) > *syncDelay {
+					if err := blobfs.GC(); err != nil {
+						panic(err)
+					}
+				}
+			}
+		}
+	}()
+
 	go func() {
 		err = fs.Serve(c, blobfs)
 		if err != nil {
@@ -287,6 +306,7 @@ type FS struct {
 
 	// current revision
 	lastRevision int64
+	lastSyncRev  int64
 	muLastRev    sync.Mutex
 }
 
@@ -346,6 +366,8 @@ mark_filetree_node(ref)
 		// FIXME(tsileo): find a better way to handle this?
 		return err
 	}
+
+	fs.lastSyncRev = fs.lastRevision
 
 	return nil
 }
