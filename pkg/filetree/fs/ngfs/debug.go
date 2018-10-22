@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"os"
 	"strconv"
 	"sync"
+	"text/tabwriter"
 	"time"
 
 	"bazil.org/fuse"
@@ -117,4 +121,57 @@ func getProcName(pid uint32) string {
 	pidCache[pid] = exec
 
 	return exec
+}
+
+// build the magic .stats dir
+func statsTree(cfs *FS) *fs.Tree {
+	// Setup the counters
+	cfs.counters.register("open")
+	cfs.counters.register("open-ro")
+	cfs.counters.register("open-ro-error")
+	cfs.counters.register("open-rw")
+	cfs.counters.register("open-rw-error")
+
+	// Debug VFS mounted a /.stats
+	statsTree := &fs.Tree{}
+	statsTree.Add("started_at", &dataNode{data: []byte(startedAt.Format(time.RFC3339))})
+	statsTree.Add("last_revision", &dataNode{f: func() ([]byte, error) {
+		return []byte(strconv.FormatInt(cfs.lastRevision, 10)), nil
+	}})
+	statsTree.Add("fds.json", &dataNode{f: func() ([]byte, error) {
+		for _, d := range cfs.openedFds {
+			if d.OpenedAt == "" {
+				d.OpenedAt = d.openedAt.Format(time.RFC3339)
+			}
+		}
+		return json.Marshal(cfs.openedFds)
+	}})
+	statsTree.Add("fds", &dataNode{f: func() ([]byte, error) {
+		var buf bytes.Buffer
+		w := tabwriter.NewWriter(&buf, 0, 0, 1, ' ', tabwriter.TabIndent)
+		for _, d := range cfs.openedFds {
+			fmt.Fprintln(w, fmt.Sprintf("%s\t%d\t%s\t%v\t%s", d.Path, d.PID, d.PName, d.RW, d.openedAt.Format(time.RFC3339)))
+		}
+		w.Flush()
+		return buf.Bytes(), nil
+	}})
+	statsTree.Add("open_logs", &dataNode{f: func() ([]byte, error) {
+		var buf bytes.Buffer
+		w := tabwriter.NewWriter(&buf, 0, 0, 1, ' ', tabwriter.TabIndent)
+		for _, d := range cfs.openLogs {
+			fmt.Fprintln(w, fmt.Sprintf("%s\t%d\t%s\t%v\t%s", d.Path, d.PID, d.PName, d.RW, d.openedAt.Format(time.RFC3339)))
+		}
+		w.Flush()
+		return buf.Bytes(), nil
+	}})
+	statsTree.Add("open_logs.json", &dataNode{f: func() ([]byte, error) {
+		for _, d := range cfs.openLogs {
+			if d.OpenedAt == "" {
+				d.OpenedAt = d.openedAt.Format(time.RFC3339)
+			}
+		}
+		return json.Marshal(cfs.openLogs)
+	}})
+	statsTree.Add("counters", cfs.counters.Tree)
+	return statsTree
 }

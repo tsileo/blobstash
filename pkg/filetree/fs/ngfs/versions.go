@@ -21,6 +21,10 @@ type versionsDir struct {
 	fs *FS
 }
 
+var _ fs.Node = (*versionsDir)(nil)
+var _ fs.HandleReadDirAller = (*versionsDir)(nil)
+var _ fs.NodeStringLookuper = (*versionsDir)(nil)
+
 // Attr implements the fs.Node interface
 func (*versionsDir) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Mode = os.ModeDir | 0555
@@ -33,6 +37,11 @@ func (a *versionsDir) Lookup(ctx context.Context, name string) (fs.Node, error) 
 		asOf, err := asof.ParseAsOf(name)
 		if err != nil {
 			return nil, err
+		}
+
+		cachedRoot, ok := a.fs.atCache.Get(asOf)
+		if ok {
+			return cachedRoot.(*dir), nil
 		}
 
 		root := &dir{
@@ -51,6 +60,8 @@ func (a *versionsDir) Lookup(ctx context.Context, name string) (fs.Node, error) 
 		if root.node == nil {
 			return nil, fuse.ENOENT
 		}
+
+		a.fs.atCache.Add(asOf, root)
 
 		return root, nil
 	}

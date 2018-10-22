@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -15,7 +13,6 @@ import (
 	"strconv"
 	"sync"
 	"syscall"
-	"text/tabwriter"
 	"time"
 
 	"a4.io/blobstash/pkg/client/blobstore"
@@ -26,6 +23,7 @@ import (
 	rnode "a4.io/blobstash/pkg/filetree/filetreeutil/node"
 	"a4.io/blobstash/pkg/filetree/reader/filereader"
 	"a4.io/blobstash/pkg/filetree/writer"
+	lru "github.com/hashicorp/golang-lru"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
@@ -197,14 +195,27 @@ func main() {
 	}
 	defer c.Close()
 
+	// LRU cache for "data blobs" when reading a file
+	freaderCache, err := lru.New(256)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	atCache, err := lru.NewARC(32)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	blobfs := &FS{
-		up:         writer.NewUploader(bs),
-		clientUtil: clientUtil,
-		kvs:        kvs,
-		ref:        ref,
-		counters:   newCounters(),
-		openedFds:  map[fuse.NodeID]*fdDebug{},
-		openLogs:   []*fdDebug{},
+		up:           writer.NewUploader(bs),
+		clientUtil:   clientUtil,
+		kvs:          kvs,
+		ref:          ref,
+		counters:     newCounters(),
+		openedFds:    map[fuse.NodeID]*fdDebug{},
+		openLogs:     []*fdDebug{},
+		freaderCache: freaderCache,
+		atCache:      atCache,
 	}
 	blobfs.bs, err = newCache(bs, cacheDir)
 	if err != nil {
@@ -249,20 +260,32 @@ type blobStore interface {
 
 // FS implements the BlobStash FileTree filesystem
 type FS struct {
+	// BlobStash clients (and cache)
 	up         *writer.Uploader
 	kvs        *kvstore.KvStore
 	bs         blobStore
 	clientUtil *clientutil.ClientUtil
-	ref        string
-	root       *fs.Tree
-	ftRoot     *dir
 
+	// cached root dir
+	ref    string
+	ftRoot *dir
+
+	// "magic" root
+	root *fs.Tree
+
+	// in-mem blobs cache
+	freaderCache *lru.Cache
+
+	// in-mem cache for RO snapshots of older versions
+	atCache *lru.ARCCache
+
+	// debug info
+	counters  *counters
 	openedFds map[fuse.NodeID]*fdDebug
 	openLogs  []*fdDebug
 	mu        sync.Mutex
 
-	counters *counters
-
+	// current revision
 	lastRevision int64
 	muLastRev    sync.Mutex
 }
@@ -282,6 +305,7 @@ func (fs *FS) updateLastRevision(resp *http.Response) {
 	}
 }
 
+// Save the current tree and reset the stash
 func (fs *FS) GC() error {
 	fs.muLastRev.Lock()
 	defer fs.muLastRev.Unlock()
@@ -374,12 +398,6 @@ func (cfs *FS) Root() (fs.Node, error) {
 		return cfs.root, nil
 	}
 
-	cfs.counters.register("open")
-	cfs.counters.register("open-ro")
-	cfs.counters.register("open-ro-error")
-	cfs.counters.register("open-rw")
-	cfs.counters.register("open-rw-error")
-
 	// Create a dummy dir that will be our root ref
 	cfs.root = &fs.Tree{}
 
@@ -400,47 +418,7 @@ func (cfs *FS) Root() (fs.Node, error) {
 	cfs.root.Add("recent", &recentDir{cfs, &cfs.openLogs})
 
 	// Debug VFS mounted a /.stats
-	statsTree := &fs.Tree{}
-	statsTree.Add("started_at", &dataNode{data: []byte(startedAt.Format(time.RFC3339))})
-	statsTree.Add("last_revision", &dataNode{f: func() ([]byte, error) {
-		return []byte(strconv.FormatInt(cfs.lastRevision, 10)), nil
-	}})
-	statsTree.Add("fds.json", &dataNode{f: func() ([]byte, error) {
-		for _, d := range cfs.openedFds {
-			if d.OpenedAt == "" {
-				d.OpenedAt = d.openedAt.Format(time.RFC3339)
-			}
-		}
-		return json.Marshal(cfs.openedFds)
-	}})
-	statsTree.Add("fds", &dataNode{f: func() ([]byte, error) {
-		var buf bytes.Buffer
-		w := tabwriter.NewWriter(&buf, 0, 0, 1, ' ', tabwriter.TabIndent)
-		for _, d := range cfs.openedFds {
-			fmt.Fprintln(w, fmt.Sprintf("%s\t%d\t%s\t%v\t%s", d.Path, d.PID, d.PName, d.RW, d.openedAt.Format(time.RFC3339)))
-		}
-		w.Flush()
-		return buf.Bytes(), nil
-	}})
-	statsTree.Add("open_logs", &dataNode{f: func() ([]byte, error) {
-		var buf bytes.Buffer
-		w := tabwriter.NewWriter(&buf, 0, 0, 1, ' ', tabwriter.TabIndent)
-		for _, d := range cfs.openLogs {
-			fmt.Fprintln(w, fmt.Sprintf("%s\t%d\t%s\t%v\t%s", d.Path, d.PID, d.PName, d.RW, d.openedAt.Format(time.RFC3339)))
-		}
-		w.Flush()
-		return buf.Bytes(), nil
-	}})
-	statsTree.Add("open_logs.json", &dataNode{f: func() ([]byte, error) {
-		for _, d := range cfs.openLogs {
-			if d.OpenedAt == "" {
-				d.OpenedAt = d.openedAt.Format(time.RFC3339)
-			}
-		}
-		return json.Marshal(cfs.openLogs)
-	}})
-	statsTree.Add("counters", cfs.counters.Tree)
-	cfs.root.Add(".stats", statsTree)
+	cfs.root.Add(".stats", statsTree(cfs))
 
 	return cfs.root, nil
 }
@@ -1235,7 +1213,7 @@ func (f *file) Reader() (fileReader, error) {
 	}
 
 	// Instanciate the filereader
-	return filereader.NewFile(context.Background(), f.fs.bs, meta, nil), nil
+	return filereader.NewFile(context.Background(), f.fs.bs, meta, f.fs.freaderCache), nil
 }
 
 // Release implements the fs.HandleReleaser interface
@@ -1315,7 +1293,6 @@ var _ fs.HandleReleaser = (*rwFileHandle)(nil)
 
 // Read implements the fs.HandleReader interface
 func (f *rwFileHandle) Read(ctx context.Context, req *fuse.ReadRequest, res *fuse.ReadResponse) error {
-	fmt.Printf("Read RW %s\n", f.f.path)
 	buf := make([]byte, req.Size)
 	n, err := f.tmp.ReadAt(buf, req.Offset)
 
@@ -1333,7 +1310,6 @@ func (f *rwFileHandle) Read(ctx context.Context, req *fuse.ReadRequest, res *fus
 
 // Write implements the fs.HandleWriter interface
 func (f *rwFileHandle) Write(ctx context.Context, req *fuse.WriteRequest, res *fuse.WriteResponse) error {
-	fmt.Printf("Write %s %d %d\n", f.f.path, len(req.Data), req.Offset)
 	n, err := f.tmp.WriteAt(req.Data, req.Offset)
 	if err != nil {
 		return err
@@ -1344,8 +1320,6 @@ func (f *rwFileHandle) Write(ctx context.Context, req *fuse.WriteRequest, res *f
 
 // Flush implements the fs.HandleFlusher interface
 func (f *rwFileHandle) Flush(ctx context.Context, req *fuse.FlushRequest) error {
-	fmt.Printf("Flush %v %+v\n", f.f, f.f)
-
 	// Upload the file
 	f.f.mu.Lock()
 	rawNode, err := f.f.fs.up.PutFileRename(f.tmp.Name(), filepath.Base(f.f.path), true)
@@ -1384,7 +1358,6 @@ func (f *rwFileHandle) Flush(ctx context.Context, req *fuse.FlushRequest) error 
 
 // Release implements the fuse.HandleReleaser interface
 func (f *rwFileHandle) Release(ctx context.Context, req *fuse.ReleaseRequest) error {
-	fmt.Printf("Release %s\n", f.f.path)
 	f.f.mu.Lock()
 	defer f.f.mu.Unlock()
 
