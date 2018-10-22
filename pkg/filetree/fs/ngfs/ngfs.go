@@ -104,7 +104,6 @@ func main() {
 	// Scans the arg list and sets up flags
 	//debug := flag.Bool("debug", false, "print debugging messages.")
 	resetCache := flag.Bool("reset-cache", false, "remove the local cache before starting.")
-	//roMode := flag.Bool("ro", false, "read-only mode")
 	syncDelay := flag.Duration("sync-delay", 5*time.Minute, "delay to wait after the last modification to initate a sync")
 	//forceRemote := flag.Bool("force-remote", false, "force fetching data blobs from object storage")
 	//disableRemote := flag.Bool("disable-remote", false, "disable fetching data blobs from object storage")
@@ -486,6 +485,8 @@ var _ fs.NodeCreater = (*dir)(nil)
 var _ fs.NodeRemover = (*dir)(nil)
 var _ fs.HandleReadDirAller = (*dir)(nil)
 var _ fs.NodeStringLookuper = (*dir)(nil)
+var _ fs.NodeListxattrer = (*dir)(nil)
+var _ fs.NodeGetxattrer = (*dir)(nil)
 
 // FTNode lazy-loads the node from BlobStash FileTree API
 func (d *dir) FTNode() (*node, error) {
@@ -500,6 +501,24 @@ func (d *dir) FTNode() (*node, error) {
 	}
 	d.node = n
 	return n, nil
+}
+
+// Listxattr implements the fs.NodeListxattrer interface
+func (d *dir) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
+	// TODO(tsileo): node metadata support
+	resp.Append([]string{"debug.ref"}...)
+	return nil
+}
+
+// Getxattr implements the fs.NodeGetxattrer interface
+func (d *dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
+	switch req.Name {
+	case "debug.ref":
+		resp.Xattr = []byte(d.node.Ref)
+	default:
+		return fuse.ErrNoXattr
+	}
+	return nil
 }
 
 // Attr implements the fs.Node interface
@@ -953,6 +972,8 @@ var _ fs.NodeAccesser = (*file)(nil)
 var _ fs.NodeSetattrer = (*file)(nil)
 var _ fs.NodeOpener = (*file)(nil)
 var _ fs.NodeFsyncer = (*file)(nil)
+var _ fs.NodeListxattrer = (*file)(nil)
+var _ fs.NodeGetxattrer = (*file)(nil)
 
 // Fsync implements the fs.NodeFsyncer interface
 func (f *file) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
@@ -1023,6 +1044,24 @@ func (f *file) Attr(ctx context.Context, a *fuse.Attr) error {
 	}
 
 	fmt.Printf("Attr %v %v %+v\n", f, n, a)
+	return nil
+}
+
+// Listxattr implements the fs.NodeListxattrer interface
+func (f *file) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
+	// TODO(tsileo): node metadata support
+	resp.Append([]string{"debug.ref"}...)
+	return nil
+}
+
+// Getxattr implements the fs.NodeGetxattrer interface
+func (f *file) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
+	switch req.Name {
+	case "debug.ref":
+		resp.Xattr = []byte(f.node.Ref)
+	default:
+		return fuse.ErrNoXattr
+	}
 	return nil
 }
 

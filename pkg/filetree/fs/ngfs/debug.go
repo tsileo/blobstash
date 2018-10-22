@@ -136,8 +136,18 @@ func statsTree(cfs *FS) *fs.Tree {
 	statsTree := &fs.Tree{}
 	statsTree.Add("started_at", &dataNode{data: []byte(startedAt.Format(time.RFC3339))})
 	statsTree.Add("last_revision", &dataNode{f: func() ([]byte, error) {
+		cfs.muLastRev.Lock()
+		defer cfs.muLastRev.Unlock()
+
 		return []byte(strconv.FormatInt(cfs.lastRevision, 10)), nil
 	}})
+	statsTree.Add("last_sync_revision", &dataNode{f: func() ([]byte, error) {
+		cfs.muLastRev.Lock()
+		defer cfs.muLastRev.Unlock()
+
+		return []byte(strconv.FormatInt(cfs.lastSyncRev, 10)), nil
+	}})
+
 	statsTree.Add("fds.json", &dataNode{f: func() ([]byte, error) {
 		for _, d := range cfs.openedFds {
 			if d.OpenedAt == "" {
