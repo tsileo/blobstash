@@ -232,8 +232,6 @@ func main() {
 	conn := nodefs.NewFileSystemConnector(nfs.Root(), opts)
 
 	mountOpts := fuse.MountOptions{
-		// FIXME(tsileo): -o allow_other as a CLI flag
-		// AllowOther: true,
 		Options: []string{
 			"noatime",
 		},

@@ -418,6 +418,37 @@ func (client *ClientUtil) CheckAuth() (bool, error) {
 	return false, serr
 }
 
+type capabilitiesResp struct {
+	Data *Caps `json:"data"`
+}
+
+type Caps struct {
+	ReplicationEnabled bool `json:"replication_enabled"`
+}
+
+func (client *ClientUtil) Capabilities() (*Caps, error) {
+	// Fetch the node via the FileTree FS API
+	resp, err := client.Get(
+		"/api/capabilities/",
+		EnableJSON(),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if err := ExpectStatusCode(resp, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	capResp := &capabilitiesResp{}
+	if err := Unmarshal(resp, capResp); err != nil {
+		return nil, err
+	}
+
+	return capResp.Data, nil
+}
+
 // DoReq "do" the request and returns the `*http.Response`
 func (client *Client) DoReqWithQuery(ctx context.Context, method, path string, query map[string]string, headers map[string]string, body io.Reader) (*http.Response, error) {
 	request, err := http.NewRequest(method, fmt.Sprintf("%s%s", client.opts.Host, path), body)

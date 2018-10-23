@@ -17,6 +17,7 @@ import (
 	"a4.io/blobstash/pkg/auth"
 	"a4.io/blobstash/pkg/blobstore"
 	blobStoreAPI "a4.io/blobstash/pkg/blobstore/api"
+	"a4.io/blobstash/pkg/capabilities"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/docstore"
 	"a4.io/blobstash/pkg/expvarserver"
@@ -164,6 +165,12 @@ func New(conf *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to initialize filetree app: %v", err)
 	}
 	apps.Register(s.router.PathPrefix("/api/apps").Subrouter(), s.router, basicAuth)
+
+	caps, err := capabilities.New(logger.New("app", "caps"), conf, rootBlobstore, hub)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize caps app: %v", err)
+	}
+	caps.Register(s.router.PathPrefix("/api/capabilities").Subrouter(), basicAuth)
 
 	// Setup the closeFunc
 	s.closeFunc = func() error {

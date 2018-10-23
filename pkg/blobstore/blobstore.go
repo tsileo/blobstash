@@ -93,6 +93,10 @@ func New(logger log.Logger, root bool, dir string, conf2 *config.Config, hub *hu
 	}, nil
 }
 
+func (bs *BlobStore) ReplicationEnabled() bool {
+	return bs.s3back != nil
+}
+
 func (bs *BlobStore) Close() error {
 	// TODO(tsileo): improve this
 	if bs.dataCache != nil {

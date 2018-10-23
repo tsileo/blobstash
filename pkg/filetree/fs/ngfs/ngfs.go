@@ -23,12 +23,13 @@ import (
 	rnode "a4.io/blobstash/pkg/filetree/filetreeutil/node"
 	"a4.io/blobstash/pkg/filetree/reader/filereader"
 	"a4.io/blobstash/pkg/filetree/writer"
+	"a4.io/blobstash/pkg/iputil"
+	"github.com/aws/aws-sdk-go/service/s3"
 	lru "github.com/hashicorp/golang-lru"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
 	"golang.org/x/net/context"
-	yaml "gopkg.in/yaml.v2"
 )
 
 const revisionHeader = "BlobStash-Filetree-FS-Revision"
@@ -57,56 +58,13 @@ const (
 	otherExecute
 )
 
-// RemoteConfig holds the "remote endpoint" configuration
-type RemoteConfig struct {
-	Endpoint        string `yaml:"endpoint"`
-	Region          string `yaml:"region"`
-	Bucket          string `yaml:"bucket"`
-	AccessKeyID     string `yaml:"access_key_id"`
-	SecretAccessKey string `yaml:"secret_access_key"`
-	KeyFile         string `yaml:"key_file"`
-}
-
-// Profile holds a profile configuration
-type Profile struct {
-	RemoteConfig *RemoteConfig `yaml:"remote_config"`
-	Endpoint     string        `yaml:"endpoint"`
-	APIKey       string        `yaml:"api_key"`
-}
-
-// Config holds config profiles
-type Config map[string]*Profile
-
-// loadProfile loads the config file and the given profile within it
-func loadProfile(configFile, name string) (*Profile, error) {
-	dat, err := ioutil.ReadFile(configFile)
-	switch {
-	case err == nil:
-	case os.IsNotExist(err):
-		return nil, nil
-	default:
-		return nil, err
-	}
-	out := Config{}
-	if err := yaml.Unmarshal(dat, out); err != nil {
-		return nil, err
-	}
-
-	prof, ok := out[name]
-	if !ok {
-		return nil, fmt.Errorf("profile %s not found", name)
-	}
-
-	return prof, nil
-}
-
 func main() {
 	// Scans the arg list and sets up flags
 	//debug := flag.Bool("debug", false, "print debugging messages.")
 	resetCache := flag.Bool("reset-cache", false, "remove the local cache before starting.")
 	syncDelay := flag.Duration("sync-delay", 5*time.Minute, "delay to wait after the last modification to initate a sync")
-	//forceRemote := flag.Bool("force-remote", false, "force fetching data blobs from object storage")
-	//disableRemote := flag.Bool("disable-remote", false, "disable fetching data blobs from object storage")
+	forceRemote := flag.Bool("force-remote", false, "force fetching data blobs from object storage")
+	disableRemote := flag.Bool("disable-remote", false, "disable fetching data blobs from object storage")
 	configFile := flag.String("config-file", filepath.Join(pathutil.ConfigDir(), "fs_client.yaml"), "confg file path")
 	configProfile := flag.String("config-profile", "default", "config profile name")
 
@@ -185,6 +143,30 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Discover server capabilities (for the remote/replication stuff)
+	caps, err := clientUtil.Capabilities()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	isHostLocal, err := iputil.IsPrivate(profile.Endpoint)
+	if err != nil {
+		fmt.Printf("invalid BLOBS_API_HOST")
+		os.Exit(1)
+	}
+
+	var useRemote bool
+	switch {
+	case *disableRemote, !caps.ReplicationEnabled:
+		if *forceRemote {
+			fmt.Printf("WARNING: disabling remote as server does not support it\n")
+		}
+	case *forceRemote:
+		useRemote = true
+	case isHostLocal:
+		useRemote = isHostLocal
+	}
+
 	c, err := fuse.Mount(
 		mountpoint,
 		fuse.VolumeName(filepath.Base(mountpoint)),
@@ -206,6 +188,7 @@ func main() {
 	}
 
 	blobfs := &FS{
+		profile:      profile,
 		up:           writer.NewUploader(bs),
 		clientUtil:   clientUtil,
 		kvs:          kvs,
@@ -215,12 +198,16 @@ func main() {
 		openLogs:     []*fdDebug{},
 		freaderCache: freaderCache,
 		atCache:      atCache,
+		caps:         caps,
+		useRemote:    useRemote,
 	}
-	blobfs.bs, err = newCache(bs, cacheDir)
+	blobfs.bs, err = newCache(blobfs, bs, cacheDir)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer blobfs.bs.(*cache).Close()
+
+	fmt.Printf("caps=%+v\nuse_remote=%v\n", caps, useRemote)
 
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
@@ -283,6 +270,15 @@ type FS struct {
 	kvs        *kvstore.KvStore
 	bs         blobStore
 	clientUtil *clientutil.ClientUtil
+	caps       *clientutil.Caps
+
+	// config profile
+	profile   *Profile
+	useRemote bool
+
+	// S3 client and key
+	s3  *s3.S3
+	key *[32]byte
 
 	// cached root dir
 	ref    string
@@ -351,8 +347,8 @@ mark_filetree_node(ref)
 	resp, err := fs.clientUtil.PostMsgpack(
 		fmt.Sprintf("/api/stash/rwfs-%s/_gc", fs.ref),
 		map[string]interface{}{
-			"script": gcScript,
-			// "remote_refs": fs.cache.remoteRefs,
+			"script":      gcScript,
+			"remote_refs": fs.bs.(*cache).RemoteRefs(),
 		},
 	)
 	if err != nil {
@@ -407,7 +403,7 @@ func (fs *FS) getNodeAsOf(path string, depth int, asOf int64) (*node, error) {
 	}
 
 	node.AsOf = asOf
-	fmt.Printf("getNode(%s) = %v\n", fs.remotePath(path), node)
+	// fmt.Printf("getNode(%s) = %v\n", fs.remotePath(path), node)
 
 	return node, nil
 }
@@ -1043,7 +1039,6 @@ func (f *file) Attr(ctx context.Context, a *fuse.Attr) error {
 		a.Mode &^= os.FileMode(userWrite | groupWrite | otherWrite)
 	}
 
-	fmt.Printf("Attr %v %v %+v\n", f, n, a)
 	return nil
 }
 
@@ -1080,7 +1075,6 @@ func (f *file) Setattr(ctx context.Context, req *fuse.SetattrRequest, res *fuse.
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Setattr %v node=%v %v %v\n", f.path, n, req.Mtime, req.Mode)
 	if n == nil {
 
 	} else {
@@ -1120,7 +1114,6 @@ func (f *file) Setattr(ctx context.Context, req *fuse.SetattrRequest, res *fuse.
 		// Update the FS "revision" (the kv entry version) for later GC
 		f.fs.updateLastRevision(resp)
 
-		fmt.Printf("Setattr %v %v\n", f, req)
 	}
 	// TODO(tsileo): apply the attrs to the temp file
 	f.Attr(ctx, &res.Attr)
