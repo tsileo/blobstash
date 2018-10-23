@@ -61,6 +61,7 @@
     "aws/request",
     "aws/session",
     "aws/signer/v4",
+    "internal/ini",
     "internal/s3err",
     "internal/sdkio",
     "internal/sdkrand",
@@ -77,8 +78,8 @@
     "service/s3",
     "service/sts"
   ]
-  revision = "572272ee7c4503c8a32f79ec16b959c9e8a211c3"
-  version = "v1.15.55"
+  revision = "9a79cc876234949427d966249a09fc98e7864bde"
+  version = "v1.15.61"
 
 [[projects]]
   name = "github.com/beevik/etree"
@@ -145,7 +146,7 @@
   branch = "master"
   name = "github.com/cznic/mathutil"
   packages = ["."]
-  revision = "ca4c9f2c136954238c3158b92de72078c7672ecc"
+  revision = "eba54fb065b72d838b4b3481c6056998ead55e74"
 
 [[projects]]
   branch = "master"
@@ -201,12 +202,6 @@
   name = "github.com/evanphx/json-patch"
   packages = ["."]
   revision = "e2b4af1181aee3588b4fefcda56e9e9d98ea913f"
-
-[[projects]]
-  name = "github.com/go-ini/ini"
-  packages = ["."]
-  revision = "9c8236e659b76e87bf02044d06fde8683008ff3e"
-  version = "v1.39.0"
 
 [[projects]]
   name = "github.com/go-martini/martini"
@@ -375,6 +370,12 @@
   version = "v1.0.1"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/remyoudompheng/bigfft"
+  packages = ["."]
+  revision = "52369c62f4463a21c8ff8531194c5526322b8521"
+
+[[projects]]
   name = "github.com/restic/chunker"
   packages = ["."]
   revision = "db83917be3b88cc307464b7d8a221c173e34a0db"
@@ -456,7 +457,7 @@
   branch = "master"
   name = "github.com/unrolled/secure"
   packages = ["."]
-  revision = "ff9db2ff917ff44b71a2e62c015f4c7e0e567929"
+  revision = "4b6b7cf5160646fc0e8422d782fcf6bd4cbcaddf"
 
 [[projects]]
   name = "github.com/urfave/negroni"
@@ -523,7 +524,7 @@
   branch = "master"
   name = "golang.org/x/net"
   packages = ["context"]
-  revision = "49bb7cea24b1df9410e1712aa6433dae904ff66a"
+  revision = "9b4f9f5ad5197c79fd623a3638e70d8b26cef344"
 
 [[projects]]
   branch = "master"
@@ -532,7 +533,7 @@
     "unix",
     "windows"
   ]
-  revision = "fa43e7bc11baaae89f3f902b2b4d832b68234844"
+  revision = "44b849a8bc13eb42e95e6c6c5e360481b73ec710"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -613,8 +614,8 @@
     "utils/merkletrie/internal/frame",
     "utils/merkletrie/noder"
   ]
-  revision = "d3cec13ac0b195bfb897ed038a08b5130ab9969e"
-  version = "v4.7.0"
+  revision = "cd64b4d630b6c2d2b3d72e9615e14f9d58bb5787"
+  version = "v4.7.1"
 
 [[projects]]
   name = "gopkg.in/warnings.v0"
