@@ -262,6 +262,21 @@ func (s *storage) EncodedObject(t plumbing.ObjectType, h plumbing.Hash) (plumbin
 	return s.objFromKv(kv)
 }
 
+func (s *storage) EncodedObjectSize(h plumbing.Hash) (size int64, err error) {
+	key := s.key("o", h.String())
+
+	kv, err := s.kvStore.Get(context.TODO(), key, -1)
+	if err != nil {
+		return 0, err
+	}
+	obj, err := s.objFromKv(kv)
+	if err != nil {
+		return 0, err
+	}
+
+	return obj.Size(), nil
+}
+
 func (s *storage) IterEncodedObjects(t plumbing.ObjectType) (storer.EncodedObjectIter, error) {
 	res := []plumbing.EncodedObject{}
 	kvs, _, err := s.kvStore.Keys(context.TODO(), s.key("o", ""), s.key("o", "\xff"), -1)
