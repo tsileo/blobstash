@@ -173,6 +173,9 @@ func main() {
 	c, err := fuse.Mount(
 		mountpoint,
 		fuse.VolumeName(filepath.Base(mountpoint)),
+		fuse.NoAppleDouble(),
+		fuse.NoAppleXattr(),
+		fuse.MaxReadahead(32*1024*1024),
 	)
 	if err != nil {
 		log.Fatal(err)
