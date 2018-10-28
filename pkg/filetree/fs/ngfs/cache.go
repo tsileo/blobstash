@@ -160,9 +160,6 @@ func (c *cache) GetRemote(ctx context.Context, hash string) ([]byte, error) {
 
 // Get implements the blobStore interface for filereader.File
 func (c *cache) Get(ctx context.Context, hash string) ([]byte, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	var err error
 	cachedBlob, ok, err := c.blobsCache.Get(hash)
 	if err != nil {
@@ -172,6 +169,9 @@ func (c *cache) Get(ctx context.Context, hash string) ([]byte, error) {
 	if ok {
 		data = cachedBlob
 	} else {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+
 		data, err = c.bs.Get(ctx, hash)
 		if err != nil {
 			return nil, fmt.Errorf("failed to call blobstore: %v", err)

@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"a4.io/blobstash/pkg/backend/s3/s3util"
 	"a4.io/blobstash/pkg/client/blobstore"
 	"a4.io/blobstash/pkg/client/clientutil"
 	"a4.io/blobstash/pkg/client/kvstore"
@@ -31,6 +32,8 @@ import (
 	"bazil.org/fuse/fs"
 	"golang.org/x/net/context"
 )
+
+var logger = log.New(os.Stderr, "BlobFS: ", log.LstdFlags)
 
 const revisionHeader = "BlobStash-Filetree-FS-Revision"
 
@@ -91,7 +94,7 @@ func main() {
 
 	// Cache setup, follow XDG spec
 	cacheDir := filepath.Join(pathutil.CacheDir(), "fs", fmt.Sprintf("%s_%s", mountpoint, ref))
-	fmt.Printf("cacheDir=%s\n", cacheDir)
+	logger.Printf("cacheDir=%s\n", cacheDir)
 
 	if _, err := os.Stat(cacheDir); err != nil {
 		if os.IsNotExist(err) {
@@ -159,7 +162,7 @@ func main() {
 	switch {
 	case *disableRemote, !caps.ReplicationEnabled:
 		if *forceRemote {
-			fmt.Printf("WARNING: disabling remote as server does not support it\n")
+			logger.Printf("WARNING: disabling remote as server does not support it\n")
 		}
 	case *forceRemote:
 		useRemote = true
@@ -177,7 +180,7 @@ func main() {
 	defer c.Close()
 
 	// LRU cache for "data blobs" when reading a file
-	freaderCache, err := lru.New(256)
+	freaderCache, err := lru.New(512)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -207,17 +210,38 @@ func main() {
 	}
 	defer blobfs.bs.(*cache).Close()
 
-	fmt.Printf("caps=%+v\nuse_remote=%v\n", caps, useRemote)
+	if profile.RemoteConfig != nil && profile.RemoteConfig.KeyFile != "" {
+		var out [32]byte
+		data, err := ioutil.ReadFile(profile.RemoteConfig.KeyFile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		copy(out[:], data)
+		blobfs.key = &out
+		if profile.RemoteConfig.Endpoint != "" {
+			blobfs.s3, err = s3util.NewWithCustomEndoint(profile.RemoteConfig.AccessKeyID, profile.RemoteConfig.SecretAccessKey, profile.RemoteConfig.Region, profile.RemoteConfig.Endpoint)
+			if err != nil {
+				log.Fatal(err)
+			}
+		} else {
+			blobfs.s3, err = s3util.New(profile.RemoteConfig.Region)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+	}
+
+	logger.Printf("caps=%+v use_remote=%v\n", caps, useRemote)
 
 	go func() {
-		ticker := time.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(45 * time.Second)
 		for _ = range ticker.C {
 			blobfs.muLastRev.Lock()
 			currentRev := blobfs.lastRevision
 			blobfs.muLastRev.Unlock()
 
-			fmt.Printf("sync ticker, current_rev=%d last_sync_rev=%d\n", currentRev, blobfs.lastSyncRev)
 			if currentRev > 0 && currentRev > blobfs.lastSyncRev {
+				logger.Printf("sync ticker, current_rev=%d last_sync_rev=%d\n", currentRev, blobfs.lastSyncRev)
 				if time.Now().UTC().Sub(time.Unix(0, currentRev)) > *syncDelay {
 					if err := blobfs.GC(); err != nil {
 						panic(err)
@@ -246,13 +270,13 @@ func main() {
 		syscall.SIGTERM,
 		syscall.SIGQUIT)
 	<-cs
-	fmt.Printf("GC...")
+	logger.Printf("GC...")
 	if err := blobfs.GC(); err != nil {
 		fmt.Printf("\nGC failed err=%v\n", err)
 	} else {
 		fmt.Printf("done\n")
 	}
-	fmt.Printf("Unmounting...\n")
+	logger.Printf("Unmounting...\n")
 	fuse.Unmount(mountpoint)
 }
 
@@ -273,7 +297,7 @@ type FS struct {
 	caps       *clientutil.Caps
 
 	// config profile
-	profile   *Profile
+	profile   *profile
 	useRemote bool
 
 	// S3 client and key
@@ -501,6 +525,7 @@ func (d *dir) FTNode() (*node, error) {
 
 // Listxattr implements the fs.NodeListxattrer interface
 func (d *dir) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
+	logger.Printf("Listxattr %s", d.path)
 	// TODO(tsileo): node metadata support
 	resp.Append([]string{"debug.ref"}...)
 	return nil
@@ -508,6 +533,7 @@ func (d *dir) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *f
 
 // Getxattr implements the fs.NodeGetxattrer interface
 func (d *dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
+	logger.Printf("Getxattr %s", d.path)
 	switch req.Name {
 	case "debug.ref":
 		resp.Xattr = []byte(d.node.Ref)
@@ -519,7 +545,7 @@ func (d *dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fus
 
 // Attr implements the fs.Node interface
 func (d *dir) Attr(ctx context.Context, a *fuse.Attr) error {
-	fmt.Printf("Attr %s\n", d.path)
+	logger.Printf("Attr %s", d.path)
 	n, err := d.FTNode()
 	if err != nil {
 		return err
@@ -1267,7 +1293,10 @@ func (f *file) Reader() (fileReader, error) {
 	}
 
 	// Instanciate the filereader
-	return filereader.NewFile(context.Background(), f.fs.bs, meta, f.fs.freaderCache), nil
+	fr := filereader.NewFile(context.Background(), f.fs.bs, meta, f.fs.freaderCache)
+	fr.PreloadChunks()
+
+	return fr, nil
 }
 
 // Release implements the fs.HandleReleaser interface
@@ -1295,6 +1324,7 @@ func (fh *fileHandle) Release(ctx context.Context, req *fuse.ReleaseRequest) err
 
 // Read implements the fs.HandleReader interface
 func (fh *fileHandle) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
+	logger.Printf("Read [ro] %s: %#v", fh.f.path, req)
 	var err error
 	var r fileReader
 	if fh.f.h != nil {

@@ -8,8 +8,8 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
-// RemoteConfig holds the "remote endpoint" configuration
-type RemoteConfig struct {
+// remoteConfig holds the "remote endpoint" configuration
+type remoteConfig struct {
 	Endpoint        string `yaml:"endpoint"`
 	Region          string `yaml:"region"`
 	Bucket          string `yaml:"bucket"`
@@ -18,18 +18,18 @@ type RemoteConfig struct {
 	KeyFile         string `yaml:"key_file"`
 }
 
-// Profile holds a profile configuration
-type Profile struct {
-	RemoteConfig *RemoteConfig `yaml:"remote_config"`
+// profile holds a profile configuration
+type profile struct {
+	RemoteConfig *remoteConfig `yaml:"remote_config"`
 	Endpoint     string        `yaml:"endpoint"`
 	APIKey       string        `yaml:"api_key"`
 }
 
-// Config holds config profiles
-type Config map[string]*Profile
+// config holds config profiles
+type config map[string]*profile
 
 // loadProfile loads the config file and the given profile within it
-func loadProfile(configFile, name string) (*Profile, error) {
+func loadProfile(configFile, name string) (*profile, error) {
 	dat, err := ioutil.ReadFile(configFile)
 	switch {
 	case err == nil:
@@ -38,7 +38,7 @@ func loadProfile(configFile, name string) (*Profile, error) {
 	default:
 		return nil, err
 	}
-	out := Config{}
+	out := config{}
 	if err := yaml.Unmarshal(dat, out); err != nil {
 		return nil, err
 	}
