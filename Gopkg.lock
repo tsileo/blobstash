@@ -5,7 +5,7 @@
   branch = "master"
   name = "a4.io/blobsfile"
   packages = ["."]
-  revision = "970bd4bee7d11ba8d8ac31edae99a49caa83cd21"
+  revision = "c742249a35220b3ddad191ec08e146164513b107"
 
 [[projects]]
   branch = "master"
@@ -158,12 +158,6 @@
   version = "v1.1.0"
 
 [[projects]]
-  name = "github.com/dchest/blake2b"
-  packages = ["."]
-  revision = "06006a921c7d13e3fdf63c401cb0e4529a26e6e4"
-  version = "v1.0.0"
-
-[[projects]]
   name = "github.com/dustin/go-humanize"
   packages = ["."]
   revision = "9f541cc9db5d55bce703bd99987c9d5cb8eea45e"
@@ -241,17 +235,6 @@
   packages = ["."]
   revision = "e3702bed27f0d39777b0b37b664b6280e8ef8fbf"
   version = "v1.6.2"
-
-[[projects]]
-  name = "github.com/hanwen/go-fuse"
-  packages = [
-    "fuse",
-    "fuse/nodefs",
-    "fuse/pathfs",
-    "splice"
-  ]
-  revision = "5690be47d614355a22931c129e1075c25a62e9ac"
-  version = "v20170619"
 
 [[projects]]
   name = "github.com/hashicorp/golang-lru"
@@ -494,6 +477,7 @@
   packages = [
     "acme",
     "acme/autocert",
+    "blake2b",
     "cast5",
     "internal/subtle",
     "nacl/secretbox",
@@ -521,6 +505,7 @@
   branch = "master"
   name = "golang.org/x/sys"
   packages = [
+    "cpu",
     "unix",
     "windows"
   ]
@@ -623,6 +608,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "78d63bffacae639537d94d878c2dc1d4adb9212e9b02a47b1867e7b120fc2ee8"
+  inputs-digest = "a77d799ee818dcba3820756966be88c65d42b46a84cf126df5a3de3c995bc2ce"
   solver-name = "gps-cdcl"
   solver-version = 1

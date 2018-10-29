@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dchest/blake2b"
 	"github.com/hashicorp/golang-lru"
+	"golang.org/x/crypto/blake2b"
 
 	"a4.io/blobstash/pkg/filetree/filetreeutil/node"
 )
@@ -37,7 +37,10 @@ func GetFile(ctx context.Context, bs BlobStore, hash, path string) error {
 	if err != nil {
 		return err
 	}
-	h := blake2b.New256()
+	h, err := blake2b.New256(nil)
+	if err != nil {
+		panic(err)
+	}
 	js, err := bs.Get(ctx, hash)
 	if err != nil {
 		return err

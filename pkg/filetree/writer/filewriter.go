@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/dchest/blake2b"
 	"github.com/restic/chunker"
+	"golang.org/x/crypto/blake2b"
 
 	rnode "a4.io/blobstash/pkg/filetree/filetreeutil/node"
 	"a4.io/blobstash/pkg/hashutil"
@@ -27,7 +27,10 @@ func (up *Uploader) writeReader(f io.Reader, meta *rnode.RawNode) error { // (*W
 	// reuse this buffer
 	buf := make([]byte, 8*1024*1024)
 	// Prepare the reader to compute the hash on the fly
-	fullHash := blake2b.New256()
+	fullHash, err := blake2b.New256(nil)
+	if err != nil {
+		return err
+	}
 	freader := io.TeeReader(f, fullHash)
 	chunkSplitter := chunker.New(freader, Pol)
 	// TODO don't read one byte at a time if meta.Size < chunker.ChunkMinSize

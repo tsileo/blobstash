@@ -24,10 +24,10 @@ import (
 	"a4.io/blobstash/pkg/httputil"
 	"a4.io/blobstash/pkg/stash/store"
 
-	"github.com/dchest/blake2b"
 	"github.com/gorilla/mux"
 	log2 "github.com/inconshreveable/log15"
 	logext "github.com/inconshreveable/log15/ext"
+	"golang.org/x/crypto/blake2b"
 )
 
 // FIXME(tsileo): ensure the keys/maps are sorted/iterated in lexicographical order
@@ -35,12 +35,16 @@ import (
 var hashPool sync.Pool
 
 func NewHash() (h hash.Hash) {
+	var err error
 	if ih := hashPool.Get(); ih != nil {
 		h = ih.(hash.Hash)
 		h.Reset()
 	} else {
 		// Creates a new one if the pool is empty
-		h = blake2b.New256()
+		h, err = blake2b.New256(nil)
+		if err != nil {
+			panic(err)
+		}
 	}
 	return
 }
@@ -175,8 +179,12 @@ type StateTree struct {
 }
 
 func NewStateTree() *StateTree {
+	h, err := blake2b.New256(nil)
+	if err != nil {
+		panic(err)
+	}
 	return &StateTree{
-		root:   blake2b.New256(),
+		root:   h,
 		level1: map[string]hash.Hash{},
 	}
 }
@@ -221,13 +229,17 @@ func (st *StateTree) Level1() map[string]string {
 }
 
 func (st *StateTree) Add(h string) {
+	var err error
 	st.Lock()
 	defer st.Unlock()
 	var chash hash.Hash
 	if exhash, ok := st.level1[h[0:2]]; ok {
 		chash = exhash
 	} else {
-		chash = blake2b.New256()
+		chash, err = blake2b.New256(nil)
+		if err != nil {
+			panic(err)
+		}
 		st.level1[h[0:2]] = chash
 	}
 	chash.Write([]byte(h))

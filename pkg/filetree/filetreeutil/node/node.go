@@ -11,8 +11,8 @@ import (
 	"mime"
 	"path/filepath"
 
-	"github.com/dchest/blake2b"
 	"github.com/vmihailenco/msgpack"
+	"golang.org/x/crypto/blake2b"
 )
 
 var (

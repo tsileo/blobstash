@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/blevesearch/segment"
-	"github.com/dchest/blake2b"
 	log "github.com/inconshreveable/log15"
 	"github.com/reiver/go-porterstemmer"
 	"github.com/yuin/gopher-lua"
+	"golang.org/x/crypto/blake2b"
 
 	luautil "a4.io/blobstash/pkg/apps/luautil"
 	"a4.io/blobstash/pkg/config"

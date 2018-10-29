@@ -56,6 +56,11 @@ func (c *cache) Stat(ctx context.Context, hash string) (bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	// Check if the blob has already been uploaded to the remote storage
+	if _, ok := c.remoteRefs[hash]; ok {
+		return true, nil
+	}
+
 	stat, err := c.bs.Stat(context.TODO(), hash)
 	if err != nil {
 		return false, err

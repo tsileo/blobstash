@@ -3,7 +3,7 @@ package hashutil // import "a4.io/blobstash/pkg/hashutil"
 import (
 	"fmt"
 
-	"github.com/dchest/blake2b"
+	"golang.org/x/crypto/blake2b"
 )
 
 // ComputeRaw returns the Blake2B hash hex-encoded

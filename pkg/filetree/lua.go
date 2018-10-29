@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/dchest/blake2b"
 	"github.com/gorilla/mux"
 	lua "github.com/yuin/gopher-lua"
+	"golang.org/x/crypto/blake2b"
 
 	"a4.io/blobstash/pkg/auth"
 	"a4.io/blobstash/pkg/client/clientutil"
