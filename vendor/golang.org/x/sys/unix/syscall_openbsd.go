@@ -266,11 +266,13 @@ func Uname(uname *Utsname) error {
 //sys	Mknod(path string, mode uint32, dev int) (err error)
 //sys	Nanosleep(time *Timespec, leftover *Timespec) (err error)
 //sys	Open(path string, mode int, perm uint32) (fd int, err error)
+//sys	Openat(dirfd int, path string, mode int, perm uint32) (fd int, err error)
 //sys	Pathconf(path string, name int) (val int, err error)
 //sys	Pread(fd int, p []byte, offset int64) (n int, err error)
 //sys	Pwrite(fd int, p []byte, offset int64) (n int, err error)
 //sys	read(fd int, p []byte) (n int, err error)
 //sys	Readlink(path string, buf []byte) (n int, err error)
+//sys	Readlinkat(dirfd int, path string, buf []byte) (n int, err error)
 //sys	Rename(from string, to string) (err error)
 //sys	Revoke(path string) (err error)
 //sys	Rmdir(path string) (err error)
@@ -356,12 +358,10 @@ func Uname(uname *Utsname) error {
 // msgsnd
 // nfssvc
 // nnpfspioctl
-// openat
 // preadv
 // profil
 // pwritev
 // quotactl
-// readlinkat
 // readv
 // reboot
 // renameat

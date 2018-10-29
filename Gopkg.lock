@@ -33,15 +33,6 @@
   revision = "65cc252bf6691cb3c7014bcb2c8dc29de91e3a7e"
 
 [[projects]]
-  name = "github.com/Workiva/go-datastructures"
-  packages = [
-    "trie/xfast",
-    "trie/yfast"
-  ]
-  revision = "f07cbe3f82ca2fd6e5ab94afce65fe43319f675f"
-  version = "v1.0.50"
-
-[[projects]]
   name = "github.com/aws/aws-sdk-go"
   packages = [
     "aws",
@@ -78,8 +69,8 @@
     "service/s3",
     "service/sts"
   ]
-  revision = "9a79cc876234949427d966249a09fc98e7864bde"
-  version = "v1.15.61"
+  revision = "34ab03ee1a2b90b3baf97ff666397c8fb9b8714b"
+  version = "v1.15.64"
 
 [[projects]]
   name = "github.com/beevik/etree"
@@ -431,8 +422,8 @@
     "token",
     "types"
   ]
-  revision = "f187355171c936ac84a82793659ebb4936bc1c23"
-  version = "v1.3.0"
+  revision = "1ac3a1ac202429a54835fe8408a92880156b489d"
+  version = "v1.4.0"
 
 [[projects]]
   branch = "master"
@@ -489,7 +480,7 @@
     "parse",
     "pm"
   ]
-  revision = "f6fcaab0c612d877d4140cbdf6966aed51e6eebd"
+  revision = "f7ea7b13e9a5caa6749ccfa3ba1522a2c0bd126b"
 
 [[projects]]
   branch = "master"
@@ -518,13 +509,13 @@
     "scrypt",
     "ssh/terminal"
   ]
-  revision = "0c41d7ab0a0ee717d4590a44bcb987dfd9e183eb"
+  revision = "7e6ffbd038512da5ae7ce06c196764f393990be1"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
   packages = ["context"]
-  revision = "9b4f9f5ad5197c79fd623a3638e70d8b26cef344"
+  revision = "c44066c5c816ec500d459a2a324a753f78531ae0"
 
 [[projects]]
   branch = "master"
@@ -533,7 +524,7 @@
     "unix",
     "windows"
   ]
-  revision = "44b849a8bc13eb42e95e6c6c5e360481b73ec710"
+  revision = "d69651ed3497faee15a5363a89578e9991f6d5e2"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -632,6 +623,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "50352a17c25258ae9f4747b8778210cc9f764c8f91e4d450036aa4ef5f6428b4"
+  inputs-digest = "78d63bffacae639537d94d878c2dc1d4adb9212e9b02a47b1867e7b120fc2ee8"
   solver-name = "gps-cdcl"
   solver-version = 1
