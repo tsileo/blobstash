@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"sync"
 
 	"a4.io/blobstash/pkg/backend/s3/s3util"
@@ -141,7 +142,7 @@ func (c *cache) GetRemote(ctx context.Context, hash string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cache failed: %v", err)
 	}
-	fmt.Printf("GET FROM S3\n")
+	logger.Printf("downloading %s from remote", hash)
 	var data []byte
 	if ok {
 		data = cachedBlob
@@ -165,6 +166,11 @@ func (c *cache) GetRemote(ctx context.Context, hash string) ([]byte, error) {
 
 // Get implements the blobStore interface for filereader.File
 func (c *cache) Get(ctx context.Context, hash string) ([]byte, error) {
+	logger.Printf("Cache.Get(%q)\n", hash)
+	if strings.HasPrefix(hash, "remote://") {
+		return c.GetRemote(ctx, hash[9:])
+	}
+
 	var err error
 	cachedBlob, ok, err := c.blobsCache.Get(hash)
 	if err != nil {

@@ -534,9 +534,14 @@ func (ft *FileTree) BFS(ctx context.Context, root *Node, fn func(*Node) (bool, e
 }
 
 // fetchDir recursively fetch dir children
-func (ft *FileTree) fetchDir(ctx context.Context, n *Node, depth, maxDepth int) error {
+func (ft *FileTree) fetchDir(ctx context.Context, n *Node, depth, maxDepth int, fetchRemoteRefs bool) error {
 	if depth > maxDepth {
 		return nil
+	}
+	if fetchRemoteRefs {
+		if err := ft.addRemoteRefs(n); err != nil {
+			return err
+		}
 	}
 	if n.Type == rnode.Dir {
 		n.Children = []*Node{}
@@ -545,8 +550,14 @@ func (ft *FileTree) fetchDir(ctx context.Context, n *Node, depth, maxDepth int) 
 			if err != nil {
 				return err
 			}
+			if fetchRemoteRefs {
+				if err := ft.addRemoteRefs(cn); err != nil {
+					return err
+				}
+			}
+
 			n.Children = append(n.Children, cn)
-			if err := ft.fetchDir(ctx, cn, depth+1, maxDepth); err != nil {
+			if err := ft.fetchDir(ctx, cn, depth+1, maxDepth, fetchRemoteRefs); err != nil {
 				return err
 			}
 		}
@@ -657,12 +668,18 @@ func (fs *FS) Path(ctx context.Context, path string, depth int, create bool, mti
 	var cmeta *rnode.RawNode
 	node.fs = fs
 	node.parent = nil
-	if err := fs.ft.fetchDir(ctx, node, 1, depth); err != nil {
-		return nil, nil, found, err
-	}
 	if path == "/" {
+		if err := fs.ft.fetchDir(ctx, node, 1, depth, true); err != nil {
+			return nil, nil, found, err
+		}
+
 		fs.ft.log.Info("returning root")
 		return node, cmeta, found, err
+	} else {
+		if err := fs.ft.fetchDir(ctx, node, 1, 1, false); err != nil {
+			return nil, nil, found, err
+		}
+
 	}
 	split := strings.Split(path[1:], "/")
 	// fmt.Printf("split res=%+v\n", split)
@@ -678,7 +695,7 @@ func (fs *FS) Path(ctx context.Context, path string, depth int, create bool, mti
 				if err != nil {
 					return nil, nil, found, err
 				}
-				if err := fs.ft.fetchDir(ctx, node, 1, 1); err != nil {
+				if err := fs.ft.fetchDir(ctx, node, 1, 1, false); err != nil {
 					return nil, nil, found, err
 				}
 				node.parent = prev
@@ -714,6 +731,10 @@ func (fs *FS) Path(ctx context.Context, path string, depth int, create bool, mti
 			// fmt.Printf("split:%+v created:%+v\n", p, node)
 		}
 	}
+	if err := fs.ft.fetchDir(ctx, node, 1, depth, true); err != nil {
+		return nil, nil, found, err
+	}
+
 	return node, cmeta, !found, nil
 }
 
@@ -875,11 +896,7 @@ func fixPath(p string) string {
 	return p
 }
 
-func (ft *FileTree) addRemoteRefs(r *http.Request, n *Node) error {
-	// FIXME(tsileo): use a header instead
-	//if r.URL.Query().Get("remote") != "1" {
-	//	return nil
-	//}
+func (ft *FileTree) addRemoteRefs(n *Node) error {
 	rrefs := []*rnode.IndexValue{}
 
 	for _, piv := range n.Meta.FileRefs() {
@@ -1092,9 +1109,9 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 			}
 
 			// Returns the Node as JSON
-			if err := fs.ft.addRemoteRefs(r, node); err != nil {
-				panic(err)
-			}
+			// if err := fs.ft.addRemoteRefs(node); err != nil {
+			//	panic(err)
+			// }
 			httputil.MarshalAndWrite(r, w, node)
 			return
 
@@ -1517,7 +1534,7 @@ func (ft *FileTree) nodeHandler() func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
-		if err := ft.fetchDir(ctx, n, 1, 1); err != nil {
+		if err := ft.fetchDir(ctx, n, 1, 1, false); err != nil {
 			panic(err)
 		}
 
@@ -1532,7 +1549,7 @@ func (ft *FileTree) nodeHandler() func(http.ResponseWriter, *http.Request) {
 			}
 		}
 
-		if err := ft.addRemoteRefs(r, n); err != nil {
+		if err := ft.addRemoteRefs(n); err != nil {
 			panic(err)
 		}
 		httputil.MarshalAndWrite(r, w, map[string]interface{}{
@@ -1711,7 +1728,7 @@ func (ft *FileTree) NodeWithChildren(ctx context.Context, hash string) (*Node, e
 	if err != nil {
 		return nil, err
 	}
-	if err := ft.fetchDir(ctx, node, 1, 1); err != nil {
+	if err := ft.fetchDir(ctx, node, 1, 1, false); err != nil {
 		return nil, err
 	}
 

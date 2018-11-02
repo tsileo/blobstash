@@ -1265,6 +1265,11 @@ type fileReader interface {
 	io.Closer
 }
 
+type preloadableFileReader interface {
+	fileReader
+	PreloadChunks()
+}
+
 // fileHandle implements a RO file handler
 type fileHandle struct {
 	f *file
@@ -1296,7 +1301,15 @@ func (f *file) Reader() (fileReader, error) {
 	}
 
 	// Instanciate the filereader
-	fr := filereader.NewFile(context.Background(), f.fs.bs, meta, f.fs.freaderCache)
+	var fr preloadableFileReader
+	logger.Printf("use_remote=%v remote_refs=%+v\n", f.fs.useRemote, n.RemoteRefs)
+	if f.fs.useRemote && n.RemoteRefs != nil {
+		logger.Println("opening file with remote")
+		fr = filereader.NewFileRemote(context.Background(), f.fs.bs, meta, n.RemoteRefs, f.fs.freaderCache)
+	} else {
+		fr = filereader.NewFile(context.Background(), f.fs.bs, meta, f.fs.freaderCache)
+	}
+
 	fr.PreloadChunks()
 
 	return fr, nil
