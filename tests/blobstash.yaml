@@ -2,5 +2,6 @@ listen: ':8050'
 auth:
  - id: 'root'
    password: '123'
-   roles: 'admin'
+   roles:
+     - 'admin'
 data_dir: 'blobstash_data/'
