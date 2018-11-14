@@ -28,7 +28,7 @@ type Auth struct {
 	Username string
 	Password string
 	encoded  []byte
-	sroles   string
+	sroles   []string
 }
 
 func Setup(conf *config.Config, l log.Logger) error {

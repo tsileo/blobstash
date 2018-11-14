@@ -71,15 +71,21 @@ type GitNamespaceConf struct {
 }
 
 type BasicAuth struct {
-	ID       string `yaml:"id"`
-	Roles    string `yaml:"roles"`
-	Username string `yaml:"username"`
-	Password string `yaml:"password"`
+	ID       string   `yaml:"id"`
+	Roles    []string `yaml:"roles"`
+	Username string   `yaml:"username"`
+	Password string   `yaml:"password"`
 }
 
 type Role struct {
-	Name  string  `yaml:"name"`
-	Perms []*Perm `yaml:"permissions'`
+	Name     string                 `yaml:"name"`
+	Template string                 `yaml:"template"`
+	Perms    []*Perm                `yaml:"permissions'`
+	Args     map[string]interface{} `yaml:"args"`
+
+	// Only set pragmatically for "managed role"
+	Managed      bool     `yaml:"-"`
+	ArgsRequired []string `yaml:"-"`
 }
 
 type Perm struct {

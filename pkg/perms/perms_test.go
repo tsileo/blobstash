@@ -36,7 +36,7 @@ func TestPermsRoles(t *testing.T) {
 		panic(err)
 	}
 
-	admin, err := GetRoles("admin,admin2")
+	admin, err := GetRoles([]string{"admin", "admin2"})
 	if err != nil {
 		panic(err)
 	}
