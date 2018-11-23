@@ -86,6 +86,10 @@ func init() {
 				Action:   Action(GC, Namespace),
 				Resource: ResourceWithID(Stash, Namespace, "{{.name}}"),
 			},
+			&config.Perm{
+				Action:   Action(Snapshot, FS),
+				Resource: ResourceWithID(Filetree, FS, "{{.name}}"),
+			},
 		},
 	})
 
