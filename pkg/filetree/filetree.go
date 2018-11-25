@@ -1411,14 +1411,16 @@ func (ft *FileTree) tgzHandler() func(http.ResponseWriter, *http.Request) {
 
 			gzipWriter := gzip.NewWriter(tmpfile)
 			tarWriter := tar.NewWriter(gzipWriter)
-			//tarWriter := tar.NewWriter(tmpfile)
 
+			// Iter the whole tree
 			ctx := context.TODO()
 			if err := ft.IterTree(ctx, node, func(n *Node, p string) error {
+				// Skip directories (We only want files to be added)
 				if !n.Meta.IsFile() {
 					return nil
 				}
-				fmt.Printf("meta=%+v\n", n.Meta)
+
+				// Write the tar header
 				hdr := &tar.Header{
 					Name: p[1:],
 					Mode: int64(os.FileMode(n.Mode) | 0600),
@@ -1427,6 +1429,8 @@ func (ft *FileTree) tgzHandler() func(http.ResponseWriter, *http.Request) {
 				if err := tarWriter.WriteHeader(hdr); err != nil {
 					panic(err)
 				}
+
+				// write the file content (iter over all the blobs)
 				for _, iv := range n.Meta.FileRefs() {
 					blob, err := ft.blobStore.Get(ctx, iv.Value)
 					if err != nil {
@@ -1445,7 +1449,8 @@ func (ft *FileTree) tgzHandler() func(http.ResponseWriter, *http.Request) {
 			tarWriter.Close()
 			gzipWriter.Close()
 
-			http.ServeContent(w, r, fmt.Sprintf("%s.tgz"), time.Now(), tmpfile)
+			// returns it
+			http.ServeContent(w, r, fmt.Sprintf("%s.tgz", fsName), time.Now(), tmpfile)
 		}
 	}
 }
