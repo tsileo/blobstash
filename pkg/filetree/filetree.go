@@ -1393,23 +1393,14 @@ func (ft *FileTree) tgzHandler() func(http.ResponseWriter, *http.Request) {
 			}
 
 			w.Header().Set("ETag", node.Hash)
+			w.Header().Set("Content-Type", "application/gzip")
 
 			// Handle HEAD request
 			if r.Method == "HEAD" {
 				return
 			}
 
-			tmpfile, err := ioutil.TempFile("", fmt.Sprintf("blobstash_fs_%s_tar", fsName))
-			if err != nil {
-				panic(err)
-			}
-			defer func() {
-				// Cleanup
-				tmpfile.Close()
-				os.Remove(tmpfile.Name())
-			}()
-
-			gzipWriter := gzip.NewWriter(tmpfile)
+			gzipWriter := gzip.NewWriter(w)
 			tarWriter := tar.NewWriter(gzipWriter)
 
 			// Iter the whole tree
@@ -1449,8 +1440,7 @@ func (ft *FileTree) tgzHandler() func(http.ResponseWriter, *http.Request) {
 			tarWriter.Close()
 			gzipWriter.Close()
 
-			// returns it
-			http.ServeContent(w, r, fmt.Sprintf("%s.tgz", fsName), time.Now(), tmpfile)
+			// TODO(tsileo): set attachment headder
 		}
 	}
 }
