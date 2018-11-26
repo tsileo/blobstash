@@ -1,13 +1,16 @@
 package gitserver // import "a4.io/blobstash/pkg/gitserver"
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -65,6 +68,7 @@ func (gs *GitServer) Close() error {
 func (gs *GitServer) Register(r *mux.Router, root *mux.Router, basicAuth func(http.Handler) http.Handler) {
 	r.Handle("/", basicAuth(http.HandlerFunc(gs.rootHandler)))
 	r.Handle("/{ns}", basicAuth(http.HandlerFunc(gs.nsHandler)))
+	r.Handle("/{ns}/{repo}.tgz", basicAuth(http.HandlerFunc(gs.gitRepoTgzHandler)))
 	r.Handle("/{ns}/{repo}.git", basicAuth(http.HandlerFunc(gs.gitRepoHandler)))
 	root.Handle("/git/{ns}/{repo}.git/info/refs", basicAuth(http.HandlerFunc(gs.gitInfoRefsHandler)))
 	root.Handle("/git/{ns}/{repo}.git/{service}", basicAuth(http.HandlerFunc(gs.gitServiceHandler)))
@@ -449,16 +453,6 @@ func (gs *GitServer) nsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if gs.conf.GitServer == nil {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	conf := gs.conf.GitServer.Namespaces[ns]
-	if conf == nil {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-
 	repos, err := gs.Repositories(ns)
 	if err != nil {
 		panic(err)
@@ -609,7 +603,7 @@ func (gs *GitServer) RepoSummary(ns, repo string) (*GitRepoSummary, error) {
 	return summary, nil
 }
 
-func (gs *GitServer) gitRepoHandler(w http.ResponseWriter, r *http.Request) {
+func (gs *GitServer) gitRepoTgzHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -627,13 +621,61 @@ func (gs *GitServer) gitRepoHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if gs.conf.GitServer == nil {
-		w.WriteHeader(http.StatusNotFound)
+	tree, err := gs.RepoTree(vars["ns"], vars["repo"])
+	if err != nil {
+		panic(err)
+	}
+
+	gzipWriter := gzip.NewWriter(w)
+	tarWriter := tar.NewWriter(gzipWriter)
+
+	// Iter the whole tree
+	fiter := tree.Files()
+	if err := fiter.ForEach(func(o *object.File) error {
+		// Write the tar header
+		hdr := &tar.Header{
+			Name: filepath.Join(vars["repo"], o.Name),
+			Mode: int64(o.Mode),
+			Size: o.Size,
+		}
+		if err := tarWriter.WriteHeader(hdr); err != nil {
+			return err
+		}
+
+		r, err := o.Reader()
+		if err != nil {
+			return err
+		}
+		defer r.Close()
+
+		if _, err := io.Copy(tarWriter, r); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		panic(err)
+	}
+
+	// "seal" the tarfile
+	tarWriter.Close()
+	gzipWriter.Close()
+}
+
+func (gs *GitServer) gitRepoHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	conf := gs.conf.GitServer.Namespaces[ns]
-	if conf == nil {
-		w.WriteHeader(http.StatusNotFound)
+	vars := mux.Vars(r)
+
+	ns := vars["ns"]
+
+	if !auth.Can(
+		r,
+		perms.Action(perms.Read, perms.GitRepo),
+		perms.ResourceWithID(perms.GitServer, perms.GitRepo, fmt.Sprintf("%s/%s", ns, vars["repo"])),
+	) {
+		auth.Forbidden(w)
 		return
 	}
 
