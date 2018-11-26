@@ -766,18 +766,21 @@ func (gs *GitServer) gitServiceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	vars := mux.Vars(r)
+	service := vars["service"]
+	perm := perms.Write
+	if servce == "git-upload-pack" {
+		perm = perms.Read
+	}
 
-	// TODO(tsileo): support read-only
 	if !auth.Can(
 		r,
-		perms.Action(perms.Write, perms.GitRepo),
+		perms.Action(perm, perms.GitRepo),
 		perms.ResourceWithID(perms.GitServer, perms.GitRepo, fmt.Sprintf("%s/%s", vars["ns"], vars["repo"])),
 	) {
 		auth.Forbidden(w)
 		return
 	}
 
-	service := vars["service"]
 	w.Header().Set("Content-Type", fmt.Sprintf("application/x-%s-result", service))
 
 	storage := newStorage(vars["ns"], vars["repo"], gs.blobStore, gs.kvStore)
