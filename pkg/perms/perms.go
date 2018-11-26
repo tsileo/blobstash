@@ -92,6 +92,45 @@ func init() {
 			},
 		},
 	})
+	SetupRole(&config.Role{
+		Template:     "git-ro",
+		Managed:      true,
+		ArgsRequired: []string{"ns", "repo"},
+		Perms: []*config.Perm{
+			&config.Perm{
+				Action:   Action(Read, GitRepo),
+				Resource: ResourceWithID(GitServer, GitRepo, "{{.ns}}/{{.repo}}"),
+			},
+		},
+	})
+	SetupRole(&config.Role{
+		Template:     "git",
+		Managed:      true,
+		ArgsRequired: []string{"ns", "repo"},
+		Perms: []*config.Perm{
+			&config.Perm{
+				Action:   Action(Read, GitRepo),
+				Resource: ResourceWithID(GitServer, GitRepo, "{{.ns}}/{{.repo}}"),
+			},
+			&config.Perm{
+				Action:   Action(Write, GitRepo),
+				Resource: ResourceWithID(GitServer, GitRepo, "{{.ns}}/{{.repo}}"),
+			},
+		},
+	})
+	SetupRole(&config.Role{
+		Name: "git-admin",
+		Perms: []*config.Perm{
+			&config.Perm{
+				Action:   Action(Read, GitRepo),
+				Resource: ResourceWithID(GitServer, GitRepo, "*/*"),
+			},
+			&config.Perm{
+				Action:   Action(Write, GitRepo),
+				Resource: ResourceWithID(GitServer, GitRepo, "*/*"),
+			},
+		},
+	})
 
 }
 

@@ -768,7 +768,7 @@ func (gs *GitServer) gitServiceHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	service := vars["service"]
 	perm := perms.Write
-	if servce == "git-upload-pack" {
+	if service == "git-upload-pack" {
 		perm = perms.Read
 	}
 
