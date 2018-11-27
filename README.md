@@ -123,19 +123,9 @@ $ blobstash-uploader server1 /path/to/data
 
 ## Git HTTP backend
 
-You can store Git repositories via HTTP, and all the data will be deduplicated. 
+You can store Git repositories via Git smart HTTP, and all the data will be deduplicated (at the chunk level and even across FileTree trees). 
 
 ### Getting Started
-
-To enable the Git HTTP API, you need to setup a namespace first:
-
-```yaml
-git_server:
-  namespaces:
-     myns:
-       username: 'tom'
-       password: 'mypass'
-```
 
 To backup a Git repository, just add a new remote (new repositories will be created automatically):
 
