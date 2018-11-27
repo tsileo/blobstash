@@ -83,7 +83,7 @@ BlobStash features fine-grained permissions support, with a model similar to AWS
 
  - `git-ro`: read-only access (clone)
    - `action:read:git-repo`/`resource:gitserver:git-repo:{ns}/{repo}`
- - `git-ro`: read-write access (clone and push)
+ - `git`: read-write access (clone and push)
    - `action:read:git-repo`/`resource:gitserver:git-repo:{ns}/{repo}`
    - `action:write:git-repo`/`resource:gitserver:git-repo:{ns}/{repo}`
 
