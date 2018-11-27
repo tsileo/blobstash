@@ -129,9 +129,12 @@ func init() {
 				Action:   Action(Write, GitRepo),
 				Resource: ResourceWithID(GitServer, GitRepo, "*/*"),
 			},
+			&config.Perm{
+				Action:   Action(List, GitNs),
+				Resource: ResourceWithID(GitServer, GitNs, "*"),
+			},
 		},
 	})
-
 }
 
 var roles = map[string]rbac.Role{}

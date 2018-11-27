@@ -66,6 +66,27 @@ Files can be streamed easily, range requests are supported, EXIF metadata automa
 
 You can also enable a S3 compatible gateway to manage your files.
 
+### Role Based Access Control (RBAC)
+
+BlobStash features fine-grained permissions support, with a model similar to AWS roles.
+
+#### Predefined roles
+
+ - `admin`: full access to everything
+   - `action:*`/`resource:*`
+ - `git-admin`: full access to the Git API, including the Git smart HTTP support
+    - `action:read:git-repo`/`resource:gitserver:git-repo:*`
+    - `action:write:git-repo`/`resource:gitserver:git-repo:*`
+    - `action:list:git-ns`/`resource:gitserver:git-ns:*`
+
+#### Templated roles
+
+ - `git-ro`: read-only access (clone)
+   - `action:read:git-repo`/`resource:gitserver:git-repo:{ns}/{repo}`
+ - `git-ro`: read-write access (clone and push)
+   - `action:read:git-repo`/`resource:gitserver:git-repo:{ns}/{repo}`
+   - `action:write:git-repo`/`resource:gitserver:git-repo:{ns}/{repo}`
+
 ## Use Cases
 
 ### Backups from external servers

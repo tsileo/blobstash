@@ -366,7 +366,7 @@ func (gs *GitServer) rootHandler(w http.ResponseWriter, r *http.Request) {
 	if !auth.Can(
 		r,
 		perms.Action(perms.List, perms.GitNs),
-		perms.Resource(perms.GitServer, perms.GitNs),
+		perms.ResourceWithID(perms.GitServer, perms.GitNs, "*"),
 	) {
 		auth.Forbidden(w)
 		return
@@ -622,7 +622,12 @@ func (gs *GitServer) gitRepoTgzHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tree, err := gs.RepoTree(vars["ns"], vars["repo"])
-	if err != nil {
+	switch err {
+	case nil:
+	case plumbing.ErrReferenceNotFound:
+		w.WriteHeader(http.StatusNotFound)
+		return
+	default:
 		panic(err)
 	}
 
@@ -683,7 +688,12 @@ func (gs *GitServer) gitRepoHandler(w http.ResponseWriter, r *http.Request) {
 
 	storage := newStorage(vars["ns"], vars["repo"], gs.blobStore, gs.kvStore)
 	ref, err := storage.Reference(plumbing.Master)
-	if err != nil {
+	switch err {
+	case nil:
+	case plumbing.ErrReferenceNotFound:
+		w.WriteHeader(http.StatusNotFound)
+		return
+	default:
 		panic(err)
 	}
 	commits := buildCommitLogs(storage, ref.Hash())
@@ -721,6 +731,7 @@ func (gs *GitServer) gitInfoRefsHandler(w http.ResponseWriter, r *http.Request) 
 	service := r.URL.Query().Get("service")
 	var refs *packp.AdvRefs
 
+	// Here, repositories are created on the fly, we don't need to check if it actually exists before
 	storage := newStorage(vars["ns"], vars["repo"], gs.blobStore, gs.kvStore)
 	git := server.NewServer(storage)
 	t, err := gs.getEndpoint(r.URL.Path)
@@ -767,11 +778,15 @@ func (gs *GitServer) gitServiceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	vars := mux.Vars(r)
 	service := vars["service"]
+
+	// Compute the permission for the RBAC (default to Write)
 	perm := perms.Write
 	if service == "git-upload-pack" {
+		// If it's a `git clone`, set the permission to Read
 		perm = perms.Read
 	}
 
+	// Check the perms
 	if !auth.Can(
 		r,
 		perms.Action(perm, perms.GitRepo),
@@ -792,6 +807,7 @@ func (gs *GitServer) gitServiceHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch service {
 	case "git-receive-pack":
+		// Handle push
 		req := packp.NewReferenceUpdateRequest()
 		sess, err := git.NewReceivePackSession(t, nil)
 		if err != nil {
@@ -811,6 +827,7 @@ func (gs *GitServer) gitServiceHandler(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 	case "git-upload-pack":
+		// Handle clone
 		req := packp.NewUploadPackRequest()
 		sess, err := git.NewUploadPackSession(t, nil)
 		if err != nil {
