@@ -90,6 +90,7 @@ func (c *cache) PutRemote(ctx context.Context, hash string, data []byte) error {
 	if !c.fs.useRemote {
 		return c.Put(ctx, hash, data)
 	}
+	logger.Printf("[remote] uploading %s (%d bytes) to remote", hash, len(data))
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -142,7 +143,7 @@ func (c *cache) GetRemote(ctx context.Context, hash string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cache failed: %v", err)
 	}
-	logger.Printf("downloading %s from remote", hash)
+	logger.Printf("[remote] downloading %s from remote", hash)
 	var data []byte
 	if ok {
 		data = cachedBlob
