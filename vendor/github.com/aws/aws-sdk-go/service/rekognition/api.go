@@ -203,6 +203,9 @@ func (c *Rekognition) CreateCollectionRequest(input *CreateCollectionInput) (req
 // results in a specific collection. Then, a user can search the collection
 // for faces in the user-specific container.
 //
+// When you create a collection, it is associated with the latest version of
+// the face model version.
+//
 // Collection names are case-sensitive.
 //
 // This operation requires permissions to perform the rekognition:CreateCollection
@@ -918,9 +921,9 @@ func (c *Rekognition) DetectFacesRequest(input *DetectFacesInput) (req *request.
 // faces with lower confidence.
 //
 // You pass the input image either as base64-encoded image bytes or as a reference
-// to an image in an Amazon S3 bucket. If you use the AWS CLI to call Amazon
-// Rekognition operations, passing image bytes is not supported. The image must
-// be either a PNG or JPEG formatted file.
+// to an image in an Amazon S3 bucket. If you use the to call Amazon Rekognition
+// operations, passing image bytes is not supported. The image must be either
+// a PNG or JPEG formatted file.
 //
 // This is a stateless API operation. That is, the operation does not persist
 // any data.
@@ -1078,6 +1081,18 @@ func (c *Rekognition) DetectLabelsRequest(input *DetectLabelsInput) (req *reques
 //
 // If the object detected is a person, the operation doesn't provide the same
 // facial details that the DetectFaces operation provides.
+//
+// DetectLabels returns bounding boxes for instances of common object labels
+// in an array of objects. An Instance object contains a object, for the location
+// of the label on the image. It also includes the confidence by which the bounding
+// box was detected.
+//
+// DetectLabels also returns a hierarchical taxonomy of detected labels. For
+// example, a detected car might be assigned the label car. The label car has
+// two parent labels: Vehicle (its parent) and Transportation (its grandparent).
+// The response returns the entire list of ancestors for a label. Each ancestor
+// is a unique label in the response. In the previous example, Car, Vehicle,
+// and Transportation are returned as unique labels in the response.
 //
 // This is a stateless API operation. That is, the operation does not persist
 // any data.
@@ -2297,6 +2312,11 @@ func (c *Rekognition) GetLabelDetectionRequest(input *GetLabelDetectionInput) (r
 // the NextToken request parameter with the token value returned from the previous
 // call to GetLabelDetection.
 //
+// GetLabelDetection doesn't return a hierarchical taxonomy, or bounding box
+// information, for detected labels. GetLabelDetection returns null for the
+// Parents and Instances attributes of the object which is returned in the Labels
+// array.
+//
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
 // the error.
@@ -2448,20 +2468,20 @@ func (c *Rekognition) GetPersonTrackingRequest(input *GetPersonTrackingInput) (r
 
 // GetPersonTracking API operation for Amazon Rekognition.
 //
-// Gets the person tracking results of a Amazon Rekognition Video analysis started
+// Gets the path tracking results of a Amazon Rekognition Video analysis started
 // by .
 //
-// The person detection operation is started by a call to StartPersonTracking
-// which returns a job identifier (JobId). When the person detection operation
-// finishes, Amazon Rekognition Video publishes a completion status to the Amazon
-// Simple Notification Service topic registered in the initial call to StartPersonTracking.
+// The person path tracking operation is started by a call to StartPersonTracking
+// which returns a job identifier (JobId). When the operation finishes, Amazon
+// Rekognition Video publishes a completion status to the Amazon Simple Notification
+// Service topic registered in the initial call to StartPersonTracking.
 //
-// To get the results of the person tracking operation, first check that the
-// status value published to the Amazon SNS topic is SUCCEEDED. If so, call
+// To get the results of the person path tracking operation, first check that
+// the status value published to the Amazon SNS topic is SUCCEEDED. If so, call
 // and pass the job identifier (JobId) from the initial call to StartPersonTracking.
 //
 // GetPersonTracking returns an array, Persons, of tracked persons and the time(s)
-// they were tracked in the video.
+// their paths were tracked in the video.
 //
 // GetPersonTracking only returns the default facial attributes (BoundingBox,
 // Confidence, Landmarks, Pose, and Quality). The other facial attributes listed
@@ -2470,9 +2490,9 @@ func (c *Rekognition) GetPersonTrackingRequest(input *GetPersonTrackingInput) (r
 // For more information, see FaceDetail in the Amazon Rekognition Developer
 // Guide.
 //
-// By default, the array is sorted by the time(s) a person is tracked in the
-// video. You can sort by tracked persons by specifying INDEX for the SortBy
-// input parameter.
+// By default, the array is sorted by the time(s) a person's path is tracked
+// in the video. You can sort by tracked persons by specifying INDEX for the
+// SortBy input parameter.
 //
 // Use the MaxResults parameter to limit the number of items returned. If there
 // are more results than specified in MaxResults, the value of NextToken in
@@ -2641,10 +2661,14 @@ func (c *Rekognition) IndexFacesRequest(input *IndexFacesInput) (req *request.Re
 //
 // If you're using version 1.0 of the face detection model, IndexFaces indexes
 // the 15 largest faces in the input image. Later versions of the face detection
-// model index the 100 largest faces in the input image. To determine which
-// version of the model you're using, call and supply the collection ID. You
-// can also get the model version from the value of FaceModelVersion in the
-// response from IndexFaces.
+// model index the 100 largest faces in the input image.
+//
+// If you're using version 4 or later of the face model, image orientation information
+// is not returned in the OrientationCorrection field.
+//
+// To determine which version of the model you're using, call and supply the
+// collection ID. You can also get the model version from the value of FaceModelVersion
+// in the response from IndexFaces
 //
 // For more information, see Model Versioning in the Amazon Rekognition Developer
 // Guide.
@@ -3918,7 +3942,7 @@ func (c *Rekognition) StartFaceDetectionRequest(input *StartFaceDetectionInput) 
 // results of the operation. When face detection is finished, Amazon Rekognition
 // Video publishes a completion status to the Amazon Simple Notification Service
 // topic that you specify in NotificationChannel. To get the results of the
-// label detection operation, first check that the status value published to
+// face detection operation, first check that the status value published to
 // the Amazon SNS topic is SUCCEEDED. If so, call and pass the job identifier
 // (JobId) from the initial call to StartFaceDetection.
 //
@@ -4284,14 +4308,14 @@ func (c *Rekognition) StartPersonTrackingRequest(input *StartPersonTrackingInput
 
 // StartPersonTracking API operation for Amazon Rekognition.
 //
-// Starts the asynchronous tracking of persons in a stored video.
+// Starts the asynchronous tracking of a person's path in a stored video.
 //
-// Amazon Rekognition Video can track persons in a video stored in an Amazon
-// S3 bucket. Use Video to specify the bucket name and the filename of the video.
-// StartPersonTracking returns a job identifier (JobId) which you use to get
-// the results of the operation. When label detection is finished, Amazon Rekognition
-// publishes a completion status to the Amazon Simple Notification Service topic
-// that you specify in NotificationChannel.
+// Amazon Rekognition Video can track the path of people in a video stored in
+// an Amazon S3 bucket. Use Video to specify the bucket name and the filename
+// of the video. StartPersonTracking returns a job identifier (JobId) which
+// you use to get the results of the operation. When label detection is finished,
+// Amazon Rekognition publishes a completion status to the Amazon Simple Notification
+// Service topic that you specify in NotificationChannel.
 //
 // To get the results of the person detection operation, first check that the
 // status value published to the Amazon SNS topic is SUCCEEDED. If so, call
@@ -4629,7 +4653,7 @@ func (s *Beard) SetValue(v bool) *Beard {
 	return s
 }
 
-// Identifies the bounding box around the face or text. The left (x-coordinate)
+// Identifies the bounding box around the label, face, or text. The left (x-coordinate)
 // and top (y-coordinate) are coordinates representing the top and left sides
 // of the bounding box. Note that the upper-left corner of the image is the
 // origin (0,0).
@@ -4993,31 +5017,34 @@ type CompareFacesOutput struct {
 	// The face in the source image that was used for comparison.
 	SourceImageFace *ComparedSourceImageFace `type:"structure"`
 
-	// The orientation of the source image (counterclockwise direction). If your
-	// application displays the source image, you can use this value to correct
-	// image orientation. The bounding box coordinates returned in SourceImageFace
-	// represent the location of the face before the image orientation is corrected.
+	// The value of SourceImageOrientationCorrection is always null.
 	//
-	// If the source image is in .jpeg format, it might contain exchangeable image
-	// (Exif) metadata that includes the image's orientation. If the Exif metadata
-	// for the source image populates the orientation field, the value of OrientationCorrection
-	// is null. The SourceImageFace bounding box coordinates represent the location
-	// of the face after Exif metadata is used to correct the orientation. Images
-	// in .png format don't contain Exif metadata.
+	// If the input image is in .jpeg format, it might contain exchangeable image
+	// file format (Exif) metadata that includes the image's orientation. Amazon
+	// Rekognition uses this orientation information to perform image correction.
+	// The bounding box coordinates are translated to represent object locations
+	// after the orientation information in the Exif metadata is used to correct
+	// the image orientation. Images in .png format don't contain Exif metadata.
+	//
+	// Amazon Rekognition doesn’t perform image correction for images in .png format
+	// and .jpeg images without orientation information in the image Exif metadata.
+	// The bounding box coordinates aren't translated and represent the object locations
+	// before the image is rotated.
 	SourceImageOrientationCorrection *string `type:"string" enum:"OrientationCorrection"`
 
-	// The orientation of the target image (in counterclockwise direction). If your
-	// application displays the target image, you can use this value to correct
-	// the orientation of the image. The bounding box coordinates returned in FaceMatches
-	// and UnmatchedFaces represent face locations before the image orientation
-	// is corrected.
+	// The value of TargetImageOrientationCorrection is always null.
 	//
-	// If the target image is in .jpg format, it might contain Exif metadata that
-	// includes the orientation of the image. If the Exif metadata for the target
-	// image populates the orientation field, the value of OrientationCorrection
-	// is null. The bounding box coordinates in FaceMatches and UnmatchedFaces represent
-	// the location of the face after Exif metadata is used to correct the orientation.
-	// Images in .png format don't contain Exif metadata.
+	// If the input image is in .jpeg format, it might contain exchangeable image
+	// file format (Exif) metadata that includes the image's orientation. Amazon
+	// Rekognition uses this orientation information to perform image correction.
+	// The bounding box coordinates are translated to represent object locations
+	// after the orientation information in the Exif metadata is used to correct
+	// the image orientation. Images in .png format don't contain Exif metadata.
+	//
+	// Amazon Rekognition doesn’t perform image correction for images in .png format
+	// and .jpeg images without orientation information in the image Exif metadata.
+	// The bounding box coordinates aren't translated and represent the object locations
+	// before the image is rotated.
 	TargetImageOrientationCorrection *string `type:"string" enum:"OrientationCorrection"`
 
 	// An array of faces in the target image that did not match the source image
@@ -5924,17 +5951,19 @@ type DetectFacesOutput struct {
 	// Details of each face found in the image.
 	FaceDetails []*FaceDetail `type:"list"`
 
-	// The orientation of the input image (counter-clockwise direction). If your
-	// application displays the image, you can use this value to correct image orientation.
-	// The bounding box coordinates returned in FaceDetails represent face locations
-	// before the image orientation is corrected.
+	// The value of OrientationCorrection is always null.
 	//
 	// If the input image is in .jpeg format, it might contain exchangeable image
-	// (Exif) metadata that includes the image's orientation. If so, and the Exif
-	// metadata for the input image populates the orientation field, the value of
-	// OrientationCorrection is null. The FaceDetails bounding box coordinates represent
-	// face locations after Exif metadata is used to correct the image orientation.
-	// Images in .png format don't contain Exif metadata.
+	// file format (Exif) metadata that includes the image's orientation. Amazon
+	// Rekognition uses this orientation information to perform image correction.
+	// The bounding box coordinates are translated to represent object locations
+	// after the orientation information in the Exif metadata is used to correct
+	// the image orientation. Images in .png format don't contain Exif metadata.
+	//
+	// Amazon Rekognition doesn’t perform image correction for images in .png format
+	// and .jpeg images without orientation information in the image Exif metadata.
+	// The bounding box coordinates aren't translated and represent the object locations
+	// before the image is rotated.
 	OrientationCorrection *string `type:"string" enum:"OrientationCorrection"`
 }
 
@@ -6031,17 +6060,25 @@ func (s *DetectLabelsInput) SetMinConfidence(v float64) *DetectLabelsInput {
 type DetectLabelsOutput struct {
 	_ struct{} `type:"structure"`
 
+	// Version number of the label detection model that was used to detect labels.
+	LabelModelVersion *string `type:"string"`
+
 	// An array of labels for the real-world objects detected.
 	Labels []*Label `type:"list"`
 
-	// The orientation of the input image (counter-clockwise direction). If your
-	// application displays the image, you can use this value to correct the orientation.
-	// If Amazon Rekognition detects that the input image was rotated (for example,
-	// by 90 degrees), it first corrects the orientation before detecting the labels.
+	// The value of OrientationCorrection is always null.
 	//
-	// If the input image Exif metadata populates the orientation field, Amazon
-	// Rekognition does not perform orientation correction and the value of OrientationCorrection
-	// will be null.
+	// If the input image is in .jpeg format, it might contain exchangeable image
+	// file format (Exif) metadata that includes the image's orientation. Amazon
+	// Rekognition uses this orientation information to perform image correction.
+	// The bounding box coordinates are translated to represent object locations
+	// after the orientation information in the Exif metadata is used to correct
+	// the image orientation. Images in .png format don't contain Exif metadata.
+	//
+	// Amazon Rekognition doesn’t perform image correction for images in .png format
+	// and .jpeg images without orientation information in the image Exif metadata.
+	// The bounding box coordinates aren't translated and represent the object locations
+	// before the image is rotated.
 	OrientationCorrection *string `type:"string" enum:"OrientationCorrection"`
 }
 
@@ -6053,6 +6090,12 @@ func (s DetectLabelsOutput) String() string {
 // GoString returns the string representation
 func (s DetectLabelsOutput) GoString() string {
 	return s.String()
+}
+
+// SetLabelModelVersion sets the LabelModelVersion field's value.
+func (s *DetectLabelsOutput) SetLabelModelVersion(v string) *DetectLabelsOutput {
+	s.LabelModelVersion = &v
+	return s
 }
 
 // SetLabels sets the Labels field's value.
@@ -6748,7 +6791,7 @@ func (s *Gender) SetValue(v string) *Gender {
 	return s
 }
 
-// Information about where text detected by is located on an image.
+// Information about where the text detected by is located on an image.
 type Geometry struct {
 	_ struct{} `type:"structure"`
 
@@ -7644,9 +7687,9 @@ type GetPersonTrackingOutput struct {
 	// that you can use in the subsequent request to retrieve the next set of persons.
 	NextToken *string `type:"string"`
 
-	// An array of the persons detected in the video and the times they are tracked
-	// throughout the video. An array element will exist for each time the person
-	// is tracked.
+	// An array of the persons detected in the video and the time(s) their path
+	// was tracked throughout the video. An array element will exist for each time
+	// a person's path is tracked.
 	Persons []*PersonDetection `type:"list"`
 
 	// If the job fails, StatusMessage provides a descriptive error message.
@@ -7961,16 +8004,29 @@ type IndexFacesOutput struct {
 	// see Searching Faces in a Collection in the Amazon Rekognition Developer Guide.
 	FaceRecords []*FaceRecord `type:"list"`
 
-	// The orientation of the input image (counterclockwise direction). If your
-	// application displays the image, you can use this value to correct image orientation.
-	// The bounding box coordinates returned in FaceRecords represent face locations
-	// before the image orientation is corrected.
+	// If your collection is associated with a face detection model that's later
+	// than version 3.0, the value of OrientationCorrection is always null and no
+	// orientation information is returned.
 	//
-	// If the input image is in jpeg format, it might contain exchangeable image
-	// (Exif) metadata. If so, and the Exif metadata populates the orientation field,
-	// the value of OrientationCorrection is null. The bounding box coordinates
-	// in FaceRecords represent face locations after Exif metadata is used to correct
-	// the image orientation. Images in .png format don't contain Exif metadata.
+	// If your collection is associated with a face detection model that's version
+	// 3.0 or earlier, the following applies:
+	//
+	//    * If the input image is in .jpeg format, it might contain exchangeable
+	//    image file format (Exif) metadata that includes the image's orientation.
+	//    Amazon Rekognition uses this orientation information to perform image
+	//    correction - the bounding box coordinates are translated to represent
+	//    object locations after the orientation information in the Exif metadata
+	//    is used to correct the image orientation. Images in .png format don't
+	//    contain Exif metadata. The value of OrientationCorrection is null.
+	//
+	//    * If the image doesn't contain orientation information in its Exif metadata,
+	//    Amazon Rekognition returns an estimated orientation (ROTATE_0, ROTATE_90,
+	//    ROTATE_180, ROTATE_270). Amazon Rekognition doesn’t perform image correction
+	//    for images. The bounding box coordinates aren't translated and represent
+	//    the object locations before the image is rotated.
+	//
+	// Bounding box information is returned in the FaceRecords array. You can get
+	// the version of the face detection model by calling .
 	OrientationCorrection *string `type:"string" enum:"OrientationCorrection"`
 
 	// An array of faces that were detected in the image but weren't indexed. They
@@ -8011,6 +8067,40 @@ func (s *IndexFacesOutput) SetOrientationCorrection(v string) *IndexFacesOutput 
 // SetUnindexedFaces sets the UnindexedFaces field's value.
 func (s *IndexFacesOutput) SetUnindexedFaces(v []*UnindexedFace) *IndexFacesOutput {
 	s.UnindexedFaces = v
+	return s
+}
+
+// An instance of a label detected by .
+type Instance struct {
+	_ struct{} `type:"structure"`
+
+	// The position of the label instance on the image.
+	BoundingBox *BoundingBox `type:"structure"`
+
+	// The confidence that Amazon Rekognition Image has in the accuracy of the bounding
+	// box.
+	Confidence *float64 `type:"float"`
+}
+
+// String returns the string representation
+func (s Instance) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s Instance) GoString() string {
+	return s.String()
+}
+
+// SetBoundingBox sets the BoundingBox field's value.
+func (s *Instance) SetBoundingBox(v *BoundingBox) *Instance {
+	s.BoundingBox = v
+	return s
+}
+
+// SetConfidence sets the Confidence field's value.
+func (s *Instance) SetConfidence(v float64) *Instance {
+	s.Confidence = &v
 	return s
 }
 
@@ -8066,16 +8156,35 @@ func (s *KinesisVideoStream) SetArn(v string) *KinesisVideoStream {
 	return s
 }
 
-// Structure containing details about the detected label, including name, and
-// level of confidence.
+// Structure containing details about the detected label, including the name,
+// and level of confidence.
+//
+// The Amazon Rekognition Image operation operation returns a hierarchical taxonomy
+// (Parents) for detected labels and also bounding box information (Instances)
+// for detected labels. Amazon Rekognition Video doesn't return this information
+// and returns null for the Parents and Instances attributes.
 type Label struct {
 	_ struct{} `type:"structure"`
 
 	// Level of confidence.
 	Confidence *float64 `type:"float"`
 
-	// The name (label) of the object.
+	// If Label represents an object, Instances contains the bounding boxes for
+	// each instance of the detected object. Bounding boxes are returned for common
+	// object labels such as people, cars, furniture, apparel or pets.
+	//
+	// Amazon Rekognition Video does not support bounding box information for detected
+	// labels. The value of Instances is returned as null by GetLabelDetection.
+	Instances []*Instance `type:"list"`
+
+	// The name (label) of the object or scene.
 	Name *string `type:"string"`
+
+	// The parent labels for a label. The response includes all ancestor labels.
+	//
+	// Amazon Rekognition Video does not support a hierarchical taxonomy of detected
+	// labels. The value of Parents is returned as null by GetLabelDetection.
+	Parents []*Parent `type:"list"`
 }
 
 // String returns the string representation
@@ -8094,9 +8203,21 @@ func (s *Label) SetConfidence(v float64) *Label {
 	return s
 }
 
+// SetInstances sets the Instances field's value.
+func (s *Label) SetInstances(v []*Instance) *Label {
+	s.Instances = v
+	return s
+}
+
 // SetName sets the Name field's value.
 func (s *Label) SetName(v string) *Label {
 	s.Name = &v
+	return s
+}
+
+// SetParents sets the Parents field's value.
+func (s *Label) SetParents(v []*Parent) *Label {
+	s.Parents = v
 	return s
 }
 
@@ -8620,6 +8741,30 @@ func (s *NotificationChannel) SetSNSTopicArn(v string) *NotificationChannel {
 	return s
 }
 
+// A parent label for a label. A label can have 0, 1, or more parents.
+type Parent struct {
+	_ struct{} `type:"structure"`
+
+	// The name of the parent label.
+	Name *string `type:"string"`
+}
+
+// String returns the string representation
+func (s Parent) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s Parent) GoString() string {
+	return s.String()
+}
+
+// SetName sets the Name field's value.
+func (s *Parent) SetName(v string) *Parent {
+	s.Name = &v
+	return s
+}
+
 // Details about a person detected in a video analysis request.
 type PersonDetail struct {
 	_ struct{} `type:"structure"`
@@ -8664,21 +8809,21 @@ func (s *PersonDetail) SetIndex(v int64) *PersonDetail {
 	return s
 }
 
-// Details and tracking information for a single time a person is tracked in
-// a video. Amazon Rekognition operations that track persons return an array
-// of PersonDetection objects with elements for each time a person is tracked
-// in a video.
+// Details and path tracking information for a single time a person's path is
+// tracked in a video. Amazon Rekognition operations that track people's paths
+// return an array of PersonDetection objects with elements for each time a
+// person's path is tracked in a video.
 //
 // For more information, see API_GetPersonTracking in the Amazon Rekognition
 // Developer Guide.
 type PersonDetection struct {
 	_ struct{} `type:"structure"`
 
-	// Details about a person tracked in a video.
+	// Details about a person whose path was tracked in a video.
 	Person *PersonDetail `type:"structure"`
 
-	// The time, in milliseconds from the start of the video, that the person was
-	// tracked.
+	// The time, in milliseconds from the start of the video, that the person's
+	// path was tracked.
 	Timestamp *int64 `type:"long"`
 }
 
@@ -9423,7 +9568,8 @@ type StartContentModerationInput struct {
 	// Rekognition is that the moderated content is correctly identified. 0 is the
 	// lowest confidence. 100 is the highest confidence. Amazon Rekognition doesn't
 	// return any moderated content labels with a confidence level lower than this
-	// specified value.
+	// specified value. If you don't specify MinConfidence, GetContentModeration
+	// returns labels with confidence values greater than or equal to 50 percent.
 	MinConfidence *float64 `type:"float"`
 
 	// The Amazon SNS topic ARN that you want Amazon Rekognition Video to publish
@@ -10705,6 +10851,21 @@ const (
 
 	// LandmarkTypeRightPupil is a LandmarkType enum value
 	LandmarkTypeRightPupil = "rightPupil"
+
+	// LandmarkTypeUpperJawlineLeft is a LandmarkType enum value
+	LandmarkTypeUpperJawlineLeft = "upperJawlineLeft"
+
+	// LandmarkTypeMidJawlineLeft is a LandmarkType enum value
+	LandmarkTypeMidJawlineLeft = "midJawlineLeft"
+
+	// LandmarkTypeChinBottom is a LandmarkType enum value
+	LandmarkTypeChinBottom = "chinBottom"
+
+	// LandmarkTypeMidJawlineRight is a LandmarkType enum value
+	LandmarkTypeMidJawlineRight = "midJawlineRight"
+
+	// LandmarkTypeUpperJawlineRight is a LandmarkType enum value
+	LandmarkTypeUpperJawlineRight = "upperJawlineRight"
 )
 
 const (
