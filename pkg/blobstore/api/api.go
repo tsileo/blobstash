@@ -36,6 +36,7 @@ func (bs *BlobStoreAPI) uploadHandler() func(http.ResponseWriter, *http.Request)
 		switch r.Method {
 		case "GET":
 			if !auth.Can(
+				w,
 				r,
 				perms.Action(perms.Write, perms.Blob),
 				perms.Resource(perms.BlobStore, perms.Blob),
@@ -48,6 +49,7 @@ func (bs *BlobStoreAPI) uploadHandler() func(http.ResponseWriter, *http.Request)
 		//POST takes the uploaded file(s) and saves it to disk.
 		case "POST":
 			if !auth.Can(
+				w,
 				r,
 				perms.Action(perms.Write, perms.Blob),
 				perms.Resource(perms.BlobStore, perms.Blob),
@@ -103,6 +105,7 @@ func (bs *BlobStoreAPI) blobHandler() func(http.ResponseWriter, *http.Request) {
 		switch r.Method {
 		case "GET":
 			if !auth.Can(
+				w,
 				r,
 				perms.Action(perms.Read, perms.Blob),
 				perms.ResourceWithID(perms.BlobStore, perms.Blob, vars["hash"]),
@@ -139,6 +142,7 @@ func (bs *BlobStoreAPI) blobHandler() func(http.ResponseWriter, *http.Request) {
 			return
 		case "HEAD":
 			if !auth.Can(
+				w,
 				r,
 				perms.Action(perms.Stat, perms.Blob),
 				perms.ResourceWithID(perms.BlobStore, perms.Blob, vars["hash"]),
@@ -159,6 +163,7 @@ func (bs *BlobStoreAPI) blobHandler() func(http.ResponseWriter, *http.Request) {
 			return
 		case "POST":
 			if !auth.Can(
+				w,
 				r,
 				perms.Action(perms.Write, perms.Blob),
 				perms.ResourceWithID(perms.BlobStore, perms.Blob, vars["hash"]),
@@ -198,6 +203,7 @@ func (bs *BlobStoreAPI) enumerateHandler() func(http.ResponseWriter, *http.Reque
 		switch r.Method {
 		case "GET":
 			if !auth.Can(
+				w,
 				r,
 				perms.Action(perms.List, perms.Blob),
 				perms.Resource(perms.BlobStore, perms.Blob),

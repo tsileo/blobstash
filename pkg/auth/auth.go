@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/httputil"
@@ -66,7 +67,7 @@ func Check(req *http.Request) bool {
 	return false
 }
 
-func Can(r *http.Request, action, resource string) bool {
+func Can(w http.ResponseWriter, r *http.Request, action, resource string) bool {
 	auth, ok := gcontext.GetOk(r, authKey)
 	if !ok {
 		// If there's no auth, it's not enabled
@@ -77,6 +78,11 @@ func Can(r *http.Request, action, resource string) bool {
 	if err != nil {
 		panic(err)
 	}
+	w.Header().Set("BlobStash-Auth-ID", a.ID)
+	w.Header().Set("BlobStash-Auth-Success", strconv.FormatBool(can))
+	w.Header().Set("BlobStash-RBAC-Action", action)
+	w.Header().Set("BlobStash-RBAC-Resource", resource)
+
 	logger.Debug(fmt.Sprintf("check=%v", can), "auth", a.ID, "roles", a.sroles, "requested_action", action, "requested_resource", resource)
 	return can
 }

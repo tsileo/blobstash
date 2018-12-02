@@ -121,7 +121,7 @@ $ export BLOBS_API_HOST=https://my-blobstash-instance.com BLOBS_API_KEY=my_api_k
 $ blobstash-uploader server1 /path/to/data
 ```
 
-## Git HTTP backend
+## Git smart HTTP backend
 
 You can store Git repositories via Git smart HTTP, and all the data will be deduplicated (at the chunk level and even across FileTree trees). 
 

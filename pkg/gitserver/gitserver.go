@@ -17,12 +17,16 @@ import (
 	log "github.com/inconshreveable/log15"
 	"github.com/restic/chunker"
 	"github.com/vmihailenco/msgpack"
+	git "gopkg.in/src-d/go-git.v4"
+	gconfig "gopkg.in/src-d/go-git.v4/config"
 	"gopkg.in/src-d/go-git.v4/plumbing"
+	gindex "gopkg.in/src-d/go-git.v4/plumbing/format/index"
 	"gopkg.in/src-d/go-git.v4/plumbing/object"
 	"gopkg.in/src-d/go-git.v4/plumbing/protocol/packp"
 	"gopkg.in/src-d/go-git.v4/plumbing/storer"
 	"gopkg.in/src-d/go-git.v4/plumbing/transport"
 	"gopkg.in/src-d/go-git.v4/plumbing/transport/server"
+	gstorage "gopkg.in/src-d/go-git.v4/storage"
 
 	"a4.io/blobstash/pkg/auth"
 	"a4.io/blobstash/pkg/blob"
@@ -35,6 +39,8 @@ import (
 	"a4.io/blobstash/pkg/stash/store"
 	"a4.io/blobstash/pkg/vkv"
 )
+
+var remoteMaster = "refs/remotes/origin/master"
 
 type GitServer struct {
 	kvStore   store.KvStore
@@ -68,8 +74,9 @@ func (gs *GitServer) Close() error {
 func (gs *GitServer) Register(r *mux.Router, root *mux.Router, basicAuth func(http.Handler) http.Handler) {
 	r.Handle("/", basicAuth(http.HandlerFunc(gs.rootHandler)))
 	r.Handle("/{ns}", basicAuth(http.HandlerFunc(gs.nsHandler)))
-	r.Handle("/{ns}/{repo}.tgz", basicAuth(http.HandlerFunc(gs.gitRepoTgzHandler)))
-	r.Handle("/{ns}/{repo}.git", basicAuth(http.HandlerFunc(gs.gitRepoHandler)))
+	r.Handle("/{ns}/{repo}/_backup", basicAuth(http.HandlerFunc(gs.gitCloneOrPullHandler)))
+	r.Handle("/{ns}/{repo}/_tgz", basicAuth(http.HandlerFunc(gs.gitRepoTgzHandler)))
+	r.Handle("/{ns}/{repo}", basicAuth(http.HandlerFunc(gs.gitRepoHandler)))
 	root.Handle("/git/{ns}/{repo}.git/info/refs", basicAuth(http.HandlerFunc(gs.gitInfoRefsHandler)))
 	root.Handle("/git/{ns}/{repo}.git/{service}", basicAuth(http.HandlerFunc(gs.gitServiceHandler)))
 }
@@ -78,6 +85,8 @@ type storage struct {
 	ns, name  string
 	kvStore   store.KvStore
 	blobStore store.BlobStore
+	cloneMode bool
+	tMode     bool
 }
 
 func newStorage(ns, name string, blobStore store.BlobStore, kvStore store.KvStore) *storage {
@@ -98,21 +107,83 @@ func (s *storage) key(prefix, key string) string {
 	return fmt.Sprintf("_git:%s:%s/%s/%s", s.ns, s.name, prefix, key)
 }
 
+func (s *storage) Module(n string) (gstorage.Storer, error) {
+	return nil, nil
+}
+
+func (s *storage) SetShallow(hashes []plumbing.Hash) error {
+	panic("should never happen")
+}
+
+func (s *storage) Shallow() ([]plumbing.Hash, error) {
+	return []plumbing.Hash{}, nil
+}
+
+func (s *storage) SetIndex(idx *gindex.Index) error {
+	panic("should never happen")
+}
+
+func (s *storage) Index() (*gindex.Index, error) {
+	panic("should never happen")
+}
+
+func (s *storage) Config() (*gconfig.Config, error) {
+	fmt.Printf("Config()\n")
+	conf := gconfig.NewConfig()
+	kv, err := s.kvStore.Get(context.TODO(), s.key("c", "conf"), -1)
+	if err != nil {
+		if err == vkv.ErrNotFound {
+			return conf, nil
+		}
+		return nil, err
+	}
+	if kv != nil {
+		if err := conf.Unmarshal(kv.Data); err != nil {
+			return nil, err
+		}
+	}
+
+	fmt.Printf("Config=%+v\n", conf)
+	return conf, nil
+}
+
+func (s *storage) SetConfig(c *gconfig.Config) error {
+	fmt.Printf("SetConfig=%+v\n", c)
+	encoded, err := c.Marshal()
+	if err != nil {
+		return err
+	}
+	if _, err := s.kvStore.Put(context.TODO(), s.key("c", "conf"), "", encoded, -1); err != nil {
+		return err
+	}
+	return nil
+}
+
 // SetReference implements the storer.ReferenceStorer interface
 func (s *storage) SetReference(ref *plumbing.Reference) error {
+	fmt.Printf("SetReference(%+v)\n", ref)
 	parts := ref.Strings()
 	if _, err := s.kvStore.Put(context.TODO(), s.key("r", ref.Name().String()), "", []byte(parts[1]), -1); err != nil {
 		return err
+	}
+	// If we're updating the remote master (during a fetch)
+	if ref.Name().String() == remoteMaster {
+		// Also update the local master/HEAD
+		if _, err := s.kvStore.Put(context.TODO(), s.key("r", plumbing.Master.String()), "", []byte(parts[1]), -1); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 // CheckAndSetReference implements the storer.ReferenceStorer interface
 func (s *storage) CheckAndSetReference(new, old *plumbing.Reference) error {
+	fmt.Printf("CheckAndSetReference(%+v, %+v)\n", new, old)
 	return s.SetReference(new)
 }
 
 func (s *storage) RemoveReference(n plumbing.ReferenceName) error {
+	fmt.Printf("RemoveReference(%+v)\n", n)
 	if _, err := s.kvStore.Put(context.TODO(), s.key("r", n.String()), "", nil, -1); err != nil {
 		return err
 	}
@@ -120,8 +191,8 @@ func (s *storage) RemoveReference(n plumbing.ReferenceName) error {
 }
 
 func (s *storage) Reference(name plumbing.ReferenceName) (*plumbing.Reference, error) {
-	fmt.Printf("ref=%+v\n", name)
-	if name == plumbing.HEAD {
+	if !s.tMode && name == plumbing.HEAD {
+		fmt.Printf("return tmode hack\n")
 		return plumbing.NewSymbolicReference(
 			plumbing.HEAD,
 			plumbing.Master,
@@ -134,12 +205,13 @@ func (s *storage) Reference(name plumbing.ReferenceName) (*plumbing.Reference, e
 		}
 		return nil, err
 	}
-	if kv.Data == nil || len(kv.Data) == 0 {
+	if kv == nil && kv.Data == nil || len(kv.Data) == 0 {
 		// Check if the reference has been removed
 		return nil, plumbing.ErrReferenceNotFound
 
 	}
-	return plumbing.NewReferenceFromStrings(name.String(), string(kv.Data)), nil
+	ref := plumbing.NewReferenceFromStrings(name.String(), string(kv.Data))
+	return ref, nil
 }
 
 func (s *storage) IterReferences() (storer.ReferenceIter, error) {
@@ -261,6 +333,9 @@ func (s *storage) EncodedObject(t plumbing.ObjectType, h plumbing.Hash) (plumbin
 
 	kv, err := s.kvStore.Get(context.TODO(), key, -1)
 	if err != nil {
+		if err == vkv.ErrNotFound {
+			return nil, plumbing.ErrObjectNotFound
+		}
 		return nil, err
 	}
 	return s.objFromKv(kv)
@@ -271,6 +346,9 @@ func (s *storage) EncodedObjectSize(h plumbing.Hash) (size int64, err error) {
 
 	kv, err := s.kvStore.Get(context.TODO(), key, -1)
 	if err != nil {
+		if err == vkv.ErrNotFound {
+			return 0, plumbing.ErrObjectNotFound
+		}
 		return 0, err
 	}
 	obj, err := s.objFromKv(kv)
@@ -304,8 +382,14 @@ func (s *storage) IterEncodedObjects(t plumbing.ObjectType) (storer.EncodedObjec
 
 func (s *storage) HasEncodedObject(h plumbing.Hash) error {
 	key := s.key("o", h.String())
-	_, err := s.kvStore.Get(context.TODO(), key, -1)
-	return err
+	switch _, err := s.kvStore.Get(context.TODO(), key, -1); err {
+	case nil:
+		return nil
+	case vkv.ErrNotFound:
+		return plumbing.ErrObjectNotFound
+	default:
+		return err
+	}
 }
 
 func (gs *GitServer) getEndpoint(path string) (*transport.Endpoint, error) {
@@ -323,7 +407,6 @@ func (gs *GitServer) getEndpoint(path string) (*transport.Endpoint, error) {
 		}
 		u = fmt.Sprintf("http://%s:%s%s", hostname, p.Port(), path)
 	}
-	fmt.Printf("endpoint=%s\n", u)
 	ep, err := transport.NewEndpoint(u)
 	if err != nil {
 		return nil, err
@@ -364,6 +447,7 @@ func (gs *GitServer) rootHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !auth.Can(
+		w,
 		r,
 		perms.Action(perms.List, perms.GitNs),
 		perms.ResourceWithID(perms.GitServer, perms.GitNs, "*"),
@@ -445,6 +529,7 @@ func (gs *GitServer) nsHandler(w http.ResponseWriter, r *http.Request) {
 	ns := vars["ns"]
 
 	if !auth.Can(
+		w,
 		r,
 		perms.Action(perms.List, perms.GitNs),
 		perms.ResourceWithID(perms.GitServer, perms.GitNs, ns),
@@ -613,6 +698,7 @@ func (gs *GitServer) gitRepoTgzHandler(w http.ResponseWriter, r *http.Request) {
 	ns := vars["ns"]
 
 	if !auth.Can(
+		w,
 		r,
 		perms.Action(perms.Read, perms.GitRepo),
 		perms.ResourceWithID(perms.GitServer, perms.GitRepo, fmt.Sprintf("%s/%s", ns, vars["repo"])),
@@ -676,6 +762,7 @@ func (gs *GitServer) gitRepoHandler(w http.ResponseWriter, r *http.Request) {
 	ns := vars["ns"]
 
 	if !auth.Can(
+		w,
 		r,
 		perms.Action(perms.Read, perms.GitRepo),
 		perms.ResourceWithID(perms.GitServer, perms.GitRepo, fmt.Sprintf("%s/%s", ns, vars["repo"])),
@@ -698,13 +785,11 @@ func (gs *GitServer) gitRepoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	commits := buildCommitLogs(storage, ref.Hash())
 	summary.Commits = commits
-	fmt.Printf("SUMMARY: %+v\n", summary)
 	//reader, _ := obj.Reader()
 	//data, err := ioutil.ReadAll(reader)
 	//if err != nil {
 	//	panic(err)
 	//}
-	fmt.Printf("REF=%+v\nOBJ=%+v\n", ref, commits)
 	httputil.MarshalAndWrite(r, w, map[string]interface{}{
 		"data": summary,
 	})
@@ -720,6 +805,7 @@ func (gs *GitServer) gitInfoRefsHandler(w http.ResponseWriter, r *http.Request) 
 
 	// TODO(tsileo): support read-only
 	if !auth.Can(
+		w,
 		r,
 		perms.Action(perms.Write, perms.GitRepo),
 		perms.ResourceWithID(perms.GitServer, perms.GitRepo, fmt.Sprintf("%s/%s", vars["ns"], vars["repo"])),
@@ -771,6 +857,70 @@ func (gs *GitServer) gitInfoRefsHandler(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+type cloneReq struct {
+	URL string `json:"url"`
+}
+
+func (gs *GitServer) gitCloneOrPullHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	vars := mux.Vars(r)
+
+	// Check the perms
+	if !auth.Can(
+		w,
+		r,
+		perms.Action(perms.Write, perms.GitRepo),
+		perms.ResourceWithID(perms.GitServer, perms.GitRepo, fmt.Sprintf("%s/%s", vars["ns"], vars["repo"])),
+	) {
+		auth.Forbidden(w)
+		return
+	}
+
+	// Parse the payload (the remote URL)
+	creq := &cloneReq{}
+	if err := httputil.Unmarshal(r, creq); err != nil {
+		panic(err)
+	}
+
+	// Intialize the git backend
+	storage := newStorage(vars["ns"], vars["repo"], gs.blobStore, gs.kvStore)
+	storage.tMode = true
+	fmt.Printf("storage=%+v\n", storage)
+
+	// Try to clone the repo
+	_, err := git.Clone(storage, nil, &git.CloneOptions{
+		URL: creq.URL,
+	})
+	switch err {
+	case nil:
+		w.WriteHeader(http.StatusCreated)
+	case git.ErrRepositoryAlreadyExists:
+		// If the repo already exists, "open it"
+		repo, err := git.Open(storage, nil)
+		if err != nil {
+			panic(err)
+		}
+
+		// Try to fetch the latest change
+		switch err := repo.Fetch(&git.FetchOptions{}); err {
+		case nil:
+			fmt.Printf("fetched")
+			w.WriteHeader(http.StatusResetContent)
+		case git.NoErrAlreadyUpToDate:
+			httputil.HeaderLog(w, err.Error())
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			panic(err)
+		}
+
+	default:
+		panic(err)
+	}
+}
+
 func (gs *GitServer) gitServiceHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -788,6 +938,7 @@ func (gs *GitServer) gitServiceHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Check the perms
 	if !auth.Can(
+		w,
 		r,
 		perms.Action(perm, perms.GitRepo),
 		perms.ResourceWithID(perms.GitServer, perms.GitRepo, fmt.Sprintf("%s/%s", vars["ns"], vars["repo"])),

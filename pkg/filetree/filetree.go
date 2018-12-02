@@ -1689,6 +1689,7 @@ func (ft *FileTree) nodeSnapshotHandler() func(http.ResponseWriter, *http.Reques
 		}
 
 		if !auth.Can(
+			w,
 			r,
 			perms.Action(perms.Snapshot, perms.FS),
 			perms.ResourceWithID(perms.Filetree, perms.FS, sreq.FS),
@@ -1696,7 +1697,6 @@ func (ft *FileTree) nodeSnapshotHandler() func(http.ResponseWriter, *http.Reques
 			auth.Forbidden(w)
 			return
 		}
-
 		ctx := ctxutil.WithNamespace(r.Context(), r.Header.Get(ctxutil.NamespaceHeader))
 		vars := mux.Vars(r)
 

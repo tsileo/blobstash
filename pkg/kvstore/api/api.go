@@ -43,6 +43,7 @@ func (kv *KvStoreAPI) keysHandler() func(http.ResponseWriter, *http.Request) {
 		switch r.Method {
 		case "GET":
 			if !auth.Can(
+				w,
 				r,
 				perms.Action(perms.List, perms.KVEntry),
 				perms.Resource(perms.KvStore, perms.KVEntry),
@@ -101,6 +102,7 @@ func (kv *KvStoreAPI) versionsHandler() func(http.ResponseWriter, *http.Request)
 		//POST takes the uploaded file(s) and saves it to disk.
 		case "GET", "HEAD":
 			if !auth.Can(
+				w,
 				r,
 				perms.Action(perms.Read, perms.KVEntry),
 				perms.ResourceWithID(perms.KvStore, perms.KVEntry, key),
@@ -150,6 +152,7 @@ func (kv *KvStoreAPI) getHandler() func(http.ResponseWriter, *http.Request) {
 		switch r.Method {
 		case "GET", "HEAD":
 			if !auth.Can(
+				w,
 				r,
 				perms.Action(perms.Read, perms.KVEntry),
 				perms.ResourceWithID(perms.KvStore, perms.KVEntry, key),
@@ -184,6 +187,7 @@ func (kv *KvStoreAPI) getHandler() func(http.ResponseWriter, *http.Request) {
 			return
 		case "POST", "PUT":
 			if !auth.Can(
+				w,
 				r,
 				perms.Action(perms.Write, perms.KVEntry),
 				perms.ResourceWithID(perms.KvStore, perms.KVEntry, key),

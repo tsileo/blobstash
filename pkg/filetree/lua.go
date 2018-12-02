@@ -68,6 +68,7 @@ func (ft *FileTree) nodeSearchHandler() func(http.ResponseWriter, *http.Request)
 		hash := vars["ref"]
 
 		if !auth.Can(
+			w,
 			r,
 			perms.Action(perms.Search, perms.Node),
 			perms.ResourceWithID(perms.Filetree, perms.Node, hash),
