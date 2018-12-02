@@ -22,13 +22,13 @@ const (
 	msgpackMimeType = "application/msgpack"
 )
 
-// FIXME(tsileo): a EncodeAndWrite  for []byte that support plain-text, snappy or lz4?
-
 func WithStatusCode(status int) func(http.ResponseWriter) {
 	return func(w http.ResponseWriter) {
 		w.WriteHeader(status)
 	}
 }
+
+// FIXME(tsileo): a EncodeAndWrite  for []byte that support plain-text, snappy or lz4?
 
 func Unmarshal(req *http.Request, out interface{}) error {
 	requestFormat := jsonMimeType

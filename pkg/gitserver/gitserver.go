@@ -87,6 +87,8 @@ type storage struct {
 	blobStore store.BlobStore
 	cloneMode bool
 	tMode     bool
+	chunker   *chunker.Chunker
+	buf       []byte
 }
 
 func newStorage(ns, name string, blobStore store.BlobStore, kvStore store.KvStore) *storage {
@@ -95,6 +97,8 @@ func newStorage(ns, name string, blobStore store.BlobStore, kvStore store.KvStor
 		name:      name,
 		kvStore:   kvStore,
 		blobStore: blobStore,
+		chunker:   chunker.New(bytes.NewReader(nil), writer.Pol),
+		buf:       make([]byte, 8*1024*1024),
 	}
 }
 
@@ -103,8 +107,14 @@ func (s *storage) Load(ep *transport.Endpoint) (storer.Storer, error) {
 	return s, nil
 }
 
+func rewriteKey(key string) string {
+	return strings.Replace(key, "~", "/", -1)
+}
+
 func (s *storage) key(prefix, key string) string {
-	return fmt.Sprintf("_git:%s:%s/%s/%s", s.ns, s.name, prefix, key)
+	// `/` is an illegal character for a key in the kvstore, and `~` is an illegal character for git branches
+	key = strings.Replace(key, "/", "~", -1)
+	return fmt.Sprintf("_git:%s:%s!%s!%s", s.ns, s.name, prefix, key)
 }
 
 func (s *storage) Module(n string) (gstorage.Storer, error) {
@@ -128,7 +138,6 @@ func (s *storage) Index() (*gindex.Index, error) {
 }
 
 func (s *storage) Config() (*gconfig.Config, error) {
-	fmt.Printf("Config()\n")
 	conf := gconfig.NewConfig()
 	kv, err := s.kvStore.Get(context.TODO(), s.key("c", "conf"), -1)
 	if err != nil {
@@ -143,12 +152,10 @@ func (s *storage) Config() (*gconfig.Config, error) {
 		}
 	}
 
-	fmt.Printf("Config=%+v\n", conf)
 	return conf, nil
 }
 
 func (s *storage) SetConfig(c *gconfig.Config) error {
-	fmt.Printf("SetConfig=%+v\n", c)
 	encoded, err := c.Marshal()
 	if err != nil {
 		return err
@@ -161,7 +168,6 @@ func (s *storage) SetConfig(c *gconfig.Config) error {
 
 // SetReference implements the storer.ReferenceStorer interface
 func (s *storage) SetReference(ref *plumbing.Reference) error {
-	fmt.Printf("SetReference(%+v)\n", ref)
 	parts := ref.Strings()
 	if _, err := s.kvStore.Put(context.TODO(), s.key("r", ref.Name().String()), "", []byte(parts[1]), -1); err != nil {
 		return err
@@ -178,12 +184,10 @@ func (s *storage) SetReference(ref *plumbing.Reference) error {
 
 // CheckAndSetReference implements the storer.ReferenceStorer interface
 func (s *storage) CheckAndSetReference(new, old *plumbing.Reference) error {
-	fmt.Printf("CheckAndSetReference(%+v, %+v)\n", new, old)
 	return s.SetReference(new)
 }
 
 func (s *storage) RemoveReference(n plumbing.ReferenceName) error {
-	fmt.Printf("RemoveReference(%+v)\n", n)
 	if _, err := s.kvStore.Put(context.TODO(), s.key("r", n.String()), "", nil, -1); err != nil {
 		return err
 	}
@@ -192,7 +196,6 @@ func (s *storage) RemoveReference(n plumbing.ReferenceName) error {
 
 func (s *storage) Reference(name plumbing.ReferenceName) (*plumbing.Reference, error) {
 	if !s.tMode && name == plumbing.HEAD {
-		fmt.Printf("return tmode hack\n")
 		return plumbing.NewSymbolicReference(
 			plumbing.HEAD,
 			plumbing.Master,
@@ -222,7 +225,7 @@ func (s *storage) IterReferences() (storer.ReferenceIter, error) {
 		return nil, err
 	}
 	for _, kv := range rawRefs {
-		refs = append(refs, plumbing.NewReferenceFromStrings(strings.Replace(kv.Key, s.key("r", ""), "", 1), string(kv.Data)))
+		refs = append(refs, plumbing.NewReferenceFromStrings(rewriteKey(strings.Replace(kv.Key, s.key("r", ""), "", 1)), string(kv.Data)))
 	}
 
 	return storer.NewReferenceSliceIter(refs), nil
@@ -265,10 +268,10 @@ func (s *storage) SetEncodedObject(obj plumbing.EncodedObject) (plumbing.Hash, e
 		// reuse this buffer
 		refs := [][32]byte{}
 		if obj.Size() > 512*1024 {
-			buf := make([]byte, 8*1024*1024)
-			chunkSplitter := chunker.New(bytes.NewReader(content), writer.Pol)
+			s.chunker.Reset(bytes.NewReader(content), writer.Pol)
+			chunkSplitter := s.chunker
 			for {
-				chunk, err := chunkSplitter.Next(buf)
+				chunk, err := chunkSplitter.Next(s.buf)
 				if err == io.EOF {
 					break
 				}
@@ -488,7 +491,7 @@ func (gs *GitServer) Namespaces() ([]string, error) {
 		if len(keys) == 0 || !strings.HasPrefix(keys[0].Key, prefix) {
 			break
 		}
-		dat := strings.Split(strings.Split(keys[0].Key, "/")[0], ":")
+		dat := strings.Split(strings.Split(keys[0].Key, "!")[0], ":")
 		namespaces = append(namespaces, dat[1])
 		prefix = vkv.NextKey(fmt.Sprintf("_git:%s:", dat[1]))
 	}
@@ -500,19 +503,20 @@ func (gs *GitServer) Repositories(ns string) ([]string, error) {
 	repos := []string{}
 	// We cannot afford to index the repository (will waste space to keep a separate
 	// kv collection) and having a temp index is complicated
+	basePrefix := fmt.Sprintf("_git:%s:", ns)
 	prefix := fmt.Sprintf("_git:%s:", ns)
 	for {
 		keys, _, err := gs.kvStore.Keys(context.TODO(), prefix, "\xff", 1)
 		if err != nil {
 			return nil, err
 		}
-		if len(keys) == 0 || !strings.HasPrefix(keys[0].Key, prefix) {
+		if len(keys) == 0 || !strings.HasPrefix(keys[0].Key, basePrefix) {
 			break
 		}
-		repo := strings.Split(keys[0].Key, "/")[0]
-		repo = repo[len(prefix):]
+		repo := strings.Split(keys[0].Key, "!")[0]
+		repo = repo[len(basePrefix):]
 		repos = append(repos, repo)
-		prefix = vkv.NextKey(prefix)
+		prefix = vkv.NextKey(fmt.Sprintf("_git:%s:%s", ns, repo))
 	}
 	return repos, nil
 }
@@ -888,7 +892,6 @@ func (gs *GitServer) gitCloneOrPullHandler(w http.ResponseWriter, r *http.Reques
 	// Intialize the git backend
 	storage := newStorage(vars["ns"], vars["repo"], gs.blobStore, gs.kvStore)
 	storage.tMode = true
-	fmt.Printf("storage=%+v\n", storage)
 
 	// Try to clone the repo
 	_, err := git.Clone(storage, nil, &git.CloneOptions{
@@ -896,6 +899,7 @@ func (gs *GitServer) gitCloneOrPullHandler(w http.ResponseWriter, r *http.Reques
 	})
 	switch err {
 	case nil:
+		httputil.HeaderLog(w, "clone succeeded")
 		w.WriteHeader(http.StatusCreated)
 	case git.ErrRepositoryAlreadyExists:
 		// If the repo already exists, "open it"
@@ -907,7 +911,7 @@ func (gs *GitServer) gitCloneOrPullHandler(w http.ResponseWriter, r *http.Reques
 		// Try to fetch the latest change
 		switch err := repo.Fetch(&git.FetchOptions{}); err {
 		case nil:
-			fmt.Printf("fetched")
+			httputil.HeaderLog(w, "fetch succeeded")
 			w.WriteHeader(http.StatusResetContent)
 		case git.NoErrAlreadyUpToDate:
 			httputil.HeaderLog(w, err.Error())

@@ -2,9 +2,11 @@ package kvstore // import "a4.io/blobstash/pkg/kvstore"
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	log "github.com/inconshreveable/log15"
@@ -15,6 +17,8 @@ import (
 )
 
 const KvType = "kv"
+
+var ErrInvalidKey = errors.New("/ is a forbidden character for keys")
 
 // FIXME(tsileo): take a ctx as first arg for each method
 
@@ -87,7 +91,6 @@ func (kv *KvStore) Get(ctx context.Context, key string, version int64) (*vkv.Key
 func (kv *KvStore) Keys(ctx context.Context, start, end string, limit int) ([]*vkv.KeyValue, string, error) {
 	kv.log.Info("OP Keys", "start", "", "end", end)
 	kvs, cursor, err := kv.vkv.Keys(start, end, limit)
-	kv.log.Info(fmt.Sprintf("keys=%q", kvs))
 	return kvs, cursor, err
 }
 
@@ -117,6 +120,9 @@ func (kv *KvStore) ReverseKeys(ctx context.Context, start, end string, limit int
 }
 
 func (kv *KvStore) Put(ctx context.Context, key, ref string, data []byte, version int64) (*vkv.KeyValue, error) {
+	if strings.Contains(key, "/") {
+		return nil, ErrInvalidKey
+	}
 	// _, fromHttp := ctxutil.Request(ctx)
 	// kv.log.Info("OP Put", "from_http", fromHttp, "key", key, "value", value, "version", version)
 	res := &vkv.KeyValue{

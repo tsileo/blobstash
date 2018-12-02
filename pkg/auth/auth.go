@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/httputil"
@@ -79,9 +78,8 @@ func Can(w http.ResponseWriter, r *http.Request, action, resource string) bool {
 		panic(err)
 	}
 	w.Header().Set("BlobStash-Auth-ID", a.ID)
-	w.Header().Set("BlobStash-Auth-Success", strconv.FormatBool(can))
-	w.Header().Set("BlobStash-RBAC-Action", action)
-	w.Header().Set("BlobStash-RBAC-Resource", resource)
+	w.Header().Add("BlobStash-RBAC-Action", action)
+	w.Header().Add("BlobStash-RBAC-Resource", resource)
 
 	logger.Debug(fmt.Sprintf("check=%v", can), "auth", a.ID, "roles", a.sroles, "requested_action", action, "requested_resource", resource)
 	return can
