@@ -68,6 +68,8 @@ func newRequest(L *lua.LState, r *http.Request) (*lua.LUserData, error) {
 		"args":        requestArgs,
 		"form":        requestForm,
 		"method":      requestMethod,
+		"scheme":      requestScheme,
+		"host":        requestHost,
 		// TODO(tsileo): implements `files` (return a table like Flask) and `basic_auth`
 		// "files": requestFiles,
 	}))
@@ -119,6 +121,28 @@ func requestMethod(L *lua.LState) int {
 		return 1
 	}
 	L.Push(lua.LString(request.request.Method))
+	return 1
+}
+
+func requestScheme(L *lua.LState) int {
+	request := checkRequest(L)
+	if request == nil {
+		return 1
+	}
+	scheme := "http"
+	if request.request.TLS != nil {
+		scheme = "https"
+	}
+	L.Push(lua.LString(scheme))
+	return 1
+}
+
+func requestHost(L *lua.LState) int {
+	request := checkRequest(L)
+	if request == nil {
+		return 1
+	}
+	L.Push(lua.LString(request.request.Host))
 	return 1
 }
 
