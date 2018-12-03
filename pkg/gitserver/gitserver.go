@@ -807,18 +807,26 @@ func (gs *GitServer) gitInfoRefsHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	vars := mux.Vars(r)
 
-	// TODO(tsileo): support read-only
+	service := r.URL.Query().Get("service")
+
+	// Compute the permission for the RBAC (default to Write)
+	perm := perms.Write
+	if service == "git-upload-pack" {
+		// If it's a `git clone`, set the permission to Read
+		perm = perms.Read
+	}
+
+	// Check the perms
 	if !auth.Can(
 		w,
 		r,
-		perms.Action(perms.Write, perms.GitRepo),
+		perms.Action(perm, perms.GitRepo),
 		perms.ResourceWithID(perms.GitServer, perms.GitRepo, fmt.Sprintf("%s/%s", vars["ns"], vars["repo"])),
 	) {
 		auth.Forbidden(w)
 		return
 	}
 
-	service := r.URL.Query().Get("service")
 	var refs *packp.AdvRefs
 
 	// Here, repositories are created on the fly, we don't need to check if it actually exists before

@@ -31,17 +31,35 @@ func ExpvarsMiddleware(m *expvar.Map) func(next http.Handler) http.Handler {
 	}
 }
 
+func newCustomResponseWriter(w http.ResponseWriter) *crw {
+	return &crw{
+		reqID:          newReqID(),
+		ResponseWriter: w,
+		statusCode:     200,
+		written:        false,
+		start:          time.Now(),
+	}
+}
+
 // tiny http.ResponseWriter for deferring the WriteHeader call once the debug headers has been added
 type crw struct {
 	http.ResponseWriter
+	reqID      string
 	statusCode int
 	written    bool
+	start      time.Time
+}
+
+func (rw *crw) writeHeaderIfNeeded() {
+	if !rw.written {
+		rw.written = true
+		rw.ResponseWriter.WriteHeader(rw.statusCode)
+	}
 }
 
 // Write overrides the default Write to write and track the response status code
 func (rw *crw) Write(data []byte) (int, error) {
-	rw.written = true
-	rw.WriteHeader(rw.statusCode)
+	rw.writeHeaderIfNeeded()
 	return rw.ResponseWriter.Write(data)
 }
 
@@ -50,27 +68,34 @@ func (rw *crw) WriteHeader(status int) {
 	rw.statusCode = status
 }
 
+func (rw *crw) ReqID() string {
+	return rw.reqID
+}
+
+func (rw *crw) RespTime() time.Duration {
+	return time.Since(rw.start)
+}
+
 // HeaderLog append a debug message that will be outputted in the `BlobStash-Debug` header
 func HeaderLog(w http.ResponseWriter, msg string) {
-	w.Header().Add("BlobStash-Debug", msg)
+	w.Header().Add("Blobstash-Debug", msg)
 }
 
 // LoggerMiddleware logs HTTP requests and adds some debug headers
 func LoggerMiddleware(logger log.Logger) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			reqID := newReqID()
-			start := time.Now()
-			rw := &crw{w, 200, false}
+			rw := newCustomResponseWriter(w)
+
 			next.ServeHTTP(rw, r)
-			resp_time := time.Since(start)
-			w.Header().Set("BlobStash-Resp-Time", resp_time.String())
-			w.Header().Set("BlobStash-Req-ID", reqID)
-			if !rw.written {
-				w.WriteHeader(rw.statusCode)
-			}
+
+			resp_time := rw.RespTime()
+			w.Header().Set("Blobstash-Resp-Time", resp_time.String())
+			w.Header().Set("Blobstash-Req-ID", rw.reqID)
+			// Write the status code if needed
+			rw.writeHeaderIfNeeded()
 			log.Info(r.URL.String(), "method", r.Method, "status_code", rw.statusCode, "len", r.ContentLength, "proto", r.Proto,
-				"resp_time", time.Since(start), "ip", GetIpAddress(r), "req_id", reqID)
+				"resp_time", resp_time, "ip", GetIpAddress(r), "req_id", rw.reqID)
 		})
 	}
 }
