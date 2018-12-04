@@ -74,6 +74,7 @@ func (gs *GitServer) Close() error {
 func (gs *GitServer) Register(r *mux.Router, root *mux.Router, basicAuth func(http.Handler) http.Handler) {
 	r.Handle("/", basicAuth(http.HandlerFunc(gs.rootHandler)))
 	r.Handle("/{ns}", basicAuth(http.HandlerFunc(gs.nsHandler)))
+	r.Handle("/{ns}/{repo}/config", basicAuth(http.HandlerFunc(gs.gitRepoConfigHandler)))
 	r.Handle("/{ns}/{repo}/_backup", basicAuth(http.HandlerFunc(gs.gitCloneOrPullHandler)))
 	r.Handle("/{ns}/{repo}/_tgz", basicAuth(http.HandlerFunc(gs.gitRepoTgzHandler)))
 	r.Handle("/{ns}/{repo}", basicAuth(http.HandlerFunc(gs.gitRepoHandler)))
@@ -656,6 +657,58 @@ func (gs *GitServer) RepoRefs(ns, repo string) (*GitRepoRefs, error) {
 	return summary, nil
 }
 
+type gitServerBranch struct {
+	Name   string `json:"name"`
+	Remote string `json:"remote"`
+	Merge  string `json:"merge"`
+}
+
+type gitServerRemote struct {
+	Name  string   `json:"name"`
+	URLs  []string `json:"urls"`
+	Fetch []string `json:"fetch"`
+}
+
+type gitServerConfig struct {
+	Branches map[string]*gitServerBranch `json:"branches"`
+	Remotes  map[string]*gitServerRemote `json:"remotes"`
+}
+
+func (gs *GitServer) Config(ns, repo string) (*gitServerConfig, error) {
+	storage := newStorage(ns, repo, gs.blobStore, gs.kvStore)
+	conf, err := storage.Config()
+	if err != nil {
+		return nil, err
+	}
+
+	rconf := &gitServerConfig{
+		Branches: map[string]*gitServerBranch{},
+		Remotes:  map[string]*gitServerRemote{},
+	}
+	// TODO(tsileo): submodule support?
+
+	for name, gbranch := range conf.Branches {
+		rconf.Branches[name] = &gitServerBranch{
+			Name:   name,
+			Remote: gbranch.Remote,
+			Merge:  gbranch.Merge.String(),
+		}
+	}
+	for name, gremote := range conf.Remotes {
+		fetch := []string{}
+		for _, k := range gremote.Fetch {
+			fetch = append(fetch, k.String())
+		}
+		rconf.Remotes[name] = &gitServerRemote{
+			Name:  name,
+			URLs:  gremote.URLs,
+			Fetch: fetch,
+		}
+	}
+
+	return rconf, nil
+}
+
 func (gs *GitServer) RepoSummary(ns, repo string) (*GitRepoSummary, error) {
 	summary := &GitRepoSummary{}
 
@@ -756,6 +809,44 @@ func (gs *GitServer) gitRepoTgzHandler(w http.ResponseWriter, r *http.Request) {
 	gzipWriter.Close()
 }
 
+func (gs *GitServer) gitRepoConfigHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	vars := mux.Vars(r)
+
+	ns := vars["ns"]
+
+	if !auth.Can(
+		w,
+		r,
+		perms.Action(perms.Read, perms.GitRepo),
+		perms.ResourceWithID(perms.GitServer, perms.GitRepo, fmt.Sprintf("%s/%s", ns, vars["repo"])),
+	) {
+		auth.Forbidden(w)
+		return
+	}
+
+	conf, err := gs.Config(vars["ns"], vars["repo"])
+	switch err {
+	case nil:
+	case plumbing.ErrReferenceNotFound:
+		w.WriteHeader(http.StatusNotFound)
+		return
+	default:
+		panic(err)
+	}
+	httputil.MarshalAndWrite(r, w, map[string]interface{}{
+		"data": map[string]interface{}{
+			"ns":         ns,
+			"repository": vars["repo"],
+			"config":     conf,
+		},
+	})
+
+}
+
 func (gs *GitServer) gitRepoHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -795,7 +886,11 @@ func (gs *GitServer) gitRepoHandler(w http.ResponseWriter, r *http.Request) {
 	//	panic(err)
 	//}
 	httputil.MarshalAndWrite(r, w, map[string]interface{}{
-		"data": summary,
+		"data": map[string]interface{}{
+			"ns":         ns,
+			"repository": vars["repo"],
+			// "commits":    commits,
+		},
 	})
 
 }
@@ -901,6 +996,8 @@ func (gs *GitServer) gitCloneOrPullHandler(w http.ResponseWriter, r *http.Reques
 	storage := newStorage(vars["ns"], vars["repo"], gs.blobStore, gs.kvStore)
 	storage.tMode = true
 
+	httputil.HeaderLog(w, "git clone")
+
 	// Try to clone the repo
 	_, err := git.Clone(storage, nil, &git.CloneOptions{
 		URL: creq.URL,
@@ -910,6 +1007,8 @@ func (gs *GitServer) gitCloneOrPullHandler(w http.ResponseWriter, r *http.Reques
 		httputil.HeaderLog(w, "clone succeeded")
 		w.WriteHeader(http.StatusCreated)
 	case git.ErrRepositoryAlreadyExists:
+		httputil.HeaderLog(w, "git fetch")
+
 		// If the repo already exists, "open it"
 		repo, err := git.Open(storage, nil)
 		if err != nil {
