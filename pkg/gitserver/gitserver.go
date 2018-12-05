@@ -12,11 +12,13 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
 	"github.com/restic/chunker"
 	"github.com/vmihailenco/msgpack"
+	enry "gopkg.in/src-d/enry.v1"
 	git "gopkg.in/src-d/go-git.v4"
 	gconfig "gopkg.in/src-d/go-git.v4/config"
 	"gopkg.in/src-d/go-git.v4/plumbing"
@@ -657,6 +659,21 @@ func (gs *GitServer) RepoRefs(ns, repo string) (*GitRepoRefs, error) {
 	return summary, nil
 }
 
+type gitServerCommit struct {
+	Hash      string                 `json:"hash"`
+	Tree      string                 `json:"tree"`
+	Author    *gitServerCommitAuthor `json:"author"`
+	Committer *gitServerCommitAuthor `json:"comitter"`
+	Message   string                 `json:"message"`
+	Parents   []string               `json:"parents"`
+}
+
+type gitServerCommitAuthor struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	Date  string `json:"date"`
+}
+
 type gitServerBranch struct {
 	Name   string `json:"name"`
 	Remote string `json:"remote"`
@@ -674,8 +691,7 @@ type gitServerConfig struct {
 	Remotes  map[string]*gitServerRemote `json:"remotes"`
 }
 
-func (gs *GitServer) Config(ns, repo string) (*gitServerConfig, error) {
-	storage := newStorage(ns, repo, gs.blobStore, gs.kvStore)
+func (gs *GitServer) Config(storage *storage) (*gitServerConfig, error) {
 	conf, err := storage.Config()
 	if err != nil {
 		return nil, err
@@ -707,6 +723,31 @@ func (gs *GitServer) Config(ns, repo string) (*gitServerConfig, error) {
 	}
 
 	return rconf, nil
+}
+
+func (gs *GitServer) README(commit *object.Commit) (string, error) {
+	tree, err := commit.Tree()
+	if err != nil {
+		return "", err
+	}
+	for _, treeEntry := range tree.Entries {
+		fmt.Printf("treeEntry: %+v\n", treeEntry)
+		if strings.HasSuffix(treeEntry.Name, "README.md") ||
+			strings.HasSuffix(treeEntry.Name, "README.rst") ||
+			strings.HasSuffix(treeEntry.Name, "README.txt") ||
+			strings.HasSuffix(treeEntry.Name, "README") {
+			f, err := tree.File(treeEntry.Name)
+			if err != nil {
+				return "", err
+			}
+			content, err := f.Contents()
+			if err != nil {
+				return "", err
+			}
+			return content, nil
+		}
+	}
+	return "", nil
 }
 
 func (gs *GitServer) RepoSummary(ns, repo string) (*GitRepoSummary, error) {
@@ -803,6 +844,7 @@ func (gs *GitServer) gitRepoTgzHandler(w http.ResponseWriter, r *http.Request) {
 	}); err != nil {
 		panic(err)
 	}
+	fiter.Close()
 
 	// "seal" the tarfile
 	tarWriter.Close()
@@ -828,7 +870,8 @@ func (gs *GitServer) gitRepoConfigHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	conf, err := gs.Config(vars["ns"], vars["repo"])
+	storage := newStorage(ns, vars["repo"], gs.blobStore, gs.kvStore)
+	conf, err := gs.Config(storage)
 	switch err {
 	case nil:
 	case plumbing.ErrReferenceNotFound:
@@ -866,8 +909,6 @@ func (gs *GitServer) gitRepoHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	summary := &GitRepoSummary{}
-
 	storage := newStorage(vars["ns"], vars["repo"], gs.blobStore, gs.kvStore)
 	ref, err := storage.Reference(plumbing.Master)
 	switch err {
@@ -878,21 +919,90 @@ func (gs *GitServer) gitRepoHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		panic(err)
 	}
-	commits := buildCommitLogs(storage, ref.Hash())
-	summary.Commits = commits
-	//reader, _ := obj.Reader()
-	//data, err := ioutil.ReadAll(reader)
-	//if err != nil {
-	//	panic(err)
-	//}
+
+	commit, err := object.GetCommit(storage, ref.Hash())
+	if err != nil {
+		panic(err)
+	}
+
+	// Fetch the README
+	readme, err := gs.README(commit)
+	if err != nil {
+		panic(err)
+	}
+
+	tree, err := commit.Tree()
+	if err != nil {
+		panic(err)
+	}
+
+	// Compute the language breakdown
+	fiter := tree.Files()
+	out := map[string]int{}
+	total := 0
+	if err := fiter.ForEach(func(o *object.File) error {
+		// Skip any "vendor" dir
+		for _, pathPart := range strings.Split(o.Name, "/") {
+			// enry expect `path/`
+			tpart := pathPart + "/"
+			if enry.IsVendor(tpart) {
+				return nil
+			}
+		}
+		lang, safe := enry.GetLanguageByExtension(o.Name)
+		if !safe {
+			return nil
+		}
+		total += 1
+		if _, ok := out[lang]; ok {
+			out[lang] += 1
+		} else {
+			out[lang] = 1
+		}
+		return nil
+	}); err != nil {
+		panic(err)
+	}
+	fiter.Close()
+
+	for l, cnt := range out {
+		out[l] = int(float64(cnt*100) / float64(total))
+	}
+
+	// Fetch the commits
+	commits := []*gitServerCommit{}
+	for _, rawCommit := range buildCommitLogs(storage, ref.Hash()) {
+		parents := []string{}
+		for _, p := range rawCommit.ParentHashes {
+			parents = append(parents, p.String())
+		}
+		commits = append(commits, &gitServerCommit{
+			Tree:    rawCommit.TreeHash.String(),
+			Hash:    rawCommit.Hash.String(),
+			Message: rawCommit.Message,
+			Parents: parents,
+			Author: &gitServerCommitAuthor{
+				Name:  rawCommit.Author.Name,
+				Email: rawCommit.Author.Email,
+				Date:  rawCommit.Author.When.Format(time.RFC3339),
+			},
+			Committer: &gitServerCommitAuthor{
+				Name:  rawCommit.Committer.Name,
+				Email: rawCommit.Committer.Email,
+				Date:  rawCommit.Committer.When.Format(time.RFC3339),
+			},
+		})
+	}
+
 	httputil.MarshalAndWrite(r, w, map[string]interface{}{
 		"data": map[string]interface{}{
 			"ns":         ns,
 			"repository": vars["repo"],
-			// "commits":    commits,
+			"README":     readme,
+			"languages":  out,
+			"commits":    commits,
 		},
 	})
-
 }
 
 func (gs *GitServer) gitInfoRefsHandler(w http.ResponseWriter, r *http.Request) {

@@ -69,8 +69,8 @@
     "service/s3",
     "service/sts"
   ]
-  revision = "ceab7b7ac6f535d1397f124620720b5145f1ad59"
-  version = "v1.15.88"
+  revision = "ddc06f9fad886ea5daa5f828f3ca094084f8c2a7"
+  version = "v1.15.90"
 
 [[projects]]
   name = "github.com/beevik/etree"
@@ -332,6 +332,12 @@
   revision = "4fdf99ab29366514c69ccccddab5dc58b8d84062"
 
 [[projects]]
+  name = "github.com/moovweb/rubex"
+  packages = ["."]
+  revision = "cb849acea6148000db8a55743f71476b0897ea41"
+  version = "6.3.107"
+
+[[projects]]
   branch = "master"
   name = "github.com/nfnt/resize"
   packages = ["."]
@@ -447,6 +453,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/toqueteos/trie"
+  packages = ["."]
+  revision = "56fed4a05683322f125e2d78ee269bb102280392"
+
+[[projects]]
+  branch = "master"
   name = "github.com/unrolled/secure"
   packages = ["."]
   revision = "4b6b7cf5160646fc0e8422d782fcf6bd4cbcaddf"
@@ -540,7 +552,7 @@
     "unix",
     "windows"
   ]
-  revision = "4ed8d59d0b35e1e29334a206d1b3f38b1e5dfb31"
+  revision = "a5c9d58dba9a56f97aaa86f55e638b718c5a6c42"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -576,6 +588,17 @@
   packages = ["."]
   revision = "67afb5ed74ec82fd7ac8f49d27c509ac6f991970"
   version = "v2.14"
+
+[[projects]]
+  name = "gopkg.in/src-d/enry.v1"
+  packages = [
+    ".",
+    "data",
+    "internal/tokenizer",
+    "regex"
+  ]
+  revision = "8953e0e19a9a08c69113f672fbd89f6082b379d5"
+  version = "v1.6.7"
 
 [[projects]]
   name = "gopkg.in/src-d/go-billy.v4"
@@ -637,6 +660,12 @@
   version = "v4.8.1"
 
 [[projects]]
+  name = "gopkg.in/toqueteos/substring.v1"
+  packages = ["."]
+  revision = "c5f61671513240ddf5563635cc4a90e9f3ae4710"
+  version = "v1.0.2"
+
+[[projects]]
   name = "gopkg.in/warnings.v0"
   packages = ["."]
   revision = "ec4a0fea49c7b46c2aeb0b51aac55779c607e52b"
@@ -651,6 +680,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "8fc2b48312db565593102889c88cddf5fa8c0deb287bc71f55c3cc4a3ae895b1"
+  inputs-digest = "ef7bb93c69b653c15c9eba9c3bc1408e90b1d184dceed628aab7145d26acc539"
   solver-name = "gps-cdcl"
   solver-version = 1
