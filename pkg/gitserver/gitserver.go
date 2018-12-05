@@ -422,22 +422,26 @@ func (gs *GitServer) getEndpoint(path string) (*transport.Endpoint, error) {
 
 type LogBuilder struct {
 	commits []*object.Commit
+	max     int
 }
 
 func (b *LogBuilder) process(c *object.Commit) error {
 	b.commits = append(b.commits, c)
+	if b.max > 0 && len(b.commits) == b.max {
+		return nil
+	}
 	parents := c.Parents()
 	defer parents.Close()
 	return parents.ForEach(b.process)
 }
 
-func buildCommitLogs(s *storage, h plumbing.Hash) []*object.Commit {
+func buildCommitLogs(s *storage, h plumbing.Hash, max int) []*object.Commit {
 	commit, err := object.GetCommit(s, h)
 	//obj, err := storage.EncodedObject(plumbing.CommitObject, ref.Hash())
 	if err != nil {
 		panic(err)
 	}
-	lb := &LogBuilder{[]*object.Commit{commit}}
+	lb := &LogBuilder{[]*object.Commit{commit}, max}
 	parents := commit.Parents()
 	defer parents.Close()
 	if err := parents.ForEach(lb.process); err != nil {
@@ -616,7 +620,7 @@ func (gs *GitServer) RepoLog(ns, repo string) ([]*object.Commit, error) {
 	if err != nil {
 		return nil, err
 	}
-	commits := buildCommitLogs(storage, ref.Hash())
+	commits := buildCommitLogs(storage, ref.Hash(), 0)
 	return commits, nil
 }
 
@@ -780,7 +784,7 @@ func (gs *GitServer) RepoSummary(ns, repo string) (*GitRepoSummary, error) {
 		}
 	}
 
-	commits := buildCommitLogs(storage, ref.Hash())
+	commits := buildCommitLogs(storage, ref.Hash(), 3)
 	summary.CommitsCount = len(commits)
 	summary.Commits = commits[0:3]
 	return summary, nil
@@ -971,7 +975,7 @@ func (gs *GitServer) gitRepoHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch the commits
 	commits := []*gitServerCommit{}
-	for _, rawCommit := range buildCommitLogs(storage, ref.Hash()) {
+	for _, rawCommit := range buildCommitLogs(storage, ref.Hash(), 10) {
 		parents := []string{}
 		for _, p := range rawCommit.ParentHashes {
 			parents = append(parents, p.String())
