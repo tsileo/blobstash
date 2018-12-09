@@ -1915,6 +1915,9 @@ func (s *BatchSuspendUserInput) Validate() error {
 	if s.AccountId == nil {
 		invalidParams.Add(request.NewErrParamRequired("AccountId"))
 	}
+	if s.AccountId != nil && len(*s.AccountId) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("AccountId", 1))
+	}
 	if s.UserIdList == nil {
 		invalidParams.Add(request.NewErrParamRequired("UserIdList"))
 	}
@@ -1992,6 +1995,9 @@ func (s *BatchUnsuspendUserInput) Validate() error {
 	if s.AccountId == nil {
 		invalidParams.Add(request.NewErrParamRequired("AccountId"))
 	}
+	if s.AccountId != nil && len(*s.AccountId) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("AccountId", 1))
+	}
 	if s.UserIdList == nil {
 		invalidParams.Add(request.NewErrParamRequired("UserIdList"))
 	}
@@ -2068,6 +2074,9 @@ func (s *BatchUpdateUserInput) Validate() error {
 	invalidParams := request.ErrInvalidParams{Context: "BatchUpdateUserInput"}
 	if s.AccountId == nil {
 		invalidParams.Add(request.NewErrParamRequired("AccountId"))
+	}
+	if s.AccountId != nil && len(*s.AccountId) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("AccountId", 1))
 	}
 	if s.UpdateUserRequestItems == nil {
 		invalidParams.Add(request.NewErrParamRequired("UpdateUserRequestItems"))
@@ -2215,6 +2224,9 @@ func (s *DeleteAccountInput) Validate() error {
 	if s.AccountId == nil {
 		invalidParams.Add(request.NewErrParamRequired("AccountId"))
 	}
+	if s.AccountId != nil && len(*s.AccountId) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("AccountId", 1))
+	}
 
 	if invalidParams.Len() > 0 {
 		return invalidParams
@@ -2266,6 +2278,9 @@ func (s *GetAccountInput) Validate() error {
 	invalidParams := request.ErrInvalidParams{Context: "GetAccountInput"}
 	if s.AccountId == nil {
 		invalidParams.Add(request.NewErrParamRequired("AccountId"))
+	}
+	if s.AccountId != nil && len(*s.AccountId) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("AccountId", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -2327,6 +2342,9 @@ func (s *GetAccountSettingsInput) Validate() error {
 	invalidParams := request.ErrInvalidParams{Context: "GetAccountSettingsInput"}
 	if s.AccountId == nil {
 		invalidParams.Add(request.NewErrParamRequired("AccountId"))
+	}
+	if s.AccountId != nil && len(*s.AccountId) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("AccountId", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -2394,8 +2412,14 @@ func (s *GetUserInput) Validate() error {
 	if s.AccountId == nil {
 		invalidParams.Add(request.NewErrParamRequired("AccountId"))
 	}
+	if s.AccountId != nil && len(*s.AccountId) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("AccountId", 1))
+	}
 	if s.UserId == nil {
 		invalidParams.Add(request.NewErrParamRequired("UserId"))
+	}
+	if s.UserId != nil && len(*s.UserId) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("UserId", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -2445,7 +2469,7 @@ type Invite struct {
 	_ struct{} `type:"structure"`
 
 	// The email address to which the invite is sent.
-	EmailAddress *string `type:"string"`
+	EmailAddress *string `type:"string" sensitive:"true"`
 
 	// The status of the invite email.
 	EmailStatus *string `type:"string" enum:"EmailStatus"`
@@ -2521,6 +2545,9 @@ func (s *InviteUsersInput) Validate() error {
 	if s.AccountId == nil {
 		invalidParams.Add(request.NewErrParamRequired("AccountId"))
 	}
+	if s.AccountId != nil && len(*s.AccountId) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("AccountId", 1))
+	}
 	if s.UserEmailList == nil {
 		invalidParams.Add(request.NewErrParamRequired("UserEmailList"))
 	}
@@ -2579,7 +2606,7 @@ type ListAccountsInput struct {
 	NextToken *string `location:"querystring" locationName:"next-token" type:"string"`
 
 	// User email address with which to filter results.
-	UserEmail *string `location:"querystring" locationName:"user-email" type:"string"`
+	UserEmail *string `location:"querystring" locationName:"user-email" type:"string" sensitive:"true"`
 }
 
 // String returns the string representation
@@ -2679,7 +2706,7 @@ type ListUsersInput struct {
 	NextToken *string `location:"querystring" locationName:"next-token" type:"string"`
 
 	// Optional. The user email address used to filter results. Maximum 1.
-	UserEmail *string `location:"querystring" locationName:"user-email" type:"string"`
+	UserEmail *string `location:"querystring" locationName:"user-email" type:"string" sensitive:"true"`
 }
 
 // String returns the string representation
@@ -2697,6 +2724,9 @@ func (s *ListUsersInput) Validate() error {
 	invalidParams := request.ErrInvalidParams{Context: "ListUsersInput"}
 	if s.AccountId == nil {
 		invalidParams.Add(request.NewErrParamRequired("AccountId"))
+	}
+	if s.AccountId != nil && len(*s.AccountId) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("AccountId", 1))
 	}
 	if s.MaxResults != nil && *s.MaxResults < 1 {
 		invalidParams.Add(request.NewErrParamMinValue("MaxResults", 1))
@@ -2794,8 +2824,14 @@ func (s *LogoutUserInput) Validate() error {
 	if s.AccountId == nil {
 		invalidParams.Add(request.NewErrParamRequired("AccountId"))
 	}
+	if s.AccountId != nil && len(*s.AccountId) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("AccountId", 1))
+	}
 	if s.UserId == nil {
 		invalidParams.Add(request.NewErrParamRequired("UserId"))
+	}
+	if s.UserId != nil && len(*s.UserId) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("UserId", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -2860,8 +2896,14 @@ func (s *ResetPersonalPINInput) Validate() error {
 	if s.AccountId == nil {
 		invalidParams.Add(request.NewErrParamRequired("AccountId"))
 	}
+	if s.AccountId != nil && len(*s.AccountId) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("AccountId", 1))
+	}
 	if s.UserId == nil {
 		invalidParams.Add(request.NewErrParamRequired("UserId"))
+	}
+	if s.UserId != nil && len(*s.UserId) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("UserId", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -2932,6 +2974,9 @@ func (s *UpdateAccountInput) Validate() error {
 	invalidParams := request.ErrInvalidParams{Context: "UpdateAccountInput"}
 	if s.AccountId == nil {
 		invalidParams.Add(request.NewErrParamRequired("AccountId"))
+	}
+	if s.AccountId != nil && len(*s.AccountId) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("AccountId", 1))
 	}
 	if s.Name != nil && len(*s.Name) < 1 {
 		invalidParams.Add(request.NewErrParamMinLen("Name", 1))
@@ -3008,6 +3053,9 @@ func (s *UpdateAccountSettingsInput) Validate() error {
 	if s.AccountId == nil {
 		invalidParams.Add(request.NewErrParamRequired("AccountId"))
 	}
+	if s.AccountId != nil && len(*s.AccountId) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("AccountId", 1))
+	}
 	if s.AccountSettings == nil {
 		invalidParams.Add(request.NewErrParamRequired("AccountSettings"))
 	}
@@ -3078,8 +3126,14 @@ func (s *UpdateUserInput) Validate() error {
 	if s.AccountId == nil {
 		invalidParams.Add(request.NewErrParamRequired("AccountId"))
 	}
+	if s.AccountId != nil && len(*s.AccountId) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("AccountId", 1))
+	}
 	if s.UserId == nil {
 		invalidParams.Add(request.NewErrParamRequired("UserId"))
+	}
+	if s.UserId != nil && len(*s.UserId) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("UserId", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -3185,7 +3239,7 @@ type User struct {
 	AccountId *string `type:"string"`
 
 	// The display name of the user.
-	DisplayName *string `type:"string"`
+	DisplayName *string `type:"string" sensitive:"true"`
 
 	// Date and time when the user is invited to the Amazon Chime account, in ISO
 	// 8601 format.
@@ -3198,7 +3252,7 @@ type User struct {
 	PersonalPIN *string `type:"string"`
 
 	// The primary email address of the user.
-	PrimaryEmail *string `type:"string"`
+	PrimaryEmail *string `type:"string" sensitive:"true"`
 
 	// Date and time when the user is registered, in ISO 8601 format.
 	RegisteredOn *time.Time `type:"timestamp" timestampFormat:"iso8601"`

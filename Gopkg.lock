@@ -44,6 +44,7 @@
     "aws/credentials",
     "aws/credentials/ec2rolecreds",
     "aws/credentials/endpointcreds",
+    "aws/credentials/processcreds",
     "aws/credentials/stscreds",
     "aws/csm",
     "aws/defaults",
@@ -69,8 +70,8 @@
     "service/s3",
     "service/sts"
   ]
-  revision = "ddc06f9fad886ea5daa5f828f3ca094084f8c2a7"
-  version = "v1.15.90"
+  revision = "c4e0e593d5f18b478f17ff0e86b56d41a70ced2d"
+  version = "v1.16.2"
 
 [[projects]]
   name = "github.com/beevik/etree"
@@ -202,7 +203,13 @@
 
 [[projects]]
   name = "github.com/golang/protobuf"
-  packages = ["proto"]
+  packages = [
+    "proto",
+    "ptypes",
+    "ptypes/any",
+    "ptypes/duration",
+    "ptypes/timestamp"
+  ]
   revision = "aa810b61a9c79d51363740d207bb46cf8e620ed5"
   version = "v1.2.0"
 
@@ -263,7 +270,7 @@
 [[projects]]
   name = "github.com/jmespath/go-jmespath"
   packages = ["."]
-  revision = "0b12d6b5"
+  revision = "c2b33e84"
 
 [[projects]]
   branch = "master"
@@ -332,6 +339,12 @@
   revision = "4fdf99ab29366514c69ccccddab5dc58b8d84062"
 
 [[projects]]
+  name = "github.com/mitchellh/hashstructure"
+  packages = ["."]
+  revision = "a38c50148365edc8df43c1580c48fb2b3a1e9cd7"
+  version = "v1.0.0"
+
+[[projects]]
   name = "github.com/moovweb/rubex"
   packages = ["."]
   revision = "cb849acea6148000db8a55743f71476b0897ea41"
@@ -342,6 +355,21 @@
   name = "github.com/nfnt/resize"
   packages = ["."]
   revision = "83c6a9932646f83e3267f353373d47347b6036b2"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/oliveagle/jsonpath"
+  packages = ["."]
+  revision = "2e52cf6e685269ed8aefec6390f3cac3ef74e730"
+
+[[projects]]
+  name = "github.com/opentracing/opentracing-go"
+  packages = [
+    ".",
+    "log"
+  ]
+  revision = "1949ddbfd147afd4d964a9f00b24eb291e0e7c38"
+  version = "v1.0.2"
 
 [[projects]]
   name = "github.com/pelletier/go-buffruneio"
@@ -360,6 +388,12 @@
   name = "github.com/phyber/negroni-gzip"
   packages = ["gzip"]
   revision = "ef6356a5d02936b65ca8e60b604ed6b078aac8d3"
+
+[[projects]]
+  name = "github.com/pkg/errors"
+  packages = ["."]
+  revision = "645ef00459ed84a119197bfb8d8205042c6df63d"
+  version = "v0.8.0"
 
 [[projects]]
   name = "github.com/reiver/go-porterstemmer"
@@ -420,6 +454,12 @@
   packages = ["."]
   revision = "bcd833dfe83d3cebad139e4a29ed79cb2318bf95"
   version = "v1.2.0"
+
+[[projects]]
+  name = "github.com/spf13/cast"
+  packages = ["."]
+  revision = "8c9545af88b134710ab1cd196795e7f2388358d7"
+  version = "v1.3.0"
 
 [[projects]]
   name = "github.com/src-d/gcfg"
@@ -542,7 +582,7 @@
   branch = "master"
   name = "golang.org/x/net"
   packages = ["context"]
-  revision = "351d144fa1fc0bd934e2408202be0c29f25e35a0"
+  revision = "610586996380ceef02dd726cc09df7e00a3f8e56"
 
 [[projects]]
   branch = "master"
@@ -552,7 +592,7 @@
     "unix",
     "windows"
   ]
-  revision = "a5c9d58dba9a56f97aaa86f55e638b718c5a6c42"
+  revision = "ad97f365e15054527b467150f898ec66d7f81e14"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -584,6 +624,21 @@
   version = "v1.3.0"
 
 [[projects]]
+  branch = "master"
+  name = "google.golang.org/genproto"
+  packages = ["googleapis/rpc/status"]
+  revision = "bd91e49a0898e27abb88c339b432fa53d7497ac0"
+
+[[projects]]
+  name = "google.golang.org/grpc"
+  packages = [
+    "codes",
+    "status"
+  ]
+  revision = "df014850f6dee74ba2fc94874043a9f3f75fbfd8"
+  version = "v1.17.0"
+
+[[projects]]
   name = "gopkg.in/inconshreveable/log15.v2"
   packages = ["."]
   revision = "67afb5ed74ec82fd7ac8f49d27c509ac6f991970"
@@ -611,6 +666,12 @@
   ]
   revision = "982626487c60a5252e7d0b695ca23fb0fa2fd670"
   version = "v4.3.0"
+
+[[projects]]
+  name = "gopkg.in/src-d/go-errors.v1"
+  packages = ["."]
+  revision = "8bbbeeb767dfdd053b9b45d5a16a4f4ce2c6f694"
+  version = "v1.0.0"
 
 [[projects]]
   name = "gopkg.in/src-d/go-git.v4"
@@ -660,6 +721,55 @@
   version = "v4.8.1"
 
 [[projects]]
+  name = "gopkg.in/src-d/go-mysql-server.v0"
+  packages = [
+    ".",
+    "auth",
+    "internal/regex",
+    "mem",
+    "server",
+    "sql",
+    "sql/analyzer",
+    "sql/expression",
+    "sql/expression/function",
+    "sql/expression/function/aggregation",
+    "sql/parse",
+    "sql/plan"
+  ]
+  revision = "2da211e3dcb6215da5c34cbef31587bd8fc2eb92"
+  version = "v0.2.0"
+
+[[projects]]
+  name = "gopkg.in/src-d/go-vitess.v1"
+  packages = [
+    "bucketpool",
+    "bytes2",
+    "cache",
+    "event",
+    "hack",
+    "mysql",
+    "netutil",
+    "sqltypes",
+    "stats",
+    "sync2",
+    "tb",
+    "vt/log",
+    "vt/logutil",
+    "vt/proto/binlogdata",
+    "vt/proto/logutil",
+    "vt/proto/query",
+    "vt/proto/replicationdata",
+    "vt/proto/topodata",
+    "vt/proto/vtgate",
+    "vt/proto/vtrpc",
+    "vt/sqlparser",
+    "vt/vterrors",
+    "vt/vttls"
+  ]
+  revision = "1e9f4dc23649eb12a326229787a0acd02fac8b50"
+  version = "v1.4.0"
+
+[[projects]]
   name = "gopkg.in/toqueteos/substring.v1"
   packages = ["."]
   revision = "c5f61671513240ddf5563635cc4a90e9f3ae4710"
@@ -680,6 +790,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "ef7bb93c69b653c15c9eba9c3bc1408e90b1d184dceed628aab7145d26acc539"
+  inputs-digest = "de2aa3179eb8d4b1ac02ee3d82c1e32e7aaa9cee16a868ef88389852c9a4fac0"
   solver-name = "gps-cdcl"
   solver-version = 1

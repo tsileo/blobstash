@@ -202,6 +202,12 @@ func (docstore *DocStore) Register(r *mux.Router, basicAuth func(http.Handler) h
 	// r.Handle("/{collection}/_indexes", middlewares.Auth(http.HandlerFunc(docstore.indexesHandler())))
 	r.Handle("/{collection}/{_id}", basicAuth(http.HandlerFunc(docstore.docHandler())))
 	r.Handle("/{collection}/{_id}/_versions", basicAuth(http.HandlerFunc(docstore.docVersionsHandler())))
+
+	s, err := docstore.SetupSQL("names", -1)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("setupSql=%+v\n", s)
 }
 
 // Expand a doc keys (fetch the blob as JSON, or a filesystem reference)
@@ -704,14 +710,13 @@ QUERY:
 			var err error
 			if asOf > 0 {
 				// FIXME(tsileo): should return a `[]*id.ID` to, and check the flag before selecting the doc
-				docVersions, allDocPointers, _, err := docstore.FetchVersions(collection, _id.String(), asOf, 1, fetchPointers)
+				docVersions, _, _, err := docstore.FetchVersions(collection, _id.String(), asOf, 1, fetchPointers)
 				// FIXME(tsileo): check deleted
 				if err != nil {
 					panic(err)
 				}
 				if len(docVersions) > 0 {
 					doc = docVersions[0]
-					docPointers = allDocPointers
 				} else {
 					continue
 				}

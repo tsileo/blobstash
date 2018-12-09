@@ -31,6 +31,7 @@ import (
 	"a4.io/blobstash/pkg/middleware"
 	"a4.io/blobstash/pkg/oplog"
 	"a4.io/blobstash/pkg/replication"
+	"a4.io/blobstash/pkg/sqlserver"
 	"a4.io/blobstash/pkg/stash"
 	stashAPI "a4.io/blobstash/pkg/stash/api"
 	synctable "a4.io/blobstash/pkg/sync"
@@ -141,6 +142,10 @@ func New(conf *config.Config) (*Server, error) {
 			return nil, fmt.Errorf("failed to initialize replication app: %v", err)
 		}
 	}
+
+	go func() {
+		sqlserver.Setup()
+	}()
 
 	filetree, err := filetree.New(logger.New("app", "filetree"), conf, authFunc, kvstore, blobstore, hub, rootBlobstore.GetRemoteRef)
 	if err != nil {
