@@ -9,7 +9,9 @@ require (
 	github.com/blevesearch/segment v0.0.0-20160915185041-762005e7a34f
 	github.com/carbocation/handlers v0.0.0-20140528190747-c939c6d9ef31 // indirect
 	github.com/carbocation/interpose v0.0.0-20161206215253-723534742ba3
+	github.com/cespare/trie v0.0.0-20150610204604-3fe1a95cbba9 // indirect
 	github.com/codegangsta/inject v0.0.0-20150114235600-33e0aa1cb7c0 // indirect
+	github.com/codegangsta/negroni v1.0.0 // indirect
 	github.com/cznic/fileutil v0.0.0-20181122101858-4d67cfea8c87 // indirect
 	github.com/cznic/internal v0.0.0-20181122101858-3279554c546e // indirect
 	github.com/cznic/kv v0.0.0-20181122101858-e9cdcade440e
@@ -30,6 +32,7 @@ require (
 	github.com/gorilla/mux v1.6.2
 	github.com/hashicorp/golang-lru v0.5.0
 	github.com/inconshreveable/log15 v0.0.0-20180818164646-67afb5ed74ec
+	github.com/interpose/middleware v0.0.0-20150216143757-05ed56ed52fa // indirect
 	github.com/justinas/nosurf v0.0.0-20181122113328-3af30e51c05b // indirect
 	github.com/klauspost/cpuid v1.2.0 // indirect
 	github.com/klauspost/reedsolomon v1.7.0 // indirect
@@ -38,6 +41,8 @@ require (
 	github.com/meatballhat/negroni-logrus v0.0.0-20170801195057-31067281800f // indirect
 	github.com/mitchellh/go-ps v0.0.0-20170309133038-4fdf99ab2936
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
+	github.com/onsi/ginkgo v1.7.0 // indirect
+	github.com/onsi/gomega v1.4.3 // indirect
 	github.com/phayes/permbits v0.0.0-20180830030258-59f2482cd460
 	github.com/phyber/negroni-gzip v0.0.0-20180113114010-ef6356a5d029 // indirect
 	github.com/reiver/go-porterstemmer v1.0.1
@@ -56,6 +61,7 @@ require (
 	github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
 	golang.org/x/crypto v0.0.0-20181203042331-505ab145d0a9
 	golang.org/x/net v0.0.0-20181213202711-891ebc4b82d6
+	golang.org/x/sync v0.0.0-20181108010431-42b317875d0f // indirect
 	google.golang.org/appengine v1.3.0 // indirect
 	gopkg.in/inconshreveable/log15.v2 v2.0.0-20180818164646-67afb5ed74ec
 	gopkg.in/src-d/enry.v1 v1.6.7
