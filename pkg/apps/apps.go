@@ -6,9 +6,7 @@ import (
 	"net/http"
 	rhttputil "net/http/httputil"
 	"net/url"
-	"os"
 	"path"
-	"path/filepath"
 	"strings"
 	"sync"
 
@@ -56,27 +54,6 @@ func (apps *Apps) Close() error {
 	return nil
 }
 
-func (app *App) visit(path string, f os.FileInfo, err error) error {
-	p, err := filepath.Rel(app.path, path)
-	if err != nil {
-		return err
-	}
-	app.index[p] = f
-	return nil
-}
-
-func (app *App) reload() error {
-	if app.path == "" {
-		return nil
-	}
-	app.index = map[string]os.FileInfo{}
-	if err := filepath.Walk(app.path, app.visit); err != nil {
-		return fmt.Errorf("failed to visit dir %s: %v", app.path, err)
-	}
-
-	return nil
-}
-
 // App handle an app meta data
 type App struct {
 	path, name string
@@ -91,9 +68,8 @@ type App struct {
 	docstore *docstore.DocStore
 	app      *gluapp.App
 
-	index map[string]os.FileInfo
-	log   log.Logger
-	mu    sync.Mutex
+	log log.Logger
+	mu  sync.Mutex
 }
 
 func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
@@ -104,7 +80,6 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 		domain:     appConf.Domain,
 		entrypoint: appConf.Entrypoint,
 		config:     appConf.Config,
-		index:      map[string]os.FileInfo{},
 		log:        apps.log.New("app", appConf.Name),
 		mu:         sync.Mutex{},
 	}
@@ -146,7 +121,7 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 
 	// TODO(tsileo): check that `path` exists, create it if it doesn't exist?
 	app.log.Debug("new app")
-	return app, app.reload()
+	return app, nil
 }
 
 func (apps *Apps) appUpdateCallback(ctx context.Context, _ *blob.Blob, data interface{}) error {
