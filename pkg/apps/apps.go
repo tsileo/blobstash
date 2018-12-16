@@ -3,9 +3,11 @@ package apps // import "a4.io/blobstash/pkg/apps"
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	rhttputil "net/http/httputil"
 	"net/url"
+	"os"
 	"path"
 	"strings"
 	"sync"
@@ -13,6 +15,9 @@ import (
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
 	"github.com/yuin/gopher-lua"
+	git "gopkg.in/src-d/go-git.v4"
+	"gopkg.in/src-d/go-git.v4/plumbing"
+	"gopkg.in/src-d/go-git.v4/plumbing/object"
 
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/blobstore"
@@ -30,6 +35,7 @@ import (
 	kvLua "a4.io/blobstash/pkg/kvstore/lua"
 	"a4.io/blobstash/pkg/stash/store"
 	"a4.io/gluapp"
+	"github.com/robfig/cron"
 )
 
 // TODO(tsileo): at startup, scan all filetree FS and looks for app.yaml for registering
@@ -46,12 +52,25 @@ type Apps struct {
 	hub             *hub.Hub
 	hostWhitelister func(...string)
 	log             log.Logger
+	cron            *cron.Cron
 	sync.Mutex
 }
 
 // Close cleanly shutdown thes AppsManager
 func (apps *Apps) Close() error {
+	apps.cron.Stop()
+	for _, app := range apps.apps {
+		if app.tmp != "" {
+			if err := os.RemoveAll(app.tmp); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
+}
+
+func (apps *Apps) Apps() map[string]*App {
+	return apps.apps
 }
 
 // App handle an app meta data
@@ -59,7 +78,9 @@ type App struct {
 	path, name string
 	entrypoint string
 	domain     string
+	remote     string
 	config     map[string]interface{}
+	scheduled  string
 	auth       func(*http.Request) bool
 
 	proxyTarget *url.URL
@@ -67,6 +88,9 @@ type App struct {
 
 	docstore *docstore.DocStore
 	app      *gluapp.App
+	repo     *git.Repository
+	tree     *object.Tree
+	tmp      string
 
 	log log.Logger
 	mu  sync.Mutex
@@ -78,14 +102,45 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 		path:       appConf.Path,
 		name:       appConf.Name,
 		domain:     appConf.Domain,
+		remote:     appConf.Remote,
 		entrypoint: appConf.Entrypoint,
 		config:     appConf.Config,
+		scheduled:  appConf.Scheduled,
 		log:        apps.log.New("app", appConf.Name),
 		mu:         sync.Mutex{},
 	}
 
 	if appConf.Username != "" || appConf.Password != "" {
 		app.auth = httputil.BasicAuthFunc(appConf.Username, appConf.Password)
+	}
+
+	if appConf.Remote != "" {
+		parts := strings.Split(appConf.Remote, "#")
+		dir, err := ioutil.TempDir("", "blobstash-app")
+		if err != nil {
+			return nil, err
+		}
+
+		app.tmp = dir
+		app.path = dir
+
+		r, err := git.PlainClone(app.tmp, false, &git.CloneOptions{
+			URL: parts[0],
+		})
+		if err != nil {
+			return nil, err
+		}
+		wt, err := r.Worktree()
+		if err != nil {
+			return nil, err
+		}
+		app.repo = r
+		coOpts := &git.CheckoutOptions{
+			Hash: plumbing.NewHash(parts[1]),
+		}
+		if err := wt.Checkout(coOpts); err != nil {
+			return nil, err
+		}
 	}
 
 	if appConf.Proxy != "" {
@@ -110,6 +165,8 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 				docstoreLua.Setup(L, apps.docstore)
 				kvLua.Setup(L, apps.kvs, context.TODO())
 				gitserverLua.Setup(L, apps.gs)
+				// setup "apps"
+				setup(L, apps)
 				extra.Setup(L)
 				return nil
 			},
@@ -117,6 +174,12 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	if app.scheduled != "" {
+		apps.cron.AddFunc(app.scheduled, func() {
+			app.log.Info("running the (scheduled) app")
+		})
 	}
 
 	// TODO(tsileo): check that `path` exists, create it if it doesn't exist?
@@ -184,8 +247,10 @@ func New(logger log.Logger, conf *config.Config, bs *blobstore.BlobStore, kvs st
 		kvs:             kvs,
 		hub:             chub,
 		docstore:        ds,
+		cron:            cron.New(),
 		hostWhitelister: hostWhitelister,
 	}
+	apps.cron.Start()
 	chub.Subscribe(hub.ScanBlob, "apps", apps.appUpdateCallback)
 	for _, appConf := range conf.Apps {
 		app, err := apps.newApp(appConf)
@@ -252,3 +317,37 @@ func containsDotDot(v string) bool {
 }
 
 func isSlashRune(r rune) bool { return r == '/' || r == '\\' }
+
+func setupApps(apps *Apps) func(*lua.LState) int {
+	return func(L *lua.LState) int {
+		// register functions to the table
+		mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
+			"apps": func(L *lua.LState) int {
+				t := L.NewTable()
+				for name, app := range apps.Apps() {
+					fmt.Printf("app=%+v\n", app)
+					tapp := L.NewTable()
+					tapp.RawSetH(lua.LString("name"), lua.LString(name))
+					tapp.RawSetH(lua.LString("domain"), lua.LString(app.domain))
+					tapp.RawSetH(lua.LString("entrypoint"), lua.LString(app.entrypoint))
+					tapp.RawSetH(lua.LString("remote"), lua.LString(app.remote))
+					t.Append(tapp)
+				}
+				L.Push(t)
+				return 1
+			},
+		})
+		// returns the module
+		L.Push(mod)
+		return 1
+	}
+}
+
+func setup(L *lua.LState, apps *Apps) {
+	//mtCol := L.NewTypeMetatable("col")
+	//L.SetField(mtCol, "__index", L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
+	//	"insert": colInsert,
+	//	"query":  colQuery,
+	//}))
+	L.PreloadModule("apps", setupApps(apps))
+}

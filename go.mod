@@ -43,11 +43,11 @@ require (
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	github.com/onsi/ginkgo v1.7.0 // indirect
 	github.com/onsi/gomega v1.4.3 // indirect
-	github.com/phayes/permbits v0.0.0-20180830030258-59f2482cd460
 	github.com/phyber/negroni-gzip v0.0.0-20180113114010-ef6356a5d029 // indirect
 	github.com/reiver/go-porterstemmer v1.0.1
 	github.com/remyoudompheng/bigfft v0.0.0-20170806203942-52369c62f446 // indirect
 	github.com/restic/chunker v0.2.0
+	github.com/robfig/cron v0.0.0-20180505203441-b41be1df6967
 	github.com/rwcarlsen/goexif v0.0.0-20180518182100-8d986c03457a
 	github.com/ryanuber/go-glob v0.0.0-20170128012129-256dc444b735 // indirect
 	github.com/sirupsen/logrus v1.2.0 // indirect

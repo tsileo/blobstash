@@ -5,7 +5,6 @@ import (
 	"os"
 
 	humanize "github.com/dustin/go-humanize"
-	"github.com/phayes/permbits"
 	"github.com/yuin/gopher-lua"
 
 	"a4.io/blobstash/pkg/filetree"
@@ -34,7 +33,7 @@ func convertNode(L *lua.LState, ft *filetree.FileTree, node *filetree.Node) *lua
 	tbl.RawSetH(lua.LString("type"), lua.LString(node.Type))
 	tbl.RawSetH(lua.LString("mtime"), lua.LString(node.ModTime))
 	tbl.RawSetH(lua.LString("citme"), lua.LString(node.ChangeTime))
-	tbl.RawSetH(lua.LString("mode"), lua.LString(permbits.FileMode(os.FileMode(node.Mode)).String()))
+	tbl.RawSetH(lua.LString("mode"), lua.LString(os.FileMode(node.Mode).String()))
 	tbl.RawSetH(lua.LString("size"), lua.LNumber(node.Size))
 	tbl.RawSetH(lua.LString("size_human"), lua.LString(humanize.Bytes(uint64(node.Size))))
 	childrenTbl := L.CreateTable(len(node.Children), 0)

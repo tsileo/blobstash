@@ -4,7 +4,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/phayes/permbits"
 	"github.com/xeonx/timeago"
 	"github.com/yuin/gopher-lua"
 	"gopkg.in/src-d/go-git.v4/plumbing"
@@ -202,11 +201,14 @@ func convertRefSummary(L *lua.LState, refSummary *gitserver.RefSummary) *lua.LTa
 func convertTreeEntry(L *lua.LState, treeEntry *object.TreeEntry) *lua.LTable {
 	tbl := L.CreateTable(0, 4)
 	tbl.RawSetH(lua.LString("name"), lua.LString(treeEntry.Name))
-	tbl.RawSetH(lua.LString("mode"), lua.LString(permbits.FileMode(os.FileMode(treeEntry.Mode)).String()))
 	isFile := lua.LFalse
+	mode := os.FileMode(treeEntry.Mode)
 	if treeEntry.Mode.IsFile() {
 		isFile = lua.LTrue
+	} else {
+		mode = mode | os.ModeDir
 	}
+	tbl.RawSetH(lua.LString("mode"), lua.LString(mode.String()))
 	tbl.RawSetH(lua.LString("is_file"), isFile)
 	tbl.RawSetH(lua.LString("hash"), lua.LString(treeEntry.Hash.String()))
 	return tbl

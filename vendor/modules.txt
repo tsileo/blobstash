@@ -134,8 +134,6 @@ github.com/mitchellh/go-ps
 github.com/nfnt/resize
 # github.com/pelletier/go-buffruneio v0.2.0
 github.com/pelletier/go-buffruneio
-# github.com/phayes/permbits v0.0.0-20180830030258-59f2482cd460
-github.com/phayes/permbits
 # github.com/phyber/negroni-gzip v0.0.0-20180113114010-ef6356a5d029
 github.com/phyber/negroni-gzip/gzip
 # github.com/reiver/go-porterstemmer v1.0.1
@@ -144,6 +142,8 @@ github.com/reiver/go-porterstemmer
 github.com/remyoudompheng/bigfft
 # github.com/restic/chunker v0.2.0
 github.com/restic/chunker
+# github.com/robfig/cron v0.0.0-20180505203441-b41be1df6967
+github.com/robfig/cron
 # github.com/rwcarlsen/goexif v0.0.0-20180518182100-8d986c03457a
 github.com/rwcarlsen/goexif/exif
 github.com/rwcarlsen/goexif/tiff
@@ -197,10 +197,10 @@ golang.org/x/crypto/nacl/secretbox
 golang.org/x/crypto/blake2b
 golang.org/x/crypto/acme/autocert
 golang.org/x/crypto/pbkdf2
+golang.org/x/crypto/openpgp
 golang.org/x/crypto/internal/subtle
 golang.org/x/crypto/poly1305
 golang.org/x/crypto/salsa20/salsa
-golang.org/x/crypto/openpgp
 golang.org/x/crypto/acme
 golang.org/x/crypto/openpgp/armor
 golang.org/x/crypto/openpgp/errors
@@ -218,7 +218,7 @@ golang.org/x/crypto/internal/chacha20
 golang.org/x/crypto/ed25519/internal/edwards25519
 # golang.org/x/net v0.0.0-20181213202711-891ebc4b82d6
 golang.org/x/net/context
-# golang.org/x/sys v0.0.0-20180905080454-ebe1bf3edb33
+# golang.org/x/sys v0.0.0-20180909124046-d0be0721c37e
 golang.org/x/sys/cpu
 golang.org/x/sys/unix
 golang.org/x/sys/windows
@@ -250,10 +250,10 @@ gopkg.in/src-d/go-billy.v4/helper/chroot
 gopkg.in/src-d/go-billy.v4/helper/polyfill
 # gopkg.in/src-d/go-git.v4 v4.8.1
 gopkg.in/src-d/go-git.v4
-gopkg.in/src-d/go-git.v4/config
 gopkg.in/src-d/go-git.v4/plumbing
-gopkg.in/src-d/go-git.v4/plumbing/format/index
 gopkg.in/src-d/go-git.v4/plumbing/object
+gopkg.in/src-d/go-git.v4/config
+gopkg.in/src-d/go-git.v4/plumbing/format/index
 gopkg.in/src-d/go-git.v4/plumbing/protocol/packp
 gopkg.in/src-d/go-git.v4/plumbing/storer
 gopkg.in/src-d/go-git.v4/plumbing/transport
@@ -276,9 +276,9 @@ gopkg.in/src-d/go-git.v4/utils/merkletrie
 gopkg.in/src-d/go-git.v4/utils/merkletrie/filesystem
 gopkg.in/src-d/go-git.v4/utils/merkletrie/index
 gopkg.in/src-d/go-git.v4/utils/merkletrie/noder
-gopkg.in/src-d/go-git.v4/plumbing/format/config
-gopkg.in/src-d/go-git.v4/utils/binary
 gopkg.in/src-d/go-git.v4/plumbing/format/diff
+gopkg.in/src-d/go-git.v4/utils/binary
+gopkg.in/src-d/go-git.v4/plumbing/format/config
 gopkg.in/src-d/go-git.v4/plumbing/format/pktline
 gopkg.in/src-d/go-git.v4/plumbing/format/idxfile
 gopkg.in/src-d/go-git.v4/plumbing/transport/file

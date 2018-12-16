@@ -73,7 +73,19 @@ func colQuery(L *lua.LState) int {
 	if limit == 0 {
 		limit = 50
 	}
-	matchFunc := L.ToFunction(4)
+	var matchFunc *lua.LFunction
+	rawFunc := L.Get(4)
+	if sfunc, ok := rawFunc.(lua.LString); ok {
+		lhook, err := docstore.NewLuaHook(L, string(sfunc))
+		if err != nil {
+			panic(err)
+		}
+		matchFunc = lhook.LFunction()
+	} else if f, ok := rawFunc.(*lua.LFunction); ok {
+		matchFunc = f
+	} else {
+		panic("bad mathcFunc type")
+	}
 	docs, pointers, cursor, err := col.dc.LuaQuery(L, matchFunc, col.name, cursor, limit)
 	if err != nil {
 		panic(err)

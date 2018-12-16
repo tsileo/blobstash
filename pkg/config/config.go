@@ -26,6 +26,8 @@ type AppConfig struct {
 	Username   string `yaml:"username"`
 	Password   string `yaml:"password"`
 	Proxy      string `yaml:"proxy"`
+	Remote     string `yaml:"remote"`
+	Scheduled  string `yaml:"scheduled"`
 
 	Config map[string]interface{} `yaml:"config"`
 }

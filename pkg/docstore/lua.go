@@ -61,6 +61,10 @@ func NewLuaHook(L *lua.LState, code string) (*LuaHook, error) {
 	}, nil
 }
 
+func (h *LuaHook) LFunction() *lua.LFunction {
+	return h.hookFunc
+}
+
 // TODO(tsileo): helper for validation like for required fields and returns details for 422 error (field error details)
 func (h *LuaHook) Execute(doc map[string]interface{}) (map[string]interface{}, error) {
 	if err := h.L.CallByParam(lua.P{
