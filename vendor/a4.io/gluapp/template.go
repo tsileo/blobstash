@@ -7,8 +7,22 @@ import (
 
 	"a4.io/blobstash/pkg/apps/luautil"
 
+	"github.com/gomarkdown/markdown"
 	"github.com/yuin/gopher-lua"
 )
+
+var funcs = template.FuncMap{
+	"markdownify": func(raw interface{}) template.HTML {
+		switch md := raw.(type) {
+		case string:
+			return template.HTML(markdown.ToHTML([]byte(md), nil, nil))
+		case lua.LString:
+			return template.HTML(markdown.ToHTML([]byte(string(md)), nil, nil))
+		default:
+			panic("bad md type")
+		}
+	},
+}
 
 func setupTemplate(path string) func(*lua.LState) int {
 	return func(L *lua.LState) int {
@@ -16,7 +30,7 @@ func setupTemplate(path string) func(*lua.LState) int {
 		mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
 			"render_string": func(L *lua.LState) int {
 				var out bytes.Buffer
-				tpl, err := template.New("").Parse(L.ToString(1))
+				tpl, err := template.New("").Funcs(funcs).Parse(L.ToString(1))
 				if err != nil {
 					// TODO(tsileo): return error?
 					return 0
@@ -36,7 +50,7 @@ func setupTemplate(path string) func(*lua.LState) int {
 					templates = append(templates, filepath.Join(path, string(L.ToString(i))))
 				}
 
-				tmpl, err := template.New("").ParseFiles(templates...)
+				tmpl, err := template.New("").Funcs(funcs).ParseFiles(templates...)
 				if err != nil {
 					L.Push(lua.LString(err.Error()))
 					return 1

@@ -7,6 +7,7 @@ import (
 	humanize "github.com/dustin/go-humanize"
 	"github.com/yuin/gopher-lua"
 
+	"a4.io/blobsfile"
 	"a4.io/blobstash/pkg/filetree"
 	"a4.io/blobstash/pkg/filetree/writer"
 	"a4.io/blobstash/pkg/stash/store"
@@ -59,6 +60,24 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore) func(*lua.LState) 
 				}
 				L.Push(tbl)
 				return 1
+			},
+			"fs_by_name": func(L *lua.LState) int {
+				fs, err := ft.FS(context.TODO(), L.ToString(1), filetree.FSKeyFmt, false, 0)
+				if err != nil {
+					panic(err)
+				}
+				node, _, _, err := fs.Path(context.TODO(), "/", 1, false, 0)
+				if err != nil {
+					if err == blobsfile.ErrBlobNotFound {
+						L.Push(lua.LNil)
+						return 1
+					}
+
+					panic(err)
+				}
+				L.Push(convertNode(L, ft, node))
+				return 1
+
 			},
 			"fs": func(L *lua.LState) int {
 				fs := filetree.NewFS(L.ToString(1), ft)

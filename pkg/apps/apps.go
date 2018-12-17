@@ -19,7 +19,6 @@ import (
 	"gopkg.in/src-d/go-git.v4/plumbing"
 	"gopkg.in/src-d/go-git.v4/plumbing/object"
 
-	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/blobstore"
 	blobstoreLua "a4.io/blobstash/pkg/blobstore/lua"
 	"a4.io/blobstash/pkg/config"
@@ -114,22 +113,27 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 		app.auth = httputil.BasicAuthFunc(appConf.Username, appConf.Password)
 	}
 
+	// If it's a remote app, clone the repo in a temp dir
 	if appConf.Remote != "" {
+		// Format of the remote is `<repo_url>#<commit_hash>`
 		parts := strings.Split(appConf.Remote, "#")
-		dir, err := ioutil.TempDir("", "blobstash-app")
+		dir, err := ioutil.TempDir("", fmt.Sprintf("blobstash-app-%s-", app.name))
 		if err != nil {
 			return nil, err
 		}
 
+		// the temp dir will be removed at shutdown
 		app.tmp = dir
-		app.path = dir
 
+		// Actually do the git clone
 		r, err := git.PlainClone(app.tmp, false, &git.CloneOptions{
 			URL: parts[0],
 		})
 		if err != nil {
 			return nil, err
 		}
+
+		// Checkout the pinned hash
 		wt, err := r.Worktree()
 		if err != nil {
 			return nil, err
@@ -153,12 +157,21 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 		app.log.Info("proxy registered", "url", url)
 	}
 
+	// Setup the gluapp app
+	// FIXME(tsileo): only if the app is not scheduled (also update the admin)
 	if app.path != "" {
 		var err error
 		app.app, err = gluapp.NewApp(&gluapp.Config{
 			Path:       app.path,
 			Entrypoint: app.entrypoint,
 			SetupState: func(L *lua.LState) error {
+
+				// Set the `app` global variable
+				confTable := L.CreateTable(0, 1)
+				fmt.Printf("app=%+v\n", app)
+				confTable.RawSetH(lua.LString("app_id"), lua.LString(app.name))
+				L.SetGlobal("blobstash", confTable)
+
 				docstore.SetLuaGlobals(L)
 				blobstoreLua.Setup(context.TODO(), L, apps.bs)
 				filetreeLua.Setup(L, apps.ft, apps.bs)
@@ -179,24 +192,14 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 	if app.scheduled != "" {
 		apps.cron.AddFunc(app.scheduled, func() {
 			app.log.Info("running the (scheduled) app")
+			// TODO(tsileo): add LuaHook instead of gluapp with
+			// app.config, app.log, what for input payload?
 		})
 	}
 
 	// TODO(tsileo): check that `path` exists, create it if it doesn't exist?
 	app.log.Debug("new app")
 	return app, nil
-}
-
-func (apps *Apps) appUpdateCallback(ctx context.Context, _ *blob.Blob, data interface{}) error {
-	// appUpdate := data.(*hub.AppUpdateData)
-	// appConfig := &app.AppConfig{}
-	// if err := yaml.Unmarshal(appUpdate.RawAppConfig, &appConfig); err != nil {
-	// 	return err
-	// }
-	// appUpdate.Name
-	// appUpdate.Ref
-	// FIXME(tsileo): update the configuration
-	return nil
 }
 
 // Serve the request for the given path
@@ -251,7 +254,6 @@ func New(logger log.Logger, conf *config.Config, bs *blobstore.BlobStore, kvs st
 		hostWhitelister: hostWhitelister,
 	}
 	apps.cron.Start()
-	chub.Subscribe(hub.ScanBlob, "apps", apps.appUpdateCallback)
 	for _, appConf := range conf.Apps {
 		app, err := apps.newApp(appConf)
 		if err != nil {

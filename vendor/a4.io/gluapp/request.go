@@ -70,8 +70,7 @@ func newRequest(L *lua.LState, r *http.Request) (*lua.LUserData, error) {
 		"method":      requestMethod,
 		"scheme":      requestScheme,
 		"host":        requestHost,
-		// TODO(tsileo): implements `files` (return a table like Flask) and `basic_auth`
-		// "files": requestFiles,
+		"file":        requestFile,
 	}))
 	ud := L.NewUserData()
 	ud.Value = req
@@ -165,6 +164,31 @@ func requestForm(L *lua.LState) int {
 		panic(err)
 	}
 	L.Push(buildValues(L, values))
+	return 1
+}
+
+func requestFile(L *lua.LState) int {
+	request := checkRequest(L)
+	if request == nil {
+		return 1
+	}
+
+	// 512MB file
+	request.request.ParseMultipartForm(512 << 20)
+	file, handler, err := request.request.FormFile(L.ToString(2))
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+
+	fdata, err := ioutil.ReadAll(file)
+	if err != nil {
+		panic(err)
+	}
+	out := L.NewTable()
+	out.RawSetH(lua.LString("filename"), lua.LString(handler.Filename))
+	out.RawSetH(lua.LString("contents"), lua.LString(fdata))
+	L.Push(out)
 	return 1
 }
 

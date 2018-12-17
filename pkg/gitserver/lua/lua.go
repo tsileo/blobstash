@@ -111,32 +111,40 @@ func convertFile(L *lua.LState, file *object.File) *lua.LTable {
 	return tbl
 }
 
-func convertCommit(L *lua.LState, commit *object.Commit, withPatch bool) *lua.LTable {
+func mustParse(d string) time.Time {
+	t, err := time.Parse(time.RFC3339, d)
+	if err != nil {
+		panic(err)
+	}
+	return t
+}
+
+func convertCommit(L *lua.LState, commit *gitserver.GitServerCommit, withPatch bool) *lua.LTable {
 	cntWithPatch := 0
 	if withPatch {
 		cntWithPatch = 3
 	}
 	tbl := L.CreateTable(0, 12+cntWithPatch)
-	tbl.RawSetH(lua.LString("hash"), lua.LString(commit.Hash.String()))
+	tbl.RawSetH(lua.LString("hash"), lua.LString(commit.Hash))
 	tbl.RawSetH(lua.LString("message"), lua.LString(commit.Message))
 	// Author
-	tbl.RawSetH(lua.LString("author_time_ago"), lua.LString(timeago.English.Format(commit.Author.When)))
-	tbl.RawSetH(lua.LString("author_time"), lua.LString(commit.Author.When.Format(time.RFC3339)))
+	tbl.RawSetH(lua.LString("author_time_ago"), lua.LString(timeago.English.Format(mustParse(commit.Author.Date))))
+	tbl.RawSetH(lua.LString("author_time"), lua.LString(commit.Author.Date))
 	tbl.RawSetH(lua.LString("author_name"), lua.LString(commit.Author.Name))
 	tbl.RawSetH(lua.LString("author_email"), lua.LString(commit.Author.Email))
 	// Comitter
-	tbl.RawSetH(lua.LString("comitter_time_ago"), lua.LString(timeago.English.Format(commit.Committer.When)))
-	tbl.RawSetH(lua.LString("comitter_time"), lua.LString(commit.Committer.When.Format(time.RFC3339)))
+	tbl.RawSetH(lua.LString("comitter_time_ago"), lua.LString(timeago.English.Format(mustParse(commit.Committer.Date))))
+	tbl.RawSetH(lua.LString("comitter_time"), lua.LString(commit.Committer.Date))
 	tbl.RawSetH(lua.LString("comitter_name"), lua.LString(commit.Committer.Name))
 	tbl.RawSetH(lua.LString("comitter_email"), lua.LString(commit.Committer.Email))
 
-	tbl.RawSetH(lua.LString("tree_hash"), lua.LString(commit.TreeHash.String()))
-	if len(commit.ParentHashes) > 0 {
-		tbl.RawSetH(lua.LString("parent_hash"), lua.LString(commit.ParentHashes[0].String()))
+	tbl.RawSetH(lua.LString("tree_hash"), lua.LString(commit.Tree))
+	rcommit := commit.Raw
+	if len(rcommit.ParentHashes) > 0 {
+		tbl.RawSetH(lua.LString("parent_hash"), lua.LString(rcommit.ParentHashes[0].String()))
 	}
-
-	if withPatch && len(commit.ParentHashes) > 0 {
-		ci := commit.Parents()
+	if withPatch && len(rcommit.ParentHashes) > 0 {
+		ci := rcommit.Parents()
 		defer ci.Close()
 		parentCommit, err := ci.Next()
 		if err != nil {
@@ -146,7 +154,7 @@ func convertCommit(L *lua.LState, commit *object.Commit, withPatch bool) *lua.LT
 		if err != nil {
 			panic(err)
 		}
-		tree, err := commit.Tree()
+		tree, err := rcommit.Tree()
 		if err != nil {
 			panic(err)
 		}
@@ -179,6 +187,7 @@ func convertCommit(L *lua.LState, commit *object.Commit, withPatch bool) *lua.LT
 
 	return tbl
 }
+
 func newFileStat(L *lua.LState, name string, additions, deletions int) *lua.LTable {
 	stats := L.CreateTable(0, 3)
 	stats.RawSetH(lua.LString("name"), lua.LString(name))
@@ -189,12 +198,12 @@ func newFileStat(L *lua.LState, name string, additions, deletions int) *lua.LTab
 
 func convertRefSummary(L *lua.LState, refSummary *gitserver.RefSummary) *lua.LTable {
 	tbl := L.CreateTable(0, 6)
-	tbl.RawSetH(lua.LString("commit_time_ago"), lua.LString(timeago.English.Format(refSummary.Commit.Committer.When)))
-	tbl.RawSetH(lua.LString("commit_hash"), lua.LString(refSummary.Commit.Hash.String()))
+	tbl.RawSetH(lua.LString("commit_time_ago"), lua.LString(timeago.English.Format(mustParse(refSummary.Commit.Committer.Date))))
+	tbl.RawSetH(lua.LString("commit_hash"), lua.LString(refSummary.Commit.Hash))
 	tbl.RawSetH(lua.LString("commit_message"), lua.LString(refSummary.Commit.Message))
 	tbl.RawSetH(lua.LString("commit_author_name"), lua.LString(refSummary.Commit.Committer.Name))
 	tbl.RawSetH(lua.LString("commit_author_email"), lua.LString(refSummary.Commit.Committer.Email))
-	tbl.RawSetH(lua.LString("ref_short_name"), lua.LString(refSummary.Ref.Name().Short()))
+	tbl.RawSetH(lua.LString("ref_short_name"), lua.LString(refSummary.Ref))
 	return tbl
 }
 
@@ -247,18 +256,16 @@ func repoSummary(L *lua.LState) int {
 	if err != nil {
 		panic(err)
 	}
+	if len(summary.Commits) > 3 {
+		summary.Commits = summary.Commits[0:3]
+	}
 	commitsTbl := L.CreateTable(len(summary.Commits), 0)
 	for _, commit := range summary.Commits {
 		commitsTbl.Append(convertCommit(L, commit, false))
 	}
-	tbl := L.CreateTable(0, 4)
-	if summary.Readme != nil {
-		tbl.RawSetH(lua.LString("readme"), convertFile(L, summary.Readme))
-	} else {
-		tbl.RawSetH(lua.LString("readme"), lua.LNil)
-	}
+	tbl := L.CreateTable(0, 2)
+	tbl.RawSetH(lua.LString("readme"), lua.LString(summary.Readme))
 	tbl.RawSetH(lua.LString("commits"), commitsTbl)
-	tbl.RawSetH(lua.LString("commits_count"), lua.LNumber(summary.CommitsCount))
 	L.Push(tbl)
 	return 1
 }
