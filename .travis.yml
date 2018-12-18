@@ -14,7 +14,7 @@ script:
 # Run golang unit tests
 - go install
 - cp -r $GOPATH/bin/blobstash .
-- go test $(go list ./... | grep pkg)
+- go test -v -mod=vendor ./...
 # Cross compile script
 # FIXME(tsileo): re-enable the cross compile
 # - ./extras/cross_compile.sh
@@ -36,3 +36,7 @@ deploy:
   skip_cleanup: true
   on:
     tags: true
+
+env:
+ - GO111MODULE=on
+install: true
