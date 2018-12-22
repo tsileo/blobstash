@@ -301,7 +301,6 @@ func (p *KvStoreProxy) Keys(ctx context.Context, start, end string, limit int) (
 type BlobStore interface {
 	Put(ctx context.Context, blob *blob.Blob) error
 	Get(ctx context.Context, hash string) ([]byte, error)
-	GetEncoded(ctx context.Context, hash string) ([]byte, error)
 	Stat(ctx context.Context, hash string) (bool, error)
 	Enumerate(ctx context.Context, start, end string, limit int) ([]*blob.SizedBlobRef, string, error)
 	Close() error
@@ -318,18 +317,6 @@ func (p *BlobStoreProxy) Get(ctx context.Context, hash string) ([]byte, error) {
 	case nil:
 	case blobsfile.ErrBlobNotFound:
 		return p.ReadSrc.Get(ctx, hash)
-	default:
-		return nil, err
-	}
-	return data, nil
-}
-
-func (p *BlobStoreProxy) GetEncoded(ctx context.Context, hash string) ([]byte, error) {
-	data, err := p.BlobStore.GetEncoded(ctx, hash)
-	switch err {
-	case nil:
-	case blobsfile.ErrBlobNotFound:
-		return p.ReadSrc.GetEncoded(ctx, hash)
 	default:
 		return nil, err
 	}

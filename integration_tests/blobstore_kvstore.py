@@ -45,6 +45,7 @@ assert blob2.data == blob.data, 'failed to fetch blob {} != {}'.format(blob.data
 
 logging.info('Enumerating blobs')
 blobs_resp = c._get('/api/blobstore/blobs').json()
+print(blobs_resp)
 assert len(blobs_resp['refs']) == 1, 'failed to enumate blobs, expected 1 got {}'.format(len(blobs_resp['refs']))
 blob_ref = blobs_resp['refs'][0]
 assert blob_ref['hash'] == blob2.hash, 'failed to enumate blobs, hash does not match, expected {} got {}'.format(

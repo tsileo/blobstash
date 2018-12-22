@@ -27,6 +27,7 @@ import (
 
 	"github.com/golang/snappy"
 	"github.com/klauspost/reedsolomon"
+	"github.com/valyala/gozstd"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -56,9 +57,12 @@ const (
 	flagEOF
 )
 
+type CompressionAlgorithm byte
+
 // Compression algorithms flag
 const (
-	flagSnappy byte = 1 << iota
+	Snappy CompressionAlgorithm = 1 << iota
+	Zstandard
 )
 
 var (
@@ -175,14 +179,14 @@ type Stats struct {
 
 // Opts represents the DB options
 type Opts struct {
+	// Compression algorithm
+	Compression CompressionAlgorithm
+
 	// The max size of a BlobsFile, will be 256MB by default if not set
 	BlobsFileSize int64
 
 	// Where the data and indexes will be stored
 	Directory string
-
-	// Compression is enabled by default
-	DisableCompression bool
 
 	// Allow to catch some events
 	LogFunc func(msg string)
@@ -212,7 +216,7 @@ type BlobsFiles struct {
 	reindexMode bool
 
 	// Compression is disabled by default
-	snappyCompression bool
+	compression CompressionAlgorithm
 
 	// The kv index that maintains blob positions
 	index *blobsIndex
@@ -266,16 +270,15 @@ func New(opts *Opts) (*BlobsFiles, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	backend := &BlobsFiles{
-		directory:         dir,
-		snappyCompression: !opts.DisableCompression,
-		index:             index,
-		files:             make(map[int]*os.File),
-		maxBlobsFileSize:  opts.BlobsFileSize,
-		rse:               enc,
-		reindexMode:       reindex,
-		logFunc:           opts.LogFunc,
+		directory:        dir,
+		compression:      opts.Compression,
+		index:            index,
+		files:            make(map[int]*os.File),
+		maxBlobsFileSize: opts.BlobsFileSize,
+		rse:              enc,
+		reindexMode:      reindex,
+		logFunc:          opts.LogFunc,
 	}
 	if err := backend.load(); err != nil {
 		panic(fmt.Errorf("error loading %T: %v", backend, err))
@@ -485,12 +488,20 @@ func (backend *BlobsFiles) scanBlobsFile(n int, iterFunc func(*blobPos, byte, st
 
 		// Decompress the blob if needed
 		var blob []byte
-		if flags[0] == flagCompressed && backend.snappyCompression {
-			blobDecoded, err := snappy.Decode(nil, rawBlob)
+		if flags[0] == flagCompressed && flags[1] != 0 {
+			var err error
+			var blobDecoded []byte
+			switch CompressionAlgorithm(flags[1]) {
+			case Snappy:
+				blobDecoded, err = snappy.Decode(nil, rawBlob)
+			case Zstandard:
+				blobDecoded, err = gozstd.Decompress(blobDecoded, rawBlob)
+			}
 			if err != nil {
 				return &corruptedError{n, nil, offset, fmt.Errorf("failed to decode blob: %v %v %v", err, blobSize, flags)}
 			}
 			blob = blobDecoded
+
 		} else {
 			blob = rawBlob
 		}
@@ -1226,34 +1237,26 @@ func (backend *BlobsFiles) Exists(hash string) (bool, error) {
 	return res, nil
 }
 
-func (backend *BlobsFiles) getEncoded(data []byte) (int, []byte, byte) {
-	flag := data[hashSize]
-	// checkFlag(flag)
-	compressionAlgFlag := data[hashSize+1]
-
-	size := int(binary.LittleEndian.Uint32(data[hashSize+2 : blobOverhead]))
-
-	if backend.snappyCompression && flag == flagCompressed && compressionAlgFlag == flagSnappy {
-		// The blob is already snappy encoded, return it directly
-		return size, data[blobOverhead:], flagBlob
-	}
-
-	// The blob was not snappy encoded, do it before returning
-	return size, snappy.Encode(nil, data[blobOverhead:]), flag
-}
-
 func (backend *BlobsFiles) decodeBlob(data []byte) (size int, blob []byte, flag byte) {
 	flag = data[hashSize]
 	// checkFlag(flag)
-	compressionAlgFlag := data[hashSize+1]
+	compressionAlgFlag := CompressionAlgorithm(data[hashSize+1])
 
 	size = int(binary.LittleEndian.Uint32(data[hashSize+2 : blobOverhead]))
 
 	blob = make([]byte, size)
 	copy(blob, data[blobOverhead:])
 
-	if backend.snappyCompression && flag == flagCompressed && compressionAlgFlag == flagSnappy {
-		blobDecoded, err := snappy.Decode(nil, blob)
+	var blobDecoded []byte
+	var err error
+	switch compressionAlgFlag {
+	case 0:
+	case Snappy:
+		blobDecoded, err = snappy.Decode(blobDecoded, blob)
+		flag = flagBlob
+		blob = blobDecoded
+	case Zstandard:
+		blobDecoded, err = gozstd.Decompress(blobDecoded, blob)
 		if err != nil {
 			panic(fmt.Errorf("failed to decode blob with Snappy: %v", err))
 		}
@@ -1292,11 +1295,19 @@ func (backend *BlobsFiles) encodeBlob(blob []byte, flag byte) (size int, data []
 
 	var compressionAlgFlag byte
 	// Only compress regular blobs
-	if backend.snappyCompression && flag == flagBlob {
-		dataEncoded := snappy.Encode(nil, blob)
+	if flag == flagBlob && backend.compression != 0 {
+		var dataEncoded []byte
+		switch backend.compression {
+		case 0:
+		case Snappy:
+			dataEncoded = snappy.Encode(nil, blob)
+			compressionAlgFlag = byte(Snappy)
+		case Zstandard:
+			dataEncoded = gozstd.Compress(dataEncoded, blob)
+			compressionAlgFlag = byte(Zstandard)
+		}
 		flag = flagCompressed
 		blob = dataEncoded
-		compressionAlgFlag = flagSnappy
 	}
 
 	size = len(blob)
@@ -1318,52 +1329,6 @@ func (backend *BlobsFiles) encodeBlob(blob []byte, flag byte) (size int, data []
 // BlobPos return the index entry for the given hash
 func (backend *BlobsFiles) blobPos(hash string) (*blobPos, error) {
 	return backend.index.getPos(hash)
-}
-
-// Get returns the blob for the given hash.
-// FIXME(tsileo): test this
-func (backend *BlobsFiles) GetEncoded(hash string) ([]byte, error) {
-	if err := backend.lastError(); err != nil {
-		return nil, err
-	}
-
-	// Fetch the index entry
-	blobPos, err := backend.index.getPos(hash)
-	if err != nil {
-		return nil, fmt.Errorf("error fetching GetPos: %v", err)
-	}
-
-	// No index entry found, returns an error
-	if blobPos == nil {
-		if err == nil {
-			return nil, ErrBlobNotFound
-		}
-		return nil, err
-	}
-
-	// Read the encoded blob from the BlobsFile
-	data := make([]byte, blobPos.size+blobOverhead)
-	n, err := backend.files[blobPos.n].ReadAt(data, int64(blobPos.offset))
-	if err != nil {
-		return nil, fmt.Errorf("error reading blob: %v / blobsfile: %+v", err, backend.files[blobPos.n])
-	}
-
-	// Ensure the data length is expcted
-	if n != blobPos.size+blobOverhead {
-		return nil, fmt.Errorf("error reading blob %v, read %v, expected %v+%v", hash, n, blobPos.size, blobOverhead)
-	}
-
-	// Decode the blob
-	blobSize, blob, _ := backend.getEncoded(data)
-	if blobSize != blobPos.size {
-		return nil, fmt.Errorf("bad blob %v encoded size, got %v, expected %v", hash, n, blobSize)
-	}
-
-	// Update the expvars
-	bytesDownloaded.Add(backend.directory, int64(blobSize))
-	blobsUploaded.Add(backend.directory, 1)
-
-	return blob, nil
 }
 
 // Get returns the blob for the given hash.

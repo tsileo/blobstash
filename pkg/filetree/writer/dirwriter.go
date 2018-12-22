@@ -187,9 +187,9 @@ func (up *Uploader) PutDir(path string) (*rnode.RawNode, error) {
 		up.DirExplorer(path, n, nodes)
 		defer close(nodes)
 	}()
-	// Upload discovered files (100 file descriptor at the same time max).
+	// Upload discovered files (5 file descriptor at the same time max).
 	wg.Add(1)
-	l := make(chan struct{}, 25)
+	l := make(chan struct{}, 5)
 	go func() {
 		defer wg.Done()
 		for f := range nodes {

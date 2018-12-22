@@ -340,14 +340,6 @@ func (bs *BlobStore) Get(ctx context.Context, hash string) ([]byte, error) {
 
 }
 
-func (bs *BlobStore) GetEncoded(ctx context.Context, hash string) ([]byte, error) {
-	dataContext, err := bs.s.dataContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return dataContext.BlobStoreProxy().GetEncoded(ctx, hash)
-}
-
 func (bs *BlobStore) Stat(ctx context.Context, hash string) (bool, error) {
 	dataContext, err := bs.s.dataContext(ctx)
 	if err != nil {

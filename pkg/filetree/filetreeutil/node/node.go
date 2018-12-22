@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	NodeBlobHeader          = []byte("#blob/node\n")
+	NodeBlobHeader          = []byte("#blobstash/node\n")
 	NodeBlobMsgpackEncoding = byte('1')
 	NodeBlobOverhead        = len(NodeBlobHeader) + 1
 )

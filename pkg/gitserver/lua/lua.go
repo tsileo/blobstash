@@ -197,8 +197,9 @@ func newFileStat(L *lua.LState, name string, additions, deletions int) *lua.LTab
 }
 
 func convertRefSummary(L *lua.LState, refSummary *gitserver.RefSummary) *lua.LTable {
-	tbl := L.CreateTable(0, 6)
+	tbl := L.CreateTable(0, 7)
 	tbl.RawSetH(lua.LString("commit_time_ago"), lua.LString(timeago.English.Format(mustParse(refSummary.Commit.Committer.Date))))
+	tbl.RawSetH(lua.LString("commit_short_hash"), lua.LString(refSummary.Commit.Hash[:8]))
 	tbl.RawSetH(lua.LString("commit_hash"), lua.LString(refSummary.Commit.Hash))
 	tbl.RawSetH(lua.LString("commit_message"), lua.LString(refSummary.Commit.Message))
 	tbl.RawSetH(lua.LString("commit_author_name"), lua.LString(refSummary.Commit.Committer.Name))

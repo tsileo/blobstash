@@ -566,7 +566,7 @@ func (gs *GitServer) nsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type GitRepoRefs struct {
-	Branches []*RefSummary `json"branches"`
+	Branches []*RefSummary `json:"branches"`
 	Tags     []*RefSummary `json:"tags"`
 }
 

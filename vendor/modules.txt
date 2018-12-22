@@ -1,15 +1,17 @@
-# a4.io/blobsfile v0.0.0-20181029195936-c742249a3522
+# a4.io/blobsfile v0.1.0
 a4.io/blobsfile
-# a4.io/gluapp v0.0.0-20181217122610-c6ba9b02f21b
+# a4.io/gluapp v0.0.0-20181218195258-2be1706b2908
 a4.io/gluapp
 a4.io/gluapp/util
 # a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f
 a4.io/gluarequire2
+# a4.io/ssse v0.0.0-20181202155639-1949828a8689
+a4.io/ssse/pkg/client
 # bazil.org/fuse v0.0.0-20180421153158-65cc252bf669
 bazil.org/fuse
 bazil.org/fuse/fs
 bazil.org/fuse/fuseutil
-# github.com/aws/aws-sdk-go v1.16.6
+# github.com/aws/aws-sdk-go v1.16.11
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/service/s3
 github.com/aws/aws-sdk-go/aws/awserr
@@ -121,7 +123,7 @@ github.com/justinas/nosurf
 github.com/kevinburke/ssh_config
 # github.com/klauspost/cpuid v1.2.0
 github.com/klauspost/cpuid
-# github.com/klauspost/reedsolomon v1.7.0
+# github.com/klauspost/reedsolomon v1.8.0
 github.com/klauspost/reedsolomon
 # github.com/konsorten/go-windows-terminal-sequences v1.0.1
 github.com/konsorten/go-windows-terminal-sequences
@@ -178,10 +180,12 @@ github.com/syndtr/goleveldb/leveldb/storage
 github.com/syndtr/goleveldb/leveldb/table
 # github.com/toqueteos/trie v0.0.0-20150530104557-56fed4a05683
 github.com/toqueteos/trie
-# github.com/unrolled/secure v0.0.0-20181022170031-4b6b7cf51606
+# github.com/unrolled/secure v0.0.0-20181221173256-0d6b5bb13069
 github.com/unrolled/secure
 # github.com/urfave/negroni v1.0.0
 github.com/urfave/negroni
+# github.com/valyala/gozstd v1.2.1
+github.com/valyala/gozstd
 # github.com/vmihailenco/msgpack v4.0.1+incompatible
 github.com/vmihailenco/msgpack
 github.com/vmihailenco/msgpack/codes
@@ -221,16 +225,16 @@ golang.org/x/crypto/curve25519
 golang.org/x/crypto/ed25519
 golang.org/x/crypto/internal/chacha20
 golang.org/x/crypto/ed25519/internal/edwards25519
-# golang.org/x/net v0.0.0-20181217023233-e147a9138326
+# golang.org/x/net v0.0.0-20181220203305-927f97764cc3
 golang.org/x/net/context
-# golang.org/x/sys v0.0.0-20181213200352-4d1cda033e06
+# golang.org/x/sys v0.0.0-20181221143128-b4a75ba826a6
 golang.org/x/sys/cpu
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 # golang.org/x/text v0.3.0
 golang.org/x/text/unicode/norm
 golang.org/x/text/transform
-# google.golang.org/appengine v1.3.0
+# google.golang.org/appengine v1.4.0
 google.golang.org/appengine/datastore
 google.golang.org/appengine
 google.golang.org/appengine/internal

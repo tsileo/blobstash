@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/golang/snappy"
 	log "github.com/inconshreveable/log15"
 
 	"a4.io/blobsfile"
@@ -62,8 +61,7 @@ type BlobStore struct {
 
 func New(logger log.Logger, root bool, dir string, conf2 *config.Config, hub *hub.Hub) (*BlobStore, error) {
 	logger.Debug("init")
-
-	back, err := blobsfile.New(&blobsfile.Opts{Directory: filepath.Join(dir, "blobs")})
+	back, err := blobsfile.New(&blobsfile.Opts{Compression: blobsfile.Zstandard, Directory: filepath.Join(dir, "blobs")})
 	if err != nil {
 		return nil, fmt.Errorf("failed to init BlobsFile: %v", err)
 	}
@@ -179,75 +177,6 @@ func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
 
 	bs.log.Debug("blob saved", "hash", blob.Hash)
 	return nil
-}
-
-func (bs *BlobStore) GetEncoded(ctx context.Context, hash string) ([]byte, error) {
-	bs.log.Info("OP Get (encoded)", "hash", hash)
-	blob, err := bs.back.GetEncoded(hash)
-	switch err {
-	case nil:
-	case blobsfile.ErrBlobNotFound:
-		if !bs.root || bs.s3back == nil {
-			return nil, err
-		}
-
-		// The blob may be queued for download
-		inFlight, blb, berr := bs.s3back.BlobWaitingForDownload(hash)
-		if berr != nil {
-			return nil, berr
-		}
-		if inFlight {
-			// The blob is queued for download, force the download
-			blob = blb.Data
-			blob = snappy.Encode(nil, blb.Data)
-			err = nil
-			break
-		}
-
-		// If there's a data cache, it means the blob must be stored on S3
-		if bs.dataCache != nil {
-			cached, err := bs.dataCache.Stat(hash)
-			if err != nil {
-				return nil, err
-			}
-			if cached {
-				bs.log.Debug("blob found in the data cache", "hash", hash)
-				blob, _, err = bs.dataCache.Get(hash)
-				blob = snappy.Encode(nil, blob)
-				err = nil
-				break
-			}
-
-			// If the blob is available on S3, download it and add it to the data cache
-			indexed, err := bs.s3back.Indexed(hash)
-			if err != nil {
-				return nil, err
-			}
-
-			if indexed {
-				bs.log.Debug("blob found on S3", "hash", hash)
-				blob, err = bs.s3back.Get(hash)
-				if err != nil {
-					return nil, err
-				}
-				if cerr := bs.dataCache.Add(hash, blob); cerr != nil {
-					return nil, cerr
-				}
-				blob = snappy.Encode(nil, blob)
-				break
-			}
-		}
-
-		// Return the original error
-		return nil, err
-	default:
-		return nil, err
-	}
-
-	readCountVar.Add(1)
-	readVar.Add(int64(len(blob)))
-
-	return blob, nil
 }
 
 func (bs *BlobStore) Get(ctx context.Context, hash string) ([]byte, error) {
