@@ -61,9 +61,18 @@ type BlobStore struct {
 
 func New(logger log.Logger, root bool, dir string, conf2 *config.Config, hub *hub.Hub) (*BlobStore, error) {
 	logger.Debug("init")
-	back, err := blobsfile.New(&blobsfile.Opts{Compression: blobsfile.Zstandard, Directory: filepath.Join(dir, "blobs")})
+	back, err := blobsfile.New(&blobsfile.Opts{
+		Compression: blobsfile.Snappy,
+		Directory:   filepath.Join(dir, "blobs"),
+		LogFunc: func(msg string) {
+			logger.Info(msg, "submodule", "blobsfile")
+		},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to init BlobsFile: %v", err)
+	}
+	if err := back.CheckBlobsFiles(); err != nil {
+		return nil, err
 	}
 	var dataCache *cache.Cache
 	var s3back *s3.S3Backend
