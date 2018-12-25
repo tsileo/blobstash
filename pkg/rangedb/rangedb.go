@@ -58,7 +58,7 @@ func (db *RangeDB) Get(k []byte) ([]byte, error) {
 func (db *RangeDB) Has(k []byte) (bool, error) {
 	e, err := db.db.Has(k, nil)
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 	return e, nil
 }
