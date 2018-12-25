@@ -55,6 +55,14 @@ func (db *RangeDB) Get(k []byte) ([]byte, error) {
 	return v, nil
 }
 
+func (db *RangeDB) Has(k []byte) (bool, error) {
+	e, err := db.db.Has(k, nil)
+	if err != nil {
+		return nil, err
+	}
+	return e, nil
+}
+
 // NextKey returns the next key for lexigraphical (key = NextKey(lastkey))
 func NextKey(bkey []byte) []byte {
 	i := len(bkey)
