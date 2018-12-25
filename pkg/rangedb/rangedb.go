@@ -76,6 +76,16 @@ type Range struct {
 	first    bool
 }
 
+func (db *RangeDB) PrefixRange(prefix []byte, reverse bool) *Range {
+	iter := db.db.NewIterator(util.BytesPrefix(prefix), nil)
+	return &Range{
+		it:      iter,
+		Reverse: reverse,
+		db:      db,
+		first:   true,
+	}
+}
+
 func (db *RangeDB) Range(min, max []byte, reverse bool) *Range {
 	iter := db.db.NewIterator(&util.Range{Start: min, Limit: NextKey(max)}, nil)
 	return &Range{
