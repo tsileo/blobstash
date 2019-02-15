@@ -154,6 +154,51 @@ var German = Config{
 	DefaultLayout: "02.01.2006",
 }
 
+//Predefined turkish configuration
+var Turkish = Config{
+	PastPrefix:   "",
+	PastSuffix:   " önce",
+	FuturePrefix: "",
+	FutureSuffix: " içinde",
+
+	Periods: []FormatPeriod{
+		FormatPeriod{time.Second, "yaklaşık bir saniye", "%d saniye"},
+		FormatPeriod{time.Minute, "yaklaşık bir dakika", "%d dakika"},
+		FormatPeriod{time.Hour, "yaklaşık bir saat", "%d saat"},
+		FormatPeriod{Day, "bir gün", "%d gün"},
+		FormatPeriod{Month, "bir ay", "%d ay"},
+		FormatPeriod{Year, "bir yıl", "%d yıl"},
+	},
+
+	Zero: "yaklaşık bir saniye",
+
+	Max:           73 * time.Hour,
+	DefaultLayout: "02/01/2006",
+}
+
+// Korean support
+var Korean = Config{
+	PastPrefix:   "",
+	PastSuffix:   " 전",
+	FuturePrefix: "",
+	FutureSuffix: " 후",
+
+	Periods: []FormatPeriod{
+		FormatPeriod{time.Second, "약 1초", "%d초"},
+		FormatPeriod{time.Minute, "약 1분", "%d분"},
+		FormatPeriod{time.Hour, "약 한시간", "%d시간"},
+		FormatPeriod{Day, "하루", "%d일"},
+		FormatPeriod{Month, "1개월", "%d개월"},
+		FormatPeriod{Year, "1년", "%d년"},
+	},
+
+	Zero: "방금",
+
+	Max:           10 * 365 * 24 * time.Hour,
+	DefaultLayout: "2006-01-02",
+}
+
+
 //Format returns a textual representation of the time value formatted according to the layout
 //defined in the Config. The time is compared to time.Now() and is then formatted as a fuzzy
 //timestamp (eg. "4 days ago")
