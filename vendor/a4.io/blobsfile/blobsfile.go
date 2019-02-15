@@ -25,9 +25,9 @@ import (
 	"sync"
 	"time"
 
+	"a4.io/blobstash/pkg/rangedb"
 	"github.com/golang/snappy"
 	"github.com/klauspost/reedsolomon"
-	"github.com/valyala/gozstd"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -43,8 +43,8 @@ const (
 	hashSize     = 32
 
 	// Reed-Solomon config
-	parityShards = 2  // 2 parity shards
 	dataShards   = 10 // 10 data shards
+	parityShards = 2  // 2 parity shards
 
 	defaultMaxBlobsFileSize = 256 << 20 // 256MB
 )
@@ -62,7 +62,6 @@ type CompressionAlgorithm byte
 // Compression algorithms flag
 const (
 	Snappy CompressionAlgorithm = 1 << iota
-	Zstandard
 )
 
 var (
@@ -253,7 +252,9 @@ func New(opts *Opts) (*BlobsFiles, error) {
 	opts.init()
 	dir := opts.Directory
 	// Try to create the directory
-	os.MkdirAll(dir, 0700)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return nil, err
+	}
 	var reindex bool
 	// Check if an index file is already present
 	if _, err := os.Stat(filepath.Join(dir, "blobs-index")); os.IsNotExist(err) {
@@ -327,7 +328,7 @@ func (backend *BlobsFiles) Stats() (*Stats, error) {
 	bchan := make(chan *Blob)
 	errc := make(chan error, 1)
 	go func() {
-		errc <- backend.Enumerate(bchan, "", "\xff", 0)
+		errc <- backend.Enumerate(bchan, "", "\xfe", 0)
 	}()
 	blobsCount := 0
 	var blobsSize int64
@@ -494,8 +495,6 @@ func (backend *BlobsFiles) scanBlobsFile(n int, iterFunc func(*blobPos, byte, st
 			switch CompressionAlgorithm(flags[1]) {
 			case Snappy:
 				blobDecoded, err = snappy.Decode(nil, rawBlob)
-			case Zstandard:
-				blobDecoded, err = gozstd.Decompress(blobDecoded, rawBlob)
 			}
 			if err != nil {
 				return &corruptedError{n, nil, offset, fmt.Errorf("failed to decode blob: %v %v %v", err, blobSize, flags)}
@@ -539,7 +538,11 @@ func copyShards(i [][]byte) (o [][]byte) {
 
 // CheckBlobsFiles will check the consistency of all the BlobsFile
 func (backend *BlobsFiles) CheckBlobsFiles() error {
-	return backend.scan(nil)
+	err := backend.scan(nil)
+	if err == nil {
+		backend.log("all blobs has been verified")
+	}
+	return err
 }
 
 func (backend *BlobsFiles) checkBlobsFile(cerr *corruptedError) error {
@@ -886,6 +889,13 @@ func (backend *BlobsFiles) scan(iterFunc func(*blobPos, byte, string, []byte) er
 func (backend *BlobsFiles) reindex() error {
 	backend.wg.Add(1)
 	defer backend.wg.Done()
+
+	var err error
+	backend.index.db, err = rangedb.New(backend.index.path)
+	if err != nil {
+		return err
+	}
+
 	n := 0
 	blobsIndexed := 0
 
@@ -1049,7 +1059,6 @@ func (backend *BlobsFiles) ropen(n int) error {
 	// Ensure the header's magic is present
 	fmagic := make([]byte, len(headerMagic))
 	_, err = f.Read(fmagic)
-	fmt.Printf("fmagic=%+v\n", fmagic)
 	if err != nil || headerMagic != string(fmagic) {
 		return fmt.Errorf("magic not found in BlobsFile: %v or header not matching", err)
 	}
@@ -1196,7 +1205,7 @@ func (backend *BlobsFiles) Put(hash string, data []byte) (err error) {
 		if err := backend.ropen(backend.n); err != nil {
 			panic(err)
 		}
-		// Update the nimber of blobsfile in the index
+		// Update the number of blobsfiles in the index
 		if err := backend.saveN(); err != nil {
 			panic(err)
 		}
@@ -1253,10 +1262,6 @@ func (backend *BlobsFiles) decodeBlob(data []byte) (size int, blob []byte, flag 
 	case 0:
 	case Snappy:
 		blobDecoded, err = snappy.Decode(blobDecoded, blob)
-		flag = flagBlob
-		blob = blobDecoded
-	case Zstandard:
-		blobDecoded, err = gozstd.Decompress(blobDecoded, blob)
 		if err != nil {
 			panic(fmt.Errorf("failed to decode blob with Snappy: %v", err))
 		}
@@ -1302,9 +1307,6 @@ func (backend *BlobsFiles) encodeBlob(blob []byte, flag byte) (size int, data []
 		case Snappy:
 			dataEncoded = snappy.Encode(nil, blob)
 			compressionAlgFlag = byte(Snappy)
-		case Zstandard:
-			dataEncoded = gozstd.Compress(dataEncoded, blob)
-			compressionAlgFlag = byte(Zstandard)
 		}
 		flag = flagCompressed
 		blob = dataEncoded
@@ -1392,24 +1394,64 @@ func (backend *BlobsFiles) Enumerate(blobs chan<- *Blob, start, end string, limi
 	}
 
 	// Enumerate the raw index directly
-	enum, _, err := backend.index.db.Seek(formatKey(blobPosKey, s))
-	if err != nil {
-		return err
-	}
 	endBytes := []byte(end)
+	enum := backend.index.db.Range(formatKey(blobPosKey, s), endBytes, false)
+	defer enum.Close()
+	k, _, err := enum.Next()
 
 	i := 0
-	for {
-		k, _, err := enum.Next()
-		if err == io.EOF {
-			break
-		}
+	for ; err == nil; k, _, err = enum.Next() {
 
-		hash := hex.EncodeToString(k[1:])
-		if bytes.Compare([]byte(hash), endBytes) > 0 || (limit != 0 && i == limit) {
+		if limit != 0 && i == limit {
 			return nil
 		}
 
+		hash := hex.EncodeToString(k[1:])
+		blobPos, err := backend.blobPos(hash)
+		if err != nil {
+			return nil
+		}
+
+		// Remove the BlobPosKey prefix byte
+		blobs <- &Blob{
+			Hash: hash,
+			Size: blobPos.blobSize,
+		}
+
+		i++
+	}
+
+	return nil
+}
+
+// Enumerate outputs all the blobs into the given chan (ordered lexicographically).
+func (backend *BlobsFiles) EnumeratePrefix(blobs chan<- *Blob, prefix string, limit int) error {
+	defer close(blobs)
+	backend.Lock()
+	defer backend.Unlock()
+
+	if err := backend.lastError(); err != nil {
+		return err
+	}
+
+	s, err := hex.DecodeString(prefix)
+	if err != nil {
+		return err
+	}
+
+	// Enumerate the raw index directly
+	enum := backend.index.db.PrefixRange(formatKey(blobPosKey, s), false)
+	defer enum.Close()
+	k, _, err := enum.Next()
+
+	i := 0
+	for ; err == nil; k, _, err = enum.Next() {
+
+		if limit != 0 && i == limit {
+			return nil
+		}
+
+		hash := hex.EncodeToString(k[1:])
 		blobPos, err := backend.blobPos(hash)
 		if err != nil {
 			return nil

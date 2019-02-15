@@ -1,4 +1,4 @@
-# a4.io/blobsfile v0.1.0
+# a4.io/blobsfile v0.2.0
 a4.io/blobsfile
 # a4.io/gluapp v0.0.0-20181218195258-2be1706b2908
 a4.io/gluapp
@@ -184,8 +184,6 @@ github.com/toqueteos/trie
 github.com/unrolled/secure
 # github.com/urfave/negroni v1.0.0
 github.com/urfave/negroni
-# github.com/valyala/gozstd v1.2.1
-github.com/valyala/gozstd
 # github.com/vmihailenco/msgpack v4.0.2+incompatible
 github.com/vmihailenco/msgpack
 github.com/vmihailenco/msgpack/codes

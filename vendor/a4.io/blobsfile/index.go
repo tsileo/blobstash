@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/cznic/kv"
+	"a4.io/blobstash/pkg/rangedb"
 )
 
 // FIXME(tsileo): optimize the index with the benchmark (not worth it if inserting the blob take longer)
@@ -28,18 +28,9 @@ func formatKey(prefix byte, bkey []byte) []byte {
 	return res
 }
 
-func opts() *kv.Options {
-	return &kv.Options{
-		VerifyDbBeforeOpen:  false,
-		VerifyDbAfterOpen:   true,
-		VerifyDbBeforeClose: false,
-		VerifyDbAfterClose:  true,
-	}
-}
-
 // blobsIndex holds the position of blobs in BlobsFile.
 type blobsIndex struct {
-	db   *kv.DB
+	db   *rangedb.RangeDB
 	path string
 }
 
@@ -111,14 +102,7 @@ func decodeBlobPos(data []byte) (blob *blobPos, error error) {
 // newIndex initializes a new index.
 func newIndex(path string) (*blobsIndex, error) {
 	dbPath := filepath.Join(path, "blobs-index")
-	if err := os.MkdirAll(path, 0700); err != nil {
-		return nil, err
-	}
-	createOpen := kv.Open
-	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		createOpen = kv.Create
-	}
-	db, err := createOpen(dbPath, &kv.Options{})
+	db, err := rangedb.New(dbPath)
 	return &blobsIndex{db: db, path: dbPath}, err
 }
 
@@ -146,13 +130,13 @@ func (index *blobsIndex) setPos(hexHash string, pos *blobPos) error {
 }
 
 // deletePos deletes the stored blobPos for the given hash.
-func (index *blobsIndex) deletePos(hexHash string) error {
-	hash, err := hex.DecodeString(hexHash)
-	if err != nil {
-		return err
-	}
-	return index.db.Delete(formatKey(blobPosKey, hash))
-}
+// func (index *blobsIndex) deletePos(hexHash string) error {
+//	hash, err := hex.DecodeString(hexHash)
+//	if err != nil {
+//		return err
+//	}
+//	return index.db.Delete(formatKey(blobPosKey, hash))
+//}
 
 // checkPos checks if a blobPos exists for the given hash (without decoding it).
 func (index *blobsIndex) checkPos(hexHash string) (bool, error) {
@@ -160,7 +144,7 @@ func (index *blobsIndex) checkPos(hexHash string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	data, err := index.db.Get(nil, formatKey(blobPosKey, hash))
+	data, err := index.db.Get(formatKey(blobPosKey, hash))
 	if err != nil {
 		return false, fmt.Errorf("error getting BlobPos: %v", err)
 	}
@@ -176,7 +160,7 @@ func (index *blobsIndex) getPos(hexHash string) (*blobPos, error) {
 	if err != nil {
 		return nil, err
 	}
-	data, err := index.db.Get(nil, formatKey(blobPosKey, hash))
+	data, err := index.db.Get(formatKey(blobPosKey, hash))
 	if err != nil {
 		return nil, fmt.Errorf("error getting BlobPos: %v", err)
 	}
@@ -194,24 +178,9 @@ func (index *blobsIndex) setN(n int) error {
 
 // getN retrieves the latest N (blobs-N) stored.
 func (index *blobsIndex) getN() (int, error) {
-	data, err := index.db.Get(nil, formatKey(metaKey, []byte("n")))
+	data, err := index.db.Get(formatKey(metaKey, []byte("n")))
 	if err != nil || string(data) == "" {
 		return 0, nil
 	}
 	return strconv.Atoi(string(data))
-}
-
-func (index *blobsIndex) incInt64(k string, delta int64) error {
-	if _, err := index.db.Inc(formatKey(metaKey, []byte(k)), delta); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (index *blobsIndex) getInt64(k string) (int64, error) {
-	data, err := index.db.Get(nil, formatKey(metaKey, []byte(k)))
-	if err != nil {
-		return 0, nil
-	}
-	return int64(binary.BigEndian.Uint64(data)), nil
 }

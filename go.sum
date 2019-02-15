@@ -2,6 +2,8 @@ a4.io/blobsfile v0.0.0-20181029195936-c742249a3522 h1:QVL41vUxtKA6ceXG4W9ha6ZOER
 a4.io/blobsfile v0.0.0-20181029195936-c742249a3522/go.mod h1:jTrsc9CgnEavpl6Tmowi2bZbGXldVGr5gvkFsS12bKs=
 a4.io/blobsfile v0.1.0 h1:nE9v20zzfL7UKvZuA2J42ncYBCqZ9mgVU9am9+XZdZk=
 a4.io/blobsfile v0.1.0/go.mod h1:kJFL3M8OxlvHZWzxZ6C9o+ky9iJHmx0jZj59nilWzJM=
+a4.io/blobsfile v0.2.0 h1:IpuvxvgTjmrwf95FJcGoUMKJ6nG4sk5weQkgVDESGxk=
+a4.io/blobsfile v0.2.0/go.mod h1:Jy00okG1uHZQ5MN9WskYFFffuDFq4UbHNb0aWRqWo9c=
 a4.io/blobstash v0.0.0-20181216235946-aa2d4a59f200/go.mod h1:PVI3EM/VmUQAz7pbz/govGO4gHypTF5YWhS56qETj+M=
 a4.io/blobstash v0.0.0-20181218201750-765e41187e8a/go.mod h1:QH1JUxPtdWiC/hCXrfzS03p5tX9mqALuBzUd2yYflso=
 a4.io/blobstash v0.0.0-20181225194020-45b3f5907aa9/go.mod h1:dlI9/box9PfZC8VDVhUEo0a2nnhOCTKQQUX7UsTB66g=

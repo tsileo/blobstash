@@ -1,7 +1,7 @@
 module a4.io/blobstash
 
 require (
-	a4.io/blobsfile v0.1.0
+	a4.io/blobsfile v0.2.0
 	a4.io/gluapp v0.0.0-20181218195258-2be1706b2908
 	a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f
 	a4.io/ssse v0.0.0-20181202155639-1949828a8689
@@ -14,6 +14,8 @@ require (
 	github.com/cznic/kv v0.0.0-20181122101858-e9cdcade440e
 	github.com/dave/jennifer v1.3.0
 	github.com/dustin/go-humanize v1.0.0
+	github.com/edsrzf/mmap-go v1.0.0 // indirect
+	github.com/emirpasic/gods v1.12.0 // indirect
 	github.com/evanphx/json-patch v4.1.0+incompatible
 	github.com/go-martini/martini v0.0.0-20170121215854-22fa46961aab // indirect
 	github.com/go-stack/stack v1.8.0 // indirect
@@ -47,17 +49,19 @@ require (
 	github.com/toqueteos/trie v1.0.0 // indirect
 	github.com/unrolled/secure v1.0.0
 	github.com/urfave/negroni v1.0.0 // indirect
+	github.com/valyala/gozstd v1.2.1 // indirect
 	github.com/vmihailenco/msgpack v4.0.2+incompatible
 	github.com/xeonx/timeago v1.0.0-rc4
 	github.com/yuin/gopher-lua v0.0.0-20190206043414-8bfc7677f583
 	github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
 	golang.org/x/crypto v0.0.0-20190211182817-74369b46fc67
 	golang.org/x/net v0.0.0-20190213061140-3a22650c66bd
-	golang.org/x/sync v0.0.0-20181221193216-37e7f081c4d4 // indirect
 	golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a // indirect
 	google.golang.org/appengine v1.4.0 // indirect
 	gopkg.in/inconshreveable/log15.v2 v2.0.0-20180818164646-67afb5ed74ec
 	gopkg.in/src-d/enry.v1 v1.7.0
+	gopkg.in/src-d/go-billy.v4 v4.3.0 // indirect
+	gopkg.in/src-d/go-git-fixtures.v3 v3.3.0 // indirect
 	gopkg.in/src-d/go-git.v4 v4.10.0
 	gopkg.in/toqueteos/substring.v1 v1.0.2 // indirect
 	gopkg.in/yaml.v2 v2.2.2
