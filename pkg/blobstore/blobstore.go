@@ -275,7 +275,13 @@ func (bs *BlobStore) enumerate(ctx context.Context, start, end string, limit int
 	refs := []*blob.SizedBlobRef{}
 	errc := make(chan error, 1)
 	go func() {
-		errc <- bs.back.Enumerate(out, start, end, limit)
+		if start == "" && end == "\xff" || end == "" {
+			errc <- bs.back.EnumeratePrefix(out, start, limit)
+
+		} else {
+			errc <- bs.back.Enumerate(out, start, end, limit)
+
+		}
 	}()
 	for cblob := range out {
 		if scan {
