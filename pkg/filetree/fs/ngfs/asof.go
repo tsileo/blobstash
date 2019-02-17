@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"a4.io/blobstash/pkg/asof"
@@ -33,6 +34,7 @@ func (a *atDir) Lookup(ctx context.Context, name string) (fs.Node, error) {
 			return nil, fuse.ENOENT
 		}
 
+		fmt.Printf("asof=%v\n", asOf)
 		cachedRoot, ok := a.fs.atCache.Get(asOf)
 		if ok {
 			return cachedRoot.(*dir), nil

@@ -971,17 +971,21 @@ func (ft *FileTree) versionsHandler() func(http.ResponseWriter, *http.Request) {
 			panic(err)
 		}
 		versions := []*Snapshot{}
-		for _, kv := range kvv.Versions {
-			snap := &Snapshot{
-				CreatedAt: kv.Version,
-				Ref:       kv.HexHash(),
-			}
-			if err := msgpack.Unmarshal(kv.Data, snap); err != nil {
-				panic(err)
-			}
-			versions = append(versions, snap)
-			if len(versions) == limit {
-				break
+
+		// the key may not exists
+		if kvv != nil {
+			for _, kv := range kvv.Versions {
+				snap := &Snapshot{
+					CreatedAt: kv.Version,
+					Ref:       kv.HexHash(),
+				}
+				if err := msgpack.Unmarshal(kv.Data, snap); err != nil {
+					panic(err)
+				}
+				versions = append(versions, snap)
+				if len(versions) == limit {
+					break
+				}
 			}
 		}
 

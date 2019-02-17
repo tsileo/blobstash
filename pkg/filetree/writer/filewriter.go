@@ -49,15 +49,8 @@ func (up *Uploader) writeReader(f io.Reader, meta *rnode.RawNode) error { // (*W
 			panic(fmt.Sprintf("DB error: %v", err))
 		}
 		if !exists {
-			if rstorer, ok := up.bs.(BlobRemoteStorer); ok {
-				if err := rstorer.PutRemote(ctx, chunkHash, chunk.Data); err != nil {
-					panic(fmt.Errorf("failed to PUT blob to remote %v", err))
-				}
-
-			} else {
-				if err := up.bs.Put(ctx, chunkHash, chunk.Data); err != nil {
-					panic(fmt.Errorf("failed to PUT blob %v", err))
-				}
+			if err := up.bs.Put(ctx, chunkHash, chunk.Data); err != nil {
+				panic(fmt.Errorf("failed to PUT blob %v", err))
 			}
 		}
 

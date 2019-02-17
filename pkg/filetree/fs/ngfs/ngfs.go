@@ -385,6 +385,10 @@ mark_filetree_node(ref)
 	defer resp.Body.Close()
 
 	if err := clientutil.ExpectStatusCode(resp, http.StatusNoContent); err != nil {
+		if err.IsNotFound() {
+			// The stash does not exists, nothing to GC
+			return nil
+		}
 		// FIXME(tsileo): find a better way to handle this?
 		return err
 	}
@@ -1310,7 +1314,8 @@ func (f *file) Reader() (fileReader, error) {
 		fr = filereader.NewFile(context.Background(), f.fs.bs, meta, f.fs.freaderCache)
 	}
 
-	fr.PreloadChunks()
+	// FIXME(tsileo): test if preloading is worth it
+	// fr.PreloadChunks()
 
 	return fr, nil
 }
