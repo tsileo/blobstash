@@ -157,8 +157,18 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 		app.log.Info("proxy registered", "url", url)
 	}
 
+	if app.scheduled != "" {
+		apps.cron.AddFunc(app.scheduled, func() {
+			app.log.Info("running the (scheduled) app")
+			// TODO(tsileo): add LuaHook instead of gluapp with
+			// app.config, app.log, what for input payload?
+		})
+		// Return now
+		app.log.Debug("new app")
+		return app, nil
+	}
+
 	// Setup the gluapp app
-	// FIXME(tsileo): only if the app is not scheduled (also update the admin)
 	if app.path != "" {
 		var err error
 		app.app, err = gluapp.NewApp(&gluapp.Config{
@@ -187,14 +197,6 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 		if err != nil {
 			return nil, err
 		}
-	}
-
-	if app.scheduled != "" {
-		apps.cron.AddFunc(app.scheduled, func() {
-			app.log.Info("running the (scheduled) app")
-			// TODO(tsileo): add LuaHook instead of gluapp with
-			// app.config, app.log, what for input payload?
-		})
 	}
 
 	// TODO(tsileo): check that `path` exists, create it if it doesn't exist?

@@ -34,6 +34,7 @@ import (
 	rnode "a4.io/blobstash/pkg/filetree/filetreeutil/node"
 	"a4.io/blobstash/pkg/filetree/imginfo"
 	"a4.io/blobstash/pkg/filetree/reader/filereader"
+	"a4.io/blobstash/pkg/filetree/vidinfo"
 	"a4.io/blobstash/pkg/filetree/writer"
 	"a4.io/blobstash/pkg/httputil"
 	"a4.io/blobstash/pkg/httputil/bewit"
@@ -215,6 +216,7 @@ func (ft *FileTree) Register(r *mux.Router, root *mux.Router, basicAuth func(htt
 	r.Handle("/file/{ref}", fileHandler)
 	// Enable shortcut path from the root
 	root.Handle("/f/{ref}", fileHandler)
+	root.Handle("/w/{ref}", http.HandlerFunc(ft.webmHandler()))
 }
 
 // Node holds the data about the file node (either file/dir), analog to a Meta
@@ -237,7 +239,8 @@ type Node struct {
 	parent *Node
 	fs     *FS
 
-	URL string `json:"url,omitempty" msgpack:"u,omitempty"`
+	URL  string            `json:"url,omitempty" msgpack:"u,omitempty"`
+	URLs map[string]string `json:"urls,omitempty" msgpack:"us,omitempty"`
 }
 
 // Update the given node with the given meta, the updated/new node is assumed to be already saved
@@ -795,9 +798,19 @@ func (ft *FileTree) uploadHandler() func(http.ResponseWriter, *http.Request) {
 
 type Info struct {
 	Image *imginfo.Image `json:"image,omitempty"`
+	Video *vidinfo.Video `json:"video,omitempty"`
+}
+
+func IsVideo(filename string) bool {
+	lname := strings.ToLower(filename)
+	if strings.HasSuffix(lname, ".avi") {
+		return true
+	}
+	return false
 }
 
 func (ft *FileTree) fetchInfo(reader io.ReadSeeker, filename, hash string) (*Info, error) {
+	fmt.Printf("FETCHINFO %s\n%s\n\n\n", filename, hash)
 	if ft.metadataCache != nil {
 		cached, ok, err := ft.metadataCache.Get(hash)
 		if err != nil {
@@ -818,6 +831,18 @@ func (ft *FileTree) fetchInfo(reader io.ReadSeeker, filename, hash string) (*Inf
 	lname := strings.ToLower(filename)
 	// TODO(tsileo): parse PDF text
 	// XXX(tsileo): generate video thumbnail?
+	fmt.Printf("lname=%v\n", lname)
+	if IsVideo(filename) {
+		webmPath := filepath.Join(ft.conf.VarDir(), "webm", fmt.Sprintf("%s.webm", hash))
+		fmt.Printf("webmPath=%s\n", webmPath)
+		if _, err := os.Stat(webmPath); err == nil {
+			videoInfo, err := vidinfo.Parse(webmPath)
+			if err != nil {
+				return nil, err
+			}
+			info.Video = videoInfo
+		}
+	}
 	if strings.HasSuffix(lname, ".jpg") || strings.HasSuffix(lname, ".png") || strings.HasSuffix(lname, ".gif") {
 		var parseExif bool
 		if strings.HasSuffix(lname, ".jpg") {
@@ -904,7 +929,7 @@ func (ft *FileTree) addRemoteRefs(n *Node) error {
 
 	for _, piv := range n.Meta.FileRefs() {
 		rref, err := ft.remoteFetcher(piv.Value)
-		fmt.Printf("REMOTE FETCHER: %+v %+v %+v\n\n", piv, rref, err)
+		// fmt.Printf("REMOTE FETCHER: %+v %+v %+v\n\n", piv, rref, err)
 		if rref == "" {
 			return nil
 		}
@@ -1449,6 +1474,44 @@ func (ft *FileTree) tgzHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
+func (ft *FileTree) webmHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" && r.Method != "HEAD" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		vars := mux.Vars(r)
+
+		hash := vars["ref"]
+
+		var authorized bool
+		if err := bewit.Validate(r, ft.sharingCred); err != nil {
+			ft.log.Debug("invalid bewit", "err", err)
+		} else {
+			ft.log.Debug("valid bewit")
+			authorized = true
+		}
+
+		if !authorized {
+			// Try if an API key is provided
+			ft.log.Info("before authFunc")
+			if !ft.authFunc(r) {
+				// Rreturns a 404 to prevent leak of hashes
+				notFound(w)
+				return
+			}
+		}
+		webmPath := filepath.Join(ft.conf.VarDir(), "webm", fmt.Sprintf("%s.webm", hash))
+		fmt.Printf("webmPath=%s\n", webmPath)
+		if _, err := os.Stat(webmPath); err != nil {
+			w.WriteHeader(404)
+			return
+		}
+		http.ServeFile(w, r, webmPath)
+		return
+	}
+}
+
 // fileHandler serve the Meta like it's a standard file
 func (ft *FileTree) fileHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -1605,6 +1668,14 @@ func (ft *FileTree) GetSemiPrivateLink(n *Node) (string, string, error) {
 	return u.String() + "&dl=1", u.String() + "&dl=0", nil
 }
 
+func (ft *FileTree) GetWebmLink(n *Node) (string, error) {
+	u := &url.URL{Path: fmt.Sprintf("/w/%s", n.Hash)}
+	if err := bewit.Bewit(ft.sharingCred, u, ft.shareTTL); err != nil {
+		panic(err)
+	}
+	return u.String(), nil
+}
+
 // Fetch a Node outside any FS
 func (ft *FileTree) nodeHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -1668,6 +1739,25 @@ func (ft *FileTree) nodeHandler() func(http.ResponseWriter, *http.Request) {
 		if err := ft.addRemoteRefs(n); err != nil {
 			panic(err)
 		}
+
+		// FIXME(tsileo): init the new file in fetchInfo and only if needed
+		f := filereader.NewFile(ctx, ft.blobStore, n.Meta, nil)
+		defer f.Close()
+
+		info, err := ft.fetchInfo(f, n.Meta.Name, n.Meta.Hash)
+		if err != nil {
+			panic(err)
+		}
+		n.Info = info
+
+		u1 := &url.URL{Path: fmt.Sprintf("/w/%s", n.Hash)}
+
+		if err := bewit.Bewit(ft.sharingCred, u1, ft.shareTTL); err != nil {
+			panic(err)
+		}
+		n.URLs = map[string]string{"webm": u1.String()}
+
+		fmt.Printf("INFO FETCHED")
 		httputil.MarshalAndWrite(r, w, map[string]interface{}{
 			"node": n,
 		})

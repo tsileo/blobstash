@@ -37,6 +37,7 @@ require (
 	github.com/mitchellh/go-ps v0.0.0-20170309133038-4fdf99ab2936
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	github.com/phyber/negroni-gzip v0.0.0-20180113114010-ef6356a5d029 // indirect
+	github.com/pixelbender/go-matroska v0.0.0-20181029113629-4ea028a99fa6
 	github.com/pkg/errors v0.8.1 // indirect
 	github.com/reiver/go-porterstemmer v1.0.1
 	github.com/restic/chunker v0.2.0
