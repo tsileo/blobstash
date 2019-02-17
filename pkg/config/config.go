@@ -63,15 +63,6 @@ func (s3 *S3Repl) Key() (*[32]byte, error) {
 	return &out, nil
 }
 
-type GitServerConfig struct {
-	Namespaces map[string]*GitNamespaceConf `yaml:"namespaces"`
-}
-
-type GitNamespaceConf struct {
-	Username string `yaml:"username"`
-	Password string `yaml:"password"`
-}
-
 type BasicAuth struct {
 	ID       string   `yaml:"id"`
 	Roles    []string `yaml:"roles"`
