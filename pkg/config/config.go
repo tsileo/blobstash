@@ -102,8 +102,6 @@ type Config struct {
 
 	ExtraApacheCombinedLogs string `yaml:"extra_apache_combined_logs"`
 
-	GitServer *GitServerConfig `yaml:"git_server"`
-
 	SharingKey string  `yaml:"sharing_key"`
 	DataDir    string  `yaml:"data_dir"`
 	S3Repl     *S3Repl `yaml:"s3_replication"`
