@@ -7,6 +7,7 @@ import (
 
 	"a4.io/blobstash/pkg/blob"
 	_ "a4.io/blobstash/pkg/ctxutil"
+	"a4.io/blobstash/pkg/filetree/filetreeutil/node"
 )
 
 type EventType int
@@ -15,7 +16,8 @@ const (
 	NewBlob EventType = iota
 	ScanBlob
 	GarbageCollection
-	FiletreeFSUpdate
+	NewFiletreeNode
+	FiletreeFSUpdate // TODO(tsileo): remove these events
 	SyncRemoteBlob
 	DeleteRemoteBlob
 )
@@ -43,7 +45,20 @@ func (h *Hub) newEvent(ctx context.Context, etype EventType, blob *blob.Blob, da
 }
 
 func (h *Hub) NewBlobEvent(ctx context.Context, blob *blob.Blob, data interface{}) error {
-	return h.newEvent(ctx, NewBlob, blob, data)
+	if err := h.newEvent(ctx, NewBlob, blob, data); err != nil {
+		return err
+	}
+	_, isNodeBlob := node.IsNodeBlob(blob.Data)
+	if isNodeBlob {
+		n, err := node.NewNodeFromBlob(blob.Hash, blob.Data)
+		if err != nil {
+			return err
+		}
+		if err := h.newEvent(ctx, NewFiletreeNode, blob, n); err != nil {
+			return nil
+		}
+	}
+	return nil
 }
 
 func (h *Hub) ScanBlobEvent(ctx context.Context, blob *blob.Blob, data interface{}) error {
@@ -71,6 +86,7 @@ func New(logger log.Logger) *Hub {
 			ScanBlob:         map[string]func(context.Context, *blob.Blob, interface{}) error{},
 			FiletreeFSUpdate: map[string]func(context.Context, *blob.Blob, interface{}) error{},
 			SyncRemoteBlob:   map[string]func(context.Context, *blob.Blob, interface{}) error{},
+			NewFiletreeNode:  map[string]func(context.Context, *blob.Blob, interface{}) error{},
 			DeleteRemoteBlob: map[string]func(context.Context, *blob.Blob, interface{}) error{},
 		},
 	}

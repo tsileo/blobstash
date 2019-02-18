@@ -160,6 +160,10 @@ func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bo
 		return nil, err
 	}
 
+	chub.Subscribe(hub.NewFiletreeNode, "webm", func(ctx context.Context, _ *blob.Blob, data interface{}) error {
+		fmt.Printf("NODE=%+v\n", data)
+		return nil
+	})
 	return &FileTree{
 		conf:      conf,
 		kvStore:   kvStore,
@@ -216,7 +220,7 @@ func (ft *FileTree) Register(r *mux.Router, root *mux.Router, basicAuth func(htt
 	r.Handle("/file/{ref}", fileHandler)
 	// Enable shortcut path from the root
 	root.Handle("/f/{ref}", fileHandler)
-	root.Handle("/w/{ref}", http.HandlerFunc(ft.webmHandler()))
+	root.Handle("/w/{ref}.{ext}", http.HandlerFunc(ft.webmHandler()))
 }
 
 // Node holds the data about the file node (either file/dir), analog to a Meta
@@ -841,6 +845,9 @@ func (ft *FileTree) fetchInfo(reader io.ReadSeeker, filename, hash string) (*Inf
 				return nil, err
 			}
 			info.Video = videoInfo
+		} else {
+			// ffmpeg may still be running, don't cache the "no result"
+			return info, nil
 		}
 	}
 	if strings.HasSuffix(lname, ".jpg") || strings.HasSuffix(lname, ".png") || strings.HasSuffix(lname, ".gif") {
@@ -1483,6 +1490,7 @@ func (ft *FileTree) webmHandler() func(http.ResponseWriter, *http.Request) {
 		vars := mux.Vars(r)
 
 		hash := vars["ref"]
+		ext := vars["ext"]
 
 		var authorized bool
 		if err := bewit.Validate(r, ft.sharingCred); err != nil {
@@ -1501,7 +1509,7 @@ func (ft *FileTree) webmHandler() func(http.ResponseWriter, *http.Request) {
 				return
 			}
 		}
-		webmPath := filepath.Join(ft.conf.VarDir(), "webm", fmt.Sprintf("%s.webm", hash))
+		webmPath := filepath.Join(ft.conf.VarDir(), "webm", fmt.Sprintf("%s.%s", hash, ext))
 		fmt.Printf("webmPath=%s\n", webmPath)
 		if _, err := os.Stat(webmPath); err != nil {
 			w.WriteHeader(404)
@@ -1668,12 +1676,16 @@ func (ft *FileTree) GetSemiPrivateLink(n *Node) (string, string, error) {
 	return u.String() + "&dl=1", u.String() + "&dl=0", nil
 }
 
-func (ft *FileTree) GetWebmLink(n *Node) (string, error) {
-	u := &url.URL{Path: fmt.Sprintf("/w/%s", n.Hash)}
+func (ft *FileTree) GetWebmLink(n *Node) (string, string, error) {
+	u := &url.URL{Path: fmt.Sprintf("/w/%s.webm", n.Hash)}
 	if err := bewit.Bewit(ft.sharingCred, u, ft.shareTTL); err != nil {
 		panic(err)
 	}
-	return u.String(), nil
+	u1 := &url.URL{Path: fmt.Sprintf("/w/%s.jpg", n.Hash)}
+	if err := bewit.Bewit(ft.sharingCred, u1, ft.shareTTL); err != nil {
+		panic(err)
+	}
+	return u.String(), u1.String(), nil
 }
 
 // Fetch a Node outside any FS
@@ -1750,7 +1762,7 @@ func (ft *FileTree) nodeHandler() func(http.ResponseWriter, *http.Request) {
 		}
 		n.Info = info
 
-		u1 := &url.URL{Path: fmt.Sprintf("/w/%s", n.Hash)}
+		u1 := &url.URL{Path: fmt.Sprintf("/w/%s.webm", n.Hash)}
 
 		if err := bewit.Bewit(ft.sharingCred, u1, ft.shareTTL); err != nil {
 			panic(err)

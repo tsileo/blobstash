@@ -6,11 +6,12 @@ require (
 	a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f
 	a4.io/ssse v0.0.0-20181202155639-1949828a8689
 	bazil.org/fuse v0.0.0-20180421153158-65cc252bf669
-	github.com/aws/aws-sdk-go v1.16.36
+	github.com/aws/aws-sdk-go v1.17.0
 	github.com/blevesearch/segment v0.0.0-20160915185041-762005e7a34f
 	github.com/carbocation/handlers v0.0.0-20140528190747-c939c6d9ef31 // indirect
 	github.com/carbocation/interpose v0.0.0-20161206215253-723534742ba3
 	github.com/codegangsta/inject v0.0.0-20150114235600-33e0aa1cb7c0 // indirect
+	github.com/codegangsta/negroni v1.0.0 // indirect
 	github.com/cznic/kv v0.0.0-20181122101858-e9cdcade440e
 	github.com/dave/jennifer v1.3.0
 	github.com/dustin/go-humanize v1.0.0
@@ -27,9 +28,9 @@ require (
 	github.com/gorilla/mux v1.7.0
 	github.com/hashicorp/golang-lru v0.5.0
 	github.com/inconshreveable/log15 v0.0.0-20180818164646-67afb5ed74ec
+	github.com/interpose/middleware v0.0.0-20150216143757-05ed56ed52fa // indirect
 	github.com/justinas/nosurf v0.0.0-20190118163749-6453469bdcc9 // indirect
 	github.com/klauspost/reedsolomon v1.9.0 // indirect
-	github.com/kr/pty v1.1.3 // indirect
 	github.com/mattn/go-colorable v0.1.0 // indirect
 	github.com/mattn/go-isatty v0.0.4 // indirect
 	github.com/meatballhat/negroni-logrus v0.0.0-20170801195057-31067281800f // indirect
@@ -37,7 +38,6 @@ require (
 	github.com/mitchellh/go-ps v0.0.0-20170309133038-4fdf99ab2936
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	github.com/phyber/negroni-gzip v0.0.0-20180113114010-ef6356a5d029 // indirect
-	github.com/pixelbender/go-matroska v0.0.0-20181029113629-4ea028a99fa6
 	github.com/pkg/errors v0.8.1 // indirect
 	github.com/reiver/go-porterstemmer v1.0.1
 	github.com/restic/chunker v0.2.0
@@ -50,7 +50,6 @@ require (
 	github.com/toqueteos/trie v1.0.0 // indirect
 	github.com/unrolled/secure v1.0.0
 	github.com/urfave/negroni v1.0.0 // indirect
-	github.com/valyala/gozstd v1.2.1 // indirect
 	github.com/vmihailenco/msgpack v4.0.2+incompatible
 	github.com/xeonx/timeago v1.0.0-rc4
 	github.com/yuin/gopher-lua v0.0.0-20190206043414-8bfc7677f583

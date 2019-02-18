@@ -21,7 +21,7 @@ func buildFSInfo(L *lua.LState, name, ref string) *lua.LTable {
 }
 
 func convertNode(L *lua.LState, ft *filetree.FileTree, node *filetree.Node) *lua.LTable {
-	tbl := L.CreateTable(0, 12)
+	tbl := L.CreateTable(0, 13)
 	dlURL, embedURL, err := ft.GetSemiPrivateLink(node)
 	if err != nil {
 		panic(err)
@@ -29,14 +29,16 @@ func convertNode(L *lua.LState, ft *filetree.FileTree, node *filetree.Node) *lua
 	tbl.RawSetH(lua.LString("url"), lua.LString(embedURL))
 	tbl.RawSetH(lua.LString("dl_url"), lua.LString(dlURL))
 	if filetree.IsVideo(node.Name) {
-		webmURL, err := ft.GetWebmLink(node)
+		webmURL, webmPosterURL, err := ft.GetWebmLink(node)
 		if err != nil {
 			panic(err)
 		}
 		tbl.RawSetH(lua.LString("is_video"), lua.LTrue)
+		tbl.RawSetH(lua.LString("webm_poster_url"), lua.LString(webmPosterURL))
 		tbl.RawSetH(lua.LString("webm_url"), lua.LString(webmURL))
 	} else {
 		tbl.RawSetH(lua.LString("is_video"), lua.LFalse)
+		tbl.RawSetH(lua.LString("webm_poster_url"), lua.LString(""))
 		tbl.RawSetH(lua.LString("webm_url"), lua.LString(""))
 	}
 	tbl.RawSetH(lua.LString("hash"), lua.LString(node.Hash))
