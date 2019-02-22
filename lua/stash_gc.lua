@@ -19,7 +19,6 @@ function mark_kv (key, version)
 function mark_filetree_node (ref)
   local data = blobstore.get(ref)
   local cnode = node.decode(data)
-  mark(ref)
   if cnode.t == 'dir' then
     if cnode.r then
       for _, childRef in ipairs(cnode.r) do
@@ -33,5 +32,7 @@ function mark_filetree_node (ref)
       end
     end
   end
+  -- only mark the final ref once all the "data" blobs has been saved
+  mark(ref)
 end
 _G.mark_filetree_node = mark_filetree_node
