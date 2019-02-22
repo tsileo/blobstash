@@ -23,6 +23,7 @@ const (
 )
 
 type Hub struct {
+	root        bool
 	log         log.Logger
 	subscribers map[EventType]map[string]func(context.Context, *blob.Blob, interface{}) error
 }
@@ -48,14 +49,18 @@ func (h *Hub) NewBlobEvent(ctx context.Context, blob *blob.Blob, data interface{
 	if err := h.newEvent(ctx, NewBlob, blob, data); err != nil {
 		return err
 	}
-	_, isNodeBlob := node.IsNodeBlob(blob.Data)
-	if isNodeBlob {
-		n, err := node.NewNodeFromBlob(blob.Hash, blob.Data)
-		if err != nil {
-			return err
-		}
-		if err := h.newEvent(ctx, NewFiletreeNode, blob, n); err != nil {
-			return nil
+
+	// FIXME(tsileo): allow event to choose root or not
+	if h.root {
+		// Check if it's Filetree Node
+		if _, isNodeBlob := node.IsNodeBlob(blob.Data); isNodeBlob {
+			n, err := node.NewNodeFromBlob(blob.Hash, blob.Data)
+			if err != nil {
+				return err
+			}
+			if err := h.newEvent(ctx, NewFiletreeNode, blob, n); err != nil {
+				return nil
+			}
 		}
 	}
 	return nil
@@ -77,10 +82,11 @@ func (h *Hub) NewSyncRemoteBlobEvent(ctx context.Context, blob *blob.Blob, data 
 	return h.newEvent(ctx, SyncRemoteBlob, blob, data)
 }
 
-func New(logger log.Logger) *Hub {
+func New(logger log.Logger, root bool) *Hub {
 	logger.Debug("init")
 	return &Hub{
-		log: logger,
+		root: root,
+		log:  logger,
 		subscribers: map[EventType]map[string]func(context.Context, *blob.Blob, interface{}) error{
 			NewBlob:          map[string]func(context.Context, *blob.Blob, interface{}) error{},
 			ScanBlob:         map[string]func(context.Context, *blob.Blob, interface{}) error{},

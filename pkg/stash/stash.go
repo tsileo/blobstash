@@ -167,7 +167,7 @@ func (s *Stash) NewDataContext(name string) (*dataContext, error) {
 		}
 	}
 	l := s.rootDataContext.log.New("data_ctx", name)
-	h := hub.New(l.New("app", "hub"))
+	h := hub.New(l.New("app", "hub"), false)
 	m, err := meta.New(l.New("app", "meta"), h)
 	if err != nil {
 		return nil, err

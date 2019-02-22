@@ -86,7 +86,7 @@ func New(conf *config.Config) (*Server, error) {
 	authFunc, basicAuth := middleware.NewBasicAuth(conf)
 	s.router.Handle("/api/ping", basicAuth(http.HandlerFunc(pingHandler)))
 
-	hub := hub.New(logger.New("app", "hub"))
+	hub := hub.New(logger.New("app", "hub"), true)
 	// Load the blobstore
 	rootBlobstore, err := blobstore.New(logger.New("app", "blobstore"), true, conf.VarDir(), conf, hub)
 	if err != nil {
