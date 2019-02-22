@@ -6,6 +6,7 @@ Package queue implements a basic FIFO queues.
 package queue // import "a4.io/blobstash/pkg/queue"
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -50,7 +51,12 @@ func (q *Queue) Enqueue(item interface{}) (*id.ID, error) {
 		return nil, err
 	}
 
-	q.db.Set(id.Raw(), item)
+	js, err := json.Marshal(item)
+	if err != nil {
+		return nil, err
+	}
+
+	q.db.Set(id.Raw(), js)
 
 	return id, nil
 }
@@ -71,7 +77,8 @@ func (q *Queue) Dequeue(item interface{}) (bool, func(bool), error) {
 		return false, nil, nil
 	}
 	k := keys[0]
-	if err := q.db.Get(k, item); err != nil {
+	v := []byte{}
+	if err := q.db.Get(k, &v); err != nil {
 		fmt.Printf("failed to get %v\n", err)
 		return false, nil, err
 	}
@@ -85,7 +92,7 @@ func (q *Queue) Dequeue(item interface{}) (bool, func(bool), error) {
 		}
 	}
 
-	return true, deqFunc, nil
+	return true, deqFunc, json.Unmarshal(v, item)
 }
 
 // TODO(tsileo): func (q *Queue) Items() ([]*blob.Blob, error)

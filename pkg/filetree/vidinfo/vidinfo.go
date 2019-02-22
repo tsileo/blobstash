@@ -3,7 +3,6 @@ package vidinfo // import "a4.io/blobstash/pkg/filetree/vidinfo"
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -53,8 +52,9 @@ func InfoPath(conf *config.Config, hash string) string {
 
 func buildThumbnail(conf *config.Config, p, hash string, duration int) error {
 	rp := ThumbnailPath(conf, hash)
-	sec := math.Max(float64(duration), 59.0) / 2
-	cmd := exec.Command("ffmpeg", "-ss", fmt.Sprintf("00:00:%02.0f", sec), "-i", p, "-vframes", "1", "-vf", "scale='w=if(gt(a,16/9),854,-2):h=if(gt(a,16/9),-2,480)'", "-q:v", "2", rp)
+	//sec := math.Max(float64(duration), 59.0) / 2
+	// FIXME(tsileo): compute a random screenshot ss
+	cmd := exec.Command("ffmpeg", "-ss", fmt.Sprintf("00:00:12"), "-i", p, "-vframes", "1", "-vf", "scale='w=if(gt(a,16/9),854,-2):h=if(gt(a,16/9),-2,480)'", "-q:v", "2", rp)
 	fmt.Printf("CMD=%+v\n", cmd)
 	if dat, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("%s: %v", dat, err)
@@ -84,9 +84,11 @@ func Cache(conf *config.Config, p, hash string, duration int) error {
 
 // Parse parses/probes a video file and returns the metadata (ffprobe required)
 func Parse(p string) (*Video, error) {
-	js, err := exec.Command("ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,codec_name,codec_long_name:format=duration", "-of", "json", p).Output()
+	c := exec.Command("ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,codec_name,codec_long_name:format=duration", "-of", "json", p)
+	fmt.Printf("CMD=%+v\n", c)
+	js, err := c.Output()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %s", js, err)
 	}
 	r := &ffprobeResult{}
 	if err := json.Unmarshal(js, r); err != nil {

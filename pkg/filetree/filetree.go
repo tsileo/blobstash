@@ -41,6 +41,7 @@ import (
 	"a4.io/blobstash/pkg/httputil/resize"
 	"a4.io/blobstash/pkg/hub"
 	"a4.io/blobstash/pkg/perms"
+	"a4.io/blobstash/pkg/queue"
 	"a4.io/blobstash/pkg/stash/store"
 	"a4.io/blobstash/pkg/vkv"
 )
@@ -86,6 +87,7 @@ type FileTree struct {
 	thumbCache    *cache.Cache
 	metadataCache *cache.Cache
 	nodeCache     *lru.Cache
+	webmQueue     *queue.Queue
 
 	remoteFetcher func(string) (string, error)
 
@@ -160,6 +162,11 @@ func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bo
 		return nil, err
 	}
 
+	webmQueue, err := queue.New(filepath.Join(conf.VarDir(), "filetree-webm.queue"))
+	if err != nil {
+		return nil, err
+	}
+
 	ft := &FileTree{
 		conf:      conf,
 		kvStore:   kvStore,
@@ -168,6 +175,7 @@ func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bo
 			Key: []byte(conf.SharingKey),
 			ID:  "filetree",
 		},
+		webmQueue:     webmQueue,
 		thumbCache:    thumbscache,
 		metadataCache: metacache,
 		nodeCache:     nodeCache,
@@ -179,6 +187,7 @@ func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bo
 	}
 
 	chub.Subscribe(hub.NewFiletreeNode, "webm", ft.webmHubCallback)
+	go ft.webmWorker()
 
 	return ft, nil
 }
@@ -190,33 +199,84 @@ func (ft *FileTree) Close() error {
 	return nil
 }
 
+func (ft *FileTree) webmWorker() {
+	log := ft.log.New("worker", "webm_worker")
+	log.Debug("starting worker")
+	n := &rnode.RawNode{}
+L:
+	for {
+		select {
+		//case <-ft.stop:
+		//	log.Debug("worker stopped")
+		//	break L
+		default:
+			ok, deqFunc, err := ft.webmQueue.Dequeue(n)
+			if err != nil {
+				panic(err)
+			}
+			if ok {
+				if err := func(n *rnode.RawNode) error {
+					log.Info(fmt.Sprintf("starting %+v", n), "ref", n.Hash)
+					if !vidinfo.IsVideo(n.Name) {
+						log.Error("not a vid")
+						deqFunc(true)
+						return nil
+					}
+
+					t := time.Now()
+					//b.wg.Add(1)
+					//defer b.wg.Done()
+
+					oPath := filepath.Join(os.TempDir(), n.Hash)
+					if err := filereader.GetFile(context.Background(), ft.blobStore, n.Hash, oPath); err != nil {
+						return err
+					}
+					// defer os.Remove(oPath)
+					info, err := vidinfo.Parse(oPath)
+					if err != nil {
+						return err
+					}
+					log.Info(fmt.Sprintf("got info=%+v", info, "ref", n.Hash))
+					js, err := json.Marshal(info)
+					if err != nil {
+						return err
+					}
+					if err := ioutil.WriteFile(vidinfo.InfoPath(ft.conf, n.Hash), js, 0666); err != nil {
+						return err
+					}
+					log.Info("Caching", "ref", n.Hash)
+					if err := vidinfo.Cache(ft.conf, oPath, n.Hash, info.Duration); err != nil {
+						ft.log.Error("failed to cache", "err", err.Error())
+						return err
+					}
+
+					deqFunc(true)
+					log.Info("video processed", "ref", n.Hash, "duration", time.Since(t))
+					return nil
+				}(n); err != nil {
+					log.Error("failed to process video", "ref", n.Hash, "err", err)
+					time.Sleep(1 * time.Second)
+				}
+				continue L
+			}
+			time.Sleep(1 * time.Second)
+			continue L
+		}
+	}
+}
+
 func (ft *FileTree) webmHubCallback(ctx context.Context, _ *blob.Blob, data interface{}) error {
 	n := data.(*rnode.RawNode)
 	fmt.Printf("NODE=%+v\n", data)
-	if _, err := os.Stat(vidinfo.WebmPath(ft.conf, n.Hash)); os.IsNotExist(err) {
-		ft.log.Info("Webm callback", "ref", n.Hash)
-		oPath := filepath.Join(os.TempDir(), n.Hash)
-		if err := filereader.GetFile(ctx, ft.blobStore, n.Hash, oPath); err != nil {
-			return err
+	if vidinfo.IsVideo(n.Name) {
+		if _, err := os.Stat(vidinfo.WebmPath(ft.conf, n.Hash)); os.IsNotExist(err) {
+			ft.log.Info("Webm callback", "ref", n.Hash)
+			if _, err := ft.webmQueue.Enqueue(n); err != nil {
+				ft.log.Error("failed to enqueue", "err", err.Error())
+				return err
+			}
+			ft.log.Info("enqueued for webm processing", "ref", n.Hash)
 		}
-		info, err := vidinfo.Parse(oPath)
-		if err != nil {
-			return err
-		}
-		ft.log.Info(fmt.Sprintf("got info=%+v", info, "ref", n.Hash))
-		js, err := json.Marshal(info)
-		if err != nil {
-			return err
-		}
-		if err := ioutil.WriteFile(vidinfo.InfoPath(ft.conf, n.Hash), js, 0666); err != nil {
-			return err
-		}
-		ft.log.Info("Caching", "ref", n.Hash)
-		if err := vidinfo.Cache(ft.conf, oPath, n.Hash, info.Duration); err != nil {
-			ft.log.Error("failed to cache", "err", err.Error())
-			return err
-		}
-		ft.log.Info("Done")
 	}
 	return nil
 }
@@ -860,11 +920,14 @@ func (ft *FileTree) fetchInfo(reader io.ReadSeeker, filename, hash string) (*Inf
 	// XXX(tsileo): generate video thumbnail?
 	fmt.Printf("lname=%v\n", lname)
 	if vidinfo.IsVideo(filename) {
-		webmPath := filepath.Join(ft.conf.VarDir(), "webm", fmt.Sprintf("%s.webm", hash))
-		fmt.Printf("webmPath=%s\n", webmPath)
-		if _, err := os.Stat(webmPath); err == nil {
-			videoInfo, err := vidinfo.Parse(webmPath)
+		infoPath := vidinfo.InfoPath(ft.conf, hash)
+		if _, err := os.Stat(infoPath); err == nil {
+			js, err := ioutil.ReadFile(infoPath)
 			if err != nil {
+				return nil, err
+			}
+			videoInfo := &vidinfo.Video{}
+			if err := json.Unmarshal(js, videoInfo); err != nil {
 				return nil, err
 			}
 			info.Video = videoInfo
@@ -1972,6 +2035,16 @@ func (ft *FileTree) NodeWithChildren(ctx context.Context, hash string) (*Node, e
 	if err := ft.fetchDir(ctx, node, 1, 1, false); err != nil {
 		return nil, err
 	}
+
+	// FIXME(tsileo): init the new file in fetchInfo and only if needed
+	f := filereader.NewFile(ctx, ft.blobStore, node.Meta, nil)
+	defer f.Close()
+
+	info, err := ft.fetchInfo(f, node.Meta.Name, node.Meta.Hash)
+	if err != nil {
+		panic(err)
+	}
+	node.Info = info
 
 	return node, nil
 }

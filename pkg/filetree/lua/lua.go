@@ -2,6 +2,7 @@ package lua // import "a4.io/blobstash/pkg/filetree/lua"
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	humanize "github.com/dustin/go-humanize"
@@ -22,7 +23,7 @@ func buildFSInfo(L *lua.LState, name, ref string) *lua.LTable {
 }
 
 func convertNode(L *lua.LState, ft *filetree.FileTree, node *filetree.Node) *lua.LTable {
-	tbl := L.CreateTable(0, 13)
+	tbl := L.CreateTable(0, 17)
 	dlURL, embedURL, err := ft.GetSemiPrivateLink(node)
 	if err != nil {
 		panic(err)
@@ -30,6 +31,13 @@ func convertNode(L *lua.LState, ft *filetree.FileTree, node *filetree.Node) *lua
 	tbl.RawSetH(lua.LString("url"), lua.LString(embedURL))
 	tbl.RawSetH(lua.LString("dl_url"), lua.LString(dlURL))
 	if vidinfo.IsVideo(node.Name) {
+		if node.Info != nil && node.Info.Video != nil {
+			tbl.RawSetH(lua.LString("video_width"), lua.LNumber(node.Info.Video.Width))
+			tbl.RawSetH(lua.LString("video_height"), lua.LNumber(node.Info.Video.Height))
+			tbl.RawSetH(lua.LString("video_codec"), lua.LString(node.Info.Video.Codec))
+			t := node.Info.Video.Duration
+			tbl.RawSetH(lua.LString("video_duration"), lua.LString(fmt.Sprintf("%02d:%02d:%02d", (t/3600), (t/60)%60, t%60)))
+		}
 		webmURL, webmPosterURL, err := ft.GetWebmLink(node)
 		if err != nil {
 			panic(err)
