@@ -6,36 +6,29 @@ Package queue implements a basic FIFO queues.
 package queue // import "a4.io/blobstash/pkg/queue"
 
 import (
-	"encoding/json"
-	"io"
-	"os"
+	"fmt"
 	"time"
 
-	"github.com/cznic/kv"
+	"github.com/recoilme/pudge"
 
 	"a4.io/blobstash/pkg/docstore/id"
 )
 
 // Queue is a FIFO queue,
 type Queue struct {
-	db   *kv.DB
+	db   *pudge.Db
 	path string
 }
 
 // New creates a new database.
 func New(path string) (*Queue, error) {
-	createOpen := kv.Open
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		createOpen = kv.Create
-	}
-
-	kvdb, err := createOpen(path, &kv.Options{})
+	db, err := pudge.Open(path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Queue{
-		db:   kvdb,
+		db:   db,
 		path: path,
 	}, nil
 }
@@ -47,7 +40,7 @@ func (q *Queue) Close() error {
 
 // Remove the underlying db file.
 func (q *Queue) Remove() error {
-	return os.Remove(q.path)
+	return q.db.DeleteFile()
 }
 
 // Enqueue the given `item`. Must be JSON serializable.
@@ -57,12 +50,7 @@ func (q *Queue) Enqueue(item interface{}) (*id.ID, error) {
 		return nil, err
 	}
 
-	js, err := json.Marshal(item)
-	if err != nil {
-		return nil, err
-	}
-
-	q.db.Set(id.Raw(), js)
+	q.db.Set(id.Raw(), item)
 
 	return id, nil
 }
@@ -75,19 +63,18 @@ func (q *Queue) InstantDequeue(id *id.ID) error {
 // Dequeue the older item, unserialize the given item.
 // Returns false if the queue is empty.
 func (q *Queue) Dequeue(item interface{}) (bool, func(bool), error) {
-	enum, err := q.db.SeekFirst()
+	keys, err := q.db.Keys(nil, 1, 0, true)
 	if err != nil {
-		if err == io.EOF {
-			return false, nil, nil
-		}
 		return false, nil, err
 	}
-
-	k, v, err := enum.Next()
-	if err != nil && err != io.EOF {
+	if len(keys) == 0 {
+		return false, nil, nil
+	}
+	k := keys[0]
+	if err := q.db.Get(k, item); err != nil {
+		fmt.Printf("failed to get %v\n", err)
 		return false, nil, err
 	}
-
 	deqFunc := func(remove bool) {
 		if !remove {
 			return
@@ -98,7 +85,7 @@ func (q *Queue) Dequeue(item interface{}) (bool, func(bool), error) {
 		}
 	}
 
-	return true, deqFunc, json.Unmarshal(v, item)
+	return true, deqFunc, nil
 }
 
 // TODO(tsileo): func (q *Queue) Items() ([]*blob.Blob, error)

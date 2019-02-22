@@ -143,6 +143,8 @@ github.com/nfnt/resize
 github.com/pelletier/go-buffruneio
 # github.com/phyber/negroni-gzip v0.0.0-20180113114010-ef6356a5d029
 github.com/phyber/negroni-gzip/gzip
+# github.com/recoilme/pudge v1.0.1
+github.com/recoilme/pudge
 # github.com/reiver/go-porterstemmer v1.0.1
 github.com/reiver/go-porterstemmer
 # github.com/remyoudompheng/bigfft v0.0.0-20170806203942-52369c62f446

@@ -39,6 +39,7 @@ require (
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	github.com/phyber/negroni-gzip v0.0.0-20180113114010-ef6356a5d029 // indirect
 	github.com/pkg/errors v0.8.1 // indirect
+	github.com/recoilme/pudge v1.0.1
 	github.com/reiver/go-porterstemmer v1.0.1
 	github.com/restic/chunker v0.2.0
 	github.com/robfig/cron v0.0.0-20180505203441-b41be1df6967

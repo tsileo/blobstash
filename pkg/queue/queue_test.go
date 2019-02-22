@@ -1,7 +1,6 @@
 package queue
 
 import (
-	"os"
 	"testing"
 	"time"
 )
@@ -18,13 +17,10 @@ type Item struct {
 
 func TestQueue(t *testing.T) {
 	q, err := New("queue_test")
-	defer func() {
-		q.Close()
-		os.Remove("queue_test")
-	}()
 	if err != nil {
 		t.Fatalf("Error creating db %v", err)
 	}
+	defer q.Remove()
 	item1 := &Item{"ok"}
 	item2 := &Item{"ok2"}
 	_, err = q.Enqueue(item1)
