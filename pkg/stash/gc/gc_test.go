@@ -39,7 +39,7 @@ func TestDataContextMerge(t *testing.T) {
 		os.RemoveAll(dir2)
 	}()
 	logger := log.New()
-	hub := hub.New(logger.New("app", "hub"))
+	hub := hub.New(logger.New("app", "hub"), true)
 	metaHandler, err := meta.New(logger.New("app", "meta"), hub)
 	if err != nil {
 		panic(err)
