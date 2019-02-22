@@ -160,11 +160,7 @@ func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bo
 		return nil, err
 	}
 
-	chub.Subscribe(hub.NewFiletreeNode, "webm", func(ctx context.Context, _ *blob.Blob, data interface{}) error {
-		fmt.Printf("NODE=%+v\n", data)
-		return nil
-	})
-	return &FileTree{
+	ft := &FileTree{
 		conf:      conf,
 		kvStore:   kvStore,
 		blobStore: blobStore,
@@ -180,13 +176,48 @@ func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bo
 		hub:           chub,
 		log:           logger,
 		remoteFetcher: remoteFetcher,
-	}, nil
+	}
+
+	chub.Subscribe(hub.NewFiletreeNode, "webm", ft.webmHubCallback)
+
+	return ft, nil
 }
 
 // Close closes all the open DB files.
 func (ft *FileTree) Close() error {
 	ft.thumbCache.Close()
 	ft.metadataCache.Close()
+	return nil
+}
+
+func (ft *FileTree) webmHubCallback(ctx context.Context, _ *blob.Blob, data interface{}) error {
+	n := data.(*rnode.RawNode)
+	fmt.Printf("NODE=%+v\n", data)
+	if _, err := os.Stat(vidinfo.WebmPath(ft.conf, n.Hash)); os.IsNotExist(err) {
+		ft.log.Info("Webm callback", "ref", n.Hash)
+		oPath := filepath.Join(os.TempDir(), n.Hash)
+		if err := filereader.GetFile(ctx, ft.blobStore, n.Hash, oPath); err != nil {
+			return err
+		}
+		info, err := vidinfo.Parse(oPath)
+		if err != nil {
+			return err
+		}
+		ft.log.Info(fmt.Sprintf("got info=%+v", info, "ref", n.Hash))
+		js, err := json.Marshal(info)
+		if err != nil {
+			return err
+		}
+		if err := ioutil.WriteFile(vidinfo.InfoPath(ft.conf, n.Hash), js, 0666); err != nil {
+			return err
+		}
+		ft.log.Info("Caching", "ref", n.Hash)
+		if err := vidinfo.Cache(ft.conf, oPath, n.Hash, info.Duration); err != nil {
+			ft.log.Error("failed to cache", "err", err.Error())
+			return err
+		}
+		ft.log.Info("Done")
+	}
 	return nil
 }
 
@@ -805,14 +836,6 @@ type Info struct {
 	Video *vidinfo.Video `json:"video,omitempty"`
 }
 
-func IsVideo(filename string) bool {
-	lname := strings.ToLower(filename)
-	if strings.HasSuffix(lname, ".avi") {
-		return true
-	}
-	return false
-}
-
 func (ft *FileTree) fetchInfo(reader io.ReadSeeker, filename, hash string) (*Info, error) {
 	fmt.Printf("FETCHINFO %s\n%s\n\n\n", filename, hash)
 	if ft.metadataCache != nil {
@@ -836,7 +859,7 @@ func (ft *FileTree) fetchInfo(reader io.ReadSeeker, filename, hash string) (*Inf
 	// TODO(tsileo): parse PDF text
 	// XXX(tsileo): generate video thumbnail?
 	fmt.Printf("lname=%v\n", lname)
-	if IsVideo(filename) {
+	if vidinfo.IsVideo(filename) {
 		webmPath := filepath.Join(ft.conf.VarDir(), "webm", fmt.Sprintf("%s.webm", hash))
 		fmt.Printf("webmPath=%s\n", webmPath)
 		if _, err := os.Stat(webmPath); err == nil {

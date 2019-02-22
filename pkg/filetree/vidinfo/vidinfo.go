@@ -3,6 +3,7 @@ package vidinfo // import "a4.io/blobstash/pkg/filetree/vidinfo"
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -10,6 +11,14 @@ import (
 
 	"a4.io/blobstash/pkg/config"
 )
+
+func IsVideo(filename string) bool {
+	lname := strings.ToLower(filename)
+	if strings.HasSuffix(lname, ".avi") {
+		return true
+	}
+	return false
+}
 
 type Video struct {
 	Width    int    `json:"width,omitempty"`
@@ -30,19 +39,44 @@ type ffprobeResult struct {
 	}
 }
 
-func buildThumbnail(conf *config.Config, p, hash string) error {
-	webmPath := filepath.Join(conf.VarDir(), "webm", fmt.Sprintf("%s.jpg", hash))
-	cmd := exec.Command("ffmpeg", "-ss", "00:00:15", "-i", p, "-vframes", "1", "-vf", "scale=\"'w=if(gt(a,16/9),854,-2):h=if(gt(a,16/9),-2,480)'\"", "-q:v", "2", webmPath)
+func ThumbnailPath(conf *config.Config, hash string) string {
+	return filepath.Join(conf.VarDir(), "webm", fmt.Sprintf("%s.jpg", hash))
+}
+
+func WebmPath(conf *config.Config, hash string) string {
+	return filepath.Join(conf.VarDir(), "webm", fmt.Sprintf("%s.webm", hash))
+}
+
+func InfoPath(conf *config.Config, hash string) string {
+	return filepath.Join(conf.VarDir(), "webm", fmt.Sprintf("%s.json", hash))
+}
+
+func buildThumbnail(conf *config.Config, p, hash string, duration int) error {
+	rp := ThumbnailPath(conf, hash)
+	sec := math.Max(float64(duration), 59.0) / 2
+	cmd := exec.Command("ffmpeg", "-ss", fmt.Sprintf("00:00:%02.0f", sec), "-i", p, "-vframes", "1", "-vf", "scale='w=if(gt(a,16/9),854,-2):h=if(gt(a,16/9),-2,480)'", "-q:v", "2", rp)
+	fmt.Printf("CMD=%+v\n", cmd)
+	if dat, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("%s: %v", dat, err)
+	}
+	return nil
+}
+
+func buildWebm(conf *config.Config, p, hash string) error {
+	webmPath := WebmPath(conf, hash)
+	cmd := exec.Command("ffmpeg", "-i", p, "-vcodec", "libvpx", "-acodec", "libvorbis", "-vf", "scale='w=if(gt(a,16/9),854,-2):h=if(gt(a,16/9),-2,480)'", webmPath)
+	fmt.Printf("CMD=%+v\n", cmd)
 	if err := cmd.Run(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func buildWebm(conf *config.Config, p, hash string) error {
-	webmPath := filepath.Join(conf.VarDir(), "webm", fmt.Sprintf("%s.webm", hash))
-	cmd := exec.Command("ffmpeg", "-i", p, "-vcodec", "libvpx", "-acodec", "libvorbis", "-vf", "scale=\"'w=if(gt(a,16/9),854,-2):h=if(gt(a,16/9),-2,480)'\"", webmPath)
-	if err := cmd.Run(); err != nil {
+func Cache(conf *config.Config, p, hash string, duration int) error {
+	if err := buildThumbnail(conf, p, hash, duration); err != nil {
+		return err
+	}
+	if err := buildWebm(conf, p, hash); err != nil {
 		return err
 	}
 	return nil

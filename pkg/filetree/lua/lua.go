@@ -9,6 +9,7 @@ import (
 
 	"a4.io/blobsfile"
 	"a4.io/blobstash/pkg/filetree"
+	"a4.io/blobstash/pkg/filetree/vidinfo"
 	"a4.io/blobstash/pkg/filetree/writer"
 	"a4.io/blobstash/pkg/stash/store"
 )
@@ -28,7 +29,7 @@ func convertNode(L *lua.LState, ft *filetree.FileTree, node *filetree.Node) *lua
 	}
 	tbl.RawSetH(lua.LString("url"), lua.LString(embedURL))
 	tbl.RawSetH(lua.LString("dl_url"), lua.LString(dlURL))
-	if filetree.IsVideo(node.Name) {
+	if vidinfo.IsVideo(node.Name) {
 		webmURL, webmPosterURL, err := ft.GetWebmLink(node)
 		if err != nil {
 			panic(err)
