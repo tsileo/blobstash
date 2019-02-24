@@ -236,7 +236,7 @@ L:
 					if err != nil {
 						return err
 					}
-					log.Info(fmt.Sprintf("got info=%+v", info, "ref", n.Hash))
+					log.Info(fmt.Sprintf("got info=%+v", info), "ref", n.Hash)
 					js, err := json.Marshal(info)
 					if err != nil {
 						return err
