@@ -20,10 +20,10 @@ func IsVideo(filename string) bool {
 }
 
 type Video struct {
-	Width    int    `json:"width,omitempty"`
-	Height   int    `json:"height,omitempty"`
-	Codec    string `json:"codec,omitempty"`
-	Duration int    `json:"duration"`
+	Width    int    `json:"width,omitempty" msgpack:"width,omitempty"`
+	Height   int    `json:"height,omitempty" msgpack:"height,omitempty"`
+	Codec    string `json:"codec,omitempty" msgpack:"codec,omitempty"`
+	Duration int    `json:"duration,omitempty" msgpack:"duration,omitempty"`
 }
 
 type ffprobeResult struct {

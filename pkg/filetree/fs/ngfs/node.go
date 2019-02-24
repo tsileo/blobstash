@@ -18,6 +18,7 @@ type node struct {
 	ChangeTime string                 `json:"ctime" msgpack:"ct"`
 	RawMode    int                    `json:"mode" msgpack:"mo"`
 	RemoteRefs []*rnode.IndexValue    `json:"remote_refs,omitempty" msgpack:"rrfs,omitempty"`
+	Info       map[string]interface{} `json:"info,omitempty" msgpack:"i,omitempty"`
 
 	// Set by the FS
 	AsOf int64 `json:"-" msgpack:"-"`

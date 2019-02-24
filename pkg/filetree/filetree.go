@@ -657,6 +657,18 @@ func (ft *FileTree) fetchDir(ctx context.Context, n *Node, depth, maxDepth int, 
 				}
 			}
 
+			if cn.Type == "file" {
+				// FIXME(tsileo): init the new file in fetchInfo and only if needed
+				f := filereader.NewFile(ctx, ft.blobStore, cn.Meta, nil)
+				defer f.Close()
+
+				info, err := ft.fetchInfo(f, cn.Meta.Name, cn.Meta.Hash)
+				if err != nil {
+					panic(err)
+				}
+				cn.Info = info
+			}
+
 			n.Children = append(n.Children, cn)
 			if err := ft.fetchDir(ctx, cn, depth+1, maxDepth, fetchRemoteRefs); err != nil {
 				return err
@@ -892,8 +904,8 @@ func (ft *FileTree) uploadHandler() func(http.ResponseWriter, *http.Request) {
 }
 
 type Info struct {
-	Image *imginfo.Image `json:"image,omitempty"`
-	Video *vidinfo.Video `json:"video,omitempty"`
+	Image *imginfo.Image `json:"image,omitempty" msgpack:"image,omitempty"`
+	Video *vidinfo.Video `json:"video,omitempty" msgpack:"video,omitempty"`
 }
 
 func (ft *FileTree) fetchInfo(reader io.ReadSeeker, filename, hash string) (*Info, error) {
@@ -1233,6 +1245,17 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 				return
 			}
 
+			if node.Type == "file" {
+				// FIXME(tsileo): init the new file in fetchInfo and only if needed
+				f := filereader.NewFile(ctx, ft.blobStore, node.Meta, nil)
+				defer f.Close()
+
+				info, err := ft.fetchInfo(f, node.Meta.Name, node.Meta.Hash)
+				if err != nil {
+					panic(err)
+				}
+				node.Info = info
+			}
 			// Returns the Node as JSON
 			// if err := fs.ft.addRemoteRefs(node); err != nil {
 			//	panic(err)

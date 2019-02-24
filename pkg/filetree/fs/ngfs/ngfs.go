@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -533,7 +534,7 @@ func (d *dir) FTNode() (*node, error) {
 // Listxattr implements the fs.NodeListxattrer interface
 func (d *dir) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
 	logger.Printf("Listxattr %s", d.path)
-	// TODO(tsileo): node metadata support
+	// TODO(tsileo): node info + metadata support
 	resp.Append([]string{"debug.ref"}...)
 	return nil
 }
@@ -1077,16 +1078,38 @@ func (f *file) Attr(ctx context.Context, a *fuse.Attr) error {
 
 // Listxattr implements the fs.NodeListxattrer interface
 func (f *file) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
-	// TODO(tsileo): node metadata support
+	// Node metadata (stored in the node/meta itself)
+	for k, _ := range f.node.Metadata {
+		resp.Append(fmt.Sprintf("metadata.%s", k))
+	}
+	// Node info (video)
+	if v, vok := f.node.Info["video"]; vok {
+		for k, _ := range v.(map[string]interface{}) {
+			resp.Append(fmt.Sprintf("info.video.%s", k))
+		}
+	}
+	// Node info (image)
+	if v, vok := f.node.Info["image"]; vok {
+		for k, _ := range v.(map[string]interface{}) {
+			resp.Append(fmt.Sprintf("info.image.%s", k))
+		}
+	}
+	// Node debug
 	resp.Append([]string{"debug.ref"}...)
 	return nil
 }
 
 // Getxattr implements the fs.NodeGetxattrer interface
 func (f *file) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
-	switch req.Name {
-	case "debug.ref":
+	switch {
+	case req.Name == "debug.ref":
 		resp.Xattr = []byte(f.node.Ref)
+	case strings.HasPrefix(req.Name, "metadata."):
+		resp.Xattr = []byte(fmt.Sprintf("%v", f.node.Metadata[req.Name[9:]]))
+	case strings.HasPrefix(req.Name, "info.video."):
+		resp.Xattr = []byte(fmt.Sprintf("%v", f.node.Info["video"].(map[string]interface{})[req.Name[11:]]))
+	case strings.HasPrefix(req.Name, "info.image."):
+		resp.Xattr = []byte(fmt.Sprintf("%v", f.node.Info["image"].(map[string]interface{})[req.Name[11:]]))
 	default:
 		return fuse.ErrNoXattr
 	}
