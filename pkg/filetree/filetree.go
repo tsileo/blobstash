@@ -1618,7 +1618,7 @@ func (ft *FileTree) webmHandler() func(http.ResponseWriter, *http.Request) {
 				return
 			}
 		}
-		webmPath := filepath.Join(ft.conf.VarDir(), "webm", fmt.Sprintf("%s.%s", hash, ext))
+		webmPath := filepath.Join(ft.conf.VidDir(), fmt.Sprintf("%s.%s", hash, ext))
 		fmt.Printf("webmPath=%s\n", webmPath)
 		if _, err := os.Stat(webmPath); err != nil {
 			w.WriteHeader(404)

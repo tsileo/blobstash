@@ -170,6 +170,11 @@ func (c *Config) StashDir() string {
 	return filepath.Join(c.VarDir(), "stash")
 }
 
+// VarDir returns the directory where the video metadata and transcoded webm
+func (c *Config) VidDir() string {
+	return filepath.Join(c.VarDir(), "videos")
+}
+
 // Init initialize the config.
 //
 // It will try to create all the needed directory.
@@ -179,6 +184,11 @@ func (c *Config) Init() error {
 	}
 	if _, err := os.Stat(c.VarDir()); os.IsNotExist(err) {
 		if err := os.MkdirAll(c.VarDir(), 0700); err != nil {
+			return err
+		}
+	}
+	if _, err := os.Stat(c.VidDir()); os.IsNotExist(err) {
+		if err := os.MkdirAll(c.VidDir(), 0700); err != nil {
 			return err
 		}
 	}

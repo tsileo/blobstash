@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	humanize "github.com/dustin/go-humanize"
 	"github.com/yuin/gopher-lua"
@@ -23,7 +24,7 @@ func buildFSInfo(L *lua.LState, name, ref string) *lua.LTable {
 }
 
 func convertNode(L *lua.LState, ft *filetree.FileTree, node *filetree.Node) *lua.LTable {
-	tbl := L.CreateTable(0, 17)
+	tbl := L.CreateTable(0, 18)
 	dlURL, embedURL, err := ft.GetSemiPrivateLink(node)
 	if err != nil {
 		panic(err)
@@ -54,6 +55,7 @@ func convertNode(L *lua.LState, ft *filetree.FileTree, node *filetree.Node) *lua
 	tbl.RawSetH(lua.LString("name"), lua.LString(node.Name))
 	tbl.RawSetH(lua.LString("type"), lua.LString(node.Type))
 	tbl.RawSetH(lua.LString("mtime"), lua.LString(node.ModTime))
+	tbl.RawSetH(lua.LString("mtime_short"), lua.LString(strings.Split(node.ModTime, "T")[0]))
 	tbl.RawSetH(lua.LString("citme"), lua.LString(node.ChangeTime))
 	tbl.RawSetH(lua.LString("mode"), lua.LString(os.FileMode(node.Mode).String()))
 	tbl.RawSetH(lua.LString("size"), lua.LNumber(node.Size))

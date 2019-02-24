@@ -39,15 +39,15 @@ type ffprobeResult struct {
 }
 
 func ThumbnailPath(conf *config.Config, hash string) string {
-	return filepath.Join(conf.VarDir(), "webm", fmt.Sprintf("%s.jpg", hash))
+	return filepath.Join(conf.VidDir(), fmt.Sprintf("%s.jpg", hash))
 }
 
 func WebmPath(conf *config.Config, hash string) string {
-	return filepath.Join(conf.VarDir(), "webm", fmt.Sprintf("%s.webm", hash))
+	return filepath.Join(conf.VidDir(), fmt.Sprintf("%s.webm", hash))
 }
 
 func InfoPath(conf *config.Config, hash string) string {
-	return filepath.Join(conf.VarDir(), "webm", fmt.Sprintf("%s.json", hash))
+	return filepath.Join(conf.VidDir(), fmt.Sprintf("%s.json", hash))
 }
 
 func buildThumbnail(conf *config.Config, p, hash string, duration int) error {
