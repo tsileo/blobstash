@@ -13,7 +13,7 @@ echo '
     exename="blobstash-${os}-${arch}"
     [ "$os" != "windows" ] || exename="${exename}.exe"
     echo "Building $exename"
-    env GOOS=$os GOARCH=$arch /usr/local/go/bin/go build -mod=vendor -o "releases/$exename" || {
+    env GOOS=$os GOARCH=$arch go build -mod=vendor -o "releases/$exename" || {
     echo "FAILED FOR $os $arch" >&2
     continue
     }
