@@ -55,28 +55,10 @@ github.com/carbocation/interpose/middleware
 github.com/carbocation/interpose/adaptors
 # github.com/codegangsta/inject v0.0.0-20150114235600-33e0aa1cb7c0
 github.com/codegangsta/inject
-# github.com/cznic/fileutil v0.0.0-20181122101858-4d67cfea8c87
-github.com/cznic/fileutil
-# github.com/cznic/internal v0.0.0-20181122101858-3279554c546e
-github.com/cznic/internal/buffer
-github.com/cznic/internal/slice
-github.com/cznic/internal/file
-# github.com/cznic/kv v0.0.0-20181122101858-e9cdcade440e
-github.com/cznic/kv
-# github.com/cznic/lldb v1.1.0
-github.com/cznic/lldb
-# github.com/cznic/mathutil v0.0.0-20181122101859-297441e03548
-github.com/cznic/mathutil
-# github.com/cznic/sortutil v0.0.0-20181122101858-f5f958428db8
-github.com/cznic/sortutil
-# github.com/cznic/zappy v0.0.0-20181122101859-ca47d358d4b1
-github.com/cznic/zappy
 # github.com/dave/jennifer v1.3.0
 github.com/dave/jennifer/jen
 # github.com/dustin/go-humanize v1.0.0
 github.com/dustin/go-humanize
-# github.com/edsrzf/mmap-go v1.0.0
-github.com/edsrzf/mmap-go
 # github.com/emirpasic/gods v1.12.0
 github.com/emirpasic/gods/trees/binaryheap
 github.com/emirpasic/gods/containers
@@ -147,8 +129,6 @@ github.com/phyber/negroni-gzip/gzip
 github.com/recoilme/pudge
 # github.com/reiver/go-porterstemmer v1.0.1
 github.com/reiver/go-porterstemmer
-# github.com/remyoudompheng/bigfft v0.0.0-20170806203942-52369c62f446
-github.com/remyoudompheng/bigfft
 # github.com/restic/chunker v0.2.0
 github.com/restic/chunker
 # github.com/robfig/cron v0.0.0-20180505203441-b41be1df6967

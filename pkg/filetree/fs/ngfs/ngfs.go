@@ -520,9 +520,9 @@ var _ fs.NodeGetxattrer = (*dir)(nil)
 func (d *dir) FTNode() (*node, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.node != nil {
-		return d.node, nil
-	}
+	//if d.node != nil {
+	//	return d.node, nil
+	//}
 	n, err := d.fs.getNode(d.path, d.asOf)
 	if err != nil {
 		return nil, err
@@ -827,14 +827,14 @@ func (d *dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	delete(d.children, req.OldName)
 	d.mu.Unlock()
 	if d, ok := n.(*dir); ok {
-		d.path = filepath.Join(filepath.Dir(d.path), req.NewName)
+		d.path = newPath
 		d.node = nil
 		if _, err := d.FTNode(); err != nil {
 			return err
 		}
 	} else {
 		f := n.(*file)
-		f.path = filepath.Join(filepath.Dir(f.path), req.NewName)
+		f.path = newPath
 		f.node = nil
 		if _, err := f.FTNode(); err != nil {
 			return err

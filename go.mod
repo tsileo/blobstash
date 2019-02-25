@@ -12,10 +12,8 @@ require (
 	github.com/carbocation/interpose v0.0.0-20161206215253-723534742ba3
 	github.com/codegangsta/inject v0.0.0-20150114235600-33e0aa1cb7c0 // indirect
 	github.com/codegangsta/negroni v1.0.0 // indirect
-	github.com/cznic/kv v0.0.0-20181122101858-e9cdcade440e
 	github.com/dave/jennifer v1.3.0
 	github.com/dustin/go-humanize v1.0.0
-	github.com/edsrzf/mmap-go v1.0.0 // indirect
 	github.com/emirpasic/gods v1.12.0 // indirect
 	github.com/evanphx/json-patch v4.1.0+incompatible
 	github.com/go-martini/martini v0.0.0-20170121215854-22fa46961aab // indirect

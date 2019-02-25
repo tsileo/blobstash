@@ -227,7 +227,7 @@ L:
 					//b.wg.Add(1)
 					//defer b.wg.Done()
 
-					oPath := filepath.Join(os.TempDir(), n.Hash)
+					oPath := filepath.Join(os.TempDir(), n.ContentHash)
 					if err := filereader.GetFile(context.Background(), ft.blobStore, n.Hash, oPath); err != nil {
 						return err
 					}
@@ -241,11 +241,11 @@ L:
 					if err != nil {
 						return err
 					}
-					if err := ioutil.WriteFile(vidinfo.InfoPath(ft.conf, n.Hash), js, 0666); err != nil {
+					if err := ioutil.WriteFile(vidinfo.InfoPath(ft.conf, n.ContentHash), js, 0666); err != nil {
 						return err
 					}
 					log.Info("Caching", "ref", n.Hash)
-					if err := vidinfo.Cache(ft.conf, oPath, n.Hash, info.Duration); err != nil {
+					if err := vidinfo.Cache(ft.conf, oPath, n.ContentHash, info.Duration); err != nil {
 						ft.log.Error("failed to cache", "err", err.Error())
 						return err
 					}
@@ -269,7 +269,7 @@ func (ft *FileTree) webmHubCallback(ctx context.Context, _ *blob.Blob, data inte
 	n := data.(*rnode.RawNode)
 	fmt.Printf("NODE=%+v\n", data)
 	if vidinfo.IsVideo(n.Name) {
-		if _, err := os.Stat(vidinfo.WebmPath(ft.conf, n.Hash)); os.IsNotExist(err) {
+		if _, err := os.Stat(vidinfo.WebmPath(ft.conf, n.ContentHash)); os.IsNotExist(err) {
 			ft.log.Info("Webm callback", "ref", n.Hash)
 			if _, err := ft.webmQueue.Enqueue(n); err != nil {
 				ft.log.Error("failed to enqueue", "err", err.Error())
@@ -316,14 +316,16 @@ func (ft *FileTree) Register(r *mux.Router, root *mux.Router, basicAuth func(htt
 
 // Node holds the data about the file node (either file/dir), analog to a Meta
 type Node struct {
-	Name       string  `json:"name" msgpack:"n"`
-	Type       string  `json:"type" msgpack:"t"`
-	Size       int     `json:"size,omitempty" msgpack:"s,omitempty"`
-	Mode       int     `json:"mode,omitempty" msgpack:"mo,omitempty"`
-	ModTime    string  `json:"mtime" msgpack:"mt"`
-	ChangeTime string  `json:"ctime" msgpack:"ct"`
-	Hash       string  `json:"ref" msgpack:"r"`
-	Children   []*Node `json:"children,omitempty" msgpack:"c,omitempty"`
+	Name          string  `json:"name" msgpack:"n"`
+	Type          string  `json:"type" msgpack:"t"`
+	Size          int     `json:"size,omitempty" msgpack:"s,omitempty"`
+	Mode          int     `json:"mode,omitempty" msgpack:"mo,omitempty"`
+	ModTime       string  `json:"mtime" msgpack:"mt"`
+	ChangeTime    string  `json:"ctime" msgpack:"ct"`
+	ContentHash   string  `json:"content_hash,omitempty" msgpack:"ch,omitempty"`
+	Hash          string  `json:"ref" msgpack:"r"`
+	Children      []*Node `json:"children,omitempty" msgpack:"c,omitempty"`
+	ChildrenCount int     `json:"children_count,omitempty" msgpack:"cc,omitempty"`
 
 	// FIXME(ts): rename to Metadata
 	Data       map[string]interface{} `json:"metadata,omitempty" msgpack:"md,omitempty"`
@@ -491,6 +493,7 @@ func (ft *FileTree) Delete(ctx context.Context, n *Node, prefixFmt string, mtime
 	parent.Meta.ChangeTime = 0
 	parent.Meta.Refs = newRefs
 	parent.Children = newChildren
+	parent.ChildrenCount = len(newChildren)
 	newRef, data := parent.Meta.Encode()
 	parent.Hash = newRef
 	parent.Meta.Hash = newRef
@@ -516,14 +519,21 @@ func MetaToNode(m *rnode.RawNode) (*Node, error) {
 	//if m.Version != rnode.V1 {
 	//return nil, fmt.Errorf("bad node version \"%s\" for node %+v", m.Version, m)
 	//}
+	//if m.Name == "_root" {
+	// TODO(tsileo): the FS.name
+	//}
 	n := &Node{
-		Name: m.Name,
-		Type: m.Type,
-		Size: m.Size,
-		Data: m.Metadata,
-		Hash: m.Hash,
-		Mode: int(m.Mode),
-		Meta: m,
+		Name:        m.Name,
+		Type:        m.Type,
+		Size:        m.Size,
+		Data:        m.Metadata,
+		Hash:        m.Hash,
+		ContentHash: m.ContentHash,
+		Mode:        int(m.Mode),
+		Meta:        m,
+	}
+	if n.Type == rnode.Dir {
+		n.ChildrenCount = len(m.Refs)
 	}
 	if m.ModTime > 0 {
 		n.ModTime = time.Unix(m.ModTime, 0).Format(time.RFC3339)
@@ -662,7 +672,7 @@ func (ft *FileTree) fetchDir(ctx context.Context, n *Node, depth, maxDepth int, 
 				f := filereader.NewFile(ctx, ft.blobStore, cn.Meta, nil)
 				defer f.Close()
 
-				info, err := ft.fetchInfo(f, cn.Meta.Name, cn.Meta.Hash)
+				info, err := ft.fetchInfo(f, cn.Meta.Name, cn.Meta.Hash, cn.Meta.ContentHash)
 				if err != nil {
 					panic(err)
 				}
@@ -890,7 +900,7 @@ func (ft *FileTree) uploadHandler() func(http.ResponseWriter, *http.Request) {
 			panic(err)
 		}
 		reader.Seek(0, os.SEEK_SET)
-		info, err := ft.fetchInfo(reader, handler.Filename, meta.Hash)
+		info, err := ft.fetchInfo(reader, handler.Filename, meta.Hash, meta.ContentHash)
 		if err != nil {
 			panic(err)
 		}
@@ -908,7 +918,7 @@ type Info struct {
 	Video *vidinfo.Video `json:"video,omitempty" msgpack:"video,omitempty"`
 }
 
-func (ft *FileTree) fetchInfo(reader io.ReadSeeker, filename, hash string) (*Info, error) {
+func (ft *FileTree) fetchInfo(reader io.ReadSeeker, filename, hash, contentHash string) (*Info, error) {
 	fmt.Printf("FETCHINFO %s\n%s\n\n\n", filename, hash)
 	if ft.metadataCache != nil {
 		cached, ok, err := ft.metadataCache.Get(hash)
@@ -932,7 +942,7 @@ func (ft *FileTree) fetchInfo(reader io.ReadSeeker, filename, hash string) (*Inf
 	// XXX(tsileo): generate video thumbnail?
 	fmt.Printf("lname=%v\n", lname)
 	if vidinfo.IsVideo(filename) {
-		infoPath := vidinfo.InfoPath(ft.conf, hash)
+		infoPath := vidinfo.InfoPath(ft.conf, contentHash)
 		if _, err := os.Stat(infoPath); err == nil {
 			js, err := ioutil.ReadFile(infoPath)
 			if err != nil {
@@ -1250,7 +1260,8 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 				f := filereader.NewFile(ctx, ft.blobStore, node.Meta, nil)
 				defer f.Close()
 
-				info, err := ft.fetchInfo(f, node.Meta.Name, node.Meta.Hash)
+				fmt.Printf("METAMAETA=%+v\n", node.Meta)
+				info, err := ft.fetchInfo(f, node.Meta.Name, node.Meta.Hash, node.Meta.ContentHash)
 				if err != nil {
 					panic(err)
 				}
@@ -1786,11 +1797,11 @@ func (ft *FileTree) GetSemiPrivateLink(n *Node) (string, string, error) {
 }
 
 func (ft *FileTree) GetWebmLink(n *Node) (string, string, error) {
-	u := &url.URL{Path: fmt.Sprintf("/w/%s.webm", n.Hash)}
+	u := &url.URL{Path: fmt.Sprintf("/w/%s.webm", n.ContentHash)}
 	if err := bewit.Bewit(ft.sharingCred, u, ft.shareTTL); err != nil {
 		panic(err)
 	}
-	u1 := &url.URL{Path: fmt.Sprintf("/w/%s.jpg", n.Hash)}
+	u1 := &url.URL{Path: fmt.Sprintf("/w/%s.jpg", n.ContentHash)}
 	if err := bewit.Bewit(ft.sharingCred, u1, ft.shareTTL); err != nil {
 		panic(err)
 	}
@@ -1865,13 +1876,13 @@ func (ft *FileTree) nodeHandler() func(http.ResponseWriter, *http.Request) {
 		f := filereader.NewFile(ctx, ft.blobStore, n.Meta, nil)
 		defer f.Close()
 
-		info, err := ft.fetchInfo(f, n.Meta.Name, n.Meta.Hash)
+		info, err := ft.fetchInfo(f, n.Meta.Name, n.Meta.Hash, n.Meta.ContentHash)
 		if err != nil {
 			panic(err)
 		}
 		n.Info = info
 
-		u1 := &url.URL{Path: fmt.Sprintf("/w/%s.webm", n.Hash)}
+		u1 := &url.URL{Path: fmt.Sprintf("/w/%s.webm", n.ContentHash)}
 
 		if err := bewit.Bewit(ft.sharingCred, u1, ft.shareTTL); err != nil {
 			panic(err)
@@ -1979,7 +1990,7 @@ func (ft *FileTree) Node(ctx context.Context, hash string) (*Node, error) {
 	f := filereader.NewFile(ctx, ft.blobStore, node.Meta, nil)
 	defer f.Close()
 
-	info, err := ft.fetchInfo(f, node.Meta.Name, node.Meta.Hash)
+	info, err := ft.fetchInfo(f, node.Meta.Name, node.Meta.Hash, node.Meta.ContentHash)
 	if err != nil {
 		return nil, err
 	}
@@ -2063,7 +2074,7 @@ func (ft *FileTree) NodeWithChildren(ctx context.Context, hash string) (*Node, e
 	f := filereader.NewFile(ctx, ft.blobStore, node.Meta, nil)
 	defer f.Close()
 
-	info, err := ft.fetchInfo(f, node.Meta.Name, node.Meta.Hash)
+	info, err := ft.fetchInfo(f, node.Meta.Name, node.Meta.Hash, node.Meta.ContentHash)
 	if err != nil {
 		panic(err)
 	}

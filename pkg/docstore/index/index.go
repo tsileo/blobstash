@@ -15,18 +15,13 @@ For each indexed doc:
 package index // import "a4.io/blobstash/pkg/docstore/index"
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"hash/fnv"
-	"io"
-	"os"
 	"path/filepath"
 	"sort"
 
 	"a4.io/blobstash/pkg/config"
-
-	"github.com/cznic/kv"
 )
 
 // FIXME(tsileo): 1 kv file by index, nore more "index:{collection}:{index id}" preifx, just the index hash!
@@ -95,7 +90,6 @@ type Indexes struct {
 
 // HashIndex will act as a basic indexing for basic queries like `{"key": "value"}`
 type HashIndex struct {
-	db     *kv.DB
 	config *config.Config
 	Path   string
 	index  *Index
@@ -110,16 +104,7 @@ func New(conf *config.Config, index *Index) (*HashIndex, error) {
 	sort.Strings(index.Sort)
 	indexName := fmt.Sprintf("docstore.%s.%s.index", idFromFields(index.Fields), idFromFields(index.Sort))
 	path := filepath.Join(conf.VarDir(), indexName)
-	createOpen := kv.Open
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		createOpen = kv.Create
-	}
-	db, err := createOpen(path, &kv.Options{})
-	if err != nil {
-		return nil, err
-	}
 	return &HashIndex{
-		db:     db,
 		index:  index,
 		Path:   path,
 		config: conf,
@@ -134,7 +119,8 @@ func encodeMeta(keyByte byte, key []byte) []byte {
 }
 
 func (hi *HashIndex) Close() error {
-	return hi.db.Close()
+	// return hi.db.Close()
+	return nil
 }
 
 // TODO(tsileo): support alternative sort key!
@@ -143,35 +129,36 @@ func (hi *HashIndex) Index(idxValues IndexValues, _id string) error {
 	k := make([]byte, 16+24)
 	copy(k[:], idxValues.Hash(hi.index))
 	copy(k[16:], []byte(_id))
-	if err := hi.db.Set(encodeMeta(IndexRow, k), []byte(_id)); err != nil {
-		return err
-	}
+	// if err := hi.db.Set(encodeMeta(IndexRow, k), []byte(_id)); err != nil {
+	//	return err
+	//}
 
 	return nil
 }
 
 func (hi *HashIndex) IterReverse(idxValues IndexValues, start, end string, limit int) ([]string, error) {
 	// TODO(tsileo): be able to switch between Iter/IterReverse (i.e. the sort order)
-	h := []byte(idxValues.Hash(hi.index))
-	enum, err := hi.db.SeekLast() // (encodeMeta(IndexRow, bend))
-	if err != nil {
-		return nil, err
-	}
+	// h := []byte(idxValues.Hash(hi.index))
+	//enum, err := hi.db.SeekLast() // (encodeMeta(IndexRow, bend))
+	//if err != nil {
+	//	return nil, err
+	//}
 	var res []string
-	bstart := append(h, []byte(start)...)
-	endBytes := encodeMeta(IndexRow, bstart)
-	i := 0
-	for {
-		k, _id, err := enum.Prev()
-		if err == io.EOF {
-			break
-		}
-		if bytes.Compare(k, endBytes) < 0 || (limit != 0 && i > limit) {
-			return res, nil
-		}
-		res = append(res, string(_id))
-		i++
-	}
-
 	return res, nil
+	//bstart := append(h, []byte(start)...)
+	//endBytes := encodeMeta(IndexRow, bstart)
+	//i := 0
+	//for {
+	//	k, _id, err := enum.Prev()
+	//	if err == io.EOF {
+	//		break
+	//	}
+	//	if bytes.Compare(k, endBytes) < 0 || (limit != 0 && i > limit) {
+	//		return res, nil
+	//	}
+	//	res = append(res, string(_id))
+	//	i++
+	//}
+
+	//return res, nil
 }

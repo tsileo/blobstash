@@ -58,7 +58,7 @@ func (up *Uploader) writeReader(f io.Reader, meta *rnode.RawNode) error { // (*W
 		meta.AddIndexedRef(int(size), chunkHash)
 	}
 	meta.Size = int(size)
-	meta.AddData("blake2b-hash", fmt.Sprintf("%x", fullHash.Sum(nil)))
+	meta.ContentHash = fmt.Sprintf("%x", fullHash.Sum(nil))
 	return nil
 	// writeResult.Hash = fmt.Sprintf("%x", fullHash.Sum(nil))
 	// if writeResult.BlobsUploaded > 0 {

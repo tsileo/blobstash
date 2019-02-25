@@ -2,27 +2,21 @@ package index // import "a4.io/blobstash/pkg/backend/s3/index"
 
 import (
 	"encoding/hex"
-	"os"
 	"sync"
 
-	"github.com/cznic/kv"
+	"github.com/recoilme/pudge"
 )
 
 // Queue is a FIFO queue,
 type Index struct {
-	db   *kv.DB
+	db   *pudge.Db
 	path string
 	sync.Mutex
 }
 
 // New creates a new database.
 func New(path string) (*Index, error) {
-	createOpen := kv.Open
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		createOpen = kv.Create
-	}
-
-	kvdb, err := createOpen(path, &kv.Options{})
+	kvdb, err := pudge.Open(path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +29,7 @@ func New(path string) (*Index, error) {
 
 // Remove the underlying db file.
 func (i *Index) Remove() error {
-	return os.Remove(i.path)
+	return i.db.DeleteFile()
 }
 
 // Close the underlying db file.
@@ -64,14 +58,11 @@ func (i *Index) Exists(hash string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	v, err := i.db.Get(nil, bhash)
+	exists, err := i.db.Has(bhash)
 	if err != nil {
 		return false, err
 	}
-	if v != nil {
-		return true, nil
-	}
-	return false, nil
+	return exists, nil
 }
 
 func (i *Index) Get(hash string) (string, error) {
@@ -81,8 +72,8 @@ func (i *Index) Get(hash string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	v, err := i.db.Get(nil, bhash)
-	if err != nil {
+	var v []byte
+	if err := i.db.Get(bhash, &v); err != nil {
 		return "", err
 	}
 	if v != nil {

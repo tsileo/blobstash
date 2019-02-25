@@ -47,16 +47,17 @@ type IndexValue struct {
 }
 
 type RawNode struct {
-	ModTime    int64                  `msgpack:"mt,omitempty"`
-	ChangeTime int64                  `msgpack:"ct,omitempty"`
-	Mode       uint32                 `msgpack:"mo,omitempty"`
-	Name       string                 `msgpack:"n"`
-	Type       string                 `msgpack:"t"`
-	Size       int                    `msgpack:"s"`
-	Refs       []interface{}          `msgpack:"r"`
-	Version    string                 `msgpack:"v"`
-	Metadata   map[string]interface{} `msgpack:"m,omitempty"`
-	Hash       string                 `msgpack:"-"`
+	ModTime     int64                  `msgpack:"mt,omitempty"`
+	ChangeTime  int64                  `msgpack:"ct,omitempty"`
+	Mode        uint32                 `msgpack:"mo,omitempty"`
+	Name        string                 `msgpack:"n"`
+	Type        string                 `msgpack:"t"`
+	Size        int                    `msgpack:"s"`
+	Refs        []interface{}          `msgpack:"r"`
+	Version     string                 `msgpack:"v"`
+	ContentHash string                 `msgpack:"ch"`
+	Metadata    map[string]interface{} `msgpack:"m,omitempty"`
+	Hash        string                 `msgpack:"-"`
 }
 
 func (n *RawNode) FileRefs() []*IndexValue {
@@ -108,6 +109,9 @@ func (n *RawNode) AddData(key string, val interface{}) {
 
 // JSON returns the `Node` encoded as (hash, blob)
 func (n *RawNode) Encode() (string, []byte) {
+	if n.Version == "" {
+		n.Version = V1
+	}
 	js, err := msgpack.Marshal(n)
 	if err != nil {
 		panic(err)

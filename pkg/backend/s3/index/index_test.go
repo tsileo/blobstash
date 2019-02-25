@@ -1,7 +1,6 @@
 package index
 
 import (
-	"os"
 	"testing"
 )
 
@@ -14,8 +13,7 @@ func check(e error) {
 func TestIndex(t *testing.T) {
 	i, err := New("index_test")
 	defer func() {
-		i.Close()
-		os.Remove("index_test")
+		i.Remove()
 	}()
 	if err != nil {
 		t.Fatalf("Error creating db %v", err)
