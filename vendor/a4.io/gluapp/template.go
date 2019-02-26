@@ -22,6 +22,9 @@ var funcs = template.FuncMap{
 			panic("bad md type")
 		}
 	},
+	"htmlify": func(i string) template.HTML {
+		return template.HTML(i)
+	},
 }
 
 func setupTemplate(path string) func(*lua.LState) int {

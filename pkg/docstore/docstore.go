@@ -582,6 +582,25 @@ func addSpecialFields(doc map[string]interface{}, _id *id.ID) {
 	}
 }
 
+func (docstore *DocStore) LuaUpdate(collection, docID string, newDoc map[string]interface{}) error {
+	// Field/key starting with `_` are forbidden, remove them
+	for k := range newDoc {
+		if _, ok := reservedKeys[k]; ok {
+			delete(newDoc, k)
+		}
+	}
+
+	data, err := msgpack.Marshal(newDoc)
+	if err != nil {
+		panic(err)
+	}
+
+	if _, err := docstore.kvStore.Put(context.Background(), fmt.Sprintf(keyFmt, collection, docID), "", append([]byte{0}, data...), -1); err != nil {
+		panic(err)
+	}
+	return nil
+}
+
 // LuaQuery performs a Lua query
 func (docstore *DocStore) LuaQuery(L *lua.LState, lfunc *lua.LFunction, collection string, cursor string, limit int) ([]map[string]interface{}, map[string]interface{}, string, error) {
 	query := &query{
