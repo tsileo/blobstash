@@ -32,6 +32,7 @@ func setupDocStore(dc *docstore.DocStore) func(*lua.LState) int {
 func Setup(L *lua.LState, dc *docstore.DocStore) {
 	mtCol := L.NewTypeMetatable("col")
 	L.SetField(mtCol, "__index", L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
+		"remove": colRemove,
 		"update": colUpdate,
 		"insert": colInsert,
 		"query":  colQuery,
@@ -83,6 +84,18 @@ func colGet(L *lua.LState) int {
 	L.Push(luautil.InterfaceToLValue(L, doc))
 	L.Push(luautil.InterfaceToLValue(L, pointers))
 	return 2
+}
+
+func colRemove(L *lua.LState) int {
+	col := checkCol(L)
+	if col == nil {
+		return 0
+	}
+	docID := L.ToString(2)
+	if err := col.dc.LuaRemove(col.name, docID); err != nil {
+		panic(err)
+	}
+	return 0
 }
 
 func colUpdate(L *lua.LState) int {

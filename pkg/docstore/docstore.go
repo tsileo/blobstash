@@ -601,6 +601,13 @@ func (docstore *DocStore) LuaUpdate(collection, docID string, newDoc map[string]
 	return nil
 }
 
+func (docstore *DocStore) LuaRemove(collection, docID string) error {
+	if _, err := docstore.kvStore.Put(context.TODO(), fmt.Sprintf(keyFmt, collection, docID), "", []byte{flagDeleted}, -1); err != nil {
+		panic(err)
+	}
+	return nil
+}
+
 // LuaQuery performs a Lua query
 func (docstore *DocStore) LuaQuery(L *lua.LState, lfunc *lua.LFunction, collection string, cursor string, limit int) ([]map[string]interface{}, map[string]interface{}, string, error) {
 	query := &query{
@@ -737,6 +744,7 @@ QUERY:
 			} else {
 				// FIXME(tsileo): only fetch the pointers once the doc has been matched!
 				if _id, docPointers, err = docstore.Fetch(collection, _id.String(), &doc, fetchPointers, -1); err != nil {
+					fmt.Printf("ERR=%+v\n", err)
 
 					// The document is deleted skip it
 					if _id.Flag() == flagDeleted {
@@ -1213,35 +1221,39 @@ func (docstore *DocStore) Fetch(collection, sid string, res interface{}, fetchPo
 
 	var pointers map[string]interface{}
 
-	// Build the doc
-	switch idoc := res.(type) {
-	case nil:
-		// Do nothing
-	case *map[string]interface{}:
-		if err := msgpack.Unmarshal(blob, idoc); err != nil {
-			return nil, nil, fmt.Errorf("failed to unmarshal blob: %s", blob)
-		}
-		// TODO(tsileo): set the special fields _created/_updated/_hash
-		if fetchPointers {
-			pointers, err = docstore.fetchPointers(*idoc)
+	// FIXME(tsileo): handle deleted docs (also in the admin/query)
+	if len(blob) > 0 {
+
+		// Build the doc
+		switch idoc := res.(type) {
+		case nil:
+			// Do nothing
+		case *map[string]interface{}:
+			if err := msgpack.Unmarshal(blob, idoc); err != nil {
+				return nil, nil, fmt.Errorf("failed to unmarshal blob: %s", blob)
+			}
+			// TODO(tsileo): set the special fields _created/_updated/_hash
+			if fetchPointers {
+				pointers, err = docstore.fetchPointers(*idoc)
+				if err != nil {
+					return nil, nil, err
+				}
+			}
+		case *[]byte:
+			// Decode the doc and encode it to JSON
+			out := map[string]interface{}{}
+			if err := msgpack.Unmarshal(blob, &out); err != nil {
+				return nil, nil, fmt.Errorf("failed to unmarshal blob: %s", blob)
+			}
+			// TODO(tsileo): set the special fields _created/_updated/_hash
+			js, err := json.Marshal(out)
 			if err != nil {
 				return nil, nil, err
 			}
-		}
-	case *[]byte:
-		// Decode the doc and encode it to JSON
-		out := map[string]interface{}{}
-		if err := msgpack.Unmarshal(blob, &out); err != nil {
-			return nil, nil, fmt.Errorf("failed to unmarshal blob: %s", blob)
-		}
-		// TODO(tsileo): set the special fields _created/_updated/_hash
-		js, err := json.Marshal(out)
-		if err != nil {
-			return nil, nil, err
-		}
 
-		// Just the copy if JSON if a []byte is provided
-		*idoc = append(*idoc, js...)
+			// Just the copy if JSON if a []byte is provided
+			*idoc = append(*idoc, js...)
+		}
 	}
 	_id.SetFlag(kv.Data[0])
 	_id.SetVersion(kv.Version)
