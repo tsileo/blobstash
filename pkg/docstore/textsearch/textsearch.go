@@ -2,12 +2,16 @@ package textsearch // import "a4.io/blobstash/pkg/textsearch"
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"text/scanner"
 
 	"github.com/blevesearch/segment"
+	lru "github.com/hashicorp/golang-lru"
 	porterstemmer "github.com/reiver/go-porterstemmer"
 )
+
+var cache, _ = lru.New(128)
 
 type searchTerm struct {
 	prefix     string
@@ -82,6 +86,10 @@ func (terms SearchTerms) Match(d *IndexedDoc) bool {
 }
 
 func ParseTextQuery(q string) SearchTerms {
+	if cached, ok := cache.Get(q); ok {
+		fmt.Printf("ParseTextQuery form cache")
+		return cached.(SearchTerms)
+	}
 	var s scanner.Scanner
 	s.Init(strings.NewReader(q))
 	out := SearchTerms{}
@@ -113,14 +121,6 @@ func ParseTextQuery(q string) SearchTerms {
 		prefix = ""
 		exactMatch = false
 	}
+	cache.Add(q, out)
 	return out
 }
-
-//func main() {
-//	d, err := NewIndexedDoc(map[string]interface{}{"content": "hello thomas and girls"}, []string{"content"})
-//	if err != nil {
-//		panic(err)
-//	}
-//	out := ParseTextQuery(src)
-//	res := out.Match(d)
-//}

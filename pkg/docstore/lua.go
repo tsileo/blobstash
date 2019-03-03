@@ -19,6 +19,7 @@ import (
 
 	luautil "a4.io/blobstash/pkg/apps/luautil"
 	"a4.io/blobstash/pkg/config"
+	"a4.io/blobstash/pkg/docstore/textsearch"
 	"a4.io/blobstash/pkg/filetree"
 	filetreeLua "a4.io/blobstash/pkg/filetree/lua"
 	"a4.io/blobstash/pkg/luascripts"
@@ -412,6 +413,31 @@ func SetLuaGlobals(L *lua.LState) {
 	L.SetGlobal("porterstemmer_stem", L.NewFunction(stem))
 }
 
+func (docstore *DocStore) textSearch(L *lua.LState) int {
+	doc := luautil.TableToMap(L.ToTable(1))
+	qs := L.ToString(2)
+	ifields := luautil.TableToSlice(L.ToTable(3))
+	fields := []string{}
+	for _, f := range ifields {
+		fields = append(fields, f.(string))
+	}
+
+	idoc, err := textsearch.NewIndexedDoc(doc, fields)
+	if err != nil {
+		panic(err)
+	}
+
+	terms := textsearch.ParseTextQuery(qs)
+	match := terms.Match(idoc)
+
+	if match {
+		L.Push(lua.LTrue)
+	} else {
+		L.Push(lua.LFalse)
+	}
+	return 1
+}
+
 func (docstore *DocStore) newLuaQueryEngine(L *lua.LState, query *query) (*LuaQueryEngine, error) {
 	if L == nil {
 		L = lua.NewState()
@@ -429,6 +455,7 @@ func (docstore *DocStore) newLuaQueryEngine(L *lua.LState, query *query) (*LuaQu
 	fmt.Printf("code=\n\n%s\n\n", engine.code)
 	gluarequire2.NewRequire2Module(gluarequire2.NewRequireFromGitHub(nil)).SetGlobal(engine.L)
 	SetLuaGlobals(engine.L)
+	L.SetGlobal("text_search", L.NewFunction(docstore.textSearch))
 	if err := engine.L.DoString(luascripts.Get("docstore_query.lua")); err != nil {
 		panic(err)
 	}
