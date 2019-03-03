@@ -22,6 +22,18 @@ func setupDocStore(dc *docstore.DocStore) func(*lua.LState) int {
 				L.Push(ud)
 				return 1
 			},
+			"collections": func(L *lua.LState) int {
+				collections, err := dc.Collections()
+				if err != nil {
+					panic(err)
+				}
+				out := L.NewTable()
+				for _, col := range collections {
+					out.Append(lua.LString(col))
+				}
+				L.Push(out)
+				return 1
+			},
 		})
 		// returns the module
 		L.Push(mod)
