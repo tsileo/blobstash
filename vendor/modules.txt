@@ -1,6 +1,6 @@
 # a4.io/blobsfile v0.2.0
 a4.io/blobsfile
-# a4.io/gluapp v0.0.0-20181218195258-2be1706b2908
+# a4.io/gluapp v0.0.0-20190304211816-a08a6fc39f7c
 a4.io/gluapp
 a4.io/gluapp/util
 # a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f
@@ -76,11 +76,11 @@ github.com/go-stack/stack
 github.com/golang/protobuf/proto
 # github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db
 github.com/golang/snappy
-# github.com/gomarkdown/markdown v0.0.0-20190203074024-f12dffcd0f4e
+# github.com/gomarkdown/markdown v0.0.0-20190222000725-ee6a7931a1e4
 github.com/gomarkdown/markdown
+github.com/gomarkdown/markdown/parser
 github.com/gomarkdown/markdown/ast
 github.com/gomarkdown/markdown/html
-github.com/gomarkdown/markdown/parser
 # github.com/goods/httpbuf v0.0.0-20120503183857-5709e9bb814c
 github.com/goods/httpbuf
 # github.com/gorilla/context v1.1.1

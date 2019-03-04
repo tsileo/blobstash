@@ -8,16 +8,19 @@ import (
 	"a4.io/blobstash/pkg/apps/luautil"
 
 	"github.com/gomarkdown/markdown"
+	"github.com/gomarkdown/markdown/parser"
 	"github.com/yuin/gopher-lua"
 )
+
+var mdExtensions = parser.CommonExtensions | parser.HardLineBreak
 
 var funcs = template.FuncMap{
 	"markdownify": func(raw interface{}) template.HTML {
 		switch md := raw.(type) {
 		case string:
-			return template.HTML(markdown.ToHTML([]byte(md), nil, nil))
+			return template.HTML(markdown.ToHTML([]byte(md), parser.NewWithExtensions(mdExtensions), nil))
 		case lua.LString:
-			return template.HTML(markdown.ToHTML([]byte(string(md)), nil, nil))
+			return template.HTML(markdown.ToHTML([]byte(string(md)), parser.NewWithExtensions(mdExtensions), nil))
 		default:
 			panic("bad md type")
 		}

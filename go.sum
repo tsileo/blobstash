@@ -13,6 +13,14 @@ a4.io/gluapp v0.0.0-20181217122610-c6ba9b02f21b h1:0mDg1XGqGMCUMIu69JHmJp17iAKpA
 a4.io/gluapp v0.0.0-20181217122610-c6ba9b02f21b/go.mod h1:hDz8O30eiYv+1bAFzssTvbRaLy27xwk7pdR7v2md7Ew=
 a4.io/gluapp v0.0.0-20181218195258-2be1706b2908 h1:4X4w3ef5+gyUErHpxdyMoHXSKUCY9naICJGwdwceLc4=
 a4.io/gluapp v0.0.0-20181218195258-2be1706b2908/go.mod h1:hDz8O30eiYv+1bAFzssTvbRaLy27xwk7pdR7v2md7Ew=
+a4.io/gluapp v0.0.0-20190303193556-53541b6c8b2d h1:Xu2U2y2qXYOhNHk4EaM41BBNbQSdKn3oGScE5JzXyYI=
+a4.io/gluapp v0.0.0-20190303193556-53541b6c8b2d/go.mod h1:UNGIYylOQsTOKRJx6vbnAHmCiJfU5uGLoW4lAhrosbY=
+a4.io/gluapp v0.0.0-20190303203625-2ff69e79a83b h1:3rerU4qv6Opl26OLxrfrYFJDVhN9hzndYlNPaFfFvJk=
+a4.io/gluapp v0.0.0-20190303203625-2ff69e79a83b/go.mod h1:U5q4QyGj4RCvJVwOkQVGWiSSSbQQHm6t/oHWubGxrPY=
+a4.io/gluapp v0.0.0-20190303203710-358bf1045949 h1:RD7T1afDzGUGyxLVq7UGy7I5MLCZ+WXt3i3veThaRAc=
+a4.io/gluapp v0.0.0-20190303203710-358bf1045949/go.mod h1:U5q4QyGj4RCvJVwOkQVGWiSSSbQQHm6t/oHWubGxrPY=
+a4.io/gluapp v0.0.0-20190304211816-a08a6fc39f7c h1:V23c/vWfo2TedcdKZXpV2qlilqlkJtYz5WwTVxm1Y3k=
+a4.io/gluapp v0.0.0-20190304211816-a08a6fc39f7c/go.mod h1:U5q4QyGj4RCvJVwOkQVGWiSSSbQQHm6t/oHWubGxrPY=
 a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f h1:mfEWN0Dd2AfIXU5WO5ZfqbFVk63Qz5M/CANs182pm+U=
 a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f/go.mod h1:t7OhwCmPQfuUf8cjm7n8chSbZt5CTILu+dTLu1MQKjQ=
 a4.io/ssse v0.0.0-20181202155639-1949828a8689 h1:xXG2KAzqyucPIo7c7zEW9aGUDXV+Fqg5jVrQiw7s2DU=
@@ -95,6 +103,8 @@ github.com/gomarkdown/markdown v0.0.0-20181104084050-d1d0edeb5d85 h1:C0jjY7t3mKM
 github.com/gomarkdown/markdown v0.0.0-20181104084050-d1d0edeb5d85/go.mod h1:gmFANS06wAVmF0B9yi65QKsRmPQ97tze7FRLswua+OY=
 github.com/gomarkdown/markdown v0.0.0-20190203074024-f12dffcd0f4e h1:pTwv+zREUhuBKYaGyBNhK0WoPh0VXCSCGi77N9kv6oM=
 github.com/gomarkdown/markdown v0.0.0-20190203074024-f12dffcd0f4e/go.mod h1:gmFANS06wAVmF0B9yi65QKsRmPQ97tze7FRLswua+OY=
+github.com/gomarkdown/markdown v0.0.0-20190222000725-ee6a7931a1e4 h1:vELsocEzlhM4lk2nhxolEaQrMp25u7/i9IX8s9uLads=
+github.com/gomarkdown/markdown v0.0.0-20190222000725-ee6a7931a1e4/go.mod h1:gmFANS06wAVmF0B9yi65QKsRmPQ97tze7FRLswua+OY=
 github.com/goods/httpbuf v0.0.0-20120503183857-5709e9bb814c h1:kES4WSo15F5Rejf0L5d6kJzZhDRs/0SEvb39I8H6H7g=
 github.com/goods/httpbuf v0.0.0-20120503183857-5709e9bb814c/go.mod h1:cHMBumiwaaRxRQ6NT8sU3zQSkXbYaPjbBcXa8UgTzAE=
 github.com/google/go-cmp v0.2.0 h1:+dTQ8DZQJz0Mb/HjFlkptS1FeQ4cWSnN941F8aEG4SQ=

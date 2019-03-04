@@ -34,6 +34,7 @@ func setupDocStore(dc *docstore.DocStore) func(*lua.LState) int {
 				L.Push(out)
 				return 1
 			},
+			"text_search": dc.LuaTextSearch,
 		})
 		// returns the module
 		L.Push(mod)

@@ -2,7 +2,7 @@ module a4.io/blobstash
 
 require (
 	a4.io/blobsfile v0.2.0
-	a4.io/gluapp v0.0.0-20181218195258-2be1706b2908
+	a4.io/gluapp v0.0.0-20190304211816-a08a6fc39f7c
 	a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f
 	a4.io/ssse v0.0.0-20181202155639-1949828a8689
 	bazil.org/fuse v0.0.0-20180421153158-65cc252bf669
@@ -19,7 +19,6 @@ require (
 	github.com/go-martini/martini v0.0.0-20170121215854-22fa46961aab // indirect
 	github.com/go-stack/stack v1.8.0 // indirect
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db
-	github.com/gomarkdown/markdown v0.0.0-20190203074024-f12dffcd0f4e // indirect
 	github.com/goods/httpbuf v0.0.0-20120503183857-5709e9bb814c // indirect
 	github.com/gorilla/context v1.1.1
 	github.com/gorilla/handlers v1.4.0

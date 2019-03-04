@@ -413,7 +413,7 @@ func SetLuaGlobals(L *lua.LState) {
 	L.SetGlobal("porterstemmer_stem", L.NewFunction(stem))
 }
 
-func (docstore *DocStore) textSearch(L *lua.LState) int {
+func (docstore *DocStore) LuaTextSearch(L *lua.LState) int {
 	doc := luautil.TableToMap(L.ToTable(1))
 	qs := L.ToString(2)
 	ifields := luautil.TableToSlice(L.ToTable(3))
@@ -455,7 +455,7 @@ func (docstore *DocStore) newLuaQueryEngine(L *lua.LState, query *query) (*LuaQu
 	fmt.Printf("code=\n\n%s\n\n", engine.code)
 	gluarequire2.NewRequire2Module(gluarequire2.NewRequireFromGitHub(nil)).SetGlobal(engine.L)
 	SetLuaGlobals(engine.L)
-	L.SetGlobal("text_search", L.NewFunction(docstore.textSearch))
+	L.SetGlobal("text_search", L.NewFunction(docstore.LuaTextSearch))
 	if err := engine.L.DoString(luascripts.Get("docstore_query.lua")); err != nil {
 		panic(err)
 	}
