@@ -63,7 +63,7 @@ func NewIndexedDoc(doc map[string]interface{}, fields []string) (*IndexedDoc, er
 
 // ParseTextQuery returns a parsed text query
 func ParseTextQuery(q string) SearchTerms {
-	if cached, ok := cache.Get(q); ok {
+	if cached, ok := searchTermsCache.Get(q); ok {
 		fmt.Printf("ParseTextQuery form cache")
 		return cached.(SearchTerms)
 	}
@@ -98,7 +98,7 @@ func ParseTextQuery(q string) SearchTerms {
 		prefix = ""
 		exactMatch = false
 	}
-	cache.Add(q, out)
+	searchTermsCache.Add(q, out)
 	return out
 }
 
