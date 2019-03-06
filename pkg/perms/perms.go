@@ -28,13 +28,14 @@ const (
 
 // Object types
 const (
-	Blob      ObjectType = "blob"
-	KVEntry   ObjectType = "kv"
-	FS        ObjectType = "fs"
-	Node      ObjectType = "node"
-	GitRepo   ObjectType = "git-repo"
-	GitNs     ObjectType = "git-ns"
-	Namespace ObjectType = "namespace"
+	Blob         ObjectType = "blob"
+	KVEntry      ObjectType = "kv"
+	FS           ObjectType = "fs"
+	Node         ObjectType = "node"
+	GitRepo      ObjectType = "git-repo"
+	GitNs        ObjectType = "git-ns"
+	Namespace    ObjectType = "namespace"
+	JSONDocument ObjectType = "json-doc"
 )
 
 // Services
