@@ -42,11 +42,13 @@ import (
 	"github.com/vmihailenco/msgpack"
 	"github.com/yuin/gopher-lua"
 
+	"a4.io/blobstash/pkg/auth"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/docstore/id"
 	"a4.io/blobstash/pkg/filetree"
 	"a4.io/blobstash/pkg/httputil"
 	"a4.io/blobstash/pkg/httputil/bewit"
+	"a4.io/blobstash/pkg/perms"
 	"a4.io/blobstash/pkg/stash/store"
 	"a4.io/blobstash/pkg/vkv"
 )
@@ -62,12 +64,6 @@ var (
 
 	PrefixIndexKeyFmt = "docstore-index:%s"
 	IndexKeyFmt       = PrefixIndexKeyFmt + ":%s"
-
-	// XXX(tsileo): remove or re-implement fine-grained permission
-	//PermName           = "docstore"
-	//PermCollectionName = "docstore:collection"
-	//PermWrite          = "write"
-	//PermRead           = "read"
 )
 
 // ErrUnprocessableEntity is returned when a document is faulty
@@ -630,6 +626,68 @@ func (docstore *DocStore) Query(collection string, query *query, cursor string, 
 	return docs, pointers, stats, nil
 }
 
+// IDIterator is the interface that wraps the Iter method
+type IDIterator interface {
+	Setup(collection string, fetchLimit int)
+	Iter(cursor string) (ids []*id.ID, nextCursor string, err error)
+}
+
+// noIndexIterator is the default iterator that will return document sorted by insert data (descending order, most recent first)
+type noIndexIterator struct {
+	kvStore    store.KvStore
+	collection string
+	end        string
+	limit      int
+	init       bool
+}
+
+func newNoIndexIterator(kvStore store.KvStore) *noIndexIterator {
+	return &noIndexIterator{
+		kvStore: kvStore,
+	}
+}
+
+// Setup implements the IDIterator interface
+func (i *noIndexIterator) Setup(collection string, fetchLimit int) {
+	if i.init {
+		// FIXME(tsileo) returns an error
+		panic("already init")
+	}
+	i.limit = fetchLimit
+	i.collection = collection
+	i.end = fmt.Sprintf(keyFmt, collection, "")
+	i.init = true
+}
+
+// Iter implements the IDIterator interface
+func (i *noIndexIterator) Iter(cursor string) ([]*id.ID, string, error) {
+	_ids := []*id.ID{}
+	res, nextCursor, err := i.kvStore.ReverseKeys(context.TODO(), i.end, cursor, i.limit)
+	if err != nil {
+		return nil, "", err
+	}
+	for _, kv := range res {
+		// Build the ID
+		_id, err := idFromKey(i.collection, kv.Key)
+		if err != nil {
+			return nil, "", err
+		}
+
+		// Add the extra metadata to the ID
+		_id.SetFlag(kv.Data[0])
+		_id.SetVersion(kv.Version)
+
+		// Skip deleted document
+		if _id.Flag() == flagDeleted {
+			continue
+		}
+
+		// Add the ID
+		_ids = append(_ids, _id)
+	}
+	return _ids, nextCursor, nil
+}
+
 // query returns a JSON list as []byte for the given query
 // docs are unmarhsalled to JSON only when needed.
 func (docstore *DocStore) query(L *lua.LState, collection string, query *query, cursor string, limit int, fetchPointers bool, asOf int64) ([]map[string]interface{}, map[string]interface{}, *executionStats, error) {
@@ -653,7 +711,7 @@ func (docstore *DocStore) query(L *lua.LState, collection string, query *query, 
 	if cursor != "" {
 		start = fmt.Sprintf(keyFmt, collection, cursor)
 	}
-	end := fmt.Sprintf(keyFmt, collection, "")
+	// end := fmt.Sprintf(keyFmt, collection, "")
 
 	// Tweak the query limit
 	fetchLimit := limit
@@ -676,38 +734,21 @@ func (docstore *DocStore) query(L *lua.LState, collection string, query *query, 
 	// if optzIndex != nil {
 	// stats.Index = optzIndex.ID
 	// }
+	it := newNoIndexIterator(docstore.kvStore)
+	it.Setup(collection, fetchLimit)
 
 QUERY:
 	for {
 		// Loop until we have the number of requested documents, or if we scanned everything
-		qLogger.Debug("internal query", "limit", limit, "cursor", cursor, "start", start, "end", end, "nreturned", stats.NReturned)
+		qLogger.Debug("internal query", "limit", limit, "cursor", cursor, "start", start, "nreturned", stats.NReturned)
 		// FIXME(tsileo): use `PrefixKeys` if ?sort=_id (-_id by default).
-		_ids := []*id.ID{}
-		// switch optzType {
-		// case optimizer.Linear:
-		// Performs a unoptimized linear scan
-		// res, cursor, err := docstore.kvStore.Keys(context.TODO(), end, start, fetchLimit)
-		res, cursor, err := docstore.kvStore.ReverseKeys(context.TODO(), end, start, fetchLimit)
-		// res, err := docstore.kvStore.ReverseKeys(end, start, fetchLimit)
+
+		// Iterator over the cursor
+		_ids, cursor, err := it.Iter(start)
 		if err != nil {
 			panic(err)
 		}
-		for _, kv := range res {
-			_id, err := idFromKey(collection, kv.Key)
-			if err != nil {
-				return nil, nil, nil, err
-			}
-			_ids = append(_ids, _id)
-		}
-		// case optimizer.Index:
-		// 	// Use the index to answer the query
-		// 	// FIXME(tsileo): make cursor works (start, end handling)
-		// 	optzIndexHash := index.IndexKey(query[optzIndex.Fields[0]])
-		// 	_ids, err = docstore.docIndex.Iter(collection, optzIndex, optzIndexHash, start, end, fetchLimit)
-		// 	if err != nil {
-		// 		panic(err)
-		// 	}
-		// }
+
 		var qmatcher QueryMatcher
 		switch stats.Engine {
 		case "match_all":
@@ -801,7 +842,15 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 		}
 		switch r.Method {
 		case "GET", "HEAD":
-			// permissions.CheckPerms(r, PermCollectionName, collection, PermRead)
+			if !auth.Can(
+				w,
+				r,
+				perms.Action(perms.List, perms.JSONDocument),
+				perms.Resource(perms.DocStore, perms.JSONDocument),
+			) {
+				auth.Forbidden(w)
+				return
+			}
 
 			var asOf int64
 			var err error
