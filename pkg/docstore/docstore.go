@@ -626,68 +626,6 @@ func (docstore *DocStore) Query(collection string, query *query, cursor string, 
 	return docs, pointers, stats, nil
 }
 
-// IDIterator is the interface that wraps the Iter method
-type IDIterator interface {
-	Setup(collection string, fetchLimit int)
-	Iter(cursor string) (ids []*id.ID, nextCursor string, err error)
-}
-
-// noIndexIterator is the default iterator that will return document sorted by insert data (descending order, most recent first)
-type noIndexIterator struct {
-	kvStore    store.KvStore
-	collection string
-	end        string
-	limit      int
-	init       bool
-}
-
-func newNoIndexIterator(kvStore store.KvStore) *noIndexIterator {
-	return &noIndexIterator{
-		kvStore: kvStore,
-	}
-}
-
-// Setup implements the IDIterator interface
-func (i *noIndexIterator) Setup(collection string, fetchLimit int) {
-	if i.init {
-		// FIXME(tsileo) returns an error
-		panic("already init")
-	}
-	i.limit = fetchLimit
-	i.collection = collection
-	i.end = fmt.Sprintf(keyFmt, collection, "")
-	i.init = true
-}
-
-// Iter implements the IDIterator interface
-func (i *noIndexIterator) Iter(cursor string) ([]*id.ID, string, error) {
-	_ids := []*id.ID{}
-	res, nextCursor, err := i.kvStore.ReverseKeys(context.TODO(), i.end, cursor, i.limit)
-	if err != nil {
-		return nil, "", err
-	}
-	for _, kv := range res {
-		// Build the ID
-		_id, err := idFromKey(i.collection, kv.Key)
-		if err != nil {
-			return nil, "", err
-		}
-
-		// Add the extra metadata to the ID
-		_id.SetFlag(kv.Data[0])
-		_id.SetVersion(kv.Version)
-
-		// Skip deleted document
-		if _id.Flag() == flagDeleted {
-			continue
-		}
-
-		// Add the ID
-		_ids = append(_ids, _id)
-	}
-	return _ids, nextCursor, nil
-}
-
 // query returns a JSON list as []byte for the given query
 // docs are unmarhsalled to JSON only when needed.
 func (docstore *DocStore) query(L *lua.LState, collection string, query *query, cursor string, limit int, fetchPointers bool, asOf int64) ([]map[string]interface{}, map[string]interface{}, *executionStats, error) {
@@ -713,15 +651,13 @@ func (docstore *DocStore) query(L *lua.LState, collection string, query *query, 
 	}
 	// end := fmt.Sprintf(keyFmt, collection, "")
 
-	// Tweak the query limit
-	fetchLimit := limit
+	// Tweak the internal query batch limit
+	fetchLimit := int(float64(limit) * 1.3)
+
+	// fetchLimit := limit
 	isMatchAll := query.isMatchAll()
 	if isMatchAll {
 		stats.Engine = "match_all"
-	} else {
-		// Prefetch more docs since there's a lot of chance the query won't
-		// match every documents
-		fetchLimit = int(float64(limit) * 1.3)
 	}
 
 	qLogger := docstore.logger.New("query", query, "query_engine", stats.Engine, "id", logext.RandId(8))
@@ -735,7 +671,6 @@ func (docstore *DocStore) query(L *lua.LState, collection string, query *query, 
 	// stats.Index = optzIndex.ID
 	// }
 	it := newNoIndexIterator(docstore.kvStore)
-	it.Setup(collection, fetchLimit)
 
 QUERY:
 	for {
@@ -744,7 +679,7 @@ QUERY:
 		// FIXME(tsileo): use `PrefixKeys` if ?sort=_id (-_id by default).
 
 		// Iterator over the cursor
-		_ids, cursor, err := it.Iter(start)
+		_ids, cursor, err := it.Iter(collection, start, fetchLimit, asOf)
 		if err != nil {
 			panic(err)
 		}
@@ -818,7 +753,7 @@ QUERY:
 				}
 			}
 		}
-		if len(_ids) == 0 || len(_ids) < limit {
+		if len(_ids) == 0 {
 			break
 		}
 		start = cursor
