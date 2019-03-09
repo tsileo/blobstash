@@ -629,48 +629,45 @@ func (docstore *DocStore) Query(collection string, query *query, cursor string, 
 // query returns a JSON list as []byte for the given query
 // docs are unmarhsalled to JSON only when needed.
 func (docstore *DocStore) query(L *lua.LState, collection string, query *query, cursor string, limit int, fetchPointers bool, asOf int64) ([]map[string]interface{}, map[string]interface{}, *executionStats, error) {
-	// js := []byte("[")
+	// Init some stuff
 	tstart := time.Now()
-	stats := &executionStats{
-		Engine: "lua", // XXX(ts): should not be a string
-	}
-
+	stats := &executionStats{}
+	var err error
+	var docPointers map[string]interface{}
 	pointers := map[string]interface{}{}
-
-	// Check if the query can be optimized thanks to an already present index
-	// indexes, err := docstore.Indexes(collection)
-	// if err != nil {
-	// 	return nil, nil, fmt.Errorf("Failed to fetch index")
-	// }
-	// optz := optimizer.New(docstore.logger.New("module", "query optimizer"), indexes)
+	docs := []map[string]interface{}{}
 
 	// Handle the cursor
 	start := fmt.Sprintf(keyFmt, collection, "\xff")
 	if cursor != "" {
 		start = fmt.Sprintf(keyFmt, collection, cursor)
 	}
-	// end := fmt.Sprintf(keyFmt, collection, "")
 
 	// Tweak the internal query batch limit
 	fetchLimit := int(float64(limit) * 1.3)
 
-	// fetchLimit := limit
-	isMatchAll := query.isMatchAll()
-	if isMatchAll {
-		stats.Engine = "match_all"
-	}
+	// Select the ID iterator (XXX sort indexes are a WIP)
+	var it IDIterator
+	it = newNoIndexIterator(docstore.kvStore)
 
+	// Select the query matcher
+	var qmatcher QueryMatcher
+	switch {
+	case query.isMatchAll():
+		stats.Engine = "match_all"
+		qmatcher = &MatchAllEngine{}
+	default:
+		qmatcher, err = docstore.newLuaQueryEngine(L, query)
+		if err != nil {
+			return nil, nil, stats, err
+		}
+		stats.Engine = "lua"
+	}
+	defer qmatcher.Close()
+
+	// Init the logger
 	qLogger := docstore.logger.New("query", query, "query_engine", stats.Engine, "id", logext.RandId(8))
 	qLogger.Info("new query")
-	docs := []map[string]interface{}{}
-
-	// Select the optimizer i.e. should we use an index?
-	// optzType, optzIndex := optz.Select(query)
-	// stats.Optimizer = optzType
-	// if optzIndex != nil {
-	// stats.Index = optzIndex.ID
-	// }
-	it := newNoIndexIterator(docstore.kvStore)
 
 QUERY:
 	for {
@@ -678,26 +675,12 @@ QUERY:
 		qLogger.Debug("internal query", "limit", limit, "cursor", cursor, "start", start, "nreturned", stats.NReturned)
 		// FIXME(tsileo): use `PrefixKeys` if ?sort=_id (-_id by default).
 
-		// Iterator over the cursor
+		// Fetch a batch from the iterator
 		_ids, cursor, err := it.Iter(collection, start, fetchLimit, asOf)
 		if err != nil {
 			panic(err)
 		}
 
-		var qmatcher QueryMatcher
-		switch stats.Engine {
-		case "match_all":
-			qmatcher = &MatchAllEngine{}
-		case "lua":
-			qmatcher, err = docstore.newLuaQueryEngine(L, query)
-			if err != nil {
-				return nil, nil, stats, err
-			}
-		default:
-			panic("shouldn't happen")
-		}
-		defer qmatcher.Close()
-		var docPointers map[string]interface{}
 		for _, _id := range _ids {
 
 			qLogger.Debug("fetch doc", "_id", _id, "as_of", asOf)
