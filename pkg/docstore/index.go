@@ -5,6 +5,7 @@ import (
 	"a4.io/blobstash/pkg/stash/store"
 )
 
+// Indexer is the interface that wraps the Index method
 type Indexer interface {
 	Index(id *id.ID, doc map[string]interface{}) error
 }

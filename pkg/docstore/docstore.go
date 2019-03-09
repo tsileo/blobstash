@@ -699,46 +699,24 @@ QUERY:
 		defer qmatcher.Close()
 		var docPointers map[string]interface{}
 		for _, _id := range _ids {
-			// Check if the doc match the query
-			// jsPart := []byte{}
-			doc := map[string]interface{}{}
-			qLogger.Debug("fetch doc", "_id", _id, "as_of", asOf)
-			var err error
-			if asOf > 0 {
-				// FIXME(tsileo): should return a `[]*id.ID` to, and check the flag before selecting the doc
-				docVersions, allDocPointers, _, err := docstore.FetchVersions(collection, _id.String(), asOf, 1, fetchPointers)
-				// FIXME(tsileo): check deleted
-				if err != nil {
-					panic(err)
-				}
-				if len(docVersions) > 0 {
-					doc = docVersions[0]
-					docPointers = allDocPointers
-				} else {
-					continue
-				}
-			} else {
-				// FIXME(tsileo): only fetch the pointers once the doc has been matched!
-				if _id, docPointers, err = docstore.Fetch(collection, _id.String(), &doc, fetchPointers, -1); err != nil {
-					fmt.Printf("ERR=%+v\n", err)
 
-					// The document is deleted skip it
-					if _id.Flag() == flagDeleted {
-						continue
-					}
-					// TODO(tsileo): why catch ErrNotFound? should panic?
-					if err == vkv.ErrNotFound {
-						break
-					}
-					panic(err)
-				}
+			qLogger.Debug("fetch doc", "_id", _id, "as_of", asOf)
+			doc := map[string]interface{}{}
+			var err error
+			// Fetch the version tied to the ID (the iterator is taking care of selecting an ID version)
+			if _id, docPointers, err = docstore.Fetch(collection, _id.String(), &doc, fetchPointers, _id.Version()); err != nil {
+				panic(err)
 			}
+
 			stats.TotalDocsExamined++
+
+			// Check if the doc match the query
 			ok, err := qmatcher.Match(doc)
 			if err != nil {
 				return nil, nil, stats, err
 			}
 			if ok {
+				// The document  matches the query
 				addSpecialFields(doc, _id)
 				if fetchPointers {
 					for k, v := range docPointers {
