@@ -92,6 +92,9 @@ func (si *sortIndex) Index(_id *id.ID, doc map[string]interface{}) error {
 		if err != nil {
 			return err
 		}
+		if len(oldSortKv.Data) == 0 {
+			break
+		}
 		_, _oid := parseVal(oldSortKv.Data)
 		if _oid.String() != _id.String() {
 			return fmt.Errorf("_id should match the old version key")
@@ -106,6 +109,10 @@ func (si *sortIndex) Index(_id *id.ID, doc map[string]interface{}) error {
 	case vkv.ErrNotFound:
 	default:
 		return err
+	}
+
+	if _id.Flag() == flagDeleted {
+		return nil
 	}
 
 	var sortKey []byte
@@ -156,6 +163,11 @@ func (si *sortIndex) Iter(collection, cursor string, fetchLimit int, asOf int64)
 	var _id *id.ID
 
 	for _, kv := range res {
+		if len(kv.Data) == 0 {
+			// Skip deleted entries
+			continue
+		}
+		fmt.Printf("KV=%+v\n", kv)
 		vstart, _id = parseVal(kv.Data)
 
 		// We only want key for the latest version if asOf == 0

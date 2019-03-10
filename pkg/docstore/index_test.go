@@ -102,6 +102,26 @@ func TestIndex(t *testing.T) {
 	if _ids3[1].String() != _id2.String() || _ids3[1].Version() != _id2.Version() {
 		t.Errorf("expected second id for third iter to be _id2")
 	}
+
+	_id2.SetVersion(4)
+	_id2.SetFlag(flagDeleted)
+
+	if err := i.Index(_id2, nil); err != nil {
+		panic(err)
+	}
+
+	_ids4, cursor4, err := i.Iter("lol", "", 50, 0)
+	if err != nil {
+		panic(err)
+	}
+	t.Logf("_ids4=%q\ncursor4=%v\n", _ids4, cursor4)
+
+	if len(_ids4) != 1 {
+		t.Errorf("expected 1 _ids at fourth iter, got %d", len(_ids3))
+	}
+	if _ids4[0].String() != _id1.String() || _ids4[0].Version() != _id1.Version() {
+		t.Errorf("expected first id for fourth iter to be _id1")
+	}
 }
 
 func TestIndexUpdatedField(t *testing.T) {
