@@ -698,15 +698,16 @@ QUERY:
 		if err != nil {
 			panic(err)
 		}
-		stats.Cursor = cursor
 
 		for _, _id := range _ids {
+			fmt.Printf("_ID cursor = %s\n", _id.Cursor())
 			if _id.Flag() == flagDeleted {
 				qLogger.Debug("skipping deleted doc", "_id", _id, "as_of", asOf)
 				continue
 			}
 
 			qLogger.Debug("fetch doc", "_id", _id, "as_of", asOf)
+			stats.Cursor = _id.Cursor()
 			doc := map[string]interface{}{}
 			var err error
 			// Fetch the version tied to the ID (the iterator is taking care of selecting an ID version)
@@ -737,14 +738,14 @@ QUERY:
 				}
 			}
 		}
-		if len(_ids) == 0 || len(_ids) < fetchLimit {
+		if len(_ids) == 0 { // || len(_ids) < fetchLimit {
 			break
 		}
 		start = cursor
 	}
 
 	duration := time.Since(tstart)
-	qLogger.Debug("scan done", "duration", duration, "nReturned", stats.NReturned, "scanned", stats.TotalDocsExamined)
+	qLogger.Debug("scan done", "duration", duration, "nReturned", stats.NReturned, "scanned", stats.TotalDocsExamined, "cursor", stats.Cursor)
 	stats.ExecutionTimeNano = duration.Nanoseconds()
 	return docs, pointers, stats, nil
 }

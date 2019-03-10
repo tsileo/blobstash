@@ -188,11 +188,13 @@ func (si *sortIndex) Iter(collection, cursor string, fetchLimit int, asOf int64)
 		if err != nil {
 			return nil, "", err
 		}
-		start = fmt.Sprintf("k:%s", decodedCursor)
+		start = string(decodedCursor)
+		fmt.Printf("START=%+v\n", start)
+		// start = fmt.Sprintf("k:%s", decodedCursor)
 	}
 
 	// List keys from the kvstore
-	res, nextCursor, err := si.db.ReverseKeys("k:", start, fetchLimit)
+	res, nextCursor, err := si.db.ReverseKeys("k:", start, 50)
 	if err != nil {
 		return nil, "", err
 	}
@@ -204,7 +206,6 @@ func (si *sortIndex) Iter(collection, cursor string, fetchLimit int, asOf int64)
 			// Skip deleted entries
 			continue
 		}
-		fmt.Printf("KV=%+v\n", kv)
 		vstart, _id = parseVal(kv.Data)
 
 		// We only want key for the latest version if asOf == 0
@@ -219,10 +220,12 @@ func (si *sortIndex) Iter(collection, cursor string, fetchLimit int, asOf int64)
 
 		// Add the extra metadata to the ID
 		_id.SetVersion(vstart)
+		_id.SetCursor(base64.URLEncoding.EncodeToString([]byte(vkv.PrevKey(kv.Key))))
 
 		_ids = append(_ids, _id)
 	}
 
+	fmt.Printf("NEXTCURS=%+v\n", nextCursor)
 	return _ids, base64.URLEncoding.EncodeToString([]byte(nextCursor)), nil
 }
 

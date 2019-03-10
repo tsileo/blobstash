@@ -24,6 +24,7 @@ type ID struct {
 	hash    string // The hash is not part of the ID but it can be attached to the ID
 	flag    byte   // Same here, not part of the ID but can be attched to it for convenience
 	version int64  // not part of the ID too
+	cursor  string // not part of the ID neither
 }
 
 // New initializes an ID for the given timestamp
@@ -46,14 +47,20 @@ func (id *ID) Flag() byte {
 	return id.flag
 }
 
-// SetVersion ties a version to the ID (not stored anywhere else)
 func (id *ID) SetVersion(v int64) {
 	id.version = v
 }
 
-// Version returns the version tied to the ID (if any)
 func (id *ID) Version() int64 {
 	return id.version
+}
+
+func (id *ID) SetCursor(c string) {
+	id.cursor = c
+}
+
+func (id *ID) Cursor() string {
+	return id.cursor
 }
 
 func (id *ID) VersionString() string {
