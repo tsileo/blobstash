@@ -55,7 +55,12 @@ func buildKey(v interface{}) []byte {
 		klen = len(vv)
 		k = make([]byte, klen+8) // 2 bytes prefix (`k:`) and 6 bytes random suffix
 		copy(k[:], []byte("k:"))
-		copy(k[2:], []byte(vv))
+		copy(k[2:], []byte(vv+":"))
+	case int64: // should be used when indexing on _updated (which will expand to the version)
+		klen = 8
+		k = make([]byte, klen+8) // 2 bytes prefix (`k:`) and 6 bytes random suffix
+		copy(k[:], []byte("k:"))
+		binary.BigEndian.PutUint64(k[2:], uint64(vv))
 	case float64:
 		panic("TODO support float64")
 	case []interface{}:
@@ -63,7 +68,7 @@ func buildKey(v interface{}) []byte {
 	default:
 		panic("should not happen")
 	}
-	if _, err := rand.Read(k[klen+2:]); err != nil {
+	if _, err := rand.Read(k[klen+3:]); err != nil {
 		panic("failed to build key")
 	}
 	return k
@@ -76,6 +81,7 @@ func buildLastVersionKey(_id *id.ID) []byte {
 	return k
 }
 
+// Index implements the Indexer interface
 func (si *sortIndex) Index(_id *id.ID, doc map[string]interface{}) error {
 	lastVersionKey := buildLastVersionKey(_id)
 	oldSortKvKey, err := si.db.Get(string(lastVersionKey), -1)
@@ -102,7 +108,12 @@ func (si *sortIndex) Index(_id *id.ID, doc map[string]interface{}) error {
 		return err
 	}
 
-	sortKey := buildKey(doc[si.fields[0]])
+	var sortKey []byte
+	if si.fields[0] == "_updated" {
+		sortKey = buildKey(_id.Version())
+	} else {
+		sortKey = buildKey(doc[si.fields[0]])
+	}
 
 	if err := si.db.Put(&vkv.KeyValue{
 		Key:     string(sortKey),
@@ -121,6 +132,7 @@ func (si *sortIndex) Index(_id *id.ID, doc map[string]interface{}) error {
 	return nil
 }
 
+// Iter implements the IDIterator interface
 func (si *sortIndex) Iter(collection, cursor string, fetchLimit int, asOf int64) ([]*id.ID, string, error) {
 	// asOfStr := strconv.FormatInt(asOf, 10)
 	_ids := []*id.ID{}
@@ -152,7 +164,7 @@ func (si *sortIndex) Iter(collection, cursor string, fetchLimit int, asOf int64)
 		}
 
 		if asOf > 0 && ((vstart == kv.Version && asOf < vstart) || (kv.Version > vstart && !(asOf >= vstart && asOf < kv.Version))) {
-			// Skip documents created after the requested asOf
+			// Skip documents created after the requested asOf, or document versions which are not between vstart and version
 			continue
 		}
 
@@ -165,6 +177,7 @@ func (si *sortIndex) Iter(collection, cursor string, fetchLimit int, asOf int64)
 	return _ids, base64.URLEncoding.EncodeToString([]byte(nextCursor)), nil
 }
 
+// Close implements io.Closer
 func (si *sortIndex) Close() error {
 	return si.db.Close()
 }
