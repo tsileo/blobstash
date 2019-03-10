@@ -30,14 +30,16 @@ func newNoIndexIterator(kvStore store.KvStore) *noIndexIterator {
 
 // Iter implements the IDIterator interface
 func (i *noIndexIterator) Iter(collection, cursor string, fetchLimit int, asOf int64) ([]*id.ID, string, error) {
-	// TODO(tsileo): check if a cursor > ID(asOf) => repace it with ID(asOf) as an optimization
-	// start = fmt.Sprintf(keyFmt, collection, cursor)
 	end := fmt.Sprintf(keyFmt, collection, "")
+	asOfStr := strconv.FormatInt(asOf, 10)
 	_ids := []*id.ID{}
+
+	// List keys from the kvstore
 	res, nextCursor, err := i.kvStore.ReverseKeys(context.TODO(), end, cursor, fetchLimit)
 	if err != nil {
 		return nil, "", err
 	}
+
 	for _, kv := range res {
 		// Build the ID
 		_id, err := idFromKey(collection, kv.Key)
@@ -64,13 +66,12 @@ func (i *noIndexIterator) Iter(collection, cursor string, fetchLimit int, asOf i
 			_ids = append(_ids, _id)
 		} else {
 			// A specific asOf is requested
-
 			if _id.Ts() == _id.Version() {
 				// If the document has only one version, and it's anterior to the requested asOf, we select the doc
 				_ids = append(_ids, _id)
 			} else {
 				// Check if the document has a valid version for the given asOf
-				kvv, _, err := i.kvStore.Versions(context.TODO(), fmt.Sprintf(keyFmt, collection, _id.String()), strconv.FormatInt(asOf, 10), 1)
+				kvv, _, err := i.kvStore.Versions(context.TODO(), fmt.Sprintf(keyFmt, collection, _id.String()), asOfStr, 1)
 				if err != nil {
 					if err == vkv.ErrNotFound {
 						continue
@@ -93,6 +94,7 @@ func (i *noIndexIterator) Iter(collection, cursor string, fetchLimit int, asOf i
 					continue
 				}
 
+				// Select the doc
 				_ids = append(_ids, _id)
 
 			}

@@ -30,11 +30,9 @@ type ID struct {
 func New(ts int64) (*ID, error) {
 	b := make([]byte, 12)
 	binary.BigEndian.PutUint64(b[:], uint64(ts))
-	randomCompoment := make([]byte, 4)
-	if _, err := rand.Read(randomCompoment); err != nil {
+	if _, err := rand.Read(b[8:]); err != nil {
 		return nil, err
 	}
-	copy(b[8:], randomCompoment[:])
 	return &ID{data: b}, nil
 }
 
@@ -107,4 +105,8 @@ func FromHex(data string) (*ID, error) {
 		return nil, fmt.Errorf("invalid Cursor data: %v", string(data))
 	}
 	return &ID{data: b}, err
+}
+
+func FromRaw(data []byte) *ID {
+	return &ID{data: data}
 }
