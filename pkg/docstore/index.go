@@ -180,7 +180,6 @@ func (si *sortIndex) Iter(collection, cursor string, fetchLimit int, asOf int64)
 	// asOfStr := strconv.FormatInt(asOf, 10)
 	_ids := []*id.ID{}
 
-	fmt.Printf("CURSOR=%v\n", cursor)
 	// Handle the cursor
 	start := "k:\xff"
 	if cursor != "" {
@@ -189,7 +188,6 @@ func (si *sortIndex) Iter(collection, cursor string, fetchLimit int, asOf int64)
 			return nil, "", err
 		}
 		start = string(decodedCursor)
-		fmt.Printf("START=%+v\n", start)
 		// start = fmt.Sprintf("k:%s", decodedCursor)
 	}
 
@@ -225,7 +223,6 @@ func (si *sortIndex) Iter(collection, cursor string, fetchLimit int, asOf int64)
 		_ids = append(_ids, _id)
 	}
 
-	fmt.Printf("NEXTCURS=%+v\n", nextCursor)
 	return _ids, base64.URLEncoding.EncodeToString([]byte(nextCursor)), nil
 }
 
