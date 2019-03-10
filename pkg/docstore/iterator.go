@@ -16,6 +16,7 @@ import (
 // Iter allow to iterates over all the valid document IDs for a given asOf (as <= 0 means "as of now")
 type IDIterator interface {
 	Iter(collection string, cursor string, fetchLimit int, asOf int64) (ids []*id.ID, nextCursor string, err error)
+	Name() string
 }
 
 // noIndexIterator is the default iterator that will return document sorted by insert data (descending order, most recent first)
@@ -27,6 +28,10 @@ func newNoIndexIterator(kvStore store.KvStore) *noIndexIterator {
 	return &noIndexIterator{
 		kvStore: kvStore,
 	}
+}
+
+func (i *noIndexIterator) Name() string {
+	return "-_id"
 }
 
 // Iter implements the IDIterator interface

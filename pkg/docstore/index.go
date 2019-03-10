@@ -38,6 +38,10 @@ func newSortIndex(name string, fields ...string) (*sortIndex, error) {
 	}, nil
 }
 
+func (si *sortIndex) Name() string {
+	return si.name
+}
+
 func (si *sortIndex) prepareRebuild() error {
 	err := si.db.Destroy()
 	if err != nil {
@@ -161,7 +165,7 @@ func (si *sortIndex) Index(_id *id.ID, doc map[string]interface{}) error {
 			return fmt.Errorf("_id should match the old version key")
 		}
 		if err := si.db.Put(&vkv.KeyValue{
-			Key:     string(oldSortKvKey.Data),
+			Key:     oldSortKv.Key,
 			Data:    oldSortKv.Data,
 			Version: _id.Version(),
 		}); err != nil {

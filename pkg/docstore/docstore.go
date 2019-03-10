@@ -42,6 +42,7 @@ import (
 	"github.com/vmihailenco/msgpack"
 	"github.com/yuin/gopher-lua"
 
+	"a4.io/blobstash/pkg/asof"
 	"a4.io/blobstash/pkg/auth"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/docstore/id"
@@ -175,6 +176,11 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 		return nil, err
 	}
 
+	fIndex, err := newSortIndex("f", "f")
+	if err != nil {
+		return nil, err
+	}
+
 	return &DocStore{
 		kvStore:       kvStore,
 		blobStore:     blobStore,
@@ -187,6 +193,9 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 		indexes: map[string]map[string]Indexer{
 			"test": map[string]Indexer{
 				"recent": recentIndex,
+			},
+			"tfloat": map[string]Indexer{
+				"f": fIndex,
 			},
 		},
 		// docIndex:  docIndex,
@@ -565,6 +574,7 @@ type query struct {
 	basicQuery      string
 	script          string
 	lfunc           *lua.LFunction
+	sortIndex       string
 }
 
 func queryToScript(q *query) string {
@@ -663,9 +673,17 @@ func (docstore *DocStore) query(L *lua.LState, collection string, query *query, 
 
 	// Select the ID iterator (XXX sort indexes are a WIP)
 	var it IDIterator
-	// FIXME(tsileo): select index
-	it = newNoIndexIterator(docstore.kvStore)
-	// it = docstore.indexes["test"]["recent"]
+	if query.sortIndex == "" || query.sortIndex == "-_id" {
+		//	Use the default ID iterator (iter IDs in reverse order
+		it = newNoIndexIterator(docstore.kvStore)
+	} else {
+		if indexes, ok := docstore.indexes[collection]; ok {
+			if idx, ok := indexes[query.sortIndex]; ok {
+				it = idx
+			}
+		}
+	}
+	stats.Index = it.Name()
 
 	// Select the query matcher
 	var qmatcher QueryMatcher
@@ -887,11 +905,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			// Parse the cursor
 			cursor := q.Get("cursor")
 			if v := q.Get("as_of"); v != "" {
-				t, err := time.Parse("2006-1-2 15:4:5", v)
-				if err != nil {
-					panic(err)
-				}
-				asOf = t.UTC().UnixNano()
+				asOf, err = asof.ParseAsOf(v)
 			}
 			if asOf == 0 {
 				asOf, err = q.GetInt64Default("as_of_nano", 0)
@@ -921,6 +935,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				storedQuery:     q.Get("stored_query"),
 				script:          q.Get("script"),
 				basicQuery:      q.Get("query"),
+				sortIndex:       q.Get("sort_index"),
 			}, cursor, limit, true, asOf)
 			if err != nil {
 				docstore.logger.Error("query failed", "err", err)
@@ -946,6 +961,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			// }
 
 			// Set headers for the query stats
+			w.Header().Set("BlobStash-DocStore-Query-Index", stats.Index)
 			w.Header().Set("BlobStash-DocStore-Query-Engine", stats.Engine)
 			w.Header().Set("BlobStash-DocStore-Query-Returned", strconv.Itoa(stats.NReturned))
 			w.Header().Set("BlobStash-DocStore-Query-Examined", strconv.Itoa(stats.TotalDocsExamined))
@@ -1000,6 +1016,15 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			}
 			if err != nil {
 				panic(err)
+			}
+
+			// FIXME(tsileo): move this to the hub via the kvstore
+			if indexes, ok := docstore.indexes[collection]; ok {
+				for _, index := range indexes {
+					if err := index.Index(_id, doc); err != nil {
+						panic(err)
+					}
+				}
 			}
 
 			// Output some headers
@@ -1451,6 +1476,15 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			}
 			_id.SetVersion(nkv.Version)
 
+			// FIXME(tsileo): move this to the hub via the kvstore
+			if indexes, ok := docstore.indexes[collection]; ok {
+				for _, index := range indexes {
+					if err := index.Index(_id, ndoc); err != nil {
+						panic(err)
+					}
+				}
+			}
+
 			w.Header().Set("ETag", _id.VersionString())
 
 			created := time.Unix(0, _id.Ts()).UTC().Format(time.RFC3339)
@@ -1521,6 +1555,16 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 				panic(err)
 			}
 			_id.SetVersion(kv.Version)
+
+			// FIXME(tsileo): move this to the hub via the kvstore
+			if indexes, ok := docstore.indexes[collection]; ok {
+				for _, index := range indexes {
+					if err := index.Index(_id, newDoc); err != nil {
+						panic(err)
+					}
+				}
+			}
+
 			w.Header().Set("ETag", _id.VersionString())
 
 			created := time.Unix(0, _id.Ts()).UTC().Format(time.RFC3339)
@@ -1547,8 +1591,21 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			}
 
 			// FIXME(tsileo): empty the key, and hanlde it in the get/query
-			if _, err := docstore.kvStore.Put(context.TODO(), fmt.Sprintf(keyFmt, collection, sid), "", []byte{flagDeleted}, -1); err != nil {
+			kv, err := docstore.kvStore.Put(context.TODO(), fmt.Sprintf(keyFmt, collection, sid), "", []byte{flagDeleted}, -1)
+			if err != nil {
 				panic(err)
+			}
+
+			_id.SetVersion(kv.Version)
+			_id.SetFlag(flagDeleted)
+
+			// FIXME(tsileo): move this to the hub via the kvstore
+			if indexes, ok := docstore.indexes[collection]; ok {
+				for _, index := range indexes {
+					if err := index.Index(_id, nil); err != nil {
+						panic(err)
+					}
+				}
 			}
 
 			// TODO(tsileo): handle index deletion for the given document
