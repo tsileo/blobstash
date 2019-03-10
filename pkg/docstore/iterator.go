@@ -2,6 +2,7 @@ package docstore
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"strconv"
 
@@ -30,12 +31,23 @@ func newNoIndexIterator(kvStore store.KvStore) *noIndexIterator {
 
 // Iter implements the IDIterator interface
 func (i *noIndexIterator) Iter(collection, cursor string, fetchLimit int, asOf int64) ([]*id.ID, string, error) {
+	// Handle the cursor
+	start := fmt.Sprintf(keyFmt, collection, "\xff")
+	if cursor != "" {
+		dcursor, err := base64.URLEncoding.DecodeString(cursor)
+		if err != nil {
+			return nil, "", err
+		}
+		start = string(dcursor)
+
+	}
+
 	end := fmt.Sprintf(keyFmt, collection, "")
 	asOfStr := strconv.FormatInt(asOf, 10)
 	_ids := []*id.ID{}
 
 	// List keys from the kvstore
-	res, nextCursor, err := i.kvStore.ReverseKeys(context.TODO(), end, cursor, fetchLimit)
+	res, nextCursor, err := i.kvStore.ReverseKeys(context.TODO(), end, start, fetchLimit)
 	if err != nil {
 		return nil, "", err
 	}
@@ -55,11 +67,6 @@ func (i *noIndexIterator) Iter(collection, cursor string, fetchLimit int, asOf i
 		// Add the extra metadata to the ID
 		_id.SetFlag(kv.Data[0])
 		_id.SetVersion(kv.Version)
-
-		// Skip deleted document
-		if _id.Flag() == flagDeleted {
-			continue
-		}
 
 		if asOf <= 0 {
 			// Add the current ID as no
@@ -100,5 +107,5 @@ func (i *noIndexIterator) Iter(collection, cursor string, fetchLimit int, asOf i
 			}
 		}
 	}
-	return _ids, nextCursor, nil
+	return _ids, base64.URLEncoding.EncodeToString([]byte(nextCursor)), nil
 }

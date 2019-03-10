@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 
 	"a4.io/blobstash/pkg/docstore/id"
 	"a4.io/blobstash/pkg/vkv"
@@ -47,6 +48,13 @@ func parseVal(d []byte) (int64, *id.ID) {
 	return int64(binary.BigEndian.Uint64(d[0:8])), id.FromRaw(d[8:])
 }
 
+func buildUint64Key(v uint64) []byte {
+	k := make([]byte, 16) // 8 bytes uint64 + 2 bytes prefix (`k:`) and 6 bytes random suffix
+	copy(k[:], []byte("k:"))
+	binary.BigEndian.PutUint64(k[2:], v)
+	return k
+}
+
 func buildKey(v interface{}) []byte {
 	var k []byte
 	var klen int
@@ -56,13 +64,41 @@ func buildKey(v interface{}) []byte {
 		k = make([]byte, klen+8) // 2 bytes prefix (`k:`) and 6 bytes random suffix
 		copy(k[:], []byte("k:"))
 		copy(k[2:], []byte(vv+":"))
-	case int64: // should be used when indexing on _updated (which will expand to the version)
+	case int:
 		klen = 8
-		k = make([]byte, klen+8) // 2 bytes prefix (`k:`) and 6 bytes random suffix
-		copy(k[:], []byte("k:"))
-		binary.BigEndian.PutUint64(k[2:], uint64(vv))
+		k = buildUint64Key(uint64(vv))
+	case int8:
+		klen = 8
+		k = buildUint64Key(uint64(vv))
+	case int16:
+		klen = 8
+		k = buildUint64Key(uint64(vv))
+	case int32:
+		klen = 8
+		k = buildUint64Key(uint64(vv))
+	case int64:
+		klen = 8
+		k = buildUint64Key(uint64(vv))
+	case uint8:
+		klen = 8
+		k = buildUint64Key(uint64(vv))
+	case uint16:
+		klen = 8
+		k = buildUint64Key(uint64(vv))
+	case uint32:
+		klen = 8
+		k = buildUint64Key(uint64(vv))
+	case uint64:
+		klen = 8
+		k = buildUint64Key(vv)
+	case float32:
+		klen = 8
+		// Get the IEEE 754 binary repr
+		k = buildUint64Key(math.Float64bits(float64(vv)))
 	case float64:
-		panic("TODO support float64")
+		klen = 8
+		// Get the IEEE 754 binary repr
+		k = buildUint64Key(math.Float64bits(vv))
 	case []interface{}:
 		panic("TODO support slice")
 	default:
@@ -144,6 +180,7 @@ func (si *sortIndex) Iter(collection, cursor string, fetchLimit int, asOf int64)
 	// asOfStr := strconv.FormatInt(asOf, 10)
 	_ids := []*id.ID{}
 
+	fmt.Printf("CURSOR=%v\n", cursor)
 	// Handle the cursor
 	start := "k:\xff"
 	if cursor != "" {

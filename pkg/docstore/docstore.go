@@ -112,6 +112,7 @@ type executionStats struct {
 	LastID            string `json:"-"`
 	Engine            string `json:"query_engine"`
 	Index             string `json:"index"`
+	Cursor            string `json:"cursor"`
 }
 
 // DocStore holds the docstore manager
@@ -127,6 +128,8 @@ type DocStore struct {
 	storedQueries map[string]*storedQuery
 
 	locker *locker
+
+	indexes map[string]map[string]Indexer
 
 	logger log.Logger
 }
@@ -167,6 +170,11 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 		return nil, err
 	}
 
+	recentIndex, err := newSortIndex("recent", "_updated")
+	if err != nil {
+		return nil, err
+	}
+
 	return &DocStore{
 		kvStore:       kvStore,
 		blobStore:     blobStore,
@@ -176,12 +184,24 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 		conf:          conf,
 		locker:        newLocker(),
 		logger:        logger,
+		indexes: map[string]map[string]Indexer{
+			"test": map[string]Indexer{
+				"recent": recentIndex,
+			},
+		},
 		// docIndex:  docIndex,
 	}, nil
 }
 
 // Close closes all the open DB files.
 func (docstore *DocStore) Close() error {
+	for _, indexes := range docstore.indexes {
+		for _, index := range indexes {
+			if err := index.Close(); err != nil {
+				return err
+			}
+		}
+	}
 	// if err := docstore.docIndex.Close(); err != nil {
 	// 	return err
 	// }
@@ -194,6 +214,7 @@ func (docstore *DocStore) Register(r *mux.Router, basicAuth func(http.Handler) h
 	r.Handle("/_stored_queries", basicAuth(http.HandlerFunc(docstore.storedQueriesHandler())))
 
 	r.Handle("/{collection}", basicAuth(http.HandlerFunc(docstore.docsHandler())))
+	r.Handle("/{collection}/_rebuild_indexes", basicAuth(http.HandlerFunc(docstore.reindexDocsHandler())))
 	r.Handle("/{collection}/_map_reduce", basicAuth(http.HandlerFunc(docstore.mapReduceHandler())))
 	// r.Handle("/{collection}/_indexes", middlewares.Auth(http.HandlerFunc(docstore.indexesHandler())))
 	r.Handle("/{collection}/{_id}", basicAuth(http.HandlerFunc(docstore.docHandler())))
@@ -468,7 +489,7 @@ func isQueryAll(q string) bool {
 // 	indexes, err := docstore.Indexes(collection)
 // 	if err != nil {
 // 		return fmt.Errorf("Failed to fetch index")
-// 	}
+// 	}/)
 // 	optz := optimizer.New(docstore.logger.New("module", "query optimizer"), indexes)
 // 	shouldIndex, idx, idxKey := optz.ShouldIndex(*doc)
 // 	if shouldIndex {
@@ -637,18 +658,14 @@ func (docstore *DocStore) query(L *lua.LState, collection string, query *query, 
 	pointers := map[string]interface{}{}
 	docs := []map[string]interface{}{}
 
-	// Handle the cursor
-	start := fmt.Sprintf(keyFmt, collection, "\xff")
-	if cursor != "" {
-		start = fmt.Sprintf(keyFmt, collection, cursor)
-	}
-
 	// Tweak the internal query batch limit
 	fetchLimit := int(float64(limit) * 1.3)
 
 	// Select the ID iterator (XXX sort indexes are a WIP)
 	var it IDIterator
+	// FIXME(tsileo): select index
 	it = newNoIndexIterator(docstore.kvStore)
+	// it = docstore.indexes["test"]["recent"]
 
 	// Select the query matcher
 	var qmatcher QueryMatcher
@@ -665,6 +682,7 @@ func (docstore *DocStore) query(L *lua.LState, collection string, query *query, 
 	}
 	defer qmatcher.Close()
 
+	start := cursor
 	// Init the logger
 	qLogger := docstore.logger.New("query", query, "query_engine", stats.Engine, "id", logext.RandId(8))
 	qLogger.Info("new query")
@@ -672,7 +690,7 @@ func (docstore *DocStore) query(L *lua.LState, collection string, query *query, 
 QUERY:
 	for {
 		// Loop until we have the number of requested documents, or if we scanned everything
-		qLogger.Debug("internal query", "limit", limit, "cursor", cursor, "start", start, "nreturned", stats.NReturned)
+		qLogger.Debug("internal query", "limit", limit, "start", start, "cursor", cursor, "nreturned", stats.NReturned)
 		// FIXME(tsileo): use `PrefixKeys` if ?sort=_id (-_id by default).
 
 		// Fetch a batch from the iterator
@@ -680,8 +698,13 @@ QUERY:
 		if err != nil {
 			panic(err)
 		}
+		stats.Cursor = cursor
 
 		for _, _id := range _ids {
+			if _id.Flag() == flagDeleted {
+				qLogger.Debug("skipping deleted doc", "_id", _id, "as_of", asOf)
+				continue
+			}
 
 			qLogger.Debug("fetch doc", "_id", _id, "as_of", asOf)
 			doc := map[string]interface{}{}
@@ -714,7 +737,7 @@ QUERY:
 				}
 			}
 		}
-		if len(_ids) == 0 {
+		if len(_ids) == 0 || len(_ids) < fetchLimit {
 			break
 		}
 		start = cursor
@@ -724,6 +747,107 @@ QUERY:
 	qLogger.Debug("scan done", "duration", duration, "nReturned", stats.NReturned, "scanned", stats.TotalDocsExamined)
 	stats.ExecutionTimeNano = duration.Nanoseconds()
 	return docs, pointers, stats, nil
+}
+
+func (docstore *DocStore) RebuildIndexes(collection string) error {
+	// FIXME(tsileo): locking
+	end := fmt.Sprintf(keyFmt, collection, "")
+	start := fmt.Sprintf(keyFmt, collection, "\xff")
+
+	// List keys from the kvstore
+	res, _, err := docstore.kvStore.ReverseKeys(context.TODO(), end, start, -1)
+	if err != nil {
+		return err
+	}
+
+	for _, kv := range res {
+		// Build the ID
+		_id, err := idFromKey(collection, kv.Key)
+		if err != nil {
+			return err
+		}
+
+		// Add the extra metadata to the ID
+		_id.SetFlag(kv.Data[0])
+		_id.SetVersion(kv.Version)
+
+		// Check if the document has a valid version for the given asOf
+		kvv, _, err := docstore.kvStore.Versions(context.TODO(), fmt.Sprintf(keyFmt, collection, _id.String()), "0", -1)
+		if err != nil {
+			if err == vkv.ErrNotFound {
+				continue
+			}
+			return err
+		}
+
+		// No anterior versions, skip it
+		if len(kvv.Versions) == 0 {
+			continue
+		}
+
+		// Reverse the versions
+		for i := len(kvv.Versions)/2 - 1; i >= 0; i-- {
+			opp := len(kvv.Versions) - 1 - i
+			kvv.Versions[i], kvv.Versions[opp] = kvv.Versions[opp], kvv.Versions[i]
+		}
+
+		// Re-index each versions in chronological order
+		for _, version := range kvv.Versions {
+			_id.SetFlag(version.Data[0])
+			_id.SetVersion(version.Version)
+			var doc map[string]interface{}
+			if _id.Flag() != flagDeleted {
+				doc = map[string]interface{}{}
+				if err := msgpack.Unmarshal(version.Data[1:], &doc); err != nil {
+					return err
+				}
+			}
+
+			if indexes, ok := docstore.indexes[collection]; ok {
+				for _, index := range indexes {
+					if err := index.Index(_id, doc); err != nil {
+						return err
+					}
+				}
+			}
+			// fmt.Printf("_id=%+v|%d|%+v\n", _id, version.Version, doc)
+			// FIXME(tsileo): re-index the doc if needed
+		}
+	}
+	return nil
+}
+
+// HTTP handler for the collection (handle listing+query+insert)
+func (docstore *DocStore) reindexDocsHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		collection := vars["collection"]
+		if collection == "" {
+			httputil.WriteJSONError(w, http.StatusInternalServerError, "Missing collection in the URL")
+			return
+		}
+		switch r.Method {
+		case "POST":
+			if !auth.Can(
+				w,
+				r,
+				// TODO(tsileo): tweak the perms
+				perms.Action(perms.List, perms.JSONDocument),
+				perms.Resource(perms.DocStore, perms.JSONDocument),
+			) {
+				auth.Forbidden(w)
+				return
+			}
+
+			if err := docstore.RebuildIndexes(collection); err != nil {
+				panic(err)
+			}
+
+			w.WriteHeader(http.StatusCreated)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}
 }
 
 // HTTP handler for the collection (handle listing+query+insert)
@@ -804,7 +928,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				hasMore = true
 			}
 			w.Header().Set("BlobStash-DocStore-Iter-Has-More", strconv.FormatBool(hasMore))
-			w.Header().Set("BlobStash-DocStore-Iter-Cursor", vkv.PrevKey(stats.LastID))
+			w.Header().Set("BlobStash-DocStore-Iter-Cursor", stats.Cursor)
 
 			// w.Header().Set("BlobStash-DocStore-Query-Optimizer", stats.Optimizer)
 			// if stats.Optimizer != optimizer.Linear {
@@ -829,7 +953,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				"pointers": pointers,
 				"data":     docs,
 				"pagination": map[string]interface{}{
-					"cursor":   vkv.PrevKey(stats.LastID),
+					"cursor":   stats.Cursor,
 					"has_more": hasMore,
 					"count":    stats.NReturned,
 					"per_page": limit,
