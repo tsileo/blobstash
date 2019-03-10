@@ -1,12 +1,12 @@
 package docstore
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"io"
-	"math"
 
 	"a4.io/blobstash/pkg/docstore/id"
 	"a4.io/blobstash/pkg/vkv"
@@ -26,6 +26,7 @@ type sortIndex struct {
 }
 
 func newSortIndex(name string, fields ...string) (*sortIndex, error) {
+	// FIXME(tsileo): add the path
 	db, err := vkv.New(fmt.Sprintf("docstore_%s.index", name))
 	if err != nil {
 		return nil, err
@@ -35,6 +36,15 @@ func newSortIndex(name string, fields ...string) (*sortIndex, error) {
 		name:   name,
 		fields: fields,
 	}, nil
+}
+
+func (si *sortIndex) prepareRebuild() error {
+	err := si.db.Destroy()
+	if err != nil {
+		return err
+	}
+	si.db, err = vkv.New(fmt.Sprintf("docstore_%s.index", si.name))
+	return err
 }
 
 func buildVal(start int64, _id *id.ID) []byte {
@@ -49,21 +59,36 @@ func parseVal(d []byte) (int64, *id.ID) {
 }
 
 func buildUint64Key(v uint64) []byte {
-	k := make([]byte, 16) // 8 bytes uint64 + 2 bytes prefix (`k:`) and 6 bytes random suffix
-	copy(k[:], []byte("k:"))
-	binary.BigEndian.PutUint64(k[2:], v)
+	k := make([]byte, 18) // 8 bytes uint64 + 4 bytes prefix (`k:<type>:`) and 6 bytes random suffix
+	copy(k[:], []byte("k:1:"))
+	binary.BigEndian.PutUint64(k[4:], v)
 	return k
+}
+
+func buildFloat64Key(f float64) []byte {
+	buf := new(bytes.Buffer)
+	buf.WriteString("k:2:")
+	// XXX: The rationale for using this instead `math.Float64bits` is to ensure the big endianess
+	// (I'am afraid `math.Float64bits` endianess will depend on the arch)
+	err := binary.Write(buf, binary.BigEndian, f)
+	if err != nil {
+		panic(err)
+	}
+	return buf.Bytes()
 }
 
 func buildKey(v interface{}) []byte {
 	var k []byte
 	var klen int
 	switch vv := v.(type) {
+	case nil:
+		klen = 0
+		k = []byte("k:0:")
 	case string:
 		klen = len(vv)
-		k = make([]byte, klen+8) // 2 bytes prefix (`k:`) and 6 bytes random suffix
-		copy(k[:], []byte("k:"))
-		copy(k[2:], []byte(vv+":"))
+		k = make([]byte, klen+10) // 4 bytes prefix (`k:<type>:`) and 6 bytes random suffix
+		copy(k[:], []byte("k:3:"))
+		copy(k[4:], []byte(vv))
 	case int:
 		klen = 8
 		k = buildUint64Key(uint64(vv))
@@ -94,17 +119,17 @@ func buildKey(v interface{}) []byte {
 	case float32:
 		klen = 8
 		// Get the IEEE 754 binary repr
-		k = buildUint64Key(math.Float64bits(float64(vv)))
+		k = buildFloat64Key(float64(vv))
 	case float64:
 		klen = 8
 		// Get the IEEE 754 binary repr
-		k = buildUint64Key(math.Float64bits(vv))
+		k = buildFloat64Key(vv)
 	case []interface{}:
 		panic("TODO support slice")
 	default:
 		panic("should not happen")
 	}
-	if _, err := rand.Read(k[klen+3:]); err != nil {
+	if _, err := rand.Read(k[klen+4:]); err != nil {
 		panic("failed to build key")
 	}
 	return k
@@ -217,6 +242,7 @@ func (si *sortIndex) Iter(collection, cursor string, fetchLimit int, asOf int64)
 		}
 
 		// Add the extra metadata to the ID
+		_id.SetFlag(flagNoop)
 		_id.SetVersion(vstart)
 		_id.SetCursor(base64.URLEncoding.EncodeToString([]byte(vkv.PrevKey(kv.Key))))
 

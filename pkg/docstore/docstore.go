@@ -700,7 +700,6 @@ QUERY:
 		}
 
 		for _, _id := range _ids {
-			fmt.Printf("_ID cursor = %s\n", _id.Cursor())
 			if _id.Flag() == flagDeleted {
 				qLogger.Debug("skipping deleted doc", "_id", _id, "as_of", asOf)
 				continue
@@ -752,6 +751,16 @@ QUERY:
 
 func (docstore *DocStore) RebuildIndexes(collection string) error {
 	// FIXME(tsileo): locking
+
+	if indexes, ok := docstore.indexes[collection]; ok {
+		for _, index := range indexes {
+			// FIXME(tsileo): make an preprareRebuild interface optional
+			if err := index.(*sortIndex).prepareRebuild(); err != nil {
+				panic(err)
+			}
+		}
+	}
+
 	end := fmt.Sprintf(keyFmt, collection, "")
 	start := fmt.Sprintf(keyFmt, collection, "\xff")
 

@@ -67,6 +67,7 @@ func (i *noIndexIterator) Iter(collection, cursor string, fetchLimit int, asOf i
 		// Add the extra metadata to the ID
 		_id.SetFlag(kv.Data[0])
 		_id.SetVersion(kv.Version)
+		// FIXME(tsileo): encode the _id.Raw() instead, and rebuit it with keyFmt
 		_id.SetCursor(base64.URLEncoding.EncodeToString([]byte(vkv.PrevKey(kv.Key))))
 
 		if asOf <= 0 {
