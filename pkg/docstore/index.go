@@ -87,7 +87,16 @@ func buildKey(v interface{}) []byte {
 	switch vv := v.(type) {
 	case nil:
 		klen = 0
-		k = []byte("k:0:")
+		k = make([]byte, 10)
+		copy(k[:], []byte("k:0:"))
+	case bool:
+		klen = 0
+		k = make([]byte, 10)
+		if vv {
+			copy(k[:], []byte("k:4:1"))
+		} else {
+			copy(k[:], []byte("k:4:0"))
+		}
 	case string:
 		klen = len(vv)
 		k = make([]byte, klen+10) // 4 bytes prefix (`k:<type>:`) and 6 bytes random suffix

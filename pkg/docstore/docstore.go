@@ -1387,6 +1387,8 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			// js := []byte{}
 			var doc, pointers map[string]interface{}
 
+			// FIXME(tsileo): support asOf?
+
 			if _id, pointers, err = docstore.Fetch(collection, sid, &doc, true, -1); err != nil {
 				if err == vkv.ErrNotFound || _id.Flag() == flagDeleted {
 					// Document doesn't exist, returns a status 404
