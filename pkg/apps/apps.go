@@ -177,9 +177,9 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 			SetupState: func(L *lua.LState) error {
 
 				// Set the `app` global variable
-				confTable := L.CreateTable(0, 1)
+				confTable := L.NewTable()
 				fmt.Printf("app=%+v\n", app)
-				confTable.RawSetH(lua.LString("app_id"), lua.LString(app.name))
+				confTable.RawSetString("app_id", lua.LString(app.name))
 				L.SetGlobal("blobstash", confTable)
 
 				docstore.SetLuaGlobals(L)

@@ -1,9 +1,6 @@
 package lua // import "a4.io/blobstash/pkg/docstore/lua"
 
 import (
-	"bytes"
-	"html/template"
-
 	"github.com/yuin/gopher-lua"
 
 	luautil "a4.io/blobstash/pkg/apps/luautil"
@@ -35,6 +32,65 @@ func setupDocStore(dc *docstore.DocStore) func(*lua.LState) int {
 				return 1
 			},
 			"text_search": dc.LuaTextSearch,
+			"setup_sort_index": func(L *lua.LState) int {
+				// FIXME(tsileo): return  true if index was created and add rebuild_sort_indexes(col)
+				return 0
+			},
+			// FIXME(tsileo): rename everything register_ to setup_
+			"register_ext": func(L *lua.LState) int {
+				col := L.ToString(1)
+				ext := L.ToString(2)
+				data := L.ToTable(3)
+
+				dc.SetupExt(col, ext, luautil.TableToMap(data))
+
+				return 0
+			},
+			"get_ext": func(L *lua.LState) int {
+				// col, ext name
+				dat, err := dc.LuaGetExt(L.ToString(1), L.ToString(2))
+				if err != nil {
+					L.Push(lua.LNil)
+					return 1
+				}
+
+				L.Push(luautil.InterfaceToLValue(L, dat))
+				return 1
+			},
+			"register_schema": func(L *lua.LState) int {
+				name := L.ToString(1)
+				fields := luautil.TableToSlice(L.ToTable(2))
+
+				if err := dc.LuaRegisterSchema(name, fields); err != nil {
+					panic(err)
+				}
+				return 0
+			},
+			"get_schema": func(L *lua.LState) int {
+				name := L.ToString(1)
+				schema, err := dc.LuaGetSchema(name)
+				if err != nil {
+					L.Push(lua.LNil)
+					return 1
+				}
+
+				out := L.NewTable()
+
+				for _, f := range schema {
+					tf := L.NewTable()
+					tf.RawSetString("field_name", lua.LString(f.Name))
+					tf.RawSetString("field_type", lua.LString(f.Type))
+					if f.Data != nil {
+						tf.RawSetString("data", luautil.InterfaceToLValue(L, f.Data))
+					} else {
+						tf.RawSetString("data", lua.LNil)
+					}
+					out.Append(tf)
+				}
+
+				L.Push(out)
+				return 1
+			},
 		})
 		// returns the module
 		L.Push(mod)
@@ -147,23 +203,10 @@ func colQuery(L *lua.LState) int {
 	} else {
 		panic("bad mathcFunc type")
 	}
-	rtpl := L.ToString(5)
-	docs, pointers, cursor, err := col.dc.LuaQuery(L, matchFunc, col.name, cursor, limit)
+	sortIndex := L.ToString(5)
+	docs, pointers, cursor, err := col.dc.LuaQuery(L, matchFunc, col.name, cursor, sortIndex, limit)
 	if err != nil {
 		panic(err)
-	}
-	if rtpl != "" {
-		tpl, err := template.New("").Parse(rtpl)
-		if err != nil {
-			panic(err)
-		}
-		for _, doc := range docs {
-			var out bytes.Buffer
-			if err := tpl.Execute(&out, doc); err != nil {
-				panic(err)
-			}
-			doc["_lua_tpl"] = out.String()
-		}
 	}
 	L.Push(luautil.InterfaceToLValue(L, docs))
 	L.Push(luautil.InterfaceToLValue(L, pointers))

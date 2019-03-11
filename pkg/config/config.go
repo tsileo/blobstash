@@ -128,9 +128,15 @@ func (c *Config) LogLvl() log15.Lvl {
 	return lvl
 }
 
+type DocstoreSortIndex struct {
+	Fields  []string `yaml:"fields"`
+	Default bool     `yaml:"default"`
+}
+
 type DocstoreConfig struct {
-	StoredQueries []*StoredQuery               `yaml:"stored_queries"`
-	Hooks         map[string]map[string]string `yaml:"hooks"`
+	SortIndexes   map[string]map[string]*DocstoreSortIndex `yaml:"sort_indexes"`
+	StoredQueries []*StoredQuery                           `yaml:"stored_queries"`
+	Hooks         map[string]map[string]string             `yaml:"hooks"`
 }
 
 type StoredQuery struct {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,6 +21,7 @@ import (
 	"a4.io/blobstash/pkg/capabilities"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/docstore"
+	docstoreLua "a4.io/blobstash/pkg/docstore/lua"
 	"a4.io/blobstash/pkg/expvarserver"
 	"a4.io/blobstash/pkg/filetree"
 	"a4.io/blobstash/pkg/gitserver"
@@ -40,6 +42,7 @@ import (
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
+	lua "github.com/yuin/gopher-lua"
 )
 
 var serverCounters = expvar.NewMap("server")
@@ -159,6 +162,25 @@ func New(conf *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to initialize git server app: %v", err)
 	}
 	git.Register(s.router.PathPrefix("/api/git").Subrouter(), s.router, basicAuth)
+
+	// Load the Lua config
+	if _, err := os.Stat("blobstash.lua"); err == nil {
+		if err := func() error {
+			L := lua.NewState()
+			defer L.Close()
+			docstoreLua.Setup(L, docstore)
+			dat, err := ioutil.ReadFile("blobstash.lua")
+			if err != nil {
+				return err
+			}
+			if err := L.DoString(string(dat)); err != nil {
+				return fmt.Errorf("failed to load blobstash.lua: %v", err)
+			}
+			return nil
+		}(); err != nil {
+			return nil, err
+		}
+	}
 
 	apps, err := apps.New(logger.New("app", "apps"), conf, rootBlobstore, kvstore, filetree, docstore, git, hub, s.whitelistHosts)
 	if err != nil {

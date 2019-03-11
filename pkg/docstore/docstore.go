@@ -131,6 +131,8 @@ type DocStore struct {
 	locker *locker
 
 	indexes map[string]map[string]Indexer
+	exts    map[string]map[string]map[string]interface{}
+	schemas map[string][]*LuaSchemaField
 
 	logger log.Logger
 }
@@ -143,11 +145,9 @@ type storedQuery struct {
 // New initializes the `DocStoreExt`
 func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStore store.BlobStore, ft *filetree.FileTree) (*DocStore, error) {
 	logger.Debug("init")
-	// Try to load the docstore index (powered by a kv file)
-	// docIndex, err := index.New()
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to open the docstore index: %v", err)
-	// }
+
+	sortIndexes := map[string]map[string]Indexer{}
+	var err error
 
 	// Load the docstore's stored queries from the config
 	storedQueries := map[string]*storedQuery{}
@@ -164,19 +164,24 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 			}
 			storedQueries[squery.Name] = storedQuery
 		}
+		logger.Debug("sorted queries setup", "stored_queries", fmt.Sprintf("%+v", storedQueries))
+	}
+
+	// Load the sort indexes definitions if any
+	if conf.Docstore != nil && conf.Docstore.SortIndexes != nil {
+		for collection, indexes := range conf.Docstore.SortIndexes {
+			sortIndexes[collection] = map[string]Indexer{}
+			for sortIndexName, sortIndex := range indexes {
+				sortIndexes[collection][sortIndexName], err = newSortIndex(sortIndexName, sortIndex.Fields[0])
+				if err != nil {
+					return nil, fmt.Errorf("failed to init index: %v", err)
+				}
+			}
+		}
+		logger.Debug("indexes setup", "indexes", fmt.Sprintf("%+v", sortIndexes))
 	}
 
 	hooks, err := newLuaHooks(conf, ft, blobStore)
-	if err != nil {
-		return nil, err
-	}
-
-	recentIndex, err := newSortIndex("recent", "_updated")
-	if err != nil {
-		return nil, err
-	}
-
-	fIndex, err := newSortIndex("f", "f")
 	if err != nil {
 		return nil, err
 	}
@@ -190,15 +195,9 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 		conf:          conf,
 		locker:        newLocker(),
 		logger:        logger,
-		indexes: map[string]map[string]Indexer{
-			"test": map[string]Indexer{
-				"recent": recentIndex,
-			},
-			"tfloat": map[string]Indexer{
-				"f": fIndex,
-			},
-		},
-		// docIndex:  docIndex,
+		indexes:       sortIndexes,
+		schemas:       map[string][]*LuaSchemaField{},
+		exts:          map[string]map[string]map[string]interface{}{},
 	}, nil
 }
 
@@ -215,6 +214,59 @@ func (docstore *DocStore) Close() error {
 	// 	return err
 	// }
 	return nil
+}
+
+type LuaSchemaField struct {
+	Name string
+	Type string
+	Data map[string]interface{}
+}
+
+func (dc *DocStore) LuaRegisterSchema(name string, fields []interface{}) error {
+	schema := []*LuaSchemaField{}
+
+	for _, field := range fields {
+		fdata := field.(map[string]interface{})
+		var data map[string]interface{}
+		if dat, ok := fdata["data"]; ok {
+			data = dat.(map[string]interface{})
+		}
+		f := &LuaSchemaField{
+			Name: fdata["field_name"].(string),
+			Type: fdata["field_type"].(string),
+			Data: data,
+		}
+		schema = append(schema, f)
+	}
+
+	dc.schemas[name] = schema
+	dc.logger.Debug("setup new schema", "name", name, "schema", fmt.Sprintf("%q", schema))
+	return nil
+}
+
+func (dc *DocStore) LuaGetExt(col, ext string) (map[string]interface{}, error) {
+	if colExts, ok := dc.exts[col]; ok {
+		if dat, ok := colExts[ext]; ok {
+			return dat, nil
+		}
+	}
+	return nil, fmt.Errorf("no ext %s %s", col, ext)
+
+}
+
+func (dc *DocStore) LuaGetSchema(name string) ([]*LuaSchemaField, error) {
+	if schema, ok := dc.schemas[name]; ok {
+		return schema, nil
+	}
+	return nil, fmt.Errorf("schema %q not found", name)
+}
+
+func (dc *DocStore) SetupExt(col, ext string, data map[string]interface{}) {
+	if _, ok := dc.exts[col]; !ok {
+		dc.exts[col] = map[string]map[string]interface{}{}
+	}
+	dc.exts[col][ext] = data
+	dc.logger.Debug("setup new ext", "col", col, "ext", ext, "data", fmt.Sprintf("%+v", data))
 }
 
 // Register registers all the HTTP handlers for the extension
@@ -560,10 +612,14 @@ func (docstore *DocStore) Insert(collection string, doc *map[string]interface{})
 	_id.SetVersion(kv.Version)
 
 	// Index the doc if needed
-	// if err := docstore.IndexDoc(collection, _id, doc); err != nil {
-	// 	docstore.logger.Error("Failed to index document", "_id", _id.String(), "err", err)
-	// 	return _id, httputil.NewPublicErrorFmt("Failed to index document")
-	// }
+	// FIXME(tsileo): move this to the hub via the kvstore
+	if indexes, ok := docstore.indexes[collection]; ok {
+		for _, index := range indexes {
+			if err := index.Index(_id, *doc); err != nil {
+				panic(err)
+			}
+		}
+	}
 
 	return _id, nil
 }
@@ -636,9 +692,10 @@ func (docstore *DocStore) LuaRemove(collection, docID string) error {
 }
 
 // LuaQuery performs a Lua query
-func (docstore *DocStore) LuaQuery(L *lua.LState, lfunc *lua.LFunction, collection string, cursor string, limit int) ([]map[string]interface{}, map[string]interface{}, string, error) {
+func (docstore *DocStore) LuaQuery(L *lua.LState, lfunc *lua.LFunction, collection string, cursor string, sortIndex string, limit int) ([]map[string]interface{}, map[string]interface{}, string, error) {
 	query := &query{
-		lfunc: lfunc,
+		lfunc:     lfunc,
+		sortIndex: sortIndex,
 	}
 	docs, pointers, stats, err := docstore.query(L, collection, query, cursor, limit, true, 0)
 	if err != nil {
@@ -681,6 +738,9 @@ func (docstore *DocStore) query(L *lua.LState, collection string, query *query, 
 			if idx, ok := indexes[query.sortIndex]; ok {
 				it = idx
 			}
+		}
+		if it == nil {
+			return nil, nil, stats, fmt.Errorf("failed to select sort_index %q", query.sortIndex)
 		}
 	}
 	stats.Index = it.Name()
@@ -1016,15 +1076,6 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			}
 			if err != nil {
 				panic(err)
-			}
-
-			// FIXME(tsileo): move this to the hub via the kvstore
-			if indexes, ok := docstore.indexes[collection]; ok {
-				for _, index := range indexes {
-					if err := index.Index(_id, doc); err != nil {
-						panic(err)
-					}
-				}
 			}
 
 			// Output some headers

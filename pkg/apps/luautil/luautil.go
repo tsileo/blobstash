@@ -74,54 +74,22 @@ func tomap(table *lua.LTable, visited map[*lua.LTable]bool) (map[string]interfac
 		case *lua.LState:
 			panic("no LState")
 		case *lua.LTable:
-			var arr []interface{}
-			obj := map[string]interface{}{}
-
 			if visited[converted] {
 				panic("nested table")
 			}
 			visited[converted] = true
-
-			converted.ForEach(func(k lua.LValue, v lua.LValue) {
-				_, numberKey := k.(lua.LNumber)
-				// if numberKey, then convert to a slice of interface
-				subtable, istable := v.(*lua.LTable)
-				if numberKey {
-					if istable {
-						rtable, rarr := tomap(subtable, visited)
-						if rarr != nil {
-							arr = append(arr, rarr)
-						} else {
-							arr = append(arr, rtable)
-						}
-						// arr = append(arr, tomap(subtable, visited))
-					} else {
-						arr = append(arr, v)
-					}
+			stres, sares := tomap(converted, visited)
+			if nkey {
+				if sares != nil {
+					arrres = append(arrres, sares)
 				} else {
-					if istable {
-						rtable, rarr := tomap(subtable, visited)
-						if rarr != nil {
-							obj[k.(lua.LString).String()] = rarr
-						} else {
-							obj[k.(lua.LString).String()] = rtable
-						}
-					} else {
-						obj[k.(lua.LString).String()] = v
-					}
-				}
-			})
-			if len(arr) > 0 {
-				if nkey {
-					arrres = append(arrres, arr)
-				} else {
-					res[key.String()] = arr
+					arrres = append(arrres, stres)
 				}
 			} else {
-				if nkey {
-					arrres = append(arrres, obj)
+				if sares != nil {
+					res[key.String()] = sares
 				} else {
-					res[key.String()] = obj
+					res[key.String()] = stres
 				}
 			}
 		}
