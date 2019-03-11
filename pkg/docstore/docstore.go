@@ -216,6 +216,22 @@ func (docstore *DocStore) Close() error {
 	return nil
 }
 
+func (dc *DocStore) LuaSetupSortIndex(col, name, field string) error {
+	if _, ok := dc.indexes[col]; !ok {
+		dc.indexes[col] = map[string]Indexer{}
+	}
+	if _, ok := dc.indexes[col][name]; ok {
+		// TODO(tsileo): return an error?
+		return nil
+	}
+	var err error
+	dc.indexes[col][name], err = newSortIndex(name, field)
+	if err != nil {
+		return fmt.Errorf("failed to init index: %v", err)
+	}
+	return nil
+}
+
 type LuaSchemaField struct {
 	Name string
 	Type string

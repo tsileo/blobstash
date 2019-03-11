@@ -33,11 +33,23 @@ func setupDocStore(dc *docstore.DocStore) func(*lua.LState) int {
 			},
 			"text_search": dc.LuaTextSearch,
 			"setup_sort_index": func(L *lua.LState) int {
-				// FIXME(tsileo): return  true if index was created and add rebuild_sort_indexes(col)
+				col := L.ToString(1)
+				name := L.ToString(2)
+				field := L.ToString(3)
+				if err := dc.LuaSetupSortIndex(col, name, field); err != nil {
+					panic(err)
+				}
+				// FIXME(tsileo): return  true if index was created and add rebuild_sort_indexes(col)?
 				return 0
 			},
-			// FIXME(tsileo): rename everything register_ to setup_
-			"register_ext": func(L *lua.LState) int {
+			"rebuild_indexes": func(L *lua.LState) int {
+				col := L.ToString(1)
+				if err := dc.RebuildIndexes(col); err != nil {
+					panic(err)
+				}
+				return 0
+			},
+			"setup_ext": func(L *lua.LState) int {
 				col := L.ToString(1)
 				ext := L.ToString(2)
 				data := L.ToTable(3)
@@ -57,7 +69,7 @@ func setupDocStore(dc *docstore.DocStore) func(*lua.LState) int {
 				L.Push(luautil.InterfaceToLValue(L, dat))
 				return 1
 			},
-			"register_schema": func(L *lua.LState) int {
+			"setup_schema": func(L *lua.LState) int {
 				name := L.ToString(1)
 				fields := luautil.TableToSlice(L.ToTable(2))
 
