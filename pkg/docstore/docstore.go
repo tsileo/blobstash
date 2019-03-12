@@ -585,18 +585,22 @@ func isQueryAll(q string) bool {
 // }
 
 // Insert the given doc (`*map[string]interface{}` for now) in the given collection
-func (docstore *DocStore) Insert(collection string, doc *map[string]interface{}) (*id.ID, error) {
-	// FIXME(tsileo): fix the pointer mess
-
-	docFlag := flagNoop
-
+func (docstore *DocStore) Insert(collection string, doc map[string]interface{}) (*id.ID, error) {
 	// If there's already an "_id" field in the doc, remove it
-	if _, ok := (*doc)["_id"]; ok {
-		delete(*doc, "_id")
+	if _, ok := doc["_id"]; ok {
+		delete(doc, "_id")
+	}
+
+	// Check for reserved keys
+	for k, _ := range doc {
+		if _, ok := reservedKeys[k]; ok {
+			// XXX(tsileo): delete them or raises an exception?
+			delete(doc, k)
+		}
 	}
 
 	// TODO(tsileo): track the hook execution time and log it
-	ok, newDoc, err := docstore.hooks.Execute(collection, "post", *doc)
+	ok, newDoc, err := docstore.hooks.Execute(collection, "post", doc)
 	if err != nil {
 		return nil, err
 	}
@@ -606,7 +610,7 @@ func (docstore *DocStore) Insert(collection string, doc *map[string]interface{})
 	}
 
 	if ok {
-		*doc = newDoc
+		doc = newDoc
 	}
 
 	data, err := msgpack.Marshal(doc)
@@ -620,11 +624,11 @@ func (docstore *DocStore) Insert(collection string, doc *map[string]interface{})
 	if err != nil {
 		return nil, err
 	}
-	_id.SetFlag(docFlag)
+	_id.SetFlag(flagNoop)
 
 	// Create a pointer in the key-value store
 	kv, err := docstore.kvStore.Put(
-		context.TODO(), fmt.Sprintf(keyFmt, collection, _id.String()), "", append([]byte{docFlag}, data...), now.UnixNano(),
+		context.TODO(), fmt.Sprintf(keyFmt, collection, _id.String()), "", append([]byte{_id.Flag()}, data...), now.UnixNano(),
 	)
 	if err != nil {
 		return nil, err
@@ -635,7 +639,7 @@ func (docstore *DocStore) Insert(collection string, doc *map[string]interface{})
 	// FIXME(tsileo): move this to the hub via the kvstore
 	if indexes, ok := docstore.indexes[collection]; ok {
 		for _, index := range indexes {
-			if err := index.Index(_id, *doc); err != nil {
+			if err := index.Index(_id, doc); err != nil {
 				panic(err)
 			}
 		}
@@ -1146,7 +1150,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			}
 
 			// Actually insert the doc
-			_id, err := docstore.Insert(collection, &doc)
+			_id, err := docstore.Insert(collection, doc)
 			if err == ErrUnprocessableEntity {
 				// FIXME(tsileo): returns an object with field errors (set via the Lua API in the hook)
 				w.WriteHeader(http.StatusUnprocessableEntity)

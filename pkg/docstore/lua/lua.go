@@ -142,7 +142,7 @@ func colInsert(L *lua.LState) int {
 		return 0
 	}
 	t := luautil.TableToMap(L.ToTable(2))
-	id, err := col.dc.Insert(col.name, &t)
+	id, err := col.dc.Insert(col.name, t)
 	if err != nil {
 		panic(err)
 	}
