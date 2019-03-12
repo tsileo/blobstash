@@ -69,6 +69,7 @@ var (
 
 // ErrUnprocessableEntity is returned when a document is faulty
 var ErrUnprocessableEntity = errors.New("unprocessable entity")
+var ErrDocNotFound = errors.New("document not found")
 
 var reservedKeys = map[string]struct{}{
 	"_id":      struct{}{},
@@ -700,11 +701,35 @@ func (docstore *DocStore) LuaUpdate(collection, docID string, newDoc map[string]
 	return nil
 }
 
-func (docstore *DocStore) LuaRemove(collection, docID string) error {
-	if _, err := docstore.kvStore.Put(context.TODO(), fmt.Sprintf(keyFmt, collection, docID), "", []byte{flagDeleted}, -1); err != nil {
-		panic(err)
+func (docstore *DocStore) Remove(collection, sid string) (*id.ID, error) {
+	docstore.locker.Lock(sid)
+	defer docstore.locker.Unlock(sid)
+
+	_id, _, err := docstore.Fetch(collection, sid, nil, false, -1)
+	if err != nil {
+		if err == vkv.ErrNotFound || _id.Flag() == flagDeleted {
+			return nil, ErrDocNotFound
+		}
+		return nil, err
 	}
-	return nil
+
+	kv, err := docstore.kvStore.Put(context.TODO(), fmt.Sprintf(keyFmt, collection, sid), "", []byte{flagDeleted}, -1)
+	if err != nil {
+		return nil, err
+	}
+
+	_id.SetVersion(kv.Version)
+	_id.SetFlag(flagDeleted)
+
+	// FIXME(tsileo): move this to the hub via the kvstore
+	if indexes, ok := docstore.indexes[collection]; ok {
+		for _, index := range indexes {
+			if err := index.Index(_id, nil); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return _id, nil
 }
 
 // LuaQuery performs a Lua query
@@ -1646,46 +1671,15 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 
 			return
 		case "DELETE":
-			docstore.locker.Lock(sid)
-			defer docstore.locker.Unlock(sid)
-
-			_id, _, err := docstore.Fetch(collection, sid, nil, false, -1)
-			if err != nil {
-				if err == vkv.ErrNotFound || _id.Flag() == flagDeleted {
-					// Document doesn't exist, returns a status 404
-					w.WriteHeader(http.StatusNotFound)
-					return
-				}
+			_, err := docstore.Remove(collection, sid)
+			switch err {
+			case nil:
+			case ErrDocNotFound:
+				w.WriteHeader(http.StatusNotFound)
+			default:
 				panic(err)
 			}
-
-			// FIXME(tsileo): empty the key, and hanlde it in the get/query
-			kv, err := docstore.kvStore.Put(context.TODO(), fmt.Sprintf(keyFmt, collection, sid), "", []byte{flagDeleted}, -1)
-			if err != nil {
-				panic(err)
-			}
-
-			_id.SetVersion(kv.Version)
-			_id.SetFlag(flagDeleted)
-
-			// FIXME(tsileo): move this to the hub via the kvstore
-			if indexes, ok := docstore.indexes[collection]; ok {
-				for _, index := range indexes {
-					if err := index.Index(_id, nil); err != nil {
-						panic(err)
-					}
-				}
-			}
-
-			// TODO(tsileo): handle index deletion for the given document
-			return
-
 		}
-
-		// FIXME(tsileo): put these headers at the top as at this point, the status is already written
-		w.Header().Set("BlobStash-DocStore-Doc-Id", sid)
-		w.Header().Set("BlobStash-DocStore-Doc-Version", _id.VersionString())
-		w.Header().Set("BlobStash-DocStore-Doc-CreatedAt", strconv.FormatInt(_id.Ts(), 10))
 	}
 }
 

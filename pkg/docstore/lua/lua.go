@@ -173,7 +173,7 @@ func colRemove(L *lua.LState) int {
 		return 0
 	}
 	docID := L.ToString(2)
-	if err := col.dc.LuaRemove(col.name, docID); err != nil {
+	if _, err := col.dc.Remove(col.name, docID); err != nil {
 		panic(err)
 	}
 	return 0
