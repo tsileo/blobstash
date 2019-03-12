@@ -186,7 +186,8 @@ func colUpdate(L *lua.LState) int {
 	}
 	docID := L.ToString(2)
 	newDoc := luautil.TableToMap(L.ToTable(3))
-	if err := col.dc.LuaUpdate(col.name, docID, newDoc); err != nil {
+
+	if _, err := col.dc.Update(col.name, docID, newDoc, ""); err != nil {
 		panic(err)
 	}
 	return 0

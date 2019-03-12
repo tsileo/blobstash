@@ -69,7 +69,10 @@ var (
 
 // ErrUnprocessableEntity is returned when a document is faulty
 var ErrUnprocessableEntity = errors.New("unprocessable entity")
+
 var ErrDocNotFound = errors.New("document not found")
+
+var ErrPreconditionFailed = errors.New("precondition failed")
 
 var reservedKeys = map[string]struct{}{
 	"_id":      struct{}{},
@@ -682,7 +685,27 @@ func addSpecialFields(doc map[string]interface{}, _id *id.ID) {
 	}
 }
 
-func (docstore *DocStore) LuaUpdate(collection, docID string, newDoc map[string]interface{}) error {
+func (docstore *DocStore) Update(collection, sid string, newDoc map[string]interface{}, ifMatch string) (*id.ID, error) {
+	docstore.locker.Lock(sid)
+	defer docstore.locker.Unlock(sid)
+
+	ctx := context.Background()
+	// Fetch the actual doc
+	doc := map[string]interface{}{}
+	_id, _, err := docstore.Fetch(collection, sid, &doc, false, -1)
+	if err != nil {
+		if err == vkv.ErrNotFound || _id.Flag() == flagDeleted {
+			return nil, ErrDocNotFound
+		}
+
+		return nil, err
+	}
+
+	// Pre-condition (done via If-Match header/status precondition failed)
+	if ifMatch != "" && ifMatch != _id.VersionString() {
+		return nil, ErrPreconditionFailed
+	}
+
 	// Field/key starting with `_` are forbidden, remove them
 	for k := range newDoc {
 		if _, ok := reservedKeys[k]; ok {
@@ -695,10 +718,24 @@ func (docstore *DocStore) LuaUpdate(collection, docID string, newDoc map[string]
 		panic(err)
 	}
 
-	if _, err := docstore.kvStore.Put(context.Background(), fmt.Sprintf(keyFmt, collection, docID), "", append([]byte{0}, data...), -1); err != nil {
+	docstore.logger.Debug("Update", "_id", sid, "new_doc", newDoc)
+
+	kv, err := docstore.kvStore.Put(ctx, fmt.Sprintf(keyFmt, collection, _id.String()), "", append([]byte{_id.Flag()}, data...), -1)
+	if err != nil {
 		panic(err)
 	}
-	return nil
+	_id.SetVersion(kv.Version)
+
+	// FIXME(tsileo): move this to the hub via the kvstore
+	if indexes, ok := docstore.indexes[collection]; ok {
+		for _, index := range indexes {
+			if err := index.Index(_id, newDoc); err != nil {
+				panic(err)
+			}
+		}
+	}
+
+	return nil, err
 }
 
 func (docstore *DocStore) Remove(collection, sid string) (*id.ID, error) {
@@ -1593,70 +1630,24 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 		case "POST":
 			// Update the whole document
 
-			// Lock the document before making any change to it
-			docstore.locker.Lock(sid)
-			defer docstore.locker.Unlock(sid)
-
-			// permissions.CheckPerms(r, PermCollectionName, collection, PermWrite)
-			ctx := context.Background()
-			// Fetch the actual doc
-			doc := map[string]interface{}{}
-			_id, _, err = docstore.Fetch(collection, sid, &doc, false, -1)
-			if err != nil {
-				if err == vkv.ErrNotFound || _id.Flag() == flagDeleted {
-					// Document doesn't exist, returns a status 404
-					w.WriteHeader(http.StatusNotFound)
-					return
-				}
-				panic(err)
-			}
-
-			// If-Match is optional for POST request
-			if etag := r.Header.Get("If-Match"); etag != "" {
-				if etag != _id.VersionString() {
-					w.WriteHeader(http.StatusPreconditionFailed)
-					return
-				}
-			}
-
-			data, err := ioutil.ReadAll(r.Body)
-			if err != nil {
-				panic(err)
-			}
-
 			// Parse the update query
 			var newDoc map[string]interface{}
-			if err := json.Unmarshal(data, &newDoc); err != nil {
+			if err := json.NewDecoder(r.Body).Decode(&newDoc); err != nil {
 				panic(err)
 			}
 
-			// Field/key starting with `_` are forbidden, remove them
-			for k := range newDoc {
-				if _, ok := reservedKeys[k]; ok {
-					delete(newDoc, k)
-				}
-			}
+			// Perform the update
+			_id, err := docstore.Update(collection, sid, newDoc, r.Header.Get("If-Match"))
 
-			data, err = msgpack.Marshal(newDoc)
-			if err != nil {
+			switch err {
+			case nil:
+			case ErrDocNotFound:
+				w.WriteHeader(http.StatusNotFound)
+			case ErrPreconditionFailed:
+				w.WriteHeader(http.StatusPreconditionFailed)
+				return
+			default:
 				panic(err)
-			}
-
-			docstore.logger.Debug("Update", "_id", sid, "new_doc", newDoc)
-
-			kv, err := docstore.kvStore.Put(ctx, fmt.Sprintf(keyFmt, collection, _id.String()), "", append([]byte{_id.Flag()}, data...), -1)
-			if err != nil {
-				panic(err)
-			}
-			_id.SetVersion(kv.Version)
-
-			// FIXME(tsileo): move this to the hub via the kvstore
-			if indexes, ok := docstore.indexes[collection]; ok {
-				for _, index := range indexes {
-					if err := index.Index(_id, newDoc); err != nil {
-						panic(err)
-					}
-				}
 			}
 
 			w.Header().Set("ETag", _id.VersionString())
