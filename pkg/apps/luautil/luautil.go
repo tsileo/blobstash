@@ -74,9 +74,9 @@ func tomap(table *lua.LTable, visited map[*lua.LTable]bool) (map[string]interfac
 		case *lua.LState:
 			panic("no LState")
 		case *lua.LTable:
-			if visited[converted] {
-				panic("nested table")
-			}
+			// if visited[converted] {
+			//	panic("nested table")
+			// }
 			visited[converted] = true
 			stres, sares := tomap(converted, visited)
 			if nkey {

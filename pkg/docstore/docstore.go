@@ -774,16 +774,16 @@ func (docstore *DocStore) Remove(collection, sid string) (*id.ID, error) {
 }
 
 // LuaQuery performs a Lua query
-func (docstore *DocStore) LuaQuery(L *lua.LState, lfunc *lua.LFunction, collection string, cursor string, sortIndex string, limit int) ([]map[string]interface{}, map[string]interface{}, string, error) {
+func (docstore *DocStore) LuaQuery(L *lua.LState, lfunc *lua.LFunction, collection string, cursor string, sortIndex string, limit int) ([]map[string]interface{}, map[string]interface{}, string, *executionStats, error) {
 	query := &query{
 		lfunc:     lfunc,
 		sortIndex: sortIndex,
 	}
 	docs, pointers, stats, err := docstore.query(L, collection, query, cursor, limit, true, 0)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
-	return docs, pointers, vkv.PrevKey(stats.LastID), nil
+	return docs, pointers, vkv.PrevKey(stats.LastID), stats, nil
 }
 
 // Query performs a query

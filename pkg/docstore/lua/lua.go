@@ -217,12 +217,22 @@ func colQuery(L *lua.LState) int {
 		panic("bad mathcFunc type")
 	}
 	sortIndex := L.ToString(5)
-	docs, pointers, cursor, err := col.dc.LuaQuery(L, matchFunc, col.name, cursor, sortIndex, limit)
+	docs, pointers, cursor, stats, err := col.dc.LuaQuery(L, matchFunc, col.name, cursor, sortIndex, limit)
 	if err != nil {
 		panic(err)
 	}
+
+	lstats := L.NewTable()
+	lstats.RawSetString("index", lua.LString(stats.Index))
+	lstats.RawSetString("engine", lua.LString(stats.Engine))
+	lstats.RawSetString("cursor", lua.LString(stats.Cursor))
+	lstats.RawSetString("docs_returned", lua.LNumber(stats.NReturned))
+	lstats.RawSetString("docs_examined", lua.LNumber(stats.TotalDocsExamined))
+	lstats.RawSetString("exec_time_ms", lua.LNumber(stats.ExecutionTimeNano/1000000))
+
 	L.Push(luautil.InterfaceToLValue(L, docs))
 	L.Push(luautil.InterfaceToLValue(L, pointers))
 	L.Push(lua.LString(cursor))
-	return 3
+	L.Push(lstats)
+	return 4
 }
