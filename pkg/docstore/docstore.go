@@ -9,13 +9,13 @@ Each document will get assigned a MongoDB like ObjectId:
 
 The resulting id will have a length of 24 characters encoded as hex (12 raw bytes).
 
-The JSON document will be stored as is and kvk entry will reference it.
+The JSON document will be stored directly inside the vkv entry.
 
-	docstore:<collection>:<id> => <flag (1 byte) + JSON blob hash>
+	docstore:<collection>:<id> => <flag (1 byte) + JSON blob>
 
 Document will be automatically sorted by creation time thanks to the ID.
 
-The raw JSON will be stored as is, but the API will add the _id field on the fly.
+The raw JSON will be stored as is, but the API will add the _id and other special fields on the fly.
 
 */
 package docstore // import "a4.io/blobstash/pkg/docstore"
@@ -214,9 +214,6 @@ func (docstore *DocStore) Close() error {
 			}
 		}
 	}
-	// if err := docstore.docIndex.Close(); err != nil {
-	// 	return err
-	// }
 	return nil
 }
 
@@ -225,7 +222,6 @@ func (dc *DocStore) LuaSetupSortIndex(col, name, field string) error {
 		dc.indexes[col] = map[string]Indexer{}
 	}
 	if _, ok := dc.indexes[col][name]; ok {
-		// TODO(tsileo): return an error?
 		return nil
 	}
 	var err error
