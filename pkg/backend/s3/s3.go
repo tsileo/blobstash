@@ -26,7 +26,6 @@ import (
 	"a4.io/blobstash/pkg/backend/s3/index"
 	"a4.io/blobstash/pkg/backend/s3/s3util"
 	"a4.io/blobstash/pkg/blob"
-	"a4.io/blobstash/pkg/cache"
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/docstore/id"
 	"a4.io/blobstash/pkg/hashutil"
@@ -66,9 +65,8 @@ type S3Backend struct {
 	encrypted bool
 	key       *[32]byte
 
-	backend   *blobsfile.BlobsFiles
-	dataCache *cache.Cache
-	hub       *hub.Hub
+	backend *blobsfile.BlobsFiles
+	hub     *hub.Hub
 
 	wg sync.WaitGroup
 
@@ -78,7 +76,7 @@ type S3Backend struct {
 	bucket string
 }
 
-func New(logger log.Logger, back *blobsfile.BlobsFiles, dataCache *cache.Cache, h *hub.Hub, conf *config.Config) (*S3Backend, error) {
+func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config.Config) (*S3Backend, error) {
 	// Parse config
 	bucket := conf.S3Repl.Bucket
 	region := conf.S3Repl.Region
@@ -134,7 +132,6 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, dataCache *cache.Cache, 
 	s3backend := &S3Backend{
 		log:           logger,
 		backend:       back,
-		dataCache:     dataCache,
 		hub:           h,
 		s3:            s3svc,
 		stop:          make(chan struct{}),
@@ -271,15 +268,8 @@ func (b *S3Backend) downloadRemoteBlob(key string) (*blob.Blob, error) {
 		return nil, err
 	}
 
-	if blb.IsFiletreeNode() || blb.IsMeta() {
-		if err := b.backend.Put(hash, data); err != nil {
-			return nil, err
-		}
-	} else {
-		// "cache" it
-		if err := b.dataCache.Add(hash, data); err != nil {
-			return nil, err
-		}
+	if err := b.backend.Put(hash, data); err != nil {
+		return nil, err
 	}
 
 	// Wait for subscribed event completion
@@ -417,24 +407,7 @@ L:
 					b.wg.Add(1)
 					defer b.wg.Done()
 					data, err := b.backend.Get(blob.Hash)
-					switch err {
-					case nil:
-					case blobsfile.ErrBlobNotFound:
-						cached, err := b.dataCache.Stat(blob.Hash)
-						if err != nil {
-							deqFunc(false)
-							return err
-						}
-						if cached {
-							data, _, err = b.dataCache.Get(blob.Hash)
-							if err == nil {
-								break
-							}
-						}
-
-						deqFunc(false)
-						return err
-					default:
+					if err != nil {
 						deqFunc(false)
 						return err
 					}
