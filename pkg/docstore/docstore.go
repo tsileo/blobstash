@@ -1038,10 +1038,11 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				return
 			}
 
-			var asOf int64
-			var err error
 			// Parse the cursor
 			cursor := q.Get("cursor")
+
+			var asOf int64
+			var err error
 			if v := q.Get("as_of"); v != "" {
 				asOf, err = asof.ParseAsOf(v)
 			}
@@ -1205,11 +1206,7 @@ func (docstore *DocStore) mapReduceHandler() func(http.ResponseWriter, *http.Req
 			var asOf int64
 			var err error
 			if v := q.Get("as_of"); v != "" {
-				t, err := time.Parse("2006-1-2 15:4:5", v)
-				if err != nil {
-					panic(err)
-				}
-				asOf = t.UTC().UnixNano()
+				asOf, err = asof.ParseAsOf(v)
 			}
 			if asOf == 0 {
 				asOf, err = q.GetInt64Default("as_of_nano", 0)
