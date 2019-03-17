@@ -13,12 +13,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
+	humanize "github.com/dustin/go-humanize"
 	log "github.com/inconshreveable/log15"
 
 	"a4.io/blobsfile"
@@ -55,12 +55,6 @@ type S3Backend struct {
 
 	uploadQueue *queue.Queue
 	index       *index.Index
-
-	deleteQueue *queue.Queue
-
-	downloadQueue *queue.Queue
-	downloadIndex map[string]*dlIndexItem
-	downloadMutex sync.Mutex
 
 	encrypted bool
 	key       *[32]byte
@@ -106,18 +100,6 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 		return nil, err
 	}
 
-	// Init the disk-backed queue
-	dq, err := queue.New(filepath.Join(conf.VarDir(), "s3-download.queue"))
-	if err != nil {
-		return nil, err
-	}
-
-	// Init the disk-backed queue
-	delq, err := queue.New(filepath.Join(conf.VarDir(), "s3-delete.queue"))
-	if err != nil {
-		return nil, err
-	}
-
 	// Init the disk-backed index
 	indexPath := filepath.Join(conf.VarDir(), "s3-backend.index")
 	if scanMode || restoreMode {
@@ -130,18 +112,15 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 	}
 
 	s3backend := &S3Backend{
-		log:           logger,
-		backend:       back,
-		hub:           h,
-		s3:            s3svc,
-		stop:          make(chan struct{}),
-		bucket:        bucket,
-		key:           key,
-		uploadQueue:   uq,
-		downloadQueue: dq,
-		deleteQueue:   delq,
-		downloadIndex: map[string]*dlIndexItem{},
-		index:         i,
+		log:         logger,
+		backend:     back,
+		hub:         h,
+		s3:          s3svc,
+		stop:        make(chan struct{}),
+		bucket:      bucket,
+		key:         key,
+		uploadQueue: uq,
+		index:       i,
 	}
 
 	// FIXME(tsileo): should encypption be optional?
@@ -173,13 +152,8 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 		}
 	}
 
-	h.Subscribe(hub.SyncRemoteBlob, "s3-backend", s3backend.newSyncRemoteBlobCallback)
-	h.Subscribe(hub.DeleteRemoteBlob, "s3-backend", s3backend.newDeleteRemoteBlobCallback)
-
 	// Initialize the worker (queue consumer)
 	go s3backend.uploadWorker()
-	go s3backend.deleteWorker()
-	go s3backend.downloadWorker()
 
 	return s3backend, nil
 }
@@ -190,97 +164,6 @@ func (b *S3Backend) String() string {
 		suf = "-encrypted"
 	}
 	return fmt.Sprintf("s3-backend-%s", b.bucket) + suf
-}
-
-// newSyncRemoteBlobCallback download a blob
-func (b *S3Backend) newSyncRemoteBlobCallback(ctx context.Context, blob *blob.Blob, _ interface{}) error {
-	b.downloadMutex.Lock()
-	defer b.downloadMutex.Unlock()
-	b.log.Debug("newSyncRemoteBlobCallback", "blob", blob)
-	id, err := b.downloadQueue.Enqueue(blob) // Extra is the S3 object key
-	if err != nil {
-		return err
-	}
-	b.downloadIndex[blob.Hash] = &dlIndexItem{blob: blob, id: id}
-	return nil
-}
-
-// BlobWaitingForDownload check if a blob is currently enqueued, if it's the case, it will download it and return it
-func (b *S3Backend) BlobWaitingForDownload(hash string) (bool, *blob.Blob, error) {
-	b.downloadMutex.Lock()
-	defer b.downloadMutex.Unlock()
-	if dlItem, ok := b.downloadIndex[hash]; ok {
-		blb, err := b.downloadRemoteBlob(dlItem.blob.Extra.(string))
-		if err != nil {
-			return false, nil, err
-		}
-		if err := b.uploadQueue.InstantDequeue(dlItem.id); err != nil {
-			return false, nil, err
-		}
-		return true, blb, nil
-	}
-	return false, nil, nil
-}
-
-func (b *S3Backend) newDeleteRemoteBlobCallback(ctx context.Context, _ *blob.Blob, ref interface{}) error {
-	b.log.Debug("newDeleteRemoteBlobCallback", "ref", ref)
-	if _, err := b.deleteQueue.Enqueue(&blob.Blob{Extra: ref}); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (b *S3Backend) downloadRemoteBlob(key string) (*blob.Blob, error) {
-	log := b.log.New("key", key)
-	log.Debug("downloading remote blob")
-	obj, err := s3util.NewBucket(b.s3, b.bucket).GetObject(key)
-	if err != nil {
-		return nil, err
-	}
-	eblob := s3util.NewEncryptedBlob(obj, b.key)
-	hash, data, err := eblob.HashAndPlainText()
-
-	exists, err := b.backend.Exists(hash)
-	if err != nil {
-		return nil, err
-	}
-	blb := &blob.Blob{Hash: hash, Data: data}
-	if exists {
-
-		delete(b.downloadIndex, blb.Hash)
-		log.Debug("blob already exists", "hash", hash)
-		return blb, obj.Delete()
-	}
-
-	// Copy the blob to its final destination
-	parts := strings.Split(key, "/")
-	ehash := parts[1]
-	// TODO(tsileo): Copy should retry internally
-	if err := obj.Copy(ehash); err != nil {
-		return nil, err
-	}
-
-	if err := obj.Delete(); err != nil {
-		return nil, err
-	}
-
-	if err := b.index.Index(hash, ehash); err != nil {
-		return nil, err
-	}
-
-	if err := b.backend.Put(hash, data); err != nil {
-		return nil, err
-	}
-
-	// Wait for subscribed event completion
-	if err := b.hub.NewBlobEvent(context.TODO(), blb, nil); err != nil {
-		return nil, err
-	}
-
-	delete(b.downloadIndex, blb.Hash)
-	log.Debug("remote blob saved", "hash", hash)
-
-	return blb, nil
 }
 
 func (b *S3Backend) Put(hash string) error {
@@ -428,102 +311,11 @@ L:
 						return err
 					}
 					deqFunc(true)
-					log.Info("blob uploaded to s3", "hash", blob.Hash, "duration", time.Since(t))
+					log.Info("blob uploaded to s3", "hash", blob.Hash, "size", humanize.Bytes(uint64(len(data))), "duration", time.Since(t))
 
 					return nil
 				}(blb); err != nil {
 					log.Error("failed to upload blob", "hash", blb.Hash, "err", err)
-					time.Sleep(1 * time.Second)
-				}
-				continue L
-			}
-			time.Sleep(1 * time.Second)
-			continue L
-		}
-	}
-}
-
-func (b *S3Backend) deleteWorker() {
-	log := b.log.New("worker", "delete_worker")
-	log.Debug("starting worker")
-L:
-	for {
-		select {
-		case <-b.stop:
-			log.Debug("worker stopped")
-			break L
-		default:
-			// log.Debug("polling")
-			blb := &blob.Blob{}
-			ok, deqFunc, err := b.deleteQueue.Dequeue(blb)
-			if err != nil {
-				panic(err)
-			}
-			if ok {
-				if err := func(blob *blob.Blob) error {
-					t := time.Now()
-					b.wg.Add(1)
-					defer b.wg.Done()
-
-					obj, err := s3util.NewBucket(b.s3, b.bucket).GetObject(blob.Extra.(string))
-					if err != nil {
-						return err
-					}
-					if err := obj.Delete(); err != nil {
-						return err
-					}
-
-					deqFunc(true)
-					log.Info("blob deleted from s3", "ref", blob.Extra, "duration", time.Since(t))
-
-					return nil
-				}(blb); err != nil {
-					log.Error("failed to delete blob", "ref", blb.Extra, "err", err)
-					time.Sleep(1 * time.Second)
-				}
-				continue L
-			}
-			time.Sleep(1 * time.Second)
-			continue L
-		}
-	}
-}
-
-func (b *S3Backend) downloadWorker() {
-	log := b.log.New("worker", "download_worker")
-	log.Debug("starting worker")
-L:
-	for {
-		select {
-		case <-b.stop:
-			log.Debug("worker stopped")
-			break L
-		default:
-			// log.Debug("polling")
-			blb := &blob.Blob{}
-			ok, deqFunc, err := b.downloadQueue.Dequeue(blb)
-			if err != nil {
-				panic(err)
-			}
-			if ok {
-				if err := func(blob *blob.Blob) error {
-					t := time.Now()
-
-					b.wg.Add(1)
-					defer b.wg.Done()
-
-					b.downloadMutex.Lock()
-					defer b.downloadMutex.Unlock()
-					if _, err := b.downloadRemoteBlob(blob.Extra.(string)); err != nil {
-						deqFunc(false)
-						return err
-					}
-					deqFunc(true)
-					log.Info("blob downloaded from s3", "hash", blob.Hash, "duration", time.Since(t))
-
-					return nil
-				}(blb); err != nil {
-					log.Error("failed to download blob", "hash", blb.Hash, "err", err)
 					time.Sleep(1 * time.Second)
 				}
 				continue L
@@ -610,8 +402,6 @@ func (b *S3Backend) Close() {
 	b.wg.Wait()
 	b.log.Debug("done")
 	b.uploadQueue.Close()
-	b.downloadQueue.Close()
-	b.deleteQueue.Close()
 	b.log.Debug("queues closed")
 	b.index.Close()
 	b.log.Debug("s3 backend closed")
