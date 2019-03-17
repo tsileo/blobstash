@@ -375,8 +375,7 @@ mark_filetree_node(ref)
 	resp, err := fs.clientUtil.PostMsgpack(
 		fmt.Sprintf("/api/stash/rwfs-%s/_gc", fs.ref),
 		map[string]interface{}{
-			"script":      gcScript,
-			"remote_refs": fs.bs.(*cache).RemoteRefs(),
+			"script": gcScript,
 		},
 	)
 	if err != nil {

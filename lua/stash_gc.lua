@@ -7,11 +7,11 @@ local node = require('node')
 function mark_kv (key, version)
   local h = kvstore.get_meta_blob(key, version)
   if h ~= nil then
-    mark(h)
     local _, ref, _ = kvstore.get(key, version)
     if ref ~= '' then
       mark(ref)
     end
+    mark(h)
   end
  end
  _G.mark_kv = mark_kv

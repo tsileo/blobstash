@@ -91,8 +91,7 @@ func (s *StashAPI) dataContextMergeHandler() func(http.ResponseWriter, *http.Req
 }
 
 type GCInput struct {
-	Script     string            `json:"script" msgpack:"script"`
-	RemoteRefs map[string]string `json:"remote_refs" msgpack:"remote_refs"`
+	Script string `json:"script" msgpack:"script"`
 }
 
 func (s *StashAPI) dataContextGCHandler() func(http.ResponseWriter, *http.Request) {
@@ -115,7 +114,7 @@ func (s *StashAPI) dataContextGCHandler() func(http.ResponseWriter, *http.Reques
 			}
 			fmt.Printf("\n\nGC imput: %+v\n\n", out)
 			if err := s.stash.DoAndDestroy(ctx, name, func(ctx context.Context, dc store.DataContext) error {
-				return gc.GC(ctx, s.hub, s.stash, out.Script, out.RemoteRefs)
+				return gc.GC(ctx, s.hub, s.stash, out.Script)
 
 			}); err != nil {
 				panic(err)

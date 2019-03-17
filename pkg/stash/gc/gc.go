@@ -18,10 +18,11 @@ import (
 	"a4.io/blobstash/pkg/stash"
 )
 
-func GC(ctx context.Context, h *hub.Hub, s *stash.Stash, script string, remoteRefs map[string]string) error {
+func GC(ctx context.Context, h *hub.Hub, s *stash.Stash, script string) error {
 
 	// TODO(tsileo): take a logger
 	refs := map[string]struct{}{}
+	orderedRefs := []string{}
 
 	L := lua.NewState()
 
@@ -31,6 +32,7 @@ func GC(ctx context.Context, h *hub.Hub, s *stash.Stash, script string, remoteRe
 		ref := L.ToString(1)
 		if _, ok := refs[ref]; !ok {
 			refs[ref] = struct{}{}
+			orderedRefs = append(orderedRefs, ref)
 		}
 		return 0
 	}
@@ -53,20 +55,9 @@ func GC(ctx context.Context, h *hub.Hub, s *stash.Stash, script string, remoteRe
 	if err := L.DoString(script); err != nil {
 		return err
 	}
-	for ref, _ := range refs {
+	fmt.Printf("refs=%q\n", orderedRefs)
+	for _, ref := range orderedRefs {
 		// FIXME(tsileo): stat before get/put
-
-		// If there's a remote ref available, trigger an "async" remote sync
-		if remoteRefs != nil {
-			if remoteRef, ok := remoteRefs[ref]; ok {
-				fmt.Printf("sync remote\n\n")
-				if err := h.NewSyncRemoteBlobEvent(ctx, &blob.Blob{Hash: ref, Extra: remoteRef}, nil); err != nil {
-					return err
-				}
-				delete(remoteRefs, ref)
-				continue
-			}
-		}
 
 		// Get the marked blob from the blobstore proxy
 		data, err := s.BlobStore().Get(ctx, ref)
@@ -80,14 +71,6 @@ func GC(ctx context.Context, h *hub.Hub, s *stash.Stash, script string, remoteRe
 		}
 	}
 
-	fmt.Printf("Remote refs=%+v\n\nrefs=%+v\n\n", remoteRefs, refs)
-	// Delete the remaining S3 objects that haven't been marked for sync
-	// XXX(tsileo): do this after the DoAndDestroy in the parent func?
-	for _, remoteRef := range remoteRefs {
-		if err := h.NewDeleteRemoteBlobEvent(ctx, nil, remoteRef); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
