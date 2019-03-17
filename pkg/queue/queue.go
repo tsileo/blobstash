@@ -44,6 +44,11 @@ func (q *Queue) Remove() error {
 	return q.db.DeleteFile()
 }
 
+// Size returns the number of items currently enqueued
+func (q *Queue) Size() (int, error) {
+	return q.db.Count()
+}
+
 // Enqueue the given `item`. Must be JSON serializable.
 func (q *Queue) Enqueue(item interface{}) (*id.ID, error) {
 	id, err := id.New(time.Now().Unix())
