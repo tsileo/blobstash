@@ -187,7 +187,7 @@ func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bo
 	}
 
 	chub.Subscribe(hub.NewFiletreeNode, "webm", ft.webmHubCallback)
-	// go ft.webmWorker()
+	go ft.webmWorker()
 
 	return ft, nil
 }

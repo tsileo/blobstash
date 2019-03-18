@@ -153,7 +153,7 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 	}
 
 	// Initialize the worker (queue consumer)
-	// go s3backend.uploadWorker()
+	go s3backend.uploadWorker()
 
 	return s3backend, nil
 }
