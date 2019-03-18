@@ -271,6 +271,7 @@ func (b *S3Backend) reindex(bucket *s3util.Bucket, restore bool) error {
 func (b *S3Backend) uploadWorker() {
 	log := b.log.New("worker", "upload_worker")
 	log.Debug("starting worker")
+	total := uint64(0)
 L:
 	for {
 		select {
@@ -311,7 +312,9 @@ L:
 						return err
 					}
 					deqFunc(true)
-					log.Info("blob uploaded to s3", "hash", blob.Hash, "size", humanize.Bytes(uint64(len(data))), "duration", time.Since(t))
+					blobSize := uint64(len(data))
+					total += blobSize
+					log.Info("blob uploaded to s3", "hash", blob.Hash, "size", humanize.Bytes(blobSize), "duration", time.Since(t), "uploaded_since_startup", humanize.Bytes(total))
 
 					return nil
 				}(blb); err != nil {
