@@ -1353,7 +1353,7 @@ func (backend *BlobsFiles) Size(hash string) (int, error) {
 		return 0, err
 	}
 
-	return blobPos.Size(), nil
+	return blobPos.blobSize, nil
 }
 
 // Get returns the blob for the given hash.

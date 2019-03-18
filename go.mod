@@ -1,7 +1,7 @@
 module a4.io/blobstash
 
 require (
-	a4.io/blobsfile v0.3.0
+	a4.io/blobsfile v0.3.1
 	a4.io/gluapp v0.0.0-20190304211816-a08a6fc39f7c
 	a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f
 	a4.io/ssse v0.0.0-20181202155639-1949828a8689
