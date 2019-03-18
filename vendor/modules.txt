@@ -1,4 +1,4 @@
-# a4.io/blobsfile v0.2.0
+# a4.io/blobsfile v0.3.0
 a4.io/blobsfile
 # a4.io/gluapp v0.0.0-20190304211816-a08a6fc39f7c
 a4.io/gluapp
@@ -11,7 +11,7 @@ a4.io/ssse/pkg/client
 bazil.org/fuse
 bazil.org/fuse/fs
 bazil.org/fuse/fuseutil
-# github.com/aws/aws-sdk-go v1.17.0
+# github.com/aws/aws-sdk-go v1.18.4
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/service/s3
 github.com/aws/aws-sdk-go/aws/awserr
@@ -72,9 +72,9 @@ github.com/evanphx/json-patch
 github.com/go-martini/martini
 # github.com/go-stack/stack v1.8.0
 github.com/go-stack/stack
-# github.com/golang/protobuf v1.2.0
+# github.com/golang/protobuf v1.3.1
 github.com/golang/protobuf/proto
-# github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db
+# github.com/golang/snappy v0.0.1
 github.com/golang/snappy
 # github.com/gomarkdown/markdown v0.0.0-20190222000725-ee6a7931a1e4
 github.com/gomarkdown/markdown
@@ -89,7 +89,7 @@ github.com/gorilla/context
 github.com/gorilla/handlers
 # github.com/gorilla/mux v1.7.0
 github.com/gorilla/mux
-# github.com/hashicorp/golang-lru v0.5.0
+# github.com/hashicorp/golang-lru v0.5.1
 github.com/hashicorp/golang-lru
 github.com/hashicorp/golang-lru/simplelru
 # github.com/inconshreveable/log15 v0.0.0-20180818164646-67afb5ed74ec
@@ -105,7 +105,7 @@ github.com/justinas/nosurf
 github.com/kevinburke/ssh_config
 # github.com/klauspost/cpuid v1.2.0
 github.com/klauspost/cpuid
-# github.com/klauspost/reedsolomon v1.9.0
+# github.com/klauspost/reedsolomon v1.9.1
 github.com/klauspost/reedsolomon
 # github.com/konsorten/go-windows-terminal-sequences v1.0.1
 github.com/konsorten/go-windows-terminal-sequences
@@ -133,7 +133,7 @@ github.com/reiver/go-porterstemmer
 github.com/restic/chunker
 # github.com/robfig/cron v0.0.0-20180505203441-b41be1df6967
 github.com/robfig/cron
-# github.com/rwcarlsen/goexif v0.0.0-20190107194617-b1fd11e07dc5
+# github.com/rwcarlsen/goexif v0.0.0-20190318171057-76e3344f7516
 github.com/rwcarlsen/goexif/exif
 github.com/rwcarlsen/goexif/tiff
 # github.com/ryanuber/go-glob v1.0.0
@@ -147,7 +147,9 @@ github.com/src-d/gcfg
 github.com/src-d/gcfg/scanner
 github.com/src-d/gcfg/token
 github.com/src-d/gcfg/types
-# github.com/syndtr/goleveldb v0.0.0-20190203031304-2f17a3356c66
+# github.com/src-d/go-oniguruma v1.0.0
+github.com/src-d/go-oniguruma
+# github.com/syndtr/goleveldb v1.0.0
 github.com/syndtr/goleveldb/leveldb
 github.com/syndtr/goleveldb/leveldb/errors
 github.com/syndtr/goleveldb/leveldb/iterator
@@ -169,7 +171,7 @@ github.com/urfave/negroni
 # github.com/vmihailenco/msgpack v4.0.2+incompatible
 github.com/vmihailenco/msgpack
 github.com/vmihailenco/msgpack/codes
-# github.com/xanzy/ssh-agent v0.2.0
+# github.com/xanzy/ssh-agent v0.2.1
 github.com/xanzy/ssh-agent
 # github.com/xeonx/timeago v1.0.0-rc4
 github.com/xeonx/timeago
@@ -180,7 +182,7 @@ github.com/yuin/gopher-lua/parse
 github.com/yuin/gopher-lua/pm
 # github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
 github.com/zpatrick/rbac
-# golang.org/x/crypto v0.0.0-20190211182817-74369b46fc67
+# golang.org/x/crypto v0.0.0-20190313024323-a1f597ede03a
 golang.org/x/crypto/scrypt
 golang.org/x/crypto/nacl/secretbox
 golang.org/x/crypto/blake2b
@@ -205,9 +207,9 @@ golang.org/x/crypto/curve25519
 golang.org/x/crypto/ed25519
 golang.org/x/crypto/internal/chacha20
 golang.org/x/crypto/ed25519/internal/edwards25519
-# golang.org/x/net v0.0.0-20190213061140-3a22650c66bd
+# golang.org/x/net v0.0.0-20190313220215-9f648a60d977
 golang.org/x/net/context
-# golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a
+# golang.org/x/sys v0.0.0-20190318195719-6c81ef8f67ca
 golang.org/x/sys/cpu
 golang.org/x/sys/unix
 golang.org/x/sys/windows
@@ -223,7 +225,7 @@ google.golang.org/appengine/internal/log
 google.golang.org/appengine/internal/remote_api
 # gopkg.in/inconshreveable/log15.v2 v2.0.0-20180818164646-67afb5ed74ec
 gopkg.in/inconshreveable/log15.v2
-# gopkg.in/src-d/enry.v1 v1.7.0
+# gopkg.in/src-d/enry.v1 v1.7.2
 gopkg.in/src-d/enry.v1
 gopkg.in/src-d/enry.v1/data
 gopkg.in/src-d/enry.v1/internal/tokenizer

@@ -24,6 +24,10 @@ go get -u github.com/klauspost/reedsolomon
 
 # Changes
 
+## March 6, 2019
+
+The pure Go implementation is about 30% faster. Minor tweaks to assembler implementations.
+
 ## February 8, 2019
 
 AVX512 accelerated version added for Intel Skylake CPUs. This can give up to a 4x speed improvement as compared to AVX2. See [here](https://github.com/klauspost/reedsolomon#performance-on-avx512) for more details.
@@ -310,7 +314,6 @@ BenchmarkGaloisXor1M-160       784.60       6296.65      8.03x
 * [Reed-Solomon Erasure Coding in Haskell](https://github.com/NicolasT/reedsolomon). Haskell port of the package with similar performance.
 * [reed-solomon-erasure](https://github.com/darrenldl/reed-solomon-erasure). Compatible Rust implementation.
 * [go-erasure](https://github.com/somethingnew2-0/go-erasure). A similar library using cgo, slower in my tests.
-* [rsraid](https://github.com/goayame/rsraid). A similar library written in Go. Slower, but supports more shards.
 * [Screaming Fast Galois Field Arithmetic](http://www.snia.org/sites/default/files2/SDC2013/presentations/NewThinking/EthanMiller_Screaming_Fast_Galois_Field%20Arithmetic_SIMD%20Instructions.pdf). Basis for SSE3 optimizations.
 
 # License

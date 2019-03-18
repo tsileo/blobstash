@@ -23,7 +23,7 @@ import (
 
 // Encoder is an interface to encode Reed-Salomon parity sets for your data.
 type Encoder interface {
-	// Encodes parity for a set of data shards.
+	// Encode parity for a set of data shards.
 	// Input is 'shards' containing data shards followed by parity shards.
 	// The number of shards must match the number given to New().
 	// Each shard is a byte array, and they must all be the same size.
@@ -464,8 +464,8 @@ func (r reedSolomon) codeSomeShardsP(matrixRows, inputs, outputs [][]byte, outpu
 	if do < r.o.minSplitSize {
 		do = r.o.minSplitSize
 	}
-	// Make sizes divisible by 16
-	do = (do + 15) & (^15)
+	// Make sizes divisible by 32
+	do = (do + 31) & (^31)
 	start := 0
 	for start < byteCount {
 		if start+do > byteCount {
@@ -525,8 +525,8 @@ func (r reedSolomon) checkSomeShardsP(matrixRows, inputs, toCheck [][]byte, outp
 	if do < r.o.minSplitSize {
 		do = r.o.minSplitSize
 	}
-	// Make sizes divisible by 16
-	do = (do + 15) & (^15)
+	// Make sizes divisible by 32
+	do = (do + 31) & (^31)
 	start := 0
 	for start < byteCount {
 		if start+do > byteCount {

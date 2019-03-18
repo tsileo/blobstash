@@ -1333,6 +1333,29 @@ func (backend *BlobsFiles) blobPos(hash string) (*blobPos, error) {
 	return backend.index.getPos(hash)
 }
 
+// Size returns the blob size for the given hash.
+func (backend *BlobsFiles) Size(hash string) (int, error) {
+	if err := backend.lastError(); err != nil {
+		return 0, err
+	}
+
+	// Fetch the index entry
+	blobPos, err := backend.index.getPos(hash)
+	if err != nil {
+		return 0, fmt.Errorf("error fetching GetPos: %v", err)
+	}
+
+	// No index entry found, returns an error
+	if blobPos == nil {
+		if err == nil {
+			return 0, ErrBlobNotFound
+		}
+		return 0, err
+	}
+
+	return blobPos.Size(), nil
+}
+
 // Get returns the blob for the given hash.
 func (backend *BlobsFiles) Get(hash string) ([]byte, error) {
 	if err := backend.lastError(); err != nil {
