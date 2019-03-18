@@ -12,6 +12,7 @@ import (
 
 	"github.com/recoilme/pudge"
 
+	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/docstore/id"
 )
 
@@ -47,6 +48,24 @@ func (q *Queue) Remove() error {
 // Size returns the number of items currently enqueued
 func (q *Queue) Size() (int, error) {
 	return q.db.Count()
+}
+
+func (q *Queue) Blobs() ([]*blob.Blob, error) {
+	keys, err := q.db.Keys(nil, 0, 0, true)
+	if err != nil {
+		return nil, err
+	}
+	out := []*blob.Blob{}
+
+	for _, k := range keys {
+		b := &blob.Blob{}
+		if err := q.db.Get(k, b); err != nil {
+			return nil, err
+
+		}
+		out = append(out, b)
+	}
+	return out, nil
 }
 
 // Enqueue the given `item`. Must be JSON serializable.
