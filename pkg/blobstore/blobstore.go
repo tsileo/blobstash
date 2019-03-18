@@ -116,6 +116,14 @@ func (bs *BlobStore) GetRemoteRef(ref string) (string, error) {
 	return bs.s3back.GetRemoteRef(ref)
 }
 
+func (bs *BlobStore) S3Stats() (map[string]interface{}, error) {
+	fmt.Printf("S3Stats %+v %+v\n\n", bs.root, bs.s3back)
+	if !bs.root || bs.s3back == nil {
+		return nil, ErrRemoteNotAvailable
+	}
+	return bs.s3back.Stats()
+}
+
 func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
 	bs.log.Info("OP Put", "hash", blob.Hash, "len", len(blob.Data))
 

@@ -153,7 +153,7 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 	}
 
 	// Initialize the worker (queue consumer)
-	go s3backend.uploadWorker()
+	// go s3backend.uploadWorker()
 
 	return s3backend, nil
 }
@@ -164,6 +164,27 @@ func (b *S3Backend) String() string {
 		suf = "-encrypted"
 	}
 	return fmt.Sprintf("s3-backend-%s", b.bucket) + suf
+}
+
+func (b *S3Backend) Stats() (map[string]interface{}, error) {
+	total := 0
+	count := 0
+
+	blbs, err := b.uploadQueue.Blobs()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get blobs from queue: %v", err)
+	}
+
+	for _, blb := range blbs {
+		count += 1
+		sz, err := b.backend.Size(blb.Hash)
+		if err != nil {
+			return nil, err
+		}
+		total += sz
+	}
+
+	return map[string]interface{}{"blobs_waiting": count, "blobs_size": total}, nil
 }
 
 func (b *S3Backend) Put(hash string) error {

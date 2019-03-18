@@ -97,6 +97,21 @@ func New(conf *config.Config) (*Server, error) {
 	}
 	s.blobstore = rootBlobstore
 
+	s.router.Handle("/api/status", basicAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		stats, err := s.blobstore.S3Stats()
+		if err != nil {
+			if err != blobstore.ErrRemoteNotAvailable {
+				panic(err)
+			}
+		}
+
+		// return newRev.Version, nil
+		httputil.MarshalAndWrite(r, w, map[string]interface{}{
+			"s3": stats,
+		})
+
+	})))
+
 	// Load the meta
 	metaHandler, err := meta.New(logger.New("app", "meta"), hub)
 	if err != nil {

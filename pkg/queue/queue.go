@@ -53,16 +53,21 @@ func (q *Queue) Size() (int, error) {
 func (q *Queue) Blobs() ([]*blob.Blob, error) {
 	keys, err := q.db.Keys(nil, 0, 0, true)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list keys: %v", err)
 	}
 	out := []*blob.Blob{}
 
 	for _, k := range keys {
 		b := &blob.Blob{}
-		if err := q.db.Get(k, b); err != nil {
+		d := []byte{}
+		if err := q.db.Get(k, &d); err != nil {
 			return nil, err
 
 		}
+		if err := json.Unmarshal(d, b); err != nil {
+			return nil, err
+		}
+
 		out = append(out, b)
 	}
 	return out, nil
