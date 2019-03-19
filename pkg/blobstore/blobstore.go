@@ -69,9 +69,6 @@ func New(logger log.Logger, root bool, dir string, conf2 *config.Config, hub *hu
 	if err != nil {
 		return nil, fmt.Errorf("failed to init BlobsFile: %v", err)
 	}
-	if err := back.CheckBlobsFiles(); err != nil {
-		return nil, err
-	}
 	var s3back *s3.S3Backend
 	if root && conf2 != nil {
 		if s3repl := conf2.S3Repl; s3repl != nil && s3repl.Bucket != "" {
@@ -90,6 +87,14 @@ func New(logger log.Logger, root bool, dir string, conf2 *config.Config, hub *hu
 		hub:    hub,
 		log:    logger,
 	}, nil
+}
+
+func (bs *BlobStore) Check() error {
+	if err := bs.back.CheckBlobsFiles(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (bs *BlobStore) ReplicationEnabled() bool {

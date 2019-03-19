@@ -112,6 +112,7 @@ type Config struct {
 	ReplicateFrom *ReplicateFrom  `yaml:"replicate_from"`
 
 	// Items defined with the CLI flags
+	CheckMode     bool `yaml:"-"`
 	ScanMode      bool `yaml:"-"`
 	S3ScanMode    bool `yaml:"-"`
 	S3RestoreMode bool `yaml:"-"`

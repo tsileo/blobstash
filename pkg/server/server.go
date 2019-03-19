@@ -94,6 +94,12 @@ func New(conf *config.Config) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize blobstore app: %v", err)
 	}
+
+	if conf.CheckMode {
+		if err := rootBlobstore.Check(); err != nil {
+			return nil, fmt.Errorf("failed to check the blobstore: %v", err)
+		}
+	}
 	s.blobstore = rootBlobstore
 
 	s.router.Handle("/api/status", basicAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

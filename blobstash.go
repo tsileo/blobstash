@@ -13,11 +13,13 @@ var (
 	scan      bool
 	s3scan    bool
 	s3restore bool
+	check     bool
 	loglevel  string
 	err       error
 )
 
 func main() {
+	flag.BoolVar(&check, "check", false, "Check the blobstore consistency.")
 	flag.BoolVar(&scan, "scan", false, "Trigger a BlobStore rescan.")
 	flag.BoolVar(&s3scan, "s3-scan", false, "Trigger a BlobStore rescan of the S3 backend.")
 	flag.BoolVar(&s3restore, "s3-restore", false, "Trigger a BlobStore restore of the S3 backend.")
@@ -32,6 +34,7 @@ func main() {
 	}
 
 	// Set the ScanMode in the config
+	conf.CheckMode = check
 	conf.ScanMode = scan
 	conf.S3ScanMode = s3scan
 	conf.S3RestoreMode = s3restore
