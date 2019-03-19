@@ -2,7 +2,6 @@ package server // import "a4.io/blobstash/pkg/server"
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"expvar"
 	"fmt"
@@ -309,7 +308,7 @@ func (s *Server) Serve() error {
 			s := &http.Server{
 				Addr:      listen,
 				Handler:   h,
-				TLSConfig: &tls.Config{GetCertificate: m.GetCertificate},
+				TLSConfig: m.TLSConfig(),
 			}
 			s.ListenAndServeTLS("", "")
 		} else {
