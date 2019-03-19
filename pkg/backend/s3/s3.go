@@ -420,8 +420,6 @@ func (b *S3Backend) GetRemoteRef(pref string) (string, error) {
 func (b *S3Backend) Close() {
 	b.log.Debug("stopping workers")
 	b.stop <- struct{}{}
-	b.stop <- struct{}{}
-	b.stop <- struct{}{}
 	b.log.Debug("waiting for waitgroup")
 	b.wg.Wait()
 	b.log.Debug("done")
