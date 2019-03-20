@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	humanize "github.com/dustin/go-humanize"
 	"github.com/gorilla/mux"
 
 	"a4.io/blobstash/pkg/ctxutil"
@@ -114,7 +115,9 @@ func (s *StashAPI) dataContextGCHandler() func(http.ResponseWriter, *http.Reques
 			}
 			fmt.Printf("\n\nGC imput: %+v\n\n", out)
 			if err := s.stash.DoAndDestroy(ctx, name, func(ctx context.Context, dc store.DataContext) error {
-				return gc.GC(ctx, s.hub, s.stash, out.Script)
+				blobs, size, err := gc.GC(ctx, s.hub, s.stash, dc, out.Script)
+				fmt.Printf("GC output: %d blobs,  %s\n\n", blobs, humanize.Bytes(size))
+				return err
 
 			}); err != nil {
 				panic(err)

@@ -279,14 +279,14 @@ func (s *storage) SetEncodedObject(obj plumbing.EncodedObject) (plumbing.Hash, e
 					break
 				}
 				chunkHash := hashutil.ComputeRaw(chunk.Data)
-				if err := s.blobStore.Put(context.TODO(), &blob.Blob{Hash: fmt.Sprintf("%x", chunkHash), Data: chunk.Data}); err != nil {
+				if _, err := s.blobStore.Put(context.TODO(), &blob.Blob{Hash: fmt.Sprintf("%x", chunkHash), Data: chunk.Data}); err != nil {
 					return plumbing.ZeroHash, err
 				}
 				refs = append(refs, chunkHash)
 			}
 		} else {
 			chunkHash := hashutil.ComputeRaw(content)
-			if err := s.blobStore.Put(context.TODO(), &blob.Blob{Hash: fmt.Sprintf("%x", chunkHash), Data: content}); err != nil {
+			if _, err := s.blobStore.Put(context.TODO(), &blob.Blob{Hash: fmt.Sprintf("%x", chunkHash), Data: content}); err != nil {
 				return plumbing.ZeroHash, err
 			}
 			refs = append(refs, chunkHash)

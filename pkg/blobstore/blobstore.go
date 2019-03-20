@@ -129,23 +129,26 @@ func (bs *BlobStore) S3Stats() (map[string]interface{}, error) {
 	return bs.s3back.Stats()
 }
 
-func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
+func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) (bool, error) {
 	bs.log.Info("OP Put", "hash", blob.Hash, "len", len(blob.Data))
+	var saved bool
 
 	// Ensure the blob hash match the blob content
 	if err := blob.Check(); err != nil {
-		return err
+		return saved, err
 	}
 
 	exists, err := bs.back.Exists(blob.Hash)
 	if err != nil {
-		return err
+		return saved, err
 	}
 
 	if exists {
 		bs.log.Debug("blob already saved", "hash", blob.Hash)
-		return nil
+		return saved, nil
 	}
+
+	saved = true
 
 	var specialBlob bool
 	if blob.IsMeta() || blob.IsFiletreeNode() {
@@ -154,26 +157,26 @@ func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
 
 	// Save the blob
 	if err := bs.back.Put(blob.Hash, blob.Data); err != nil {
-		return err
+		return saved, err
 	}
 
 	// Wait for adding the blob to the S3 replication queue if enabled
 	if bs.root && bs.s3back != nil {
 		if err := bs.s3back.Put(blob.Hash); err != nil {
-			return err
+			return saved, err
 		}
 	}
 
 	// Wait for subscribed event completion
 	if err := bs.hub.NewBlobEvent(ctx, blob, nil); err != nil {
-		return err
+		return saved, err
 	}
 
 	writeCountVar.Add(1)
 	writeVar.Add(int64(len(blob.Data)))
 
 	bs.log.Debug("blob saved", "hash", blob.Hash, "special_blob", specialBlob)
-	return nil
+	return saved, nil
 }
 
 func (bs *BlobStore) Get(ctx context.Context, hash string) ([]byte, error) {

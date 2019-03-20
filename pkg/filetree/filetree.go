@@ -26,7 +26,6 @@ import (
 	"a4.io/blobsfile"
 	"a4.io/blobstash/pkg/auth"
 	"a4.io/blobstash/pkg/blob"
-	"a4.io/blobstash/pkg/blobstore"
 	"a4.io/blobstash/pkg/cache"
 	"a4.io/blobstash/pkg/client/clientutil"
 	"a4.io/blobstash/pkg/config"
@@ -89,8 +88,6 @@ type FileTree struct {
 	nodeCache     *lru.Cache
 	webmQueue     *queue.Queue
 
-	remoteFetcher func(string) (string, error)
-
 	log log.Logger
 }
 
@@ -121,7 +118,8 @@ func (bs *BlobStore) Stat(ctx context.Context, hash string) (bool, error) {
 }
 
 func (bs *BlobStore) Put(ctx context.Context, hash string, data []byte) error {
-	return bs.blobStore.Put(ctx, &blob.Blob{Hash: hash, Data: data})
+	_, err := bs.blobStore.Put(ctx, &blob.Blob{Hash: hash, Data: data})
+	return err
 }
 
 // TODO(tsileo): a way to create a snapshot without modifying anything (and forcing the datactx before)
@@ -146,7 +144,7 @@ func NewFS(ref string, ft *FileTree) *FS {
 }
 
 // New initializes the `DocStoreExt`
-func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bool, kvStore store.KvStore, blobStore store.BlobStore, chub *hub.Hub, remoteFetcher func(string) (string, error)) (*FileTree, error) {
+func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bool, kvStore store.KvStore, blobStore store.BlobStore, chub *hub.Hub) (*FileTree, error) {
 	logger.Debug("init")
 	// FIXME(tsileo): make the number of thumbnails to keep in memory a config item
 	thumbscache, err := cache.New(conf.VarDir(), "filetree_thumbs.cache", 512<<20)
@@ -183,7 +181,6 @@ func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bo
 		shareTTL:      1 * time.Hour,
 		hub:           chub,
 		log:           logger,
-		remoteFetcher: remoteFetcher,
 	}
 
 	chub.Subscribe(hub.NewFiletreeNode, "webm", ft.webmHubCallback)
@@ -328,9 +325,8 @@ type Node struct {
 	ChildrenCount int     `json:"children_count,omitempty" msgpack:"cc,omitempty"`
 
 	// FIXME(ts): rename to Metadata
-	Data       map[string]interface{} `json:"metadata,omitempty" msgpack:"md,omitempty"`
-	Info       *Info                  `json:"info,omitempty" msgpack:"i,omitempty"`
-	RemoteRefs []*rnode.IndexValue    `json:"remote_refs,omitempty" msgpack:"rrfs,omitempty"`
+	Data map[string]interface{} `json:"metadata,omitempty" msgpack:"md,omitempty"`
+	Info *Info                  `json:"info,omitempty" msgpack:"i,omitempty"`
 
 	Meta   *rnode.RawNode `json:"-" msgpack:"-"`
 	parent *Node
@@ -410,7 +406,7 @@ func (ft *FileTree) Update(ctx context.Context, n *Node, m *rnode.RawNode, prefi
 	newRef, data := newNode.parent.Meta.Encode()
 	newNode.parent.Hash = newRef
 	newNode.parent.Meta.Hash = newRef
-	if err := ft.blobStore.Put(ctx, &blob.Blob{Hash: newRef, Data: data}); err != nil {
+	if _, err := ft.blobStore.Put(ctx, &blob.Blob{Hash: newRef, Data: data}); err != nil {
 		return nil, 0, err
 	}
 	// n.parent.Hash = newRef
@@ -429,7 +425,7 @@ func (ft *FileTree) AddChild(ctx context.Context, n *Node, newChild *rnode.RawNo
 	//newChild.ModTime = time.Now().UTC().Unix()
 	newChildRef, data := newChild.Encode()
 	newChild.Hash = newChildRef
-	if err := ft.blobStore.Put(ctx, &blob.Blob{Hash: newChildRef, Data: data}); err != nil {
+	if _, err := ft.blobStore.Put(ctx, &blob.Blob{Hash: newChildRef, Data: data}); err != nil {
 		return nil, 0, err
 	}
 	newChildNode, err := MetaToNode(newChild)
@@ -465,7 +461,7 @@ func (ft *FileTree) AddChild(ctx context.Context, n *Node, newChild *rnode.RawNo
 	newRef, data := n.Meta.Encode()
 	n.Hash = newRef
 	n.Meta.Hash = newRef
-	if err := ft.blobStore.Put(ctx, &blob.Blob{Hash: newRef, Data: data}); err != nil {
+	if _, err := ft.blobStore.Put(ctx, &blob.Blob{Hash: newRef, Data: data}); err != nil {
 		return nil, 0, err
 	}
 
@@ -497,7 +493,7 @@ func (ft *FileTree) Delete(ctx context.Context, n *Node, prefixFmt string, mtime
 	newRef, data := parent.Meta.Encode()
 	parent.Hash = newRef
 	parent.Meta.Hash = newRef
-	if err := ft.blobStore.Put(ctx, &blob.Blob{Hash: newRef, Data: data}); err != nil {
+	if _, err := ft.blobStore.Put(ctx, &blob.Blob{Hash: newRef, Data: data}); err != nil {
 		return nil, 0, err
 	}
 
@@ -645,14 +641,9 @@ func (ft *FileTree) BFS(ctx context.Context, root *Node, fn func(*Node) (bool, e
 }
 
 // fetchDir recursively fetch dir children
-func (ft *FileTree) fetchDir(ctx context.Context, n *Node, depth, maxDepth int, fetchRemoteRefs bool) error {
+func (ft *FileTree) fetchDir(ctx context.Context, n *Node, depth, maxDepth int) error {
 	if depth > maxDepth {
 		return nil
-	}
-	if fetchRemoteRefs {
-		if err := ft.addRemoteRefs(n); err != nil {
-			return err
-		}
 	}
 	if n.Type == rnode.Dir {
 		n.Children = []*Node{}
@@ -661,12 +652,6 @@ func (ft *FileTree) fetchDir(ctx context.Context, n *Node, depth, maxDepth int, 
 			if err != nil {
 				return err
 			}
-			if fetchRemoteRefs {
-				if err := ft.addRemoteRefs(cn); err != nil {
-					return err
-				}
-			}
-
 			if cn.Type == "file" {
 				// FIXME(tsileo): init the new file in fetchInfo and only if needed
 				f := filereader.NewFile(ctx, ft.blobStore, cn.Meta, nil)
@@ -680,7 +665,7 @@ func (ft *FileTree) fetchDir(ctx context.Context, n *Node, depth, maxDepth int, 
 			}
 
 			n.Children = append(n.Children, cn)
-			if err := ft.fetchDir(ctx, cn, depth+1, maxDepth, fetchRemoteRefs); err != nil {
+			if err := ft.fetchDir(ctx, cn, depth+1, maxDepth); err != nil {
 				return err
 			}
 		}
@@ -792,14 +777,14 @@ func (fs *FS) Path(ctx context.Context, path string, depth int, create bool, mti
 	node.fs = fs
 	node.parent = nil
 	if path == "/" {
-		if err := fs.ft.fetchDir(ctx, node, 1, depth, true); err != nil {
+		if err := fs.ft.fetchDir(ctx, node, 1, depth); err != nil {
 			return nil, nil, found, err
 		}
 
 		fs.ft.log.Info("returning root")
 		return node, cmeta, found, err
 	} else {
-		if err := fs.ft.fetchDir(ctx, node, 1, 1, false); err != nil {
+		if err := fs.ft.fetchDir(ctx, node, 1, 1); err != nil {
 			return nil, nil, found, err
 		}
 
@@ -818,7 +803,7 @@ func (fs *FS) Path(ctx context.Context, path string, depth int, create bool, mti
 				if err != nil {
 					return nil, nil, found, err
 				}
-				if err := fs.ft.fetchDir(ctx, node, 1, 1, false); err != nil {
+				if err := fs.ft.fetchDir(ctx, node, 1, 1); err != nil {
 					return nil, nil, found, err
 				}
 				node.parent = prev
@@ -854,7 +839,7 @@ func (fs *FS) Path(ctx context.Context, path string, depth int, create bool, mti
 			// fmt.Printf("split:%+v created:%+v\n", p, node)
 		}
 	}
-	if err := fs.ft.fetchDir(ctx, node, 1, depth, true); err != nil {
+	if err := fs.ft.fetchDir(ctx, node, 1, depth); err != nil {
 		return nil, nil, found, err
 	}
 
@@ -1037,30 +1022,6 @@ func fixPath(p string) string {
 		return ""
 	}
 	return p
-}
-
-func (ft *FileTree) addRemoteRefs(n *Node) error {
-	rrefs := []*rnode.IndexValue{}
-
-	for _, piv := range n.Meta.FileRefs() {
-		rref, err := ft.remoteFetcher(piv.Value)
-		// fmt.Printf("REMOTE FETCHER: %+v %+v %+v\n\n", piv, rref, err)
-		if rref == "" {
-			return nil
-		}
-		if err != nil {
-			if err == blobstore.ErrRemoteNotAvailable {
-				return nil
-			}
-			return err
-		}
-		iv := &rnode.IndexValue{Index: piv.Index, Value: rref}
-		rrefs = append(rrefs, iv)
-	}
-
-	n.RemoteRefs = rrefs
-
-	return nil
 }
 
 func (ft *FileTree) versionsHandler() func(http.ResponseWriter, *http.Request) {
@@ -1268,9 +1229,6 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 				node.Info = info
 			}
 			// Returns the Node as JSON
-			// if err := fs.ft.addRemoteRefs(node); err != nil {
-			//	panic(err)
-			// }
 			httputil.MarshalAndWrite(r, w, node)
 			return
 
@@ -1853,7 +1811,7 @@ func (ft *FileTree) nodeHandler() func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
-		if err := ft.fetchDir(ctx, n, 1, 1, false); err != nil {
+		if err := ft.fetchDir(ctx, n, 1, 1); err != nil {
 			panic(err)
 		}
 
@@ -1866,10 +1824,6 @@ func (ft *FileTree) nodeHandler() func(http.ResponseWriter, *http.Request) {
 				child.URL = u.String() + "&dl=" + dlMode
 
 			}
-		}
-
-		if err := ft.addRemoteRefs(n); err != nil {
-			panic(err)
 		}
 
 		// FIXME(tsileo): init the new file in fetchInfo and only if needed
@@ -2066,7 +2020,7 @@ func (ft *FileTree) NodeWithChildren(ctx context.Context, hash string) (*Node, e
 	if err != nil {
 		return nil, err
 	}
-	if err := ft.fetchDir(ctx, node, 1, 1, false); err != nil {
+	if err := ft.fetchDir(ctx, node, 1, 1); err != nil {
 		return nil, err
 	}
 

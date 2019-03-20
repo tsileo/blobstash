@@ -87,7 +87,7 @@ func (bs *BlobStoreAPI) uploadHandler() func(http.ResponseWriter, *http.Request)
 					return
 				}
 				b := &mblob.Blob{Hash: hash, Data: blob}
-				if err := bs.bs.Put(ctx, b); err != nil {
+				if _, err := bs.bs.Put(ctx, b); err != nil {
 					httputil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
 				}
 			}
@@ -173,7 +173,7 @@ func (bs *BlobStoreAPI) blobHandler() func(http.ResponseWriter, *http.Request) {
 			}
 
 			b := &mblob.Blob{Hash: vars["hash"], Data: blob}
-			if err := bs.bs.Put(ctx, b); err != nil {
+			if _, err := bs.bs.Put(ctx, b); err != nil {
 				httputil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
 			}
 

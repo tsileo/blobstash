@@ -11,6 +11,7 @@ import (
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/blobstore"
 	"a4.io/blobstash/pkg/vkv"
+	lru "github.com/hashicorp/golang-lru"
 )
 
 var sepCandidates = []string{":", "&", "*", "^", "#", ".", "-", "_", "+", "=", "%", "@", "!"}
@@ -72,6 +73,7 @@ type DataContext interface {
 	BlobStoreProxy() BlobStore
 	KvStoreProxy() KvStore
 	Merge(context.Context) error
+	Cache() *lru.Cache
 	Close() error
 	Closed() bool
 	Destroy() error
@@ -299,7 +301,7 @@ func (p *KvStoreProxy) Keys(ctx context.Context, start, end string, limit int) (
 }
 
 type BlobStore interface {
-	Put(ctx context.Context, blob *blob.Blob) error
+	Put(ctx context.Context, blob *blob.Blob) (bool, error)
 	Get(ctx context.Context, hash string) ([]byte, error)
 	Stat(ctx context.Context, hash string) (bool, error)
 	Enumerate(ctx context.Context, start, end string, limit int) ([]*blob.SizedBlobRef, string, error)
@@ -334,13 +336,13 @@ func (p *BlobStoreProxy) Stat(ctx context.Context, hash string) (bool, error) {
 	return exists, nil
 }
 
-func (p *BlobStoreProxy) Put(ctx context.Context, blob *blob.Blob) error {
+func (p *BlobStoreProxy) Put(ctx context.Context, blob *blob.Blob) (bool, error) {
 	existsSrc, err := p.ReadSrc.Stat(ctx, blob.Hash)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if existsSrc {
-		return nil
+		return true, nil
 	}
 	return p.BlobStore.Put(ctx, blob)
 }

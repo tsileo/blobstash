@@ -16,20 +16,28 @@ import (
 	kvsLua "a4.io/blobstash/pkg/kvstore/lua"
 	"a4.io/blobstash/pkg/luascripts"
 	"a4.io/blobstash/pkg/stash"
+	"a4.io/blobstash/pkg/stash/store"
 )
 
-func GC(ctx context.Context, h *hub.Hub, s *stash.Stash, script string) error {
+func GC(ctx context.Context, h *hub.Hub, s *stash.Stash, dc store.DataContext, script string) (int, uint64, error) {
 
 	// TODO(tsileo): take a logger
 	refs := map[string]struct{}{}
 	orderedRefs := []string{}
 
 	L := lua.NewState()
+	var skipped int
 
 	// mark(<blob hash>) is the lowest-level func, it "mark"s a blob to be copied to the root blobstore
 	mark := func(L *lua.LState) int {
 		// TODO(tsileo): debug logging here to help troubleshot GC issues
 		ref := L.ToString(1)
+		if dc.Cache().Contains(ref) {
+			skipped++
+			// Skip the blob as it already in the root blob store
+			return 0
+		}
+
 		if _, ok := refs[ref]; !ok {
 			refs[ref] = struct{}{}
 			orderedRefs = append(orderedRefs, ref)
@@ -49,29 +57,41 @@ func GC(ctx context.Context, h *hub.Hub, s *stash.Stash, script string) error {
 	// - mark_kv(key, version)  -- version must be a String because we use nano ts
 	// - mark_filetree_node(ref)
 	if err := L.DoString(luascripts.Get("stash_gc.lua")); err != nil {
-		return err
+		return 0, 0, err
 	}
 
 	if err := L.DoString(script); err != nil {
-		return err
+		return 0, 0, err
 	}
 	fmt.Printf("refs=%q\n", orderedRefs)
+	blobsCnt := 0
+	totalSize := uint64(0)
 	for _, ref := range orderedRefs {
 		// FIXME(tsileo): stat before get/put
 
 		// Get the marked blob from the blobstore proxy
 		data, err := s.BlobStore().Get(ctx, ref)
 		if err != nil {
-			return err
+			return 0, 0, err
 		}
 
 		// Save it in the root blobstore
-		if err := s.Root().BlobStore().Put(ctx, &blob.Blob{Hash: ref, Data: data}); err != nil {
-			return err
+		saved, err := s.Root().BlobStore().Put(ctx, &blob.Blob{Hash: ref, Data: data})
+		if err != nil {
+			return 0, 0, err
 		}
-	}
 
-	return nil
+		if saved {
+			blobsCnt++
+			totalSize += uint64(len(data))
+		}
+
+		// Add the blob to the "mark cache" (that will prevent the extra "stat/exist" check
+		dc.Cache().Add(ref, struct{}{})
+	}
+	fmt.Printf("LRU cache skipped %d blobs, refs=%d blobs, saved %d blobs\n", skipped, len(orderedRefs), blobsCnt)
+
+	return blobsCnt, totalSize, nil
 }
 
 // FIXME(tsileo): have a single share "Lua lib" for all the Lua interactions (GC, document store...)

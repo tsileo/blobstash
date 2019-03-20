@@ -112,10 +112,10 @@ func (stc *SyncClient) remoteGetBlob(hash string) ([]byte, error) {
 	return clientutil.Decode(resp)
 }
 
-func (stc *SyncClient) putBlob(hash string, data []byte) error {
+func (stc *SyncClient) putBlob(hash string, data []byte) (bool, error) {
 	blob := &blob.Blob{Hash: hash, Data: data}
 	if err := blob.Check(); err != nil {
-		return err
+		return false, err
 	}
 	return stc.blobstore.Put(context.Background(), blob)
 }
@@ -141,7 +141,7 @@ func (stc *SyncClient) Receive(h string) error {
 		return err
 	}
 
-	if err := stc.putBlob(h, blob); err != nil {
+	if _, err := stc.putBlob(h, blob); err != nil {
 		return err
 	}
 	return nil
@@ -273,7 +273,7 @@ func (stc *SyncClient) Sync() (*SyncStats, error) {
 		stats.Uploaded++
 		stats.UploadedSize += len(blob)
 
-		if err := stc.putBlob(h, blob); err != nil {
+		if _, err := stc.putBlob(h, blob); err != nil {
 			return nil, err
 		}
 	}

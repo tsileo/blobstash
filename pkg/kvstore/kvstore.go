@@ -147,7 +147,7 @@ func (kv *KvStore) Put(ctx context.Context, key, ref string, data []byte, versio
 	}
 
 	// XXX(tsileo): notify the blobstore it does not need to exec the meta hook for this one?
-	if err := kv.blobStore.Put(ctx, metaBlob); err != nil {
+	if _, err := kv.blobStore.Put(ctx, metaBlob); err != nil {
 		return nil, err
 	}
 

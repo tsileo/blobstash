@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	lru "github.com/hashicorp/golang-lru"
 	log "github.com/inconshreveable/log15"
 
 	"a4.io/blobstash/pkg/blob"
@@ -28,6 +29,7 @@ type dataContext struct {
 	hub      *hub.Hub
 	meta     *meta.Meta
 	log      log.Logger
+	cache    *lru.Cache
 	dir      string
 	root     bool
 	closed   bool
@@ -53,6 +55,10 @@ func (dc *dataContext) Closed() bool {
 	return dc.closed
 }
 
+func (dc *dataContext) Cache() *lru.Cache {
+	return dc.cache
+}
+
 func (dc *dataContext) Merge(ctx context.Context) error {
 	if dc.root {
 		return nil
@@ -68,7 +74,7 @@ func (dc *dataContext) Merge(ctx context.Context) error {
 			return err
 		}
 		b := &blob.Blob{Hash: blobRef.Hash, Data: data}
-		if err := dc.bsProxy.(*store.BlobStoreProxy).ReadSrc.Put(ctx, b); err != nil {
+		if _, err := dc.bsProxy.(*store.BlobStoreProxy).ReadSrc.Put(ctx, b); err != nil {
 			return err
 		}
 	}
@@ -124,6 +130,10 @@ func (s *Stash) destroy(dataContext *dataContext, name string) error {
 }
 
 func New(dir string, m *meta.Meta, bs *blobstore.BlobStore, kvs *kvstore.KvStore, h *hub.Hub, l log.Logger) (*Stash, error) {
+	cache, err := lru.New(2 << 18) // 500k items (will store marked blobs)
+	if err != nil {
+		return nil, err
+	}
 	s := &Stash{
 		contexes: map[string]*dataContext{},
 		path:     dir,
@@ -133,9 +143,11 @@ func New(dir string, m *meta.Meta, bs *blobstore.BlobStore, kvs *kvstore.KvStore
 			bsProxy:  bs,
 			kvsProxy: kvs,
 			hub:      h,
+			cache:    cache,
 			meta:     m,
 			log:      l,
-			root:     true,
+
+			root: true,
 		},
 	}
 
@@ -323,10 +335,10 @@ type BlobStore struct {
 
 func (bs *BlobStore) Close() error { return nil } // TODO(tsileo): check if no closing is needed?
 
-func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) error {
+func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) (bool, error) {
 	dataContext, err := bs.s.dataContext(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	return dataContext.BlobStoreProxy().Put(ctx, blob)
 }
