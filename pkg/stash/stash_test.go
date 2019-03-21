@@ -72,7 +72,7 @@ func TestDataContextMerge(t *testing.T) {
 	blobsIdx := map[string]*blob.Blob{}
 	for i := 0; i < 5; i++ {
 		b := makeBlob([]byte(fmt.Sprintf("hello%d", i)))
-		if err := tmpDataContext.bsProxy.Put(context.TODO(), b); err != nil {
+		if _, err := tmpDataContext.bsProxy.Put(context.TODO(), b); err != nil {
 			panic(err)
 		}
 		blobsIdx[b.Hash] = b
