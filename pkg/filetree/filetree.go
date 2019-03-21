@@ -291,6 +291,7 @@ func (ft *FileTree) Register(r *mux.Router, root *mux.Router, basicAuth func(htt
 	r.Handle("/versions/{type}/{name}", basicAuth(http.HandlerFunc(ft.versionsHandler())))
 
 	r.Handle("/fs", basicAuth(http.HandlerFunc(ft.fsRootHandler())))
+	r.Handle("/fs/{type}/{name}/_tree_blobs", basicAuth(http.HandlerFunc(ft.treeBlobsHandler())))
 	r.Handle("/fs/{type}/{name}/_tgz", basicAuth(http.HandlerFunc(ft.tgzHandler())))
 	r.Handle("/fs/{type}/{name}/", basicAuth(http.HandlerFunc(ft.fsHandler())))
 	r.Handle("/fs/{type}/{name}/{path:.+}", basicAuth(http.HandlerFunc(ft.fsHandler())))
@@ -1557,6 +1558,54 @@ func (ft *FileTree) tgzHandler() func(http.ResponseWriter, *http.Request) {
 			// TODO(tsileo): set attachment headder
 		}
 	}
+}
+
+func (ft *FileTree) treeBlobsHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		ref := vars["ref"]
+
+		tree, err := ft.TreeBlobs(ref)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("tree_len=%d\n", len(tree))
+		httputil.MarshalAndWrite(r, w, map[string]interface{}{
+			"tree": tree,
+		})
+	}
+}
+
+func (ft *FileTree) TreeBlobs(ref string) ([]string, error) {
+	out := []string{}
+	fs := &FS{
+		Ref: ref,
+		ft:  ft,
+	}
+	ctx := context.Background()
+	node, _, _, err := fs.Path(ctx, "/", 1, false, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get path: %v", err)
+	}
+
+	if err := ft.IterTree(ctx, node, func(n *Node, p string) error {
+		out = append(out, n.Meta.Hash)
+
+		// Skip directories (the children will be iterated as part of iter tree)
+		if !n.Meta.IsFile() {
+			return nil
+		}
+
+		// write the file content (iter over all the blobs)
+		for _, iv := range n.Meta.FileRefs() {
+			out = append(out, iv.Value)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return out, nil
 }
 
 func (ft *FileTree) webmHandler() func(http.ResponseWriter, *http.Request) {
