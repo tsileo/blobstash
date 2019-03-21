@@ -59,7 +59,7 @@ func TestDBBasic(t *testing.T) {
 
 	versions, _, err := db.Versions("k1", 0, -1, -1)
 	check(err)
-	t.Logf("versions=%q", versions)
+	t.Logf("versions=%+v", versions)
 }
 
 func TestDBIVersions(t *testing.T) {

@@ -130,10 +130,6 @@ func (s *Stash) destroy(dataContext *dataContext, name string) error {
 }
 
 func New(dir string, m *meta.Meta, bs *blobstore.BlobStore, kvs *kvstore.KvStore, h *hub.Hub, l log.Logger) (*Stash, error) {
-	cache, err := lru.New(2 << 18) // 500k items (will store marked blobs)
-	if err != nil {
-		return nil, err
-	}
 	s := &Stash{
 		contexes: map[string]*dataContext{},
 		path:     dir,
@@ -143,7 +139,6 @@ func New(dir string, m *meta.Meta, bs *blobstore.BlobStore, kvs *kvstore.KvStore
 			bsProxy:  bs,
 			kvsProxy: kvs,
 			hub:      h,
-			cache:    cache,
 			meta:     m,
 			log:      l,
 
@@ -201,6 +196,10 @@ func (s *Stash) NewDataContext(name string) (*dataContext, error) {
 		KvStore: kvsDst,
 		ReadSrc: s.rootDataContext.kvs,
 	}
+	cache, err := lru.New(2 << 18) // 500k items (will store marked blobs)
+	if err != nil {
+		return nil, err
+	}
 	dataCtx := &dataContext{
 		log:      l,
 		meta:     m,
@@ -210,6 +209,7 @@ func (s *Stash) NewDataContext(name string) (*dataContext, error) {
 		kvsProxy: kvs,
 		bsProxy:  bs,
 		dir:      path,
+		cache:    cache,
 	}
 	s.contexes[name] = dataCtx
 	return dataCtx, nil

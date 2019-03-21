@@ -116,7 +116,7 @@ func (s *StashAPI) dataContextGCHandler() func(http.ResponseWriter, *http.Reques
 			fmt.Printf("\n\nGC imput: %+v\n\n", out)
 			if err := s.stash.DoAndDestroy(ctx, name, func(ctx context.Context, dc store.DataContext) error {
 				blobs, size, err := gc.GC(ctx, s.hub, s.stash, dc, out.Script)
-				fmt.Printf("GC output: %d blobs,  %s\n\n", blobs, humanize.Bytes(size))
+				fmt.Printf("GC err=%v, output: %d blobs,  %s\n\n", err, blobs, humanize.Bytes(size))
 				return err
 
 			}); err != nil {

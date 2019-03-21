@@ -75,7 +75,7 @@ func TestDataContextMerge(t *testing.T) {
 	var lastBlob *blob.Blob
 	for i := 0; i < 5; i++ {
 		b := makeBlob([]byte(fmt.Sprintf("hello%d", i)))
-		if err := tmpDataContext.BlobStoreProxy().Put(context.TODO(), b); err != nil {
+		if _, err := tmpDataContext.BlobStoreProxy().Put(context.TODO(), b); err != nil {
 			panic(err)
 		}
 		blobsIdx[b.Hash] = b
@@ -94,7 +94,7 @@ func TestDataContextMerge(t *testing.T) {
 		t.Errorf("root blobstore should be empty")
 	}
 
-	if err := GC(ctxutil.WithNamespace(context.Background(), "tmp"), nil, s, "mark_kv('hello', 10)"); err != nil {
+	if _, _, err := GC(ctxutil.WithNamespace(context.Background(), "tmp"), nil, s, tmpDataContext, "mark_kv('hello', 10)"); err != nil {
 		panic(err)
 	}
 
