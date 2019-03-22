@@ -215,6 +215,7 @@ L:
 			if ok {
 				if err := func(n *rnode.RawNode) error {
 					if n.Size == 0 {
+						deqFunc(true)
 						log.Error(fmt.Sprintf("dropping webm task %+v", n), "ref", n.Hash)
 						return nil
 					}
