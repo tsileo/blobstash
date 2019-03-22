@@ -67,6 +67,7 @@ func parseCursor(start string) *mergeCursor {
 }
 
 type DataContext interface {
+	StashBlobStore() BlobStore
 	BlobStore() BlobStore
 	KvStore() KvStore
 	BlobStoreProxy() BlobStore

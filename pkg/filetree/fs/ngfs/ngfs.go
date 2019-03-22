@@ -364,9 +364,11 @@ local key = "_filetree:fs:%s"
 
 -- Do the "premark" step, to tell the GC which blobs are already in the root blobstore
 local last_sync_version = "%d"
-local _, last_ref, _ = kvstore.get(key, last_sync_version)
-premark_kv(key, last_sync_version)
-premark_filetree_node(last_ref)
+if last_sync_version ~= "0" then
+  local _, last_ref, _ = kvstore.get(key, last_sync_version)
+  premark_kv(key, last_sync_version)
+  premark_filetree_node(last_ref)
+end
 
 -- Now, do the actual GC mark (and premarked blobs will be skipped)
 local version = "%d"

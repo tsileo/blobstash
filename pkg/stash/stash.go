@@ -23,6 +23,7 @@ import (
 type dataContext struct {
 	bs       store.BlobStore
 	kvs      store.KvStore
+	bsDst    store.BlobStore
 	bsProxy  store.BlobStore
 	kvsProxy store.KvStore
 	hub      *hub.Hub
@@ -31,6 +32,10 @@ type dataContext struct {
 	dir      string
 	root     bool
 	closed   bool
+}
+
+func (dc *dataContext) StashBlobStore() store.BlobStore {
+	return dc.bsDst
 }
 
 func (dc *dataContext) BlobStore() store.BlobStore {
@@ -191,6 +196,7 @@ func (s *Stash) NewDataContext(name string) (*dataContext, error) {
 		ReadSrc: s.rootDataContext.kvs,
 	}
 	dataCtx := &dataContext{
+		bsDst:    bsDst,
 		log:      l,
 		meta:     m,
 		hub:      h,

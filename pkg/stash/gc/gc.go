@@ -7,6 +7,7 @@ import (
 	"github.com/vmihailenco/msgpack"
 	"github.com/yuin/gopher-lua"
 
+	"a4.io/blobsfile"
 	"a4.io/blobstash/pkg/apps/luautil"
 	"a4.io/blobstash/pkg/blob"
 	bsLua "a4.io/blobstash/pkg/blobstore/lua"
@@ -79,8 +80,11 @@ func GC(ctx context.Context, h *hub.Hub, s *stash.Stash, dc store.DataContext, s
 		// FIXME(tsileo): stat before get/put
 
 		// Get the marked blob from the blobstore proxy
-		data, err := s.BlobStore().Get(ctx, ref)
+		data, err := dc.StashBlobStore().Get(ctx, ref)
 		if err != nil {
+			if err == blobsfile.ErrBlobNotFound {
+				continue
+			}
 			return 0, 0, err
 		}
 
@@ -95,7 +99,7 @@ func GC(ctx context.Context, h *hub.Hub, s *stash.Stash, dc store.DataContext, s
 			totalSize += uint64(len(data))
 		}
 	}
-	fmt.Printf("LRU cache skipped %d blobs, refs=%d blobs, saved %d blobs\n", skipped, len(orderedRefs), blobsCnt)
+	fmt.Printf("premarking helped skipped %d blobs, refs=%d blobs, saved %d blobs\n", skipped, len(orderedRefs), blobsCnt)
 
 	return blobsCnt, totalSize, nil
 }
