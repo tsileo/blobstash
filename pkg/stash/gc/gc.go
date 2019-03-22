@@ -43,10 +43,10 @@ func GC(ctx context.Context, h *hub.Hub, s *stash.Stash, dc store.DataContext, s
 	mark := func(L *lua.LState) int {
 		// TODO(tsileo): debug logging here to help troubleshot GC issues
 		ref := L.ToString(1)
-		if _, ok := existingRefs[ref]; ok {
-			skipped++
-			return 0
-		}
+		// if _, ok := existingRefs[ref]; ok {
+		//	skipped++
+		//	return 0
+		// }
 		if _, ok := refs[ref]; !ok {
 			refs[ref] = struct{}{}
 			orderedRefs = append(orderedRefs, ref)
