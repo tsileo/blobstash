@@ -21,7 +21,8 @@ type node struct {
 	Info       map[string]interface{} `json:"info,omitempty" msgpack:"i,omitempty"`
 
 	// Set by the FS
-	AsOf int64 `json:"-" msgpack:"-"`
+	AsOf     int64 `json:"-" msgpack:"-"`
+	Revision int64 `json:"-" msgpack:"-"`
 }
 
 // mode returns the node file mode

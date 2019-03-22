@@ -132,9 +132,10 @@ type Snapshot struct {
 }
 
 type FS struct {
-	Name string `json:"-"`
-	Ref  string `json:"ref"`
-	AsOf int64  `json:"-"`
+	Name     string `json:"-"`
+	Ref      string `json:"ref"`
+	AsOf     int64  `json:"-"`
+	Revision int64  `json:"-"`
 
 	ft *FileTree
 }
@@ -712,6 +713,7 @@ func (ft *FileTree) FS(ctx context.Context, name, prefixFmt string, newState boo
 			case nil:
 				// Set the existing ref
 				fs.Ref = kv.HexHash()
+				fs.Revision = kv.Version
 			case vkv.ErrNotFound:
 				// XXX(tsileo): should the `ErrNotFound` be returned here?
 			default:
@@ -724,6 +726,7 @@ func (ft *FileTree) FS(ctx context.Context, name, prefixFmt string, newState boo
 			case nil:
 				if len(kvv.Versions) > 0 {
 					fs.Ref = kvv.Versions[0].HexHash()
+					fs.Revision = kvv.Versions[0].Version
 				}
 
 			case vkv.ErrNotFound:
@@ -1211,6 +1214,7 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 			}
 
 			w.Header().Set("ETag", node.Hash)
+			w.Header().Set("BlobStash-FileTree-Revision", strconv.FormatInt(fs.Revision, 10))
 
 			// Handle HEAD request
 			if r.Method == "HEAD" {
@@ -1601,7 +1605,12 @@ func (ft *FileTree) treeBlobsHandler() func(http.ResponseWriter, *http.Request) 
 			panic(fmt.Errorf("Unknown type \"%s\"", refType))
 		}
 
-		tree, err := ft.TreeBlobs(ctx, fs)
+		node, _, _, err := fs.Path(ctx, "/", 1, false, 0)
+		if err != nil {
+			panic(fmt.Errorf("failed to get path: %v", err))
+		}
+
+		tree, err := ft.TreeBlobs(ctx, node)
 		if err != nil {
 			panic(err)
 		}
@@ -1612,14 +1621,9 @@ func (ft *FileTree) treeBlobsHandler() func(http.ResponseWriter, *http.Request) 
 	}
 }
 
-func (ft *FileTree) TreeBlobs(ctx context.Context, fs *FS) ([]string, error) {
+func (ft *FileTree) TreeBlobs(ctx context.Context, node *Node) ([]string, error) {
 	// FIXME(tsileo): take a FS, a fix the path arg
 	out := []string{}
-	node, _, _, err := fs.Path(ctx, "/", 1, false, 0)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get path: %v", err)
-	}
-
 	if err := ft.IterTree(ctx, node, func(n *Node, p string) error {
 		out = append(out, n.Meta.Hash)
 

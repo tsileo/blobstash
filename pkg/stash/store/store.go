@@ -11,7 +11,6 @@ import (
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/blobstore"
 	"a4.io/blobstash/pkg/vkv"
-	lru "github.com/hashicorp/golang-lru"
 )
 
 var sepCandidates = []string{":", "&", "*", "^", "#", ".", "-", "_", "+", "=", "%", "@", "!"}
@@ -73,7 +72,6 @@ type DataContext interface {
 	BlobStoreProxy() BlobStore
 	KvStoreProxy() KvStore
 	Merge(context.Context) error
-	Cache() *lru.Cache
 	Close() error
 	Closed() bool
 	Destroy() error

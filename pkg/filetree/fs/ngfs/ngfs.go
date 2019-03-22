@@ -359,8 +359,16 @@ func (fs *FS) GC() error {
 
 	gcScript := fmt.Sprintf(`
 local kvstore = require('kvstore')
-
+-- FS vkv ref
 local key = "_filetree:fs:%s"
+
+-- Do the "premark" step, to tell the GC which blobs are already in the root blobstore
+local last_sync_version = "%d"
+local _, last_ref, _ = kvstore.get(key, last_sync_version)
+premark_kv(key, last_sync_version)
+premark_filetree_node(last_ref)
+
+-- Now, do the actual GC mark (and premarked blobs will be skipped)
 local version = "%d"
 local _, ref, _ = kvstore.get(key, version)
 
@@ -369,7 +377,7 @@ mark_kv(key, version)
 
 -- mark the whole tree
 mark_filetree_node(ref)
-`, fs.ref, fs.lastRevision)
+`, fs.ref, fs.lastSyncRev, fs.lastRevision)
 
 	// FIXME(tsileo): make the stash name configurable
 	resp, err := fs.clientUtil.PostMsgpack(
@@ -434,6 +442,10 @@ func (fs *FS) getNodeAsOf(path string, depth int, asOf int64) (*node, error) {
 	}
 
 	node.AsOf = asOf
+	node.Revision, err = strconv.ParseInt(resp.Header.Get("BlobStash-FileTree-Revision"), 10, 0)
+	if err != nil {
+		return nil, err
+	}
 	// fmt.Printf("getNode(%s) = %v\n", fs.remotePath(path), node)
 
 	return node, nil
@@ -455,6 +467,7 @@ func (cfs *FS) Root() (fs.Node, error) {
 		return nil, err
 	}
 	cfs.root.Add("current", ftRoot)
+	fmt.Printf("cfs=%+v\n", cfs)
 
 	// magic dir that list all versions, YYYY-MM-DDTHH:MM:SS
 	cfs.root.Add("versions", &versionsDir{cfs})
@@ -621,6 +634,7 @@ func (d *dir) preloadFTRoot() error {
 		}
 	}
 
+	d.fs.lastSyncRev = n.Revision
 	return nil
 }
 

@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"sync"
 
-	lru "github.com/hashicorp/golang-lru"
 	log "github.com/inconshreveable/log15"
 
 	"a4.io/blobstash/pkg/blob"
@@ -29,7 +28,6 @@ type dataContext struct {
 	hub      *hub.Hub
 	meta     *meta.Meta
 	log      log.Logger
-	cache    *lru.Cache
 	dir      string
 	root     bool
 	closed   bool
@@ -53,10 +51,6 @@ func (dc *dataContext) KvStoreProxy() store.KvStore {
 
 func (dc *dataContext) Closed() bool {
 	return dc.closed
-}
-
-func (dc *dataContext) Cache() *lru.Cache {
-	return dc.cache
 }
 
 func (dc *dataContext) Merge(ctx context.Context) error {
@@ -196,10 +190,6 @@ func (s *Stash) NewDataContext(name string) (*dataContext, error) {
 		KvStore: kvsDst,
 		ReadSrc: s.rootDataContext.kvs,
 	}
-	cache, err := lru.New(2 << 18) // 500k items (will store marked blobs)
-	if err != nil {
-		return nil, err
-	}
 	dataCtx := &dataContext{
 		log:      l,
 		meta:     m,
@@ -209,7 +199,6 @@ func (s *Stash) NewDataContext(name string) (*dataContext, error) {
 		kvsProxy: kvs,
 		bsProxy:  bs,
 		dir:      path,
-		cache:    cache,
 	}
 	s.contexes[name] = dataCtx
 	return dataCtx, nil

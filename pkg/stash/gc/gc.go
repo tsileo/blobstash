@@ -19,7 +19,7 @@ import (
 	"a4.io/blobstash/pkg/stash/store"
 )
 
-func GC(ctx context.Context, h *hub.Hub, s *stash.Stash, dc store.DataContext, script string) (int, uint64, error) {
+func GC(ctx context.Context, h *hub.Hub, s *stash.Stash, dc store.DataContext, script string, existingRefs map[string]struct{}) (int, uint64, error) {
 
 	// TODO(tsileo): take a logger
 	refs := map[string]struct{}{}
@@ -28,16 +28,24 @@ func GC(ctx context.Context, h *hub.Hub, s *stash.Stash, dc store.DataContext, s
 	L := lua.NewState()
 	var skipped int
 
+	// premark(<blob hash>) notify the GC that this blob is already in the root blobstore explicitely (to speedup huge GC)
+	premark := func(L *lua.LState) int {
+		// TODO(tsileo): debug logging here to help troubleshot GC issues
+		ref := L.ToString(1)
+		if _, ok := existingRefs[ref]; !ok {
+			existingRefs[ref] = struct{}{}
+		}
+		return 0
+	}
+
 	// mark(<blob hash>) is the lowest-level func, it "mark"s a blob to be copied to the root blobstore
 	mark := func(L *lua.LState) int {
 		// TODO(tsileo): debug logging here to help troubleshot GC issues
 		ref := L.ToString(1)
-		if dc.Cache().Contains(ref) {
+		if _, ok := existingRefs[ref]; ok {
 			skipped++
-			// Skip the blob as it already in the root blob store
 			return 0
 		}
-
 		if _, ok := refs[ref]; !ok {
 			refs[ref] = struct{}{}
 			orderedRefs = append(orderedRefs, ref)
@@ -45,6 +53,7 @@ func GC(ctx context.Context, h *hub.Hub, s *stash.Stash, dc store.DataContext, s
 		return 0
 	}
 
+	L.SetGlobal("premark", L.NewFunction(premark))
 	L.SetGlobal("mark", L.NewFunction(mark))
 	L.PreloadModule("json", loadJSON)
 	L.PreloadModule("msgpack", loadMsgpack)
@@ -85,9 +94,6 @@ func GC(ctx context.Context, h *hub.Hub, s *stash.Stash, dc store.DataContext, s
 			blobsCnt++
 			totalSize += uint64(len(data))
 		}
-
-		// Add the blob to the "mark cache" (that will prevent the extra "stat/exist" check
-		dc.Cache().Add(ref, struct{}{})
 	}
 	fmt.Printf("LRU cache skipped %d blobs, refs=%d blobs, saved %d blobs\n", skipped, len(orderedRefs), blobsCnt)
 
