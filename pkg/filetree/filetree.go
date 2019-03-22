@@ -214,6 +214,10 @@ L:
 			}
 			if ok {
 				if err := func(n *rnode.RawNode) error {
+					if n.Size == 0 {
+						log.Error(fmt.Sprintf("dropping webm task %+v", n), "ref", n.Hash)
+						return nil
+					}
 					log.Info(fmt.Sprintf("starting %+v", n), "ref", n.Hash)
 					if !vidinfo.IsVideo(n.Name) {
 						log.Error("not a vid")
