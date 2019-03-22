@@ -1562,27 +1562,59 @@ func (ft *FileTree) tgzHandler() func(http.ResponseWriter, *http.Request) {
 
 func (ft *FileTree) treeBlobsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.Background()
 		vars := mux.Vars(r)
-		ref := vars["ref"]
+		fsName := vars["name"]
+		path := "/" + vars["path"]
+		refType := vars["type"]
+		prefixFmt := FSKeyFmt
+		if p := r.URL.Query().Get("prefix"); p != "" {
+			prefixFmt = p + ":%s"
+		}
 
-		tree, err := ft.TreeBlobs(ref)
+		if path != "/" {
+			panic("can only tree blobs the root path")
+		}
+
+		var asOf int64
+		var err error
+		q := httputil.NewQuery(r.URL.Query())
+
+		asOf, err = q.GetInt64Default("as_of", 0)
+		if err != nil {
+			panic(err)
+		}
+
+		var fs *FS
+		switch refType {
+		case "ref":
+			fs = &FS{
+				Ref: fsName,
+				ft:  ft,
+			}
+		case "fs":
+			fs, err = ft.FS(ctx, fsName, prefixFmt, false, asOf)
+			if err != nil {
+				panic(err)
+			}
+		default:
+			panic(fmt.Errorf("Unknown type \"%s\"", refType))
+		}
+
+		tree, err := ft.TreeBlobs(ctx, fs)
 		if err != nil {
 			panic(err)
 		}
 		fmt.Printf("tree_len=%d\n", len(tree))
 		httputil.MarshalAndWrite(r, w, map[string]interface{}{
-			"tree": tree,
+			"data": tree,
 		})
 	}
 }
 
-func (ft *FileTree) TreeBlobs(ref string) ([]string, error) {
+func (ft *FileTree) TreeBlobs(ctx context.Context, fs *FS) ([]string, error) {
+	// FIXME(tsileo): take a FS, a fix the path arg
 	out := []string{}
-	fs := &FS{
-		Ref: ref,
-		ft:  ft,
-	}
-	ctx := context.Background()
 	node, _, _, err := fs.Path(ctx, "/", 1, false, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get path: %v", err)
