@@ -68,6 +68,9 @@ type S3Backend struct {
 	stop chan struct{}
 
 	bucket string
+
+	uploadedSinceStartup      uint64
+	blobsUploadedSinceStartup int
 }
 
 func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config.Config) (*S3Backend, error) {
@@ -167,7 +170,7 @@ func (b *S3Backend) String() string {
 }
 
 func (b *S3Backend) Stats() (map[string]interface{}, error) {
-	total := 0
+	total := uint64(0)
 	count := 0
 
 	blbs, err := b.uploadQueue.Blobs()
@@ -181,10 +184,17 @@ func (b *S3Backend) Stats() (map[string]interface{}, error) {
 		if err != nil {
 			return nil, err
 		}
-		total += sz
+		total += uint64(sz)
 	}
 
-	return map[string]interface{}{"blobs_waiting": count, "blobs_size": total}, nil
+	return map[string]interface{}{
+		"blobs_waiting":                           count,
+		"blobs_size":                              total,
+		"blobs_size_human":                        humanize.Bytes(total),
+		"blobs_uploaded_since_startup":            b.blobsUploadedSinceStartup,
+		"blobs_size_uploaded_since_startup":       b.uploadedSinceStartup,
+		"blobs_size_uploaded_since_startup_human": humanize.Bytes(b.uploadedSinceStartup),
+	}, nil
 }
 
 func (b *S3Backend) Put(hash string) error {
@@ -292,7 +302,6 @@ func (b *S3Backend) reindex(bucket *s3util.Bucket, restore bool) error {
 func (b *S3Backend) uploadWorker() {
 	log := b.log.New("worker", "upload_worker")
 	log.Debug("starting worker")
-	total := uint64(0)
 L:
 	for {
 		select {
@@ -334,8 +343,9 @@ L:
 					}
 					deqFunc(true)
 					blobSize := uint64(len(data))
-					total += blobSize
-					log.Info("blob uploaded to s3", "hash", blob.Hash, "size", humanize.Bytes(blobSize), "duration", time.Since(t), "uploaded_since_startup", humanize.Bytes(total))
+					b.uploadedSinceStartup += blobSize
+					b.blobsUploadedSinceStartup++
+					log.Info("blob uploaded to s3", "hash", blob.Hash, "size", humanize.Bytes(blobSize), "duration", time.Since(t), "uploaded_since_startup", humanize.Bytes(b.uploadedSinceStartup))
 
 					return nil
 				}(blb); err != nil {

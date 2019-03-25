@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+	"time"
 
 	"a4.io/blobstash/pkg/apps"
 	"a4.io/blobstash/pkg/auth"
@@ -38,6 +39,7 @@ import (
 
 	"golang.org/x/crypto/acme/autocert"
 
+	humanize "github.com/dustin/go-humanize"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
@@ -70,6 +72,7 @@ type Server struct {
 }
 
 func New(conf *config.Config) (*Server, error) {
+	start := time.Now()
 	conf.Init()
 	logger := log.New("logger", "blobstash")
 	if err := auth.Setup(conf, logger.New("app", "perms")); err != nil {
@@ -109,10 +112,21 @@ func New(conf *config.Config) (*Server, error) {
 				panic(err)
 			}
 		}
+		bs := map[string]interface{}{}
+		bstats, err := s.blobstore.Stats()
+		if err != nil {
+			panic(err)
+		}
+		bs["blobs_count"] = bstats.BlobsCount
+		bs["blobs_size"] = bstats.BlobsSize
+		bs["blobs_size_human"] = humanize.Bytes(uint64(bstats.BlobsSize))
+		bs["blobs_blobsfile_volumes"] = bstats.BlobsFilesCount
 
 		// return newRev.Version, nil
 		httputil.MarshalAndWrite(r, w, map[string]interface{}{
-			"s3": stats,
+			"s3":         stats,
+			"started_at": start.Format(time.RFC3339),
+			"blobstore":  bs,
 		})
 
 	})))

@@ -179,6 +179,10 @@ func (bs *BlobStore) Put(ctx context.Context, blob *blob.Blob) (bool, error) {
 	return saved, nil
 }
 
+func (bs *BlobStore) Stats() (*blobsfile.Stats, error) {
+	return bs.back.Stats()
+}
+
 func (bs *BlobStore) Get(ctx context.Context, hash string) ([]byte, error) {
 	bs.log.Info("OP Get", "hash", hash)
 	blob, err := bs.back.Get(hash)
