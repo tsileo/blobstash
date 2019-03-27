@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -677,6 +678,11 @@ func (ft *FileTree) fetchDir(ctx context.Context, n *Node, depth, maxDepth int) 
 			}
 		}
 	}
+
+	sort.Slice(n.Children, func(i, j int) bool {
+		return n.Children[i].Meta.Name < n.Children[j].Meta.Name
+	})
+
 	return nil
 }
 
@@ -812,9 +818,9 @@ func (fs *FS) Path(ctx context.Context, path string, depth int, create bool, mti
 				if err != nil {
 					return nil, nil, found, err
 				}
-				if err := fs.ft.fetchDir(ctx, node, 1, 1); err != nil {
-					return nil, nil, found, err
-				}
+				//if err := fs.ft.fetchDir(ctx, node, 1, 1); err != nil {
+				//	return nil, nil, found, err
+				//}
 				node.parent = prev
 				node.fs = fs
 				// fmt.Printf("split:%+v fetched:%+v\n", p, node)
