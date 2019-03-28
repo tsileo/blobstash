@@ -317,6 +317,7 @@ func (ft *FileTree) Register(r *mux.Router, root *mux.Router, basicAuth func(htt
 	// Enable shortcut path from the root
 	root.Handle("/f/{ref}", fileHandler)
 	root.Handle("/w/{ref}.{ext}", http.HandlerFunc(ft.webmHandler()))
+	root.Handle("/tgz/{ref}", http.HandlerFunc(ft.nodeTgzHandler())) // support bewit, no basic auth middleware
 }
 
 // Node holds the data about the file node (either file/dir), analog to a Meta
@@ -1859,6 +1860,14 @@ func (ft *FileTree) GetWebmLink(n *Node) (string, string, error) {
 	return u.String(), u1.String(), nil
 }
 
+func (ft *FileTree) GetTgzLink(n *Node) (string, error) {
+	u := &url.URL{Path: fmt.Sprintf("/tgz/%s", n.Hash)}
+	if err := bewit.Bewit(ft.sharingCred, u, ft.shareTTL); err != nil {
+		panic(err)
+	}
+	return u.String(), nil
+}
+
 // Fetch a Node outside any FS
 func (ft *FileTree) nodeHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -1947,6 +1956,108 @@ type snapReq struct {
 	FS       string `json:"fs"`
 	Message  string `json:"message"`
 	Hostname string `json:"hostname"`
+}
+
+// Fetch a Node outside any FS
+func (ft *FileTree) nodeTgzHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+		var authorized bool
+		if err := bewit.Validate(r, ft.sharingCred); err != nil {
+			ft.log.Debug("invalid bewit", "err", err)
+		} else {
+			ft.log.Debug("valid bewit")
+			authorized = true
+		}
+
+		if !authorized {
+			// Try if an API key is provided
+			ft.log.Info("before authFunc")
+			if !ft.authFunc(r) {
+				// Rreturns a 404 to prevent leak of hashes
+				notFound(w)
+				return
+			}
+		}
+
+		// FIXME(tsileo): re-enable
+		// if !auth.Can(
+		// 	w,
+		//	r,
+		//	perms.Action(perms.Snapshot, perms.FS),
+		//	perms.ResourceWithID(perms.Filetree, perms.FS, sreq.FS),
+		//) {
+		//	auth.Forbidden(w)
+		//	return
+		//}
+		ctx := context.TODO()
+		vars := mux.Vars(r)
+
+		hash := vars["ref"]
+		node, err := ft.nodeByRef(ctx, hash)
+		if err != nil {
+			if err == clientutil.ErrBlobNotFound {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			panic(err)
+		}
+		if node.Type == "file" {
+			panic("cannot snapshot a file")
+		}
+
+		w.Header().Set("ETag", node.Hash)
+		w.Header().Set("Content-Type", "application/gzip")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s.tgz", node.Name))
+
+		// Handle HEAD request
+		if r.Method == "HEAD" {
+			return
+		}
+
+		gzipWriter := gzip.NewWriter(w)
+		tarWriter := tar.NewWriter(gzipWriter)
+
+		// Iter the whole tree
+		if err := ft.IterTree(ctx, node, func(n *Node, p string) error {
+			// Skip directories (We only want files to be added)
+			if !n.Meta.IsFile() {
+				return nil
+			}
+
+			// Write the tar header
+			hdr := &tar.Header{
+				Name: p[1:],
+				Mode: int64(os.FileMode(n.Mode) | 0600),
+				Size: int64(n.Size),
+			}
+			if err := tarWriter.WriteHeader(hdr); err != nil {
+				panic(err)
+			}
+
+			// write the file content (iter over all the blobs)
+			for _, iv := range n.Meta.FileRefs() {
+				blob, err := ft.blobStore.Get(ctx, iv.Value)
+				if err != nil {
+					panic(err)
+				}
+				if _, err := tarWriter.Write(blob); err != nil {
+					panic(err)
+				}
+			}
+			return nil
+		}); err != nil {
+			panic(err)
+		}
+
+		// "seal" the tarfile
+		tarWriter.Close()
+		gzipWriter.Close()
+	}
 }
 
 // Fetch a Node outside any FS

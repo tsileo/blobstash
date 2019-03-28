@@ -11,16 +11,18 @@ import (
 
 	"a4.io/blobsfile"
 	"a4.io/blobstash/pkg/filetree"
+	rnode "a4.io/blobstash/pkg/filetree/filetreeutil/node"
 	"a4.io/blobstash/pkg/filetree/imginfo"
 	"a4.io/blobstash/pkg/filetree/vidinfo"
 	"a4.io/blobstash/pkg/filetree/writer"
 	"a4.io/blobstash/pkg/stash/store"
 )
 
-func buildFSInfo(L *lua.LState, name, ref string) *lua.LTable {
+func buildFSInfo(L *lua.LState, name, ref, tgzURL string) *lua.LTable {
 	tbl := L.CreateTable(0, 2)
 	tbl.RawSetString("name", lua.LString(name))
 	tbl.RawSetString("ref", lua.LString(ref))
+	tbl.RawSetString("tgz_url", lua.LString(tgzURL))
 	return tbl
 }
 
@@ -76,7 +78,15 @@ func convertNode(L *lua.LState, ft *filetree.FileTree, node *filetree.Node) *lua
 		childrenTbl.Append(convertNode(L, ft, child))
 	}
 	tbl.RawSetString("children", childrenTbl)
-	tbl.RawSetString("children_count", lua.LNumber(node.ChildrenCount))
+	if node.Type == rnode.Dir {
+		tgzURL, err := ft.GetTgzLink(node)
+		if err != nil {
+			panic(err)
+		}
+
+		tbl.RawSetString("tgz_url", lua.LString(tgzURL))
+		tbl.RawSetString("children_count", lua.LNumber(node.ChildrenCount))
+	}
 	return tbl
 }
 
@@ -91,7 +101,11 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore) func(*lua.LState) 
 				}
 				tbl := L.CreateTable(len(it), 0)
 				for _, kv := range it {
-					tbl.Append(buildFSInfo(L, kv.Name, kv.Ref))
+					tgzURL, err := ft.GetTgzLink(&filetree.Node{Hash: kv.Ref})
+					if err != nil {
+						panic(err)
+					}
+					tbl.Append(buildFSInfo(L, kv.Name, kv.Ref, tgzURL))
 				}
 				L.Push(tbl)
 				return 1
@@ -134,7 +148,7 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore) func(*lua.LState) 
 				}
 				pathTable := L.CreateTable(len(path), 0)
 				for _, nodeInfo := range path {
-					pathTable.Append(buildFSInfo(L, nodeInfo.Name, nodeInfo.Ref))
+					pathTable.Append(buildFSInfo(L, nodeInfo.Name, nodeInfo.Ref, ""))
 				}
 				L.Push(convertNode(L, ft, node))
 				L.Push(pathTable)
