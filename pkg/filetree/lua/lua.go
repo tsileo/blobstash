@@ -11,6 +11,7 @@ import (
 
 	"a4.io/blobsfile"
 	"a4.io/blobstash/pkg/filetree"
+	"a4.io/blobstash/pkg/filetree/imginfo"
 	"a4.io/blobstash/pkg/filetree/vidinfo"
 	"a4.io/blobstash/pkg/filetree/writer"
 	"a4.io/blobstash/pkg/stash/store"
@@ -18,53 +19,58 @@ import (
 
 func buildFSInfo(L *lua.LState, name, ref string) *lua.LTable {
 	tbl := L.CreateTable(0, 2)
-	tbl.RawSetH(lua.LString("name"), lua.LString(name))
-	tbl.RawSetH(lua.LString("ref"), lua.LString(ref))
+	tbl.RawSetString("name", lua.LString(name))
+	tbl.RawSetString("ref", lua.LString(ref))
 	return tbl
 }
 
 func convertNode(L *lua.LState, ft *filetree.FileTree, node *filetree.Node) *lua.LTable {
-	tbl := L.CreateTable(0, 18)
+	tbl := L.CreateTable(0, 32)
 	dlURL, embedURL, err := ft.GetSemiPrivateLink(node)
 	if err != nil {
 		panic(err)
 	}
-	tbl.RawSetH(lua.LString("url"), lua.LString(embedURL))
-	tbl.RawSetH(lua.LString("dl_url"), lua.LString(dlURL))
+	tbl.RawSetString("url", lua.LString(embedURL))
+	tbl.RawSetString("dl_url", lua.LString(dlURL))
 	if vidinfo.IsVideo(node.Name) {
 		if node.Info != nil && node.Info.Video != nil {
-			tbl.RawSetH(lua.LString("video_width"), lua.LNumber(node.Info.Video.Width))
-			tbl.RawSetH(lua.LString("video_height"), lua.LNumber(node.Info.Video.Height))
-			tbl.RawSetH(lua.LString("video_codec"), lua.LString(node.Info.Video.Codec))
+			tbl.RawSetString("video_width", lua.LNumber(node.Info.Video.Width))
+			tbl.RawSetString("video_height", lua.LNumber(node.Info.Video.Height))
+			tbl.RawSetString("video_codec", lua.LString(node.Info.Video.Codec))
 			t := node.Info.Video.Duration
-			tbl.RawSetH(lua.LString("video_duration"), lua.LString(fmt.Sprintf("%02d:%02d:%02d", (t/3600), (t/60)%60, t%60)))
+			tbl.RawSetString("video_duration", lua.LString(fmt.Sprintf("%02d:%02d:%02d", (t/3600), (t/60)%60, t%60)))
 		}
 		webmURL, webmPosterURL, err := ft.GetWebmLink(node)
 		if err != nil {
 			panic(err)
 		}
-		tbl.RawSetH(lua.LString("is_video"), lua.LTrue)
-		tbl.RawSetH(lua.LString("webm_poster_url"), lua.LString(webmPosterURL))
-		tbl.RawSetH(lua.LString("webm_url"), lua.LString(webmURL))
+		tbl.RawSetString("is_video", lua.LTrue)
+		tbl.RawSetString("webm_poster_url", lua.LString(webmPosterURL))
+		tbl.RawSetString("webm_url", lua.LString(webmURL))
 	} else {
-		tbl.RawSetH(lua.LString("is_video"), lua.LFalse)
-		tbl.RawSetH(lua.LString("webm_poster_url"), lua.LString(""))
-		tbl.RawSetH(lua.LString("webm_url"), lua.LString(""))
+		tbl.RawSetString("is_video", lua.LFalse)
+		tbl.RawSetString("webm_poster_url", lua.LString(""))
+		tbl.RawSetString("webm_url", lua.LString(""))
 	}
-	tbl.RawSetH(lua.LString("hash"), lua.LString(node.Hash))
-	tbl.RawSetH(lua.LString("name"), lua.LString(node.Name))
-	tbl.RawSetH(lua.LString("type"), lua.LString(node.Type))
-	tbl.RawSetH(lua.LString("mtime"), lua.LString(node.ModTime))
-	tbl.RawSetH(lua.LString("mtime_short"), lua.LString(strings.Split(node.ModTime, "T")[0]))
-	tbl.RawSetH(lua.LString("citme"), lua.LString(node.ChangeTime))
-	tbl.RawSetH(lua.LString("mode"), lua.LString(os.FileMode(node.Mode).String()))
-	tbl.RawSetH(lua.LString("size"), lua.LNumber(node.Size))
-	tbl.RawSetH(lua.LString("size_human"), lua.LString(humanize.Bytes(uint64(node.Size))))
+	if imginfo.IsImage(node.Name) {
+		tbl.RawSetString("is_image", lua.LTrue)
+	} else {
+		tbl.RawSetString("is_image", lua.LFalse)
+	}
+	tbl.RawSetString("hash", lua.LString(node.Hash))
+	tbl.RawSetString("name", lua.LString(node.Name))
+	tbl.RawSetString("type", lua.LString(node.Type))
+	tbl.RawSetString("mtime", lua.LString(node.ModTime))
+	tbl.RawSetString("mtime_short", lua.LString(strings.Split(node.ModTime, "T")[0]))
+	tbl.RawSetString("citme", lua.LString(node.ChangeTime))
+	tbl.RawSetString("mode", lua.LString(os.FileMode(node.Mode).String()))
+	tbl.RawSetString("size", lua.LNumber(node.Size))
+	tbl.RawSetString("size_human", lua.LString(humanize.Bytes(uint64(node.Size))))
 	childrenTbl := L.CreateTable(len(node.Children), 0)
 	for _, child := range node.Children {
 		childrenTbl.Append(convertNode(L, ft, child))
 	}
-	tbl.RawSetH(lua.LString("children"), childrenTbl)
+	tbl.RawSetString("children", childrenTbl)
 	return tbl
 }
 

@@ -414,8 +414,8 @@ func (fs *FS) remotePath(path string) string {
 }
 
 // getNode fetches the node at path from BlobStash, like a "remote stat".
-func (fs *FS) getNode(path string, asOf int64) (*node, error) {
-	return fs.getNodeAsOf(path, 1, asOf)
+func (fs *FS) getNode(path string, depth int, asOf int64) (*node, error) {
+	return fs.getNodeAsOf(path, depth, asOf)
 }
 
 // getNode fetches the node at path from BlobStash, like a "remote stat".
@@ -534,13 +534,14 @@ var _ fs.NodeGetxattrer = (*dir)(nil)
 func (d *dir) FTNode() (*node, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	//if d.node != nil {
-	//	return d.node, nil
-	//}
-	n, err := d.fs.getNode(d.path, d.asOf)
+	//	if d.node != nil {
+	//		return d.node, nil
+	//	}
+	n, err := d.fs.getNode(d.path, 1, d.asOf)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("fetch dir node=%+v\n", n)
 	d.node = n
 	return n, nil
 }
@@ -594,7 +595,6 @@ func (d *dir) Attr(ctx context.Context, a *fuse.Attr) error {
 
 // Special preloading for the root that fetch the root tree with a depth of 2
 // (meaning we fetch the directories of the directories inside the root).
-// The root will be cached, and the same struct will always be returned.
 func (d *dir) preloadFTRoot() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -1036,7 +1036,7 @@ func (f *file) FTNode() (*node, error) {
 	}
 
 	// Loads it from BlobStash
-	n, err := f.fs.getNode(f.path, f.asOf)
+	n, err := f.fs.getNode(f.path, 1, f.asOf)
 	if err != nil {
 		return nil, err
 	}

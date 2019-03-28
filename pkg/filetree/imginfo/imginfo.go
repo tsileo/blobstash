@@ -8,10 +8,19 @@ import (
 	_ "image/png"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/rwcarlsen/goexif/exif"
 )
+
+func IsImage(filename string) bool {
+	lname := strings.ToLower(filename)
+	if strings.HasSuffix(lname, ".jpg") {
+		return true
+	}
+	return false
+}
 
 func getWidthHeight(f io.Reader) (int, int, error) {
 	image, _, err := image.DecodeConfig(f)
