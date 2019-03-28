@@ -54,6 +54,11 @@ func convertNode(L *lua.LState, ft *filetree.FileTree, node *filetree.Node) *lua
 	}
 	if imginfo.IsImage(node.Name) {
 		tbl.RawSetString("is_image", lua.LTrue)
+		if node.Info != nil && node.Info.Image != nil {
+			tbl.RawSetString("image_width", lua.LNumber(node.Info.Image.Width))
+			tbl.RawSetString("image_height", lua.LNumber(node.Info.Image.Height))
+			// TODO(tsileo): export EXIF
+		}
 	} else {
 		tbl.RawSetString("is_image", lua.LFalse)
 	}

@@ -16,7 +16,7 @@ import (
 
 func IsImage(filename string) bool {
 	lname := strings.ToLower(filename)
-	if strings.HasSuffix(lname, ".jpg") {
+	if strings.HasSuffix(lname, ".gif") || strings.HasSuffix(lname, ".png") || strings.HasSuffix(lname, ".jpg") {
 		return true
 	}
 	return false
