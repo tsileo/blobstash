@@ -817,9 +817,10 @@ func (fs *FS) Path(ctx context.Context, path string, depth int, create bool, mti
 				if err != nil {
 					return nil, nil, found, err
 				}
-				//if err := fs.ft.fetchDir(ctx, node, 1, 1); err != nil {
-				//	return nil, nil, found, err
-				//}
+				// load the dir children in order to continue the search
+				if err := fs.ft.fetchDir(ctx, node, 1, 1); err != nil {
+					return nil, nil, found, err
+				}
 				node.parent = prev
 				node.fs = fs
 				// fmt.Printf("split:%+v fetched:%+v\n", p, node)
@@ -852,9 +853,6 @@ func (fs *FS) Path(ctx context.Context, path string, depth int, create bool, mti
 			node.fs = fs
 			// fmt.Printf("split:%+v created:%+v\n", p, node)
 		}
-	}
-	if err := fs.ft.fetchDir(ctx, node, 1, depth); err != nil {
-		return nil, nil, found, err
 	}
 
 	return node, cmeta, !found, nil
