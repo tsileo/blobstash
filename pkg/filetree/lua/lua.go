@@ -76,6 +76,7 @@ func convertNode(L *lua.LState, ft *filetree.FileTree, node *filetree.Node) *lua
 		childrenTbl.Append(convertNode(L, ft, child))
 	}
 	tbl.RawSetString("children", childrenTbl)
+	tbl.RawSetString("children_count", lua.LNumber(node.ChildrenCount))
 	return tbl
 }
 
