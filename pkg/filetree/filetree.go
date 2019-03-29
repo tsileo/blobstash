@@ -1110,6 +1110,32 @@ func (ft *FileTree) versionsHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
+func (ft *FileTree) LuaFSVersions(name string) ([]*Snapshot, error) {
+	kvv, _, err := ft.kvStore.Versions(context.TODO(), fmt.Sprintf(FSKeyFmt, name), "0", -1)
+	switch err {
+	case nil:
+	case vkv.ErrNotFound:
+	default:
+		panic(err)
+	}
+	versions := []*Snapshot{}
+
+	// the key may not exists
+	if kvv != nil {
+		for _, kv := range kvv.Versions {
+			snap := &Snapshot{
+				CreatedAt: kv.Version,
+				Ref:       kv.HexHash(),
+			}
+			if err := msgpack.Unmarshal(kv.Data, snap); err != nil {
+				panic(err)
+			}
+			versions = append(versions, snap)
+		}
+	}
+	return versions, nil
+}
+
 func (ft *FileTree) commitHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {

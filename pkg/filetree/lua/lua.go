@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	humanize "github.com/dustin/go-humanize"
 	"github.com/yuin/gopher-lua"
@@ -106,6 +107,24 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore) func(*lua.LState) 
 						panic(err)
 					}
 					tbl.Append(buildFSInfo(L, kv.Name, kv.Ref, tgzURL))
+				}
+				L.Push(tbl)
+				return 1
+			},
+			"fs_versions": func(L *lua.LState) int {
+				versions, err := ft.LuaFSVersions(L.ToString(1))
+				if err != nil {
+					panic(err)
+				}
+
+				tbl := L.CreateTable(len(versions), 0)
+				for _, v := range versions {
+					snap := L.NewTable()
+					snap.RawSetString("ref", lua.LString(v.Ref))
+					snap.RawSetString("hostname", lua.LString(v.Hostname))
+					snap.RawSetString("message", lua.LString(v.Message))
+					snap.RawSetString("created_at", lua.LString(time.Unix(0, v.CreatedAt).Format(time.RFC3339)))
+					tbl.Append(snap)
 				}
 				L.Push(tbl)
 				return 1
