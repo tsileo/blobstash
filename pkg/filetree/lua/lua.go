@@ -119,7 +119,7 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore) func(*lua.LState) 
 
 				tbl := L.CreateTable(len(versions), 0)
 				for _, v := range versions {
-					snap := L.NewTable()
+					snap := L.CreateTable(0, 4)
 					snap.RawSetString("ref", lua.LString(v.Ref))
 					snap.RawSetString("hostname", lua.LString(v.Hostname))
 					snap.RawSetString("message", lua.LString(v.Message))

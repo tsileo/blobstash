@@ -128,8 +128,9 @@ type Snapshot struct {
 	Ref       string `msgpack:"-" json:"ref"`
 	CreatedAt int64  `msgpack:"-" json:"created_at"`
 
-	Hostname string `msgpack:"h" json:"hostname,omitempty"`
-	Message  string `msgpack:"m,omitempty" json:"message,omitempty"`
+	Hostname  string `msgpack:"h" json:"hostname,omitempty"`
+	Message   string `msgpack:"m,omitempty" json:"message,omitempty"`
+	UserAgent string `msgpack:"ua,omitempty" json:"user_agent",omitempty"`
 }
 
 type FS struct {
