@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	humanize "github.com/dustin/go-humanize"
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
 	"github.com/yuin/gopher-lua"
@@ -19,6 +20,7 @@ import (
 	"gopkg.in/src-d/go-git.v4/plumbing"
 	"gopkg.in/src-d/go-git.v4/plumbing/object"
 
+	"a4.io/blobstash/pkg/apps/luautil"
 	"a4.io/blobstash/pkg/blobstore"
 	blobstoreLua "a4.io/blobstash/pkg/blobstore/lua"
 	"a4.io/blobstash/pkg/config"
@@ -353,5 +355,36 @@ func setup(L *lua.LState, apps *Apps) {
 	//	"insert": colInsert,
 	//	"query":  colQuery,
 	//}))
+	L.PreloadModule("_blobstash", func(L *lua.LState) int {
+		// register functions to the table
+		mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
+			"status": func(L *lua.LState) int {
+				stats, err := apps.bs.S3Stats()
+				if err != nil {
+					if err != blobstore.ErrRemoteNotAvailable {
+						panic(err)
+					}
+				}
+				bstats, err := apps.bs.Stats()
+				if err != nil {
+					panic(err)
+				}
+				lbstats := L.CreateTable(0, 4)
+				lbstats.RawSetString("blobs_count", lua.LNumber(bstats.BlobsCount))
+				lbstats.RawSetString("blobs_size", lua.LNumber(bstats.BlobsSize))
+				lbstats.RawSetString("blobs_size_human", lua.LString(humanize.Bytes(uint64(bstats.BlobsSize))))
+				lbstats.RawSetString("blobs_blobsfile_volumes", lua.LNumber(bstats.BlobsFilesCount))
+
+				out := L.CreateTable(0, 2)
+				out.RawSetString("blobstore", lbstats)
+				out.RawSetString("s3", luautil.InterfaceToLValue(L, stats))
+
+				L.Push(out)
+				return 1
+			},
+		})
+		L.Push(mod)
+		return 1
+	})
 	L.PreloadModule("apps", setupApps(apps))
 }
