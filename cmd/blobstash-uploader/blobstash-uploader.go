@@ -12,6 +12,8 @@ import (
 	"a4.io/blobstash/pkg/filetree/writer"
 )
 
+const ua = "blobstash-uploader v1"
+
 func usage() {
 	fmt.Printf("Usage: %s [OPTIONS] [FSNAME] [DIRPATH]\n", os.Args[0])
 	flag.PrintDefaults()
@@ -84,7 +86,7 @@ func main() {
 	}
 
 	// Make a snaphot/create a FS entry for the given tree
-	rev, err := ft.MakeSnapshot(m.Hash, fsName, snapMessage)
+	rev, err := ft.MakeSnapshot(m.Hash, fsName, snapMessage, ua)
 	if err != nil {
 		fmt.Printf("failed to create snapshot: %v\n", err)
 		os.Exit(1)
