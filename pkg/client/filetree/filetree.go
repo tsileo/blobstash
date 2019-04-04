@@ -21,9 +21,10 @@ func New(client *clientutil.ClientUtil) *Filetree {
 }
 
 type snapReq struct {
-	FS       string `json:"fs"`
-	Message  string `json:"message"`
-	Hostname string `json:"hostname"`
+	FS        string `json:"fs"`
+	Message   string `json:"message"`
+	Hostname  string `json:"hostname"`
+	UserAgent string `json:"user_agent"`
 }
 
 type snapResp struct {
@@ -32,13 +33,18 @@ type snapResp struct {
 }
 
 // MakeSnaphot create a FS snapshot from a tree reference
-func (f *Filetree) MakeSnapshot(ref, fs, message string) (int64, error) {
+func (f *Filetree) MakeSnapshot(ref, fs, message, userAgent string) (int64, error) {
 	h, err := os.Hostname()
 	if err != nil {
 		return 0, err
 	}
 
-	s := &snapReq{FS: fs, Message: message, Hostname: h}
+	s := &snapReq{
+		FS:        fs,
+		Message:   message,
+		Hostname:  h,
+		UserAgent: userAgent,
+	}
 	resp, err := f.client.PostJSON(fmt.Sprintf("/api/filetree/node/%s/_snapshot", ref), s)
 	if err != nil {
 		return 0, err
