@@ -6,7 +6,7 @@ steps:
     image: golang:latest
     commands:
       - go install -mod=vendor
-      - cp -r $GOPATH/bin/blobstash .
+      - mv -r $GOPATH/bin/blobstash /usr/local/bin/blobstash
       - go test -v -mod=vendor ./...
 
   - name: integration_test
@@ -18,6 +18,6 @@ steps:
       - python3 integration_tests/docstore.py
 ---
 kind: signature
-hmac: bc81cebcc7ed8b8c5a740864c4708db908dc5960d8e1b56e5f22c9f46b705d18
+hmac: 8e7bc895e96b7b1982933dff475c9dedae044b3fbd71e68b97846be7bce7bf05
 
 ...
