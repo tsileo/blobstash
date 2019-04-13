@@ -1,0 +1,23 @@
+---
+kind: pipeline
+name: default
+steps:
+  - name: build_and_test
+    image: golang:latest
+    commands:
+      - go install -mod=vendor
+      - cp -r $GOPATH/bin/blobstash .
+      - go test -v -mod=vendor ./...
+
+  - name: integration_test
+    image: python:3
+    commands:
+      - pip install git+https://github.com/tsileo/blobstash-python.git
+      # FIXME(tsileo): import the new tests from blobstash-base
+      # - python3 integration_tests/blobstore_kvstore.py
+      - python3 integration_tests/docstore.py
+---
+kind: signature
+hmac: bc81cebcc7ed8b8c5a740864c4708db908dc5960d8e1b56e5f22c9f46b705d18
+
+...
