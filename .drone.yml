@@ -24,10 +24,12 @@ steps:
       - pip install git+https://github.com/tsileo/blobstash-python.git
       # FIXME(tsileo): import the new tests from blobstash-base
       # - python3 integration_tests/blobstore_kvstore.py
+
+      # Add blobstash the PATH before we can run the tests
       - export PATH=$PATH:`pwd`/bin
       - python3 integration_tests/docstore.py
 ---
 kind: signature
-hmac: c550717508bd59b490583b47f4e1e558b65112a09cc0599a2e6c1a12b482896f
+hmac: 051666378d265eae7935375e2dd8fd1f3da93358131f246a11a4c72c59786287
 
 ...
