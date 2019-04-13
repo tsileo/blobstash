@@ -1,7 +1,7 @@
 BlobStash
 =========
 
-[![Travis](https://img.shields.io/travis/tsileo/blobstash.svg)](https://travis-ci.org/tsileo/blobstash)
+[![Travis](https://d.a4.io/api/badges/tsileo/blobstash/status.svg)](https://d.a4.io/tsileo/blobstash)
 &nbsp; &nbsp;[![Go Report Card](https://goreportcard.com/badge/a4.io/blobstash)](https://goreportcard.com/report/a4.io/blobstash)
 &nbsp; &nbsp;[![License](http://img.shields.io/badge/license-MIT-red.svg?style=flat)](https://raw.githubusercontent.com/tsileo/blobstash/master/LICENSE)
 

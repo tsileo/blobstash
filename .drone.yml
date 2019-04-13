@@ -6,8 +6,9 @@ steps:
     image: golang:latest
     commands:
       - go install -mod=vendor
-      - mv -r $GOPATH/bin/blobstash /usr/local/bin/blobstash
-      - go test -v -mod=vendor ./...
+      - mkdir bin
+      - cp -r $GOPATH/bin/blobstash bin/blobstash
+      # - go test -v -mod=vendor ./...
 
   - name: integration_test
     image: python:3
@@ -15,9 +16,10 @@ steps:
       - pip install git+https://github.com/tsileo/blobstash-python.git
       # FIXME(tsileo): import the new tests from blobstash-base
       # - python3 integration_tests/blobstore_kvstore.py
+      - export PATH=$PATH:`pwd`/bin
       - python3 integration_tests/docstore.py
 ---
 kind: signature
-hmac: 8e7bc895e96b7b1982933dff475c9dedae044b3fbd71e68b97846be7bce7bf05
+hmac: 332893c5a57b52a018694d13719302e997da0c5a601ca1df6e0dddd42f62b850
 
 ...
