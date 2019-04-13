@@ -2,14 +2,16 @@
 kind: pipeline
 name: default
 steps:
+  # Build the blobstash binary and run the unit test suite
   - name: build_and_test
     image: golang:latest
     commands:
       - go install -mod=vendor
       - mkdir bin
       - cp -r $GOPATH/bin/blobstash bin/blobstash
-      # - go test -v -mod=vendor ./...
+      - go test -v -mod=vendor ./...
 
+  # Integration tests against a running instance with blobstash-python
   - name: integration_test
     image: python:3
     commands:
@@ -20,6 +22,6 @@ steps:
       - python3 integration_tests/docstore.py
 ---
 kind: signature
-hmac: 332893c5a57b52a018694d13719302e997da0c5a601ca1df6e0dddd42f62b850
+hmac: 96abab411b8342e8258b7e99b8e3f995e5978665d081ee32a4439d9d7eda2268
 
 ...
