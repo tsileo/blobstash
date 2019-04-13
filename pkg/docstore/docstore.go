@@ -256,7 +256,7 @@ func (dc *DocStore) LuaRegisterSchema(name string, fields []interface{}) error {
 	}
 
 	dc.schemas[name] = schema
-	dc.logger.Debug("setup new schema", "name", name, "schema", fmt.Sprintf("%q", schema))
+	dc.logger.Debug("setup new schema", "name", name, "schema", fmt.Sprintf("%v", schema))
 	return nil
 }
 
