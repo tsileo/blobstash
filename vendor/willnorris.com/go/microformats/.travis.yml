@@ -1,0 +1,5 @@
+sudo: false
+language: go
+go:
+  - 1.8.x
+go_import_path: willnorris.com/go/microformats

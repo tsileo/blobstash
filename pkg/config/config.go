@@ -19,15 +19,16 @@ var (
 
 // AppConfig holds an app configuration items
 type AppConfig struct {
-	Name       string `yaml:"name"`
-	Path       string `yaml:"path"` // App path, optional?
-	Entrypoint string `yaml:"entrypoint"`
-	Domain     string `yaml:"domain"`
-	Username   string `yaml:"username"`
-	Password   string `yaml:"password"`
-	Proxy      string `yaml:"proxy"`
-	Remote     string `yaml:"remote"`
-	Scheduled  string `yaml:"scheduled"`
+	Name              string `yaml:"name"`
+	Path              string `yaml:"path"` // App path, optional?
+	Entrypoint        string `yaml:"entrypoint"`
+	Domain            string `yaml:"domain"`
+	Username          string `yaml:"username"`
+	Password          string `yaml:"password"`
+	IndieAuthEndpoint string `yaml:"indieauth_endpoint"`
+	Proxy             string `yaml:"proxy"`
+	Remote            string `yaml:"remote"`
+	Scheduled         string `yaml:"scheduled"`
 
 	Config map[string]interface{} `yaml:"config"`
 }
@@ -110,6 +111,8 @@ type Config struct {
 	Docstore      *DocstoreConfig `yaml:"docstore"`
 	Replication   *Replication    `yaml:"replication"`
 	ReplicateFrom *ReplicateFrom  `yaml:"replicate_from"`
+
+	SecretKey string `yaml:"secret_key"`
 
 	// Items defined with the CLI flags
 	CheckMode     bool `yaml:"-"`

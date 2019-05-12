@@ -42,6 +42,39 @@ func setupDocStore(dc *docstore.DocStore) func(*lua.LState) int {
 				// FIXME(tsileo): return  true if index was created and add rebuild_sort_indexes(col)?
 				return 0
 			},
+			"setup_action": func(L *lua.LState) int {
+				col := L.ToString(1)
+				name := L.ToString(2)
+
+				action := L.ToString(3)
+
+				if err := dc.LuaSetupAction(col, name, action); err != nil {
+					panic(err)
+				}
+
+				return 0
+			},
+			"get_actions": func(L *lua.LState) int {
+				col := L.ToString(1)
+				actions := dc.LuaGetActions(col)
+				out := L.CreateTable(len(actions), 0)
+				for _, action := range actions {
+					out.Append(lua.LString(action))
+				}
+				L.Push(out)
+				return 1
+			},
+			"get_action": func(L *lua.LState) int {
+				col := L.ToString(1)
+				name := L.ToString(2)
+
+				action, err := dc.LuaGetAction(col, name)
+				if err != nil {
+					panic(err)
+				}
+				L.Push(action)
+				return 1
+			},
 			"rebuild_indexes": func(L *lua.LState) int {
 				col := L.ToString(1)
 				if err := dc.RebuildIndexes(col); err != nil {

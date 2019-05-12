@@ -137,6 +137,7 @@ type DocStore struct {
 	indexes map[string]map[string]Indexer
 	exts    map[string]map[string]map[string]interface{}
 	schemas map[string][]*LuaSchemaField
+	actions map[string]map[string]string
 
 	logger log.Logger
 }
@@ -202,6 +203,7 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 		indexes:       sortIndexes,
 		schemas:       map[string][]*LuaSchemaField{},
 		exts:          map[string]map[string]map[string]interface{}{},
+		actions:       map[string]map[string]string{},
 	}, nil
 }
 
@@ -215,6 +217,38 @@ func (docstore *DocStore) Close() error {
 		}
 	}
 	return nil
+}
+
+func (dc *DocStore) LuaGetActions(col string) []string {
+	out := []string{}
+
+	if colActions, ok := dc.actions[col]; ok {
+		for k, _ := range colActions {
+			out = append(out, k)
+		}
+	}
+
+	return out
+}
+
+func (dc *DocStore) LuaSetupAction(col, name, action string) error {
+	if _, ok := dc.actions[col]; !ok {
+		dc.actions[col] = map[string]string{}
+	}
+	if _, ok := dc.actions[col][name]; ok {
+		return nil
+	}
+	dc.actions[col][name] = action
+	return nil
+}
+
+func (dc *DocStore) LuaGetAction(col, name string) (lua.LString, error) {
+	if colActions, ok := dc.actions[col]; ok {
+		if dat, ok := colActions[name]; ok {
+			return lua.LString(dat), nil
+		}
+	}
+	return lua.LString(""), nil
 }
 
 func (dc *DocStore) LuaSetupSortIndex(col, name, field string) error {

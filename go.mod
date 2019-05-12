@@ -4,6 +4,7 @@ require (
 	a4.io/blobsfile v0.3.1
 	a4.io/gluapp v0.0.0-20190304211816-a08a6fc39f7c
 	a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f
+	a4.io/go/indieauth v0.0.0-20190512154206-e8eddd209761
 	a4.io/ssse v0.0.0-20181202155639-1949828a8689
 	bazil.org/fuse v0.0.0-20180421153158-65cc252bf669
 	github.com/aws/aws-sdk-go v1.18.4
@@ -25,12 +26,13 @@ require (
 	github.com/gorilla/context v1.1.1
 	github.com/gorilla/handlers v1.4.0
 	github.com/gorilla/mux v1.7.0
+	github.com/gorilla/sessions v1.1.3
 	github.com/hashicorp/golang-lru v0.5.1
 	github.com/inconshreveable/log15 v0.0.0-20180818164646-67afb5ed74ec
 	github.com/interpose/middleware v0.0.0-20150216143757-05ed56ed52fa // indirect
 	github.com/justinas/nosurf v0.0.0-20190118163749-6453469bdcc9 // indirect
+	github.com/klauspost/cpuid v1.2.1 // indirect
 	github.com/klauspost/reedsolomon v1.9.1 // indirect
-	github.com/kr/pty v1.1.4 // indirect
 	github.com/mattn/go-colorable v0.1.0 // indirect
 	github.com/mattn/go-isatty v0.0.4 // indirect
 	github.com/meatballhat/negroni-logrus v0.0.0-20170801195057-31067281800f // indirect
@@ -60,8 +62,7 @@ require (
 	github.com/yuin/gopher-lua v0.0.0-20190206043414-8bfc7677f583
 	github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
 	golang.org/x/crypto v0.0.0-20190313024323-a1f597ede03a
-	golang.org/x/net v0.0.0-20190313220215-9f648a60d977
-	golang.org/x/sync v0.0.0-20190227155943-e225da77a7e6 // indirect
+	golang.org/x/net v0.0.0-20190509222800-a4d6f7feada5
 	golang.org/x/sys v0.0.0-20190318195719-6c81ef8f67ca // indirect
 	google.golang.org/appengine v1.4.0 // indirect
 	gopkg.in/inconshreveable/log15.v2 v2.0.0-20180818164646-67afb5ed74ec

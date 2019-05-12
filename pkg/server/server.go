@@ -36,6 +36,7 @@ import (
 	"a4.io/blobstash/pkg/stash"
 	stashAPI "a4.io/blobstash/pkg/stash/api"
 	synctable "a4.io/blobstash/pkg/sync"
+	gcontext "github.com/gorilla/context"
 
 	"golang.org/x/crypto/acme/autocert"
 
@@ -310,6 +311,9 @@ func (s *Server) Serve() error {
 		defer logFile.Close()
 		h = handlers.CombinedLoggingHandler(logFile, h)
 	}
+
+	// ClearHandler from gorilla for the sessions
+	h = gcontext.ClearHandler(h)
 
 	go func() {
 		listen := config.DefaultListen

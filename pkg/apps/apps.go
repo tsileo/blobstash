@@ -14,6 +14,7 @@ import (
 
 	humanize "github.com/dustin/go-humanize"
 	"github.com/gorilla/mux"
+	"github.com/gorilla/sessions"
 	log "github.com/inconshreveable/log15"
 	"github.com/yuin/gopher-lua"
 	git "gopkg.in/src-d/go-git.v4"
@@ -36,6 +37,7 @@ import (
 	kvLua "a4.io/blobstash/pkg/kvstore/lua"
 	"a4.io/blobstash/pkg/stash/store"
 	"a4.io/gluapp"
+	"a4.io/go/indieauth"
 	"github.com/robfig/cron"
 )
 
@@ -54,6 +56,7 @@ type Apps struct {
 	hostWhitelister func(...string)
 	log             log.Logger
 	cron            *cron.Cron
+	cookieStore     *sessions.CookieStore
 	sync.Mutex
 }
 
@@ -83,6 +86,7 @@ type App struct {
 	config     map[string]interface{}
 	scheduled  string
 	auth       func(*http.Request) bool
+	ia         *indieauth.IndieAuth
 
 	proxyTarget *url.URL
 	proxy       *rhttputil.ReverseProxy
@@ -113,6 +117,15 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 
 	if appConf.Username != "" || appConf.Password != "" {
 		app.auth = httputil.BasicAuthFunc(appConf.Username, appConf.Password)
+	}
+	if appConf.IndieAuthEndpoint != "" {
+		ia, err := indieauth.New(apps.cookieStore, appConf.IndieAuthEndpoint)
+		if err != nil {
+			return nil, err
+		}
+		ia.RedirectPath = "/api/apps/" + app.name + "/indieauth-redirect"
+		app.auth = ia.Check
+		app.ia = ia
 	}
 
 	// If it's a remote app, clone the repo in a temp dir
@@ -210,8 +223,15 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 func (app *App) serve(ctx context.Context, p string, w http.ResponseWriter, req *http.Request) {
 	if app.auth != nil {
 		if !app.auth(req) {
-			w.Header().Set("WWW-Authenticate", fmt.Sprintf("Basic realm=\"BlobStash App %s\"", app.name))
-			w.WriteHeader(http.StatusUnauthorized)
+			// Handle IndieAuth
+			if app.ia != nil {
+				if err := app.ia.Redirect(w, req); err != nil {
+					panic(err)
+				}
+			} else {
+				w.Header().Set("WWW-Authenticate", fmt.Sprintf("Basic realm=\"BlobStash App %s\"", app.name))
+				w.WriteHeader(http.StatusUnauthorized)
+			}
 			return
 		}
 	}
@@ -243,6 +263,9 @@ func (app *App) serve(ctx context.Context, p string, w http.ResponseWriter, req 
 
 // New initializes the Apps manager
 func New(logger log.Logger, conf *config.Config, bs *blobstore.BlobStore, kvs store.KvStore, ft *filetree.FileTree, ds *docstore.DocStore, gs *gitserver.GitServer, chub *hub.Hub, hostWhitelister func(...string)) (*Apps, error) {
+	if conf.SecretKey == "" {
+		return nil, fmt.Errorf("missing secret_key in config")
+	}
 	// var err error
 	apps := &Apps{
 		apps:            map[string]*App{},
@@ -254,6 +277,7 @@ func New(logger log.Logger, conf *config.Config, bs *blobstore.BlobStore, kvs st
 		kvs:             kvs,
 		hub:             chub,
 		docstore:        ds,
+		cookieStore:     sessions.NewCookieStore([]byte(conf.SecretKey)),
 		cron:            cron.New(),
 		hostWhitelister: hostWhitelister,
 	}
@@ -286,6 +310,11 @@ func (apps *Apps) appHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	p := vars["path"]
+	// No auth yet, handle the IndieAuth redirect flow
+	if p == "indieauth-redirect" && app.ia != nil {
+		app.ia.RedirectHandler(w, req)
+		return
+	}
 	req.URL.Path = "/" + p
 	app.serve(context.TODO(), "/"+p, w, req)
 }
