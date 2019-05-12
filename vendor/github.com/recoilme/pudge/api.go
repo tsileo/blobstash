@@ -3,6 +3,7 @@ package pudge
 import (
 	"bytes"
 	"encoding/gob"
+	"log"
 	"os"
 )
 
@@ -127,39 +128,41 @@ func (db *Db) Close() error {
 	db.Lock()
 	defer db.Unlock()
 
-	if db.storemode == 2 {
-
+	if db.storemode == 2 && db.name != "" {
 		db.sort()
 		keys := make([][]byte, len(db.keys))
 
 		copy(keys, db.keys)
 
 		db.storemode = 0
-		//db.Unlock()
 		for _, k := range keys {
 			if val, ok := db.vals[string(k)]; ok {
 				writeKeyVal(db.fk, db.fv, k, val.Val, false, nil)
 			}
 		}
-		//db.Lock()
+	}
+	if db.fk != nil {
+		err := db.fk.Sync()
+		if err != nil {
+			return err
+		}
+		err = db.fk.Close()
+		if err != nil {
+			return err
+		}
+	}
+	if db.fv != nil {
+		err := db.fv.Sync()
+		if err != nil {
+			return err
+		}
+
+		err = db.fv.Close()
+		if err != nil {
+			return err
+		}
 	}
 
-	err := db.fk.Sync()
-	if err != nil {
-		return err
-	}
-	err = db.fv.Sync()
-	if err != nil {
-		return err
-	}
-	err = db.fk.Close()
-	if err != nil {
-		return err
-	}
-	err = db.fv.Close()
-	if err != nil {
-		return err
-	}
 	dbs.Lock()
 	delete(dbs.dbs, db.name)
 	dbs.Unlock()
@@ -188,6 +191,9 @@ func (db *Db) DeleteFile() error {
 
 // DeleteFile close db and delete file
 func DeleteFile(file string) error {
+	if file == "" {
+		return nil
+	}
 	dbs.Lock()
 	db, ok := dbs.dbs[file]
 	if ok {
@@ -316,21 +322,29 @@ func (db *Db) Keys(from interface{}, limit, offset int, asc bool) ([][]byte, err
 		excludeFrom = 1
 
 		k, err := KeyToBinary(from)
+		log.Println(bytes.Equal(k[len(k)-1:], []byte("*")))
 		if err != nil {
 			return arr, err
 		}
 		if len(k) > 1 && bytes.Equal(k[len(k)-1:], []byte("*")) {
-			prefix := make([]byte, len(k)-1)
-			copy(prefix, k)
-			return db.KeysByPrefix(prefix, limit, offset, asc)
+			byteOrStr := false
+			switch from.(type) {
+			case []byte:
+				byteOrStr = true
+			case string:
+				byteOrStr = true
+			}
+			if byteOrStr {
+				prefix := make([]byte, len(k)-1)
+				copy(prefix, k)
+				return db.KeysByPrefix(prefix, limit, offset, asc)
+			}
 		}
 	}
 	db.RLock()
 	defer db.RUnlock()
-
 	find, _ := db.findKey(from, asc)
 	start, end := checkInterval(find, limit, offset, excludeFrom, len(db.keys), asc)
-	//log.Println(from, find, start, end)
 	if start < 0 || start >= len(db.keys) {
 		return arr, nil
 	}

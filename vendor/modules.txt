@@ -1,6 +1,6 @@
 # a4.io/blobsfile v0.3.1
 a4.io/blobsfile
-# a4.io/gluapp v0.0.0-20190304211816-a08a6fc39f7c
+# a4.io/gluapp v0.0.0-20190414210200-12364ffbe87f
 a4.io/gluapp
 a4.io/gluapp/util
 # a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f
@@ -13,7 +13,7 @@ a4.io/ssse/pkg/client
 bazil.org/fuse
 bazil.org/fuse/fs
 bazil.org/fuse/fuseutil
-# github.com/aws/aws-sdk-go v1.18.4
+# github.com/aws/aws-sdk-go v1.19.28
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/service/s3
 github.com/aws/aws-sdk-go/aws/awserr
@@ -68,7 +68,7 @@ github.com/emirpasic/gods/lists/arraylist
 github.com/emirpasic/gods/trees
 github.com/emirpasic/gods/utils
 github.com/emirpasic/gods/lists
-# github.com/evanphx/json-patch v4.1.0+incompatible
+# github.com/evanphx/json-patch v4.2.0+incompatible
 github.com/evanphx/json-patch
 # github.com/go-martini/martini v0.0.0-20170121215854-22fa46961aab
 github.com/go-martini/martini
@@ -89,7 +89,7 @@ github.com/goods/httpbuf
 github.com/gorilla/context
 # github.com/gorilla/handlers v1.4.0
 github.com/gorilla/handlers
-# github.com/gorilla/mux v1.7.0
+# github.com/gorilla/mux v1.7.1
 github.com/gorilla/mux
 # github.com/gorilla/securecookie v1.1.1
 github.com/gorilla/securecookie
@@ -105,7 +105,7 @@ github.com/inconshreveable/log15/ext
 github.com/jbenet/go-context/io
 # github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af
 github.com/jmespath/go-jmespath
-# github.com/justinas/nosurf v0.0.0-20190118163749-6453469bdcc9
+# github.com/justinas/nosurf v0.0.0-20190416172904-05988550ea18
 github.com/justinas/nosurf
 # github.com/kevinburke/ssh_config v0.0.0-20180830205328-81db2a75821e
 github.com/kevinburke/ssh_config
@@ -113,11 +113,11 @@ github.com/kevinburke/ssh_config
 github.com/klauspost/cpuid
 # github.com/klauspost/reedsolomon v1.9.1
 github.com/klauspost/reedsolomon
-# github.com/konsorten/go-windows-terminal-sequences v1.0.1
+# github.com/konsorten/go-windows-terminal-sequences v1.0.2
 github.com/konsorten/go-windows-terminal-sequences
-# github.com/mattn/go-colorable v0.1.0
+# github.com/mattn/go-colorable v0.1.1
 github.com/mattn/go-colorable
-# github.com/mattn/go-isatty v0.0.4
+# github.com/mattn/go-isatty v0.0.7
 github.com/mattn/go-isatty
 # github.com/meatballhat/negroni-logrus v0.0.0-20170801195057-31067281800f
 github.com/meatballhat/negroni-logrus
@@ -133,29 +133,29 @@ github.com/pelletier/go-buffruneio
 github.com/peterhellberg/link
 # github.com/phyber/negroni-gzip v0.0.0-20180113114010-ef6356a5d029
 github.com/phyber/negroni-gzip/gzip
-# github.com/recoilme/pudge v1.0.1
+# github.com/recoilme/pudge v1.0.2
 github.com/recoilme/pudge
 # github.com/reiver/go-porterstemmer v1.0.1
 github.com/reiver/go-porterstemmer
 # github.com/restic/chunker v0.2.0
 github.com/restic/chunker
-# github.com/robfig/cron v0.0.0-20180505203441-b41be1df6967
+# github.com/robfig/cron v1.1.0
 github.com/robfig/cron
-# github.com/rwcarlsen/goexif v0.0.0-20190318171057-76e3344f7516
+# github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd
 github.com/rwcarlsen/goexif/exif
 github.com/rwcarlsen/goexif/tiff
 # github.com/ryanuber/go-glob v1.0.0
 github.com/ryanuber/go-glob
 # github.com/sergi/go-diff v1.0.0
 github.com/sergi/go-diff/diffmatchpatch
-# github.com/sirupsen/logrus v1.3.0
+# github.com/sirupsen/logrus v1.4.1
 github.com/sirupsen/logrus
 # github.com/src-d/gcfg v1.4.0
 github.com/src-d/gcfg
 github.com/src-d/gcfg/scanner
 github.com/src-d/gcfg/token
 github.com/src-d/gcfg/types
-# github.com/src-d/go-oniguruma v1.0.0
+# github.com/src-d/go-oniguruma v1.1.0
 github.com/src-d/go-oniguruma
 # github.com/syndtr/goleveldb v1.0.0
 github.com/syndtr/goleveldb/leveldb
@@ -176,7 +176,7 @@ github.com/toqueteos/trie
 github.com/unrolled/secure
 # github.com/urfave/negroni v1.0.0
 github.com/urfave/negroni
-# github.com/vmihailenco/msgpack v4.0.2+incompatible
+# github.com/vmihailenco/msgpack v4.0.4+incompatible
 github.com/vmihailenco/msgpack
 github.com/vmihailenco/msgpack/codes
 # github.com/xanzy/ssh-agent v0.2.1
@@ -190,7 +190,7 @@ github.com/yuin/gopher-lua/parse
 github.com/yuin/gopher-lua/pm
 # github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
 github.com/zpatrick/rbac
-# golang.org/x/crypto v0.0.0-20190313024323-a1f597ede03a
+# golang.org/x/crypto v0.0.0-20190510104115-cbcb75029529
 golang.org/x/crypto/scrypt
 golang.org/x/crypto/nacl/secretbox
 golang.org/x/crypto/blake2b
@@ -209,7 +209,6 @@ golang.org/x/crypto/cast5
 golang.org/x/crypto/openpgp/elgamal
 golang.org/x/crypto/ssh
 golang.org/x/crypto/ssh/knownhosts
-golang.org/x/crypto/ssh/terminal
 golang.org/x/crypto/ssh/agent
 golang.org/x/crypto/curve25519
 golang.org/x/crypto/ed25519
@@ -217,13 +216,19 @@ golang.org/x/crypto/internal/chacha20
 golang.org/x/crypto/ed25519/internal/edwards25519
 # golang.org/x/net v0.0.0-20190509222800-a4d6f7feada5
 golang.org/x/net/context
+golang.org/x/net/idna
 golang.org/x/net/html
 golang.org/x/net/html/atom
-# golang.org/x/sys v0.0.0-20190318195719-6c81ef8f67ca
+# golang.org/x/sys v0.0.0-20190509141414-a5b02f93d862
 golang.org/x/sys/cpu
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# google.golang.org/appengine v1.4.0
+# golang.org/x/text v0.3.2
+golang.org/x/text/secure/bidirule
+golang.org/x/text/unicode/bidi
+golang.org/x/text/unicode/norm
+golang.org/x/text/transform
+# google.golang.org/appengine v1.5.0
 google.golang.org/appengine/datastore
 google.golang.org/appengine
 google.golang.org/appengine/internal
@@ -235,7 +240,7 @@ google.golang.org/appengine/internal/log
 google.golang.org/appengine/internal/remote_api
 # gopkg.in/inconshreveable/log15.v2 v2.0.0-20180818164646-67afb5ed74ec
 gopkg.in/inconshreveable/log15.v2
-# gopkg.in/src-d/enry.v1 v1.7.2
+# gopkg.in/src-d/enry.v1 v1.7.3
 gopkg.in/src-d/enry.v1
 gopkg.in/src-d/enry.v1/data
 gopkg.in/src-d/enry.v1/internal/tokenizer
@@ -247,7 +252,7 @@ gopkg.in/src-d/go-billy.v4/osfs
 gopkg.in/src-d/go-billy.v4/util
 gopkg.in/src-d/go-billy.v4/helper/chroot
 gopkg.in/src-d/go-billy.v4/helper/polyfill
-# gopkg.in/src-d/go-git.v4 v4.10.0
+# gopkg.in/src-d/go-git.v4 v4.11.0
 gopkg.in/src-d/go-git.v4
 gopkg.in/src-d/go-git.v4/plumbing
 gopkg.in/src-d/go-git.v4/plumbing/object
