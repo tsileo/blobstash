@@ -1,4 +1,5 @@
 listen: ':8050'
+secret_key: 'not so secret'
 auth:
  - id: 'root'
    password: '123'
