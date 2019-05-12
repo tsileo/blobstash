@@ -229,12 +229,16 @@ func (app *App) serve(ctx context.Context, p string, w http.ResponseWriter, req 
 					panic(err)
 				}
 			} else {
+				// Basic auth
 				w.Header().Set("WWW-Authenticate", fmt.Sprintf("Basic realm=\"BlobStash App %s\"", app.name))
 				w.WriteHeader(http.StatusUnauthorized)
 			}
 			return
 		}
 	}
+
+	// Fake the Path for the App
+	req.URL.Path = "/" + p
 
 	// Clean the path and check there's no double dot
 	p = path.Clean(p)
@@ -315,7 +319,6 @@ func (apps *Apps) appHandler(w http.ResponseWriter, req *http.Request) {
 		app.ia.RedirectHandler(w, req)
 		return
 	}
-	req.URL.Path = "/" + p
 	app.serve(context.TODO(), "/"+p, w, req)
 }
 
