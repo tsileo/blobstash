@@ -226,6 +226,10 @@ func (app *App) serve(ctx context.Context, p string, w http.ResponseWriter, req 
 			// Handle IndieAuth
 			if app.ia != nil {
 				if err := app.ia.Redirect(w, req); err != nil {
+					if err == indieauth.ErrForbidden {
+						w.WriteHeader(http.StatusForbidden)
+						return
+					}
 					panic(err)
 				}
 			} else {
