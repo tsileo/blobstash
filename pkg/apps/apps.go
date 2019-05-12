@@ -238,7 +238,7 @@ func (app *App) serve(ctx context.Context, p string, w http.ResponseWriter, req 
 	}
 
 	// Fake the Path for the App
-	req.URL.Path = "/" + p
+	req.URL.Path = p
 
 	// Clean the path and check there's no double dot
 	p = path.Clean(p)
