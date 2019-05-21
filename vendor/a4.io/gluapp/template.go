@@ -7,20 +7,32 @@ import (
 
 	"a4.io/blobstash/pkg/apps/luautil"
 
-	"github.com/gomarkdown/markdown"
-	"github.com/gomarkdown/markdown/parser"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/renderer/html"
 	"github.com/yuin/gopher-lua"
 )
 
-var mdExtensions = parser.CommonExtensions | parser.HardLineBreak
+var mdc = goldmark.New(
+	goldmark.WithRendererOptions(
+		html.WithHardWraps(),
+		html.WithUnsafe(),
+	),
+)
 
 var funcs = template.FuncMap{
 	"markdownify": func(raw interface{}) template.HTML {
+		var buf bytes.Buffer
 		switch md := raw.(type) {
 		case string:
-			return template.HTML(markdown.ToHTML([]byte(md), parser.NewWithExtensions(mdExtensions), nil))
+			if err := mdc.Convert([]byte(md), &buf); err != nil {
+				panic(err)
+			}
+			return template.HTML(buf.String())
 		case lua.LString:
-			return template.HTML(markdown.ToHTML([]byte(string(md)), parser.NewWithExtensions(mdExtensions), nil))
+			if err := mdc.Convert([]byte(string(md)), &buf); err != nil {
+				panic(err)
+			}
+			return template.HTML(buf.String())
 		default:
 			panic("bad md type")
 		}

@@ -169,6 +169,82 @@ func setupState(L *lua.LState, conf *Config, w http.ResponseWriter, r *http.Requ
 	return lresp, nil
 }
 
+// SetupGlue setup the "glue"/std lib for use outside of gluapp
+func SetupGlue(L *lua.LState, conf *Config) error {
+	// Update the path if needed
+	if conf.Path != "" {
+		path := L.GetField(L.GetField(L.Get(lua.EnvironIndex), "package"), "path").(lua.LString)
+		path = lua.LString(conf.Path + "/?.lua;" + string(path))
+		L.SetField(L.GetField(L.Get(lua.EnvironIndex), "package"), "path", lua.LString(path))
+	}
+
+	// Setup `require2`
+	gluarequire2.NewRequire2Module(gluarequire2.NewRequireFromGitHub(nil)).SetGlobal(L)
+
+	// Setup shared Lua metatables
+	setupMetatable(L)
+
+	// FIXME(tsileo): move this in a separate module, along with the "path specific" (like read_yaml" into a separate module so BlobStash can use it as a "stdlib"
+	util.Setup(L, conf.Path)
+	L.SetGlobal("log", L.NewFunction(func(L *lua.LState) int {
+		var args []lua.LValue
+		for i := 1; i <= L.GetTop(); i++ {
+			item := L.Get(i)
+			// We don't want table to be displayed as "table: 0xc420272240"
+			if t, ok := item.(*lua.LTable); ok {
+				item = lua.LString(luautil.ToJSON(t))
+			}
+			args = append(args, item)
+		}
+
+		// Call `string.format`
+		if err := L.CallByParam(lua.P{
+			Fn:      lua.LValue(L.GetField(L.GetGlobal("string"), "format").(*lua.LFunction)),
+			NRet:    1,
+			Protect: true,
+		}, args...); err != nil {
+			panic(err)
+		}
+
+		// Get the result
+		logLine := string(L.Get(-1).(lua.LString))
+		L.Pop(1)
+
+		// Execute the hook
+		if conf.LogHook == nil {
+			fmt.Println(logLine)
+		} else {
+			if err := conf.LogHook(logLine); err != nil {
+				panic(err)
+			}
+		}
+
+		return 0
+	}))
+
+	// Setup other modules
+	L.PreloadModule("json", loadJSON)
+
+	client := conf.Client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	L.PreloadModule("http", setupHTTP(client, conf.Path))
+
+	L.PreloadModule("form", setupForm()) // must be executed after setupHTTP
+	L.PreloadModule("template", setupTemplate(filepath.Join(conf.Path, "templates")))
+	// TODO(tsileo): a read/write file module for the data/ directory???
+
+	// Setup additional modules provided by the user
+	if conf.SetupState != nil {
+		if err := conf.SetupState(L); err != nil {
+			return fmt.Errorf("SetupState failed: %v", err)
+		}
+	}
+
+	return nil
+}
+
 // Exec run the code as a Lua script
 func Exec(conf *Config, code string, w http.ResponseWriter, r *http.Request) error {
 	// TODO(tsileo): clean error, take L as argument

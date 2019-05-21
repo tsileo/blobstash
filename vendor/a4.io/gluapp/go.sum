@@ -35,8 +35,6 @@ github.com/go-martini/martini v0.0.0-20170121215854-22fa46961aab/go.mod h1:/P9AE
 github.com/go-stack/stack v1.8.0/go.mod h1:v0f6uXyyMGvRgIKkXu+yp6POWl0qKG85gN/melR3HDY=
 github.com/golang/protobuf v1.2.0/go.mod h1:6lQm79b+lXiMfvg/cZm0SGofjICqVBUtrP5yJMmIC1U=
 github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db/go.mod h1:/XxbfmMg8lxefKM7IXC3fBNl/7bRcc72aCRzEWrmP2Q=
-github.com/gomarkdown/markdown v0.0.0-20190222000725-ee6a7931a1e4 h1:vELsocEzlhM4lk2nhxolEaQrMp25u7/i9IX8s9uLads=
-github.com/gomarkdown/markdown v0.0.0-20190222000725-ee6a7931a1e4/go.mod h1:gmFANS06wAVmF0B9yi65QKsRmPQ97tze7FRLswua+OY=
 github.com/goods/httpbuf v0.0.0-20120503183857-5709e9bb814c/go.mod h1:cHMBumiwaaRxRQ6NT8sU3zQSkXbYaPjbBcXa8UgTzAE=
 github.com/google/go-cmp v0.2.0/go.mod h1:oXzfMopK8JAjlY9xF4vHSVASa0yLyX7SntLO5aqRK0M=
 github.com/gorilla/context v1.1.1/go.mod h1:kBGZzfjB9CEq2AlWe17Uuf7NDRt0dE0s8S51q0aT7Yg=
@@ -90,6 +88,8 @@ github.com/urfave/negroni v1.0.0/go.mod h1:Meg73S6kFm/4PpbYdq35yYWoCZ9mS/YSx+lKn
 github.com/vmihailenco/msgpack v4.0.1+incompatible/go.mod h1:fy3FlTQTDXWkZ7Bh6AcGMlsjHatGryHQYUTf1ShIgkk=
 github.com/xanzy/ssh-agent v0.2.0/go.mod h1:0NyE30eGUDliuLEHJgYte/zncp2zdTStcOnWhgSqHD8=
 github.com/xeonx/timeago v1.0.0-rc3/go.mod h1:qDLrYEFynLO7y5Ho7w3GwgtYgpy5UfhcXIIQvMKVDkA=
+github.com/yuin/goldmark v1.0.5 h1:FRQrY00hoGAECny+OwWVcgfkkJL1exPC/xNjUHszljE=
+github.com/yuin/goldmark v1.0.5/go.mod h1:GAOXQunDkMxip+WLt/Bb4n4TEwap/Bit20gguI0UhOE=
 github.com/yuin/gopher-lua v0.0.0-20181214045814-db9ae37725ec h1:vpF8Kxql6/3OvGH4y2SKtpN3WsB17mvJ8f8H1o2vucQ=
 github.com/yuin/gopher-lua v0.0.0-20181214045814-db9ae37725ec/go.mod h1:fFiAh+CowNFr0NK5VASokuwKwkbacRmHsVA7Yb1Tqac=
 github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28/go.mod h1:WBaExyQHBJO9SelgH0SNqmlwYKV62vfnHCX5lXii91c=
