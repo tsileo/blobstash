@@ -130,6 +130,7 @@ type DocStore struct {
 	// docIndex *index.HashIndexes
 
 	hooks         *LuaHooks
+	fdocs         *FDocs
 	storedQueries map[string]*storedQuery
 
 	locker *locker
@@ -190,6 +191,10 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 	if err != nil {
 		return nil, err
 	}
+	fdocs, err := newFDocs(conf, ft, blobStore)
+	if err != nil {
+		return nil, err
+	}
 
 	return &DocStore{
 		kvStore:       kvStore,
@@ -197,6 +202,7 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 		filetree:      ft,
 		storedQueries: storedQueries,
 		hooks:         hooks,
+		fdocs:         fdocs,
 		conf:          conf,
 		locker:        newLocker(),
 		logger:        logger,
@@ -919,6 +925,10 @@ QUERY:
 						pointers[k] = v
 					}
 				}
+				doc, err = docstore.fdocs.Do(doc)
+				if err != nil {
+					return nil, nil, stats, err
+				}
 				docs = append(docs, doc)
 				stats.NReturned++
 				stats.LastID = _id.String()
@@ -1441,6 +1451,10 @@ func (docstore *DocStore) FetchVersions(collection, sid string, start int64, lim
 		}
 		_id.SetVersion(kv.Version)
 		addSpecialFields(doc, _id)
+		doc, err = docstore.fdocs.Do(doc)
+		if err != nil {
+			return nil, nil, cursor, err
+		}
 
 		if fetchPointers {
 			docPointers, err := docstore.fetchPointers(doc)
@@ -1566,8 +1580,13 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 				}
 			}
 
+			// FIXME(tsileo): ETag should take _lua script output
 			w.Header().Set("ETag", _id.VersionString())
 			addSpecialFields(doc, _id)
+			doc, err = docstore.fdocs.Do(doc)
+			if err != nil {
+				panic(err)
+			}
 
 			if r.Method == "GET" {
 				httputil.MarshalAndWrite(r, w, map[string]interface{}{

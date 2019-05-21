@@ -24,6 +24,7 @@ import (
 	filetreeLua "a4.io/blobstash/pkg/filetree/lua"
 	"a4.io/blobstash/pkg/luascripts"
 	"a4.io/blobstash/pkg/stash/store"
+	"a4.io/gluapp"
 	"a4.io/gluapp/util"
 	"a4.io/gluarequire2"
 )
@@ -275,6 +276,52 @@ func NewMapReduceEngine() *MapReduceEngine {
 	}
 	state.SetGlobal("emit", state.NewFunction(mre.emit))
 	return mre
+}
+
+type FDocs struct {
+	L      *lua.LState
+	config *config.Config
+	sync.Mutex
+}
+
+func newFDocs(conf *config.Config, ft *filetree.FileTree, bs store.BlobStore) (*FDocs, error) {
+	fdocs := &FDocs{
+		config: conf,
+		L:      lua.NewState(),
+	}
+
+	// Load the "filetree" module
+	filetreeLua.Setup(fdocs.L, ft, bs)
+	// FIXME(tsileo): Setup the Glue "std" lib from gluapp with HTTP client,...
+	gluapp.SetupGlue(fdocs.L, &gluapp.Config{})
+
+	return fdocs, nil
+}
+
+func (f *FDocs) Do(doc map[string]interface{}) (map[string]interface{}, error) {
+	iscript, ok := doc["_function"]
+	if !ok {
+		return doc, nil
+	}
+	script, ok := iscript.(string)
+	if !ok || script == "" {
+		return doc, nil
+	}
+	h, err := NewLuaHook(f.L, script)
+	if err != nil {
+		return nil, err
+	}
+	newDoc, err := h.Execute(doc)
+	if err != nil {
+		return nil, err
+	}
+
+	return newDoc, nil
+}
+
+func (f *FDocs) Close() error {
+	f.L.Close()
+	return nil
 }
 
 type LuaHooks struct {
