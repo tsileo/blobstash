@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"html/template"
 	"path/filepath"
+	"strings"
 
 	"a4.io/blobstash/pkg/apps/luautil"
 
@@ -22,20 +23,11 @@ var mdc = goldmark.New(
 var funcs = template.FuncMap{
 	"markdownify": func(raw interface{}) template.HTML {
 		var buf bytes.Buffer
-		switch md := raw.(type) {
-		case string:
-			if err := mdc.Convert([]byte(md), &buf); err != nil {
-				panic(err)
-			}
-			return template.HTML(buf.String())
-		case lua.LString:
-			if err := mdc.Convert([]byte(string(md)), &buf); err != nil {
-				panic(err)
-			}
-			return template.HTML(buf.String())
-		default:
-			panic("bad md type")
+		md := raw.(string)
+		if err := mdc.Convert([]byte(strings.Replace(md, "\r\n", "\n", -1)), &buf); err != nil {
+			panic(err)
 		}
+		return template.HTML(buf.String())
 	},
 	"htmlify": func(i string) template.HTML {
 		return template.HTML(i)
