@@ -2,9 +2,11 @@ package gluapp
 
 import (
 	"bytes"
+	"fmt"
 	"html/template"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"a4.io/blobstash/pkg/apps/luautil"
 
@@ -31,6 +33,12 @@ var funcs = template.FuncMap{
 	},
 	"htmlify": func(i string) template.HTML {
 		return template.HTML(i)
+	},
+	"format_ts": func(ts float64, fmt string) string {
+		return time.Unix(int64(ts), 0).Format(fmt)
+	},
+	"format": func(v interface{}, f string) string {
+		return fmt.Sprintf(f, v)
 	},
 }
 

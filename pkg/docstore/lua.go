@@ -313,7 +313,8 @@ func (f *FDocs) Do(doc map[string]interface{}) (map[string]interface{}, error) {
 	}
 	newDoc, err := h.Execute(doc)
 	if err != nil {
-		return nil, err
+		doc["_function_error"] = err.Error()
+		return doc, nil
 	}
 
 	return newDoc, nil

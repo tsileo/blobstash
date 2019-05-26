@@ -2,12 +2,12 @@ module a4.io/blobstash
 
 require (
 	a4.io/blobsfile v0.3.1
-	a4.io/gluapp v0.0.0-20190522215957-eb728b17943e
+	a4.io/gluapp v0.0.0-20190526181800-8cd09f63b38b
 	a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f
 	a4.io/go/indieauth v1.0.0
 	a4.io/ssse v0.0.0-20181202155639-1949828a8689
 	bazil.org/fuse v0.0.0-20180421153158-65cc252bf669
-	github.com/aws/aws-sdk-go v1.19.36
+	github.com/aws/aws-sdk-go v1.19.38
 	github.com/blevesearch/segment v0.0.0-20160915185041-762005e7a34f
 	github.com/carbocation/handlers v0.0.0-20140528190747-c939c6d9ef31 // indirect
 	github.com/carbocation/interpose v0.0.0-20161206215253-723534742ba3
@@ -33,7 +33,7 @@ require (
 	github.com/interpose/middleware v0.0.0-20150216143757-05ed56ed52fa // indirect
 	github.com/justinas/nosurf v0.0.0-20190416172904-05988550ea18 // indirect
 	github.com/klauspost/cpuid v1.2.1 // indirect
-	github.com/klauspost/reedsolomon v1.9.1 // indirect
+	github.com/klauspost/reedsolomon v1.9.2 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
 	github.com/kr/pty v1.1.4 // indirect
 	github.com/mattn/go-colorable v0.1.1 // indirect
@@ -63,14 +63,14 @@ require (
 	github.com/vmihailenco/msgpack v4.0.4+incompatible
 	github.com/xanzy/ssh-agent v0.2.1 // indirect
 	github.com/xeonx/timeago v1.0.0-rc4
-	github.com/yuin/goldmark v1.0.5
+	github.com/yuin/goldmark v1.0.6
 	github.com/yuin/gopher-lua v0.0.0-20190514113301-1cd887cd7036
 	github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
 	golang.org/x/crypto v0.0.0-20190513172903-22d7a77e9e5f
 	golang.org/x/net v0.0.0-20190522155817-f3200d17e092
-	golang.org/x/sys v0.0.0-20190522044717-8097e1b27ff5 // indirect
+	golang.org/x/sys v0.0.0-20190526052359-791d8a0f4d09 // indirect
 	golang.org/x/text v0.3.2 // indirect
-	golang.org/x/tools v0.0.0-20190521203540-521d6ed310dd // indirect
+	golang.org/x/tools v0.0.0-20190525145741-7be61e1b0e51 // indirect
 	google.golang.org/appengine v1.5.0 // indirect
 	gopkg.in/inconshreveable/log15.v2 v2.0.0-20180818164646-67afb5ed74ec
 	gopkg.in/src-d/enry.v1 v1.7.3
