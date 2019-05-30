@@ -284,14 +284,14 @@ type FDocs struct {
 	sync.Mutex
 }
 
-func newFDocs(conf *config.Config, ft *filetree.FileTree, bs store.BlobStore) (*FDocs, error) {
+func newFDocs(conf *config.Config, ft *filetree.FileTree, bs store.BlobStore, kv store.KvStore) (*FDocs, error) {
 	fdocs := &FDocs{
 		config: conf,
 		L:      lua.NewState(),
 	}
 
 	// Load the "filetree" module
-	filetreeLua.Setup(fdocs.L, ft, bs)
+	filetreeLua.Setup(fdocs.L, ft, bs, kv)
 	// FIXME(tsileo): Setup the Glue "std" lib from gluapp with HTTP client,...
 	gluapp.SetupGlue(fdocs.L, &gluapp.Config{})
 
@@ -355,7 +355,7 @@ func setupCmd(cwd string) func(*lua.LState) int {
 	}
 }
 
-func newLuaHooks(conf *config.Config, ft *filetree.FileTree, bs store.BlobStore) (*LuaHooks, error) {
+func newLuaHooks(conf *config.Config, ft *filetree.FileTree, bs store.BlobStore, kv store.KvStore) (*LuaHooks, error) {
 	hooks := &LuaHooks{
 		config: conf,
 		L:      lua.NewState(),
@@ -363,7 +363,7 @@ func newLuaHooks(conf *config.Config, ft *filetree.FileTree, bs store.BlobStore)
 	}
 
 	// Load the "filetree" module
-	filetreeLua.Setup(hooks.L, ft, bs)
+	filetreeLua.Setup(hooks.L, ft, bs, kv)
 	// FIXME(tsileo): better CWD
 	util.Setup(hooks.L, "/tmp")
 	if c := conf.Docstore; c != nil {

@@ -187,11 +187,11 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 		logger.Debug("indexes setup", "indexes", fmt.Sprintf("%+v", sortIndexes))
 	}
 
-	hooks, err := newLuaHooks(conf, ft, blobStore)
+	hooks, err := newLuaHooks(conf, ft, blobStore, kvStore)
 	if err != nil {
 		return nil, err
 	}
-	fdocs, err := newFDocs(conf, ft, blobStore)
+	fdocs, err := newFDocs(conf, ft, blobStore, kvStore)
 	if err != nil {
 		return nil, err
 	}

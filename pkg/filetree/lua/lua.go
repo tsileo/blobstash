@@ -91,7 +91,7 @@ func convertNode(L *lua.LState, ft *filetree.FileTree, node *filetree.Node) *lua
 	return tbl
 }
 
-func setupFileTree(ft *filetree.FileTree, bs store.BlobStore) func(*lua.LState) int {
+func setupFileTree(ft *filetree.FileTree, bs store.BlobStore, kv store.KvStore) func(*lua.LState) int {
 	return func(L *lua.LState) int {
 		// register functions to the table
 		mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
@@ -147,6 +147,24 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore) func(*lua.LState) 
 				return 1
 
 			},
+			"fs_by_name_at": func(L *lua.LState) int {
+				fs, err := ft.FS(context.TODO(), L.ToString(1), filetree.FSKeyFmt, false, 0)
+				if err != nil {
+					panic(err)
+				}
+				node, _, _, err := fs.Path(context.TODO(), L.ToString(2), 1, false, 0)
+				if err != nil {
+					if err == blobsfile.ErrBlobNotFound {
+						L.Push(lua.LNil)
+						return 1
+					}
+
+					panic(err)
+				}
+				L.Push(convertNode(L, ft, node))
+				return 1
+
+			},
 			"fs": func(L *lua.LState) int {
 				fs := filetree.NewFS(L.ToString(1), ft)
 				node, _, _, err := fs.Path(context.TODO(), "/", 1, false, 0)
@@ -165,13 +183,21 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore) func(*lua.LState) 
 				if err != nil {
 					panic(err)
 				}
+				spath := ""
 				pathTable := L.CreateTable(len(path), 0)
 				for _, nodeInfo := range path {
+					if nodeInfo.Name != "_root" {
+						spath = spath + "/" + nodeInfo.Name
+					}
 					pathTable.Append(buildFSInfo(L, nodeInfo.Name, nodeInfo.Ref, ""))
+				}
+				if node.Name != "_root" {
+					spath = spath + "/" + node.Name
 				}
 				L.Push(convertNode(L, ft, node))
 				L.Push(pathTable)
-				return 2
+				L.Push(lua.LString(spath))
+				return 3
 			},
 			"put_file": func(L *lua.LState) int {
 				uploader := writer.NewUploader(filetree.NewBlobStoreCompat(bs, context.TODO()))
@@ -196,6 +222,43 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore) func(*lua.LState) 
 				L.Push(lua.LString(ref))
 				return 1
 			},
+			"put_file_at": func(L *lua.LState) int {
+				uploader := writer.NewUploader(filetree.NewBlobStoreCompat(bs, context.TODO()))
+				name := L.ToString(1)
+				contents := L.ToString(2)
+				var ref string
+				node, err := uploader.PutReader(name, strings.NewReader(contents), nil)
+				if err != nil {
+					panic(err)
+				}
+
+				ref = node.Hash
+				ctx := context.TODO()
+
+				fs, err := ft.FS(ctx, L.ToString(3), filetree.FSKeyFmt, false, 0)
+				if err != nil {
+					panic(err)
+				}
+
+				t := time.Now().Unix()
+				parentNode, _, _, err := fs.Path(ctx, L.ToString(4), 1, true, t)
+				if err != nil {
+					panic(err)
+				}
+				if parentNode.Type != rnode.Dir {
+					panic("only dir can be patched")
+				}
+
+				newParent, _, err := ft.AddChild(ctx, parentNode, node, filetree.FSKeyFmt, t)
+				if err != nil {
+					panic(err)
+				}
+
+				fmt.Printf("newParent=%+v\nnew file ref=%s\n", newParent, ref)
+				L.Push(lua.LString(newParent.Hash))
+				L.Push(lua.LString(ref))
+				return 2
+			},
 		})
 		// returns the module
 		L.Push(mod)
@@ -204,6 +267,6 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore) func(*lua.LState) 
 }
 
 // Setup loads the filetree Lua module
-func Setup(L *lua.LState, ft *filetree.FileTree, bs store.BlobStore) {
-	L.PreloadModule("filetree", setupFileTree(ft, bs))
+func Setup(L *lua.LState, ft *filetree.FileTree, bs store.BlobStore, kv store.KvStore) {
+	L.PreloadModule("filetree", setupFileTree(ft, bs, kv))
 }

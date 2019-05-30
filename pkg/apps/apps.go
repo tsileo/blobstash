@@ -199,7 +199,7 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 
 				docstore.SetLuaGlobals(L)
 				blobstoreLua.Setup(context.TODO(), L, apps.bs)
-				filetreeLua.Setup(L, apps.ft, apps.bs)
+				filetreeLua.Setup(L, apps.ft, apps.bs, apps.kvs)
 				docstoreLua.Setup(L, apps.docstore)
 				kvLua.Setup(L, apps.kvs, context.TODO())
 				gitserverLua.Setup(L, apps.gs)
