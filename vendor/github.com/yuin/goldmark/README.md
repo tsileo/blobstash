@@ -22,7 +22,7 @@ I need a markdown parser for Go that meets following conditions:
     - Github Flavored Markdown is widely used and it is based on CommonMark aside from whether CommonMark is good specification or not.
         - CommonMark is too complicated and hard to implement.
 - Well structured.
-    - AST based, and preserves source potision of nodes.
+    - AST based, and preserves source position of nodes.
 - Written in pure Go.
 
 [golang-commonmark](https://gitlab.com/golang-commonmark/markdown) may be a good choice, but it seems copy of the [markdown-it](https://github.com/markdown-it) .
@@ -33,7 +33,7 @@ Furthermore, its behavior differs with other implementations in some cases espec
 
 This behavior sometimes causes problems. If you migrate your markdown text to blackfriday based wikis from Github, many lists will immediately be broken.
 
-As mentioned above, CommonMark is too complicated and hard to implement, So Markdown parsers base on CommonMark barely exist.
+As mentioned above, CommonMark is too complicated and hard to implement, So Markdown parsers based on CommonMark barely exist.
 
 Features
 ----------------------
@@ -50,8 +50,24 @@ Features
   task lists, and definition lists.
 - **Depends only on standard libraries.**
 
+Installation
+----------------------
+```bash
+$ go get github.com/yuin/goldmark
+```
+
+
 Usage
 ----------------------
+Import packages:
+
+```
+import (
+	"bytes"
+	"github.com/yuin/goldmark"
+)
+```
+
 
 Convert Markdown documents with the CommonMark compliant mode:
 
@@ -62,9 +78,17 @@ if err := goldmark.Convert(source, &buf); err != nil {
 }
 ```
 
-Customize a parser and a renderer:
-
+Custom parser and renderer
+--------------------------
 ```go
+import (
+	"bytes"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/renderer/html"
+)
+
 md := goldmark.New(
           goldmark.WithExtensions(extension.GFM),
           goldmark.WithParserOptions(
@@ -130,7 +154,7 @@ Parser and Renderer options
 Currently only headings support attributes.
 
 **Attributes are being discussed in the 
-[CommonMark fourum](https://talk.commonmark.org/t/consistent-attribute-syntax/272). 
+[CommonMark forum](https://talk.commonmark.org/t/consistent-attribute-syntax/272). 
 This syntax possibly changes in the future.**
 
 

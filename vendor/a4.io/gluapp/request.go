@@ -1,6 +1,7 @@
 package gluapp
 
 import (
+	"bytes"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -172,6 +173,9 @@ func requestFile(L *lua.LState) int {
 	if request == nil {
 		return 1
 	}
+
+	// XXX the body is already consumed, we need to fake it
+	request.request.Body = ioutil.NopCloser(bytes.NewReader(request.body))
 
 	// 512MB file
 	request.request.ParseMultipartForm(512 << 20)
