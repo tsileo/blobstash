@@ -45,6 +45,10 @@ func NewSetextHeadingParser(opts ...HeadingOption) BlockParser {
 	return p
 }
 
+func (b *setextHeadingParser) Trigger() []byte {
+	return []byte{'-', '='}
+}
+
 func (b *setextHeadingParser) Open(parent ast.Node, reader text.Reader, pc Context) (ast.Node, State) {
 	last := pc.LastOpenedBlock().Node
 	if last == nil {
@@ -65,8 +69,8 @@ func (b *setextHeadingParser) Open(parent ast.Node, reader text.Reader, pc Conte
 	}
 	node := ast.NewHeading(level)
 	node.Lines().Append(segment)
-	pc.Set(temporaryParagraphKey, paragraph)
-	return node, NoChildren
+	pc.Set(temporaryParagraphKey, last)
+	return node, NoChildren | RequireParagraph
 }
 
 func (b *setextHeadingParser) Continue(node ast.Node, reader text.Reader, pc Context) State {
@@ -93,7 +97,10 @@ func (b *setextHeadingParser) Close(node ast.Node, reader text.Reader, pc Contex
 	} else {
 		heading.SetLines(tmp.Lines())
 		heading.SetBlankPreviousLines(tmp.HasBlankPreviousLines())
-		tmp.Parent().RemoveChild(tmp.Parent(), tmp)
+		tp := tmp.Parent()
+		if tp != nil {
+			tp.RemoveChild(tp, tmp)
+		}
 	}
 
 	if b.Attribute {

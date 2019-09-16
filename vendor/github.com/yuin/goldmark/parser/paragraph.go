@@ -16,6 +16,10 @@ func NewParagraphParser() BlockParser {
 	return defaultParagraphParser
 }
 
+func (b *paragraphParser) Trigger() []byte {
+	return nil
+}
+
 func (b *paragraphParser) Open(parent ast.Node, reader text.Reader, pc Context) (ast.Node, State) {
 	_, segment := reader.PeekLine()
 	segment = segment.TrimLeftSpace(reader.Source())
@@ -40,6 +44,11 @@ func (b *paragraphParser) Continue(node ast.Node, reader text.Reader, pc Context
 }
 
 func (b *paragraphParser) Close(node ast.Node, reader text.Reader, pc Context) {
+	parent := node.Parent()
+	if parent == nil {
+		// paragraph has been transformed
+		return
+	}
 	lines := node.Lines()
 	if lines.Len() != 0 {
 		// trim trailing spaces

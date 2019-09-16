@@ -20,12 +20,13 @@ var myHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 func main() {
     secureMiddleware := secure.New(secure.Options{
-        AllowedHosts:          []string{"example.com", "ssl.example.com"},
+        AllowedHosts:          []string{"example\\.com", ".*\\.example\\.com"},
+        AllowedHostsAreRegex:  true,
         HostsProxyHeaders:     []string{"X-Forwarded-Host"},
         SSLRedirect:           true,
         SSLHost:               "ssl.example.com",
         SSLProxyHeaders:       map[string]string{"X-Forwarded-Proto": "https"},
-        STSSeconds:            315360000,
+        STSSeconds:            31536000,
         STSIncludeSubdomains:  true,
         STSPreload:            true,
         FrameDeny:             true,
@@ -45,7 +46,7 @@ Be sure to include the Secure middleware as close to the top (beginning) as poss
 The above example will only allow requests with a host name of 'example.com', or 'ssl.example.com'. Also if the request is not HTTPS, it will be redirected to HTTPS with the host name of 'ssl.example.com'.
 Once those requirements are satisfied, it will add the following headers:
 ~~~ go
-Strict-Transport-Security: 315360000; includeSubdomains; preload
+Strict-Transport-Security: 31536000; includeSubdomains; preload
 X-Frame-Options: DENY
 X-Content-Type-Options: nosniff
 X-XSS-Protection: 1; mode=block
@@ -63,13 +64,14 @@ Secure comes with a variety of configuration options (Note: these are not the de
 // ...
 s := secure.New(secure.Options{
     AllowedHosts: []string{"ssl.example.com"}, // AllowedHosts is a list of fully qualified domain names that are allowed. Default is empty list, which allows any and all host names.
+    AllowedHostsAreRegex: false,  // AllowedHostsAreRegex determines, if the provided AllowedHosts slice contains valid regular expressions. Default is false.
     HostsProxyHeaders: []string{"X-Forwarded-Hosts"}, // HostsProxyHeaders is a set of header keys that may hold a proxied hostname value for the request.
     SSLRedirect: true, // If SSLRedirect is set to true, then only allow HTTPS requests. Default is false.
     SSLTemporaryRedirect: false, // If SSLTemporaryRedirect is true, the a 302 will be used while redirecting. Default is false (301).
     SSLHost: "ssl.example.com", // SSLHost is the host name that is used to redirect HTTP requests to HTTPS. Default is "", which indicates to use the same host.
     SSLHostFunc: nil, // SSLHostFunc is a function pointer, the return value of the function is the host name that has same functionality as `SSHost`. Default is nil. If SSLHostFunc is nil, the `SSLHost` option will be used.
     SSLProxyHeaders: map[string]string{"X-Forwarded-Proto": "https"}, // SSLProxyHeaders is set of header keys with associated values that would indicate a valid HTTPS request. Useful when using Nginx: `map[string]string{"X-Forwarded-Proto": "https"}`. Default is blank map.
-    STSSeconds: 315360000, // STSSeconds is the max-age of the Strict-Transport-Security header. Default is 0, which would NOT include the header.
+    STSSeconds: 31536000, // STSSeconds is the max-age of the Strict-Transport-Security header. Default is 0, which would NOT include the header.
     STSIncludeSubdomains: true, // If STSIncludeSubdomains is set to true, the `includeSubdomains` will be appended to the Strict-Transport-Security header. Default is false.
     STSPreload: true, // If STSPreload is set to true, the `preload` flag will be appended to the Strict-Transport-Security header. Default is false.
     ForceSTSHeader: false, // STS header is only included when the connection is HTTPS. If you want to force it to always be added, set to true. `IsDevelopment` still overrides this. Default is false.
@@ -99,6 +101,7 @@ s := secure.New()
 
 l := secure.New(secure.Options{
     AllowedHosts: []string,
+    AllowedHostsAreRegex: false,
     HostsProxyHeaders: []string,
     SSLRedirect: false,
     SSLTemporaryRedirect: false,

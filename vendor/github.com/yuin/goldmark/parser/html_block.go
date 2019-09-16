@@ -105,11 +105,15 @@ func NewHTMLBlockParser() BlockParser {
 	return defaultHtmlBlockParser
 }
 
+func (b *htmlBlockParser) Trigger() []byte {
+	return []byte{'<'}
+}
+
 func (b *htmlBlockParser) Open(parent ast.Node, reader text.Reader, pc Context) (ast.Node, State) {
 	var node *ast.HTMLBlock
 	line, segment := reader.PeekLine()
 	last := pc.LastOpenedBlock().Node
-	if pos := pc.BlockOffset(); line[pos] != '<' {
+	if pos := pc.BlockOffset(); pos < 0 || line[pos] != '<' {
 		return nil, NoChildren
 	}
 

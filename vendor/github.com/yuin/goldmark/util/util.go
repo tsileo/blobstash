@@ -79,37 +79,11 @@ func ReadWhile(source []byte, index [2]int, pred func(byte) bool) (int, bool) {
 // IsBlank returns true if the given string is all space characters.
 func IsBlank(bs []byte) bool {
 	for _, b := range bs {
-		if IsSpace(b) {
-			continue
+		if !IsSpace(b) {
+			return false
 		}
-		return false
 	}
 	return true
-}
-
-// DedentPosition dedents lines by the given width.
-func DedentPosition(bs []byte, width int) (pos, padding int) {
-	if width == 0 {
-		return
-	}
-	i := 0
-	l := len(bs)
-	w := 0
-	for ; i < l && w < width; i++ {
-		b := bs[i]
-		if b == ' ' {
-			w++
-		} else if b == '\t' {
-			w += 4
-		} else {
-			break
-		}
-	}
-	padding = w - width
-	if padding < 0 {
-		padding = 0
-	}
-	return i, padding
 }
 
 // VisualizeSpaces visualize invisible space characters.
@@ -137,22 +111,104 @@ func TabWidth(currentPos int) int {
 // width=2 is in the tab character. In this case, IndentPosition returns
 // (pos=1, padding=2)
 func IndentPosition(bs []byte, currentPos, width int) (pos, padding int) {
+	if width == 0 {
+		return 0, 0
+	}
 	w := 0
 	l := len(bs)
-	for i := 0; i < l; i++ {
-		b := bs[i]
-		if b == ' ' {
-			w++
-		} else if b == '\t' {
+	i := 0
+	hasTab := false
+	for ; i < l; i++ {
+		if bs[i] == '\t' {
 			w += TabWidth(currentPos + w)
+			hasTab = true
+		} else if bs[i] == ' ' {
+			w++
 		} else {
 			break
 		}
-		if w >= width {
-			return i + 1, w - width
+	}
+	if w >= width {
+		if !hasTab {
+			return width, 0
 		}
+		return i, w - width
 	}
 	return -1, -1
+}
+
+// IndentPositionPadding searches an indent position with the given width for the given line.
+// This function is mostly same as IndentPosition except this function
+// takes account into additional paddings.
+func IndentPositionPadding(bs []byte, currentPos, paddingv, width int) (pos, padding int) {
+	if width == 0 {
+		return 0, paddingv
+	}
+	w := 0
+	i := 0
+	l := len(bs)
+	for ; i < l; i++ {
+		if bs[i] == '\t' {
+			w += TabWidth(currentPos + w)
+		} else if bs[i] == ' ' {
+			w++
+		} else {
+			break
+		}
+	}
+	if w >= width {
+		return i - paddingv, w - width
+	}
+	return -1, -1
+}
+
+// DedentPosition dedents lines by the given width.
+func DedentPosition(bs []byte, currentPos, width int) (pos, padding int) {
+	if width == 0 {
+		return 0, 0
+	}
+	w := 0
+	l := len(bs)
+	i := 0
+	for ; i < l; i++ {
+		if bs[i] == '\t' {
+			w += TabWidth(currentPos + w)
+		} else if bs[i] == ' ' {
+			w++
+		} else {
+			break
+		}
+	}
+	if w >= width {
+		return i, w - width
+	}
+	return i, 0
+}
+
+// DedentPositionPadding dedents lines by the given width.
+// This function is mostly same as DedentPosition except this function
+// takes account into additional paddings.
+func DedentPositionPadding(bs []byte, currentPos, paddingv, width int) (pos, padding int) {
+	if width == 0 {
+		return 0, paddingv
+	}
+
+	w := 0
+	i := 0
+	l := len(bs)
+	for ; i < l; i++ {
+		if bs[i] == '\t' {
+			w += TabWidth(currentPos + w)
+		} else if bs[i] == ' ' {
+			w++
+		} else {
+			break
+		}
+	}
+	if w >= width {
+		return i - paddingv, w - width
+	}
+	return i - paddingv, 0
 }
 
 // IndentWidth calculate an indent width for the given line.
@@ -452,30 +508,32 @@ func ResolveNumericReferences(source []byte) []byte {
 			next := i + 1
 			if next < limit && source[next] == '#' {
 				nnext := next + 1
-				nc := source[nnext]
-				// code point like #x22;
-				if nnext < limit && nc == 'x' || nc == 'X' {
-					start := nnext + 1
-					i, ok = ReadWhile(source, [2]int{start, limit}, IsHexDecimal)
-					if ok && i < limit && source[i] == ';' {
-						v, _ := strconv.ParseUint(BytesToReadOnlyString(source[start:i]), 16, 32)
-						cob.Write(source[n:pos])
-						n = i + 1
-						runeSize := utf8.EncodeRune(buf, ToValidRune(rune(v)))
-						cob.Write(buf[:runeSize])
-						continue
-					}
-					// code point like #1234;
-				} else if nc >= '0' && nc <= '9' {
-					start := nnext
-					i, ok = ReadWhile(source, [2]int{start, limit}, IsNumeric)
-					if ok && i < limit && i-start < 8 && source[i] == ';' {
-						v, _ := strconv.ParseUint(BytesToReadOnlyString(source[start:i]), 0, 32)
-						cob.Write(source[n:pos])
-						n = i + 1
-						runeSize := utf8.EncodeRune(buf, ToValidRune(rune(v)))
-						cob.Write(buf[:runeSize])
-						continue
+				if nnext < limit {
+					nc := source[nnext]
+					// code point like #x22;
+					if nnext < limit && nc == 'x' || nc == 'X' {
+						start := nnext + 1
+						i, ok = ReadWhile(source, [2]int{start, limit}, IsHexDecimal)
+						if ok && i < limit && source[i] == ';' {
+							v, _ := strconv.ParseUint(BytesToReadOnlyString(source[start:i]), 16, 32)
+							cob.Write(source[n:pos])
+							n = i + 1
+							runeSize := utf8.EncodeRune(buf, ToValidRune(rune(v)))
+							cob.Write(buf[:runeSize])
+							continue
+						}
+						// code point like #1234;
+					} else if nc >= '0' && nc <= '9' {
+						start := nnext
+						i, ok = ReadWhile(source, [2]int{start, limit}, IsNumeric)
+						if ok && i < limit && i-start < 8 && source[i] == ';' {
+							v, _ := strconv.ParseUint(BytesToReadOnlyString(source[start:i]), 0, 32)
+							cob.Write(source[n:pos])
+							n = i + 1
+							runeSize := utf8.EncodeRune(buf, ToValidRune(rune(v)))
+							cob.Write(buf[:runeSize])
+							continue
+						}
 					}
 				}
 			}
@@ -567,181 +625,10 @@ func URLEscape(v []byte, resolveReference bool) []byte {
 		i += int(u8len)
 		n = i
 	}
-	if cob.IsCopied() {
+	if cob.IsCopied() && n < limit {
 		cob.Write(v[n:])
 	}
 	return cob.Bytes()
-}
-
-// FindAttributeIndiciesReverse searches attribute indicies from tail of the given
-// bytes and returns indicies.
-func FindAttributeIndiciesReverse(b []byte, canEscapeQuotes bool) [][4]int {
-	i := 0
-retry:
-	var result [][4]int
-	as := -1
-	for i < len(b) {
-		if IsEscapedPunctuation(b, i) {
-			i += 2
-			continue
-		}
-		if b[i] == '{' {
-			i++
-			as = i
-			break
-		}
-		i++
-	}
-	if as < 0 {
-		return nil
-	}
-	for as < len(b) {
-		ai, skip := FindAttributeIndex(b[as:], canEscapeQuotes)
-		if ai[0] < 0 {
-			break
-		}
-		i = as + ai[3]
-		if result == nil {
-			result = [][4]int{}
-		}
-		result = append(result, [4]int{as + ai[0], as + ai[1], as + ai[2], as + ai[3]})
-		as += ai[3] + skip
-	}
-	if b[as] == '}' && (as > len(b)-2 || IsBlank(b[as:])) {
-		return result
-	}
-	goto retry
-}
-
-// FindAttributeIndex searches
-//     - #id
-//     - .class
-//     - attr=value
-// in given bytes.
-// FindHTMLAttributeIndex returns an int array that elements are
-// [name_start, name_stop, value_start, value_stop].
-// value_start and value_stop does not include " or '.
-// If no attributes found, it returns ([4]int{-1, -1, -1, -1}, 0).
-func FindAttributeIndex(b []byte, canEscapeQuotes bool) ([4]int, int) {
-	result := [4]int{-1, -1, -1, -1}
-	i := 0
-	l := len(b)
-	for ; i < l && IsSpace(b[i]); i++ {
-	}
-	if i >= l {
-		return result, 0
-	}
-	c := b[i]
-	if c == '#' || c == '.' {
-		result[0] = i
-		i++
-		result[1] = i
-		result[2] = i
-		for ; i < l && !IsSpace(b[i]) && (!IsPunct(b[i]) || b[i] == '_' || b[i] == '-'); i++ {
-		}
-		result[3] = i
-		return result, 0
-	}
-	return FindHTMLAttributeIndex(b, canEscapeQuotes)
-}
-
-// FindHTMLAttributeIndex searches HTML attributes in given bytes.
-// FindHTMLAttributeIndex returns an int array that elements are
-// [name_start, name_stop, value_start, value_stop].
-// value_start and value_stop does not include " or '.
-// If no attributes found, it returns [4]int{-1, -1, -1, -1}.
-func FindHTMLAttributeIndex(b []byte, canEscapeQuotes bool) ([4]int, int) {
-	result := [4]int{-1, -1, -1, -1}
-	i := 0
-	l := len(b)
-	for ; i < l && IsSpace(b[i]); i++ {
-	}
-	if i >= l {
-		return result, 0
-	}
-	c := b[i]
-	if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-		c == '_' || c == ':') {
-		return result, 0
-	}
-	result[0] = i
-	for ; i < l; i++ {
-		c := b[i]
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-			(c >= '0' && c <= '9') ||
-			c == '_' || c == ':' || c == '.' || c == '-') {
-			break
-		}
-	}
-	result[1] = i
-	for ; i < l && IsSpace(b[i]); i++ {
-	}
-	if i >= l {
-		return [4]int{-1, -1, -1, -1}, 0
-	}
-	if b[i] != '=' {
-		return [4]int{-1, -1, -1, -1}, 0
-	}
-	i++
-	for ; i < l && IsSpace(b[i]); i++ {
-	}
-	if i >= l {
-		return [4]int{-1, -1, -1, -1}, 0
-	}
-	skip := 0
-	if b[i] == '"' {
-		i++
-		result[2] = i
-		if canEscapeQuotes {
-			pos := FindClosure(b[i:], '"', '"', false, false)
-			if pos < 0 {
-				return [4]int{-1, -1, -1, -1}, 0
-			}
-			result[3] = pos + i
-		} else {
-			for ; i < l && b[i] != '"'; i++ {
-			}
-			result[3] = i
-			if result[2] == result[3] || i == l && b[l-1] != '"' {
-				return [4]int{-1, -1, -1, -1}, 0
-			}
-		}
-		skip = 1
-	} else if b[i] == '\'' {
-		i++
-		result[2] = i
-		if canEscapeQuotes {
-			pos := FindClosure(b[i:], '\'', '\'', false, false)
-			if pos < 0 {
-				return [4]int{-1, -1, -1, -1}, 0
-			}
-			result[3] = pos + i
-		} else {
-			for ; i < l && b[i] != '\''; i++ {
-			}
-			result[3] = i
-			if result[2] == result[3] || i == l && b[l-1] != '\'' {
-				return [4]int{-1, -1, -1, -1}, 0
-			}
-		}
-		skip = 1
-	} else {
-		result[2] = i
-		for ; i < l; i++ {
-			c = b[i]
-			if c == '\\' || c == '"' || c == '\'' ||
-				c == '=' || c == '<' || c == '>' || c == '`' ||
-				c == '{' || c == '}' ||
-				(c >= 0 && c <= 0x20) {
-				break
-			}
-		}
-		result[3] = i
-		if result[2] == result[3] {
-			return [4]int{-1, -1, -1, -1}, 0
-		}
-	}
-	return result, skip
 }
 
 // FindURLIndex returns a stop index value if the given bytes seem an URL.

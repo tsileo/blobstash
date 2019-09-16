@@ -2,8 +2,9 @@ package ast
 
 import (
 	"fmt"
-	textm "github.com/yuin/goldmark/text"
 	"strings"
+
+	textm "github.com/yuin/goldmark/text"
 )
 
 // A BaseBlock struct implements the Node interface.
@@ -54,7 +55,7 @@ type Document struct {
 // KindDocument is a NodeKind of the Document node.
 var KindDocument = NewNodeKind("Document")
 
-// Dump impelements Node.Dump .
+// Dump implements Node.Dump .
 func (n *Document) Dump(source []byte, level int) {
 	DumpHelper(n, source, level, nil, nil)
 }
@@ -82,7 +83,7 @@ type TextBlock struct {
 	BaseBlock
 }
 
-// Dump impelements Node.Dump .
+// Dump implements Node.Dump .
 func (n *TextBlock) Dump(source []byte, level int) {
 	DumpHelper(n, source, level, nil, nil)
 }
@@ -107,7 +108,7 @@ type Paragraph struct {
 	BaseBlock
 }
 
-// Dump impelements Node.Dump .
+// Dump implements Node.Dump .
 func (n *Paragraph) Dump(source []byte, level int) {
 	DumpHelper(n, source, level, nil, nil)
 }
@@ -142,7 +143,7 @@ type Heading struct {
 	Level int
 }
 
-// Dump impelements Node.Dump .
+// Dump implements Node.Dump .
 func (n *Heading) Dump(source []byte, level int) {
 	m := map[string]string{
 		"Level": fmt.Sprintf("%d", n.Level),
@@ -166,27 +167,27 @@ func NewHeading(level int) *Heading {
 	}
 }
 
-// A ThemanticBreak struct represents a themantic break of Markdown text.
-type ThemanticBreak struct {
+// A ThematicBreak struct represents a thematic break of Markdown text.
+type ThematicBreak struct {
 	BaseBlock
 }
 
-// Dump impelements Node.Dump .
-func (n *ThemanticBreak) Dump(source []byte, level int) {
+// Dump implements Node.Dump .
+func (n *ThematicBreak) Dump(source []byte, level int) {
 	DumpHelper(n, source, level, nil, nil)
 }
 
-// KindThemanticBreak is a NodeKind of the ThemanticBreak node.
-var KindThemanticBreak = NewNodeKind("ThemanticBreak")
+// KindThematicBreak is a NodeKind of the ThematicBreak node.
+var KindThematicBreak = NewNodeKind("ThematicBreak")
 
 // Kind implements Node.Kind.
-func (n *ThemanticBreak) Kind() NodeKind {
-	return KindThemanticBreak
+func (n *ThematicBreak) Kind() NodeKind {
+	return KindThematicBreak
 }
 
-// NewThemanticBreak returns a new ThemanticBreak node.
-func NewThemanticBreak() *ThemanticBreak {
-	return &ThemanticBreak{
+// NewThematicBreak returns a new ThematicBreak node.
+func NewThematicBreak() *ThematicBreak {
+	return &ThematicBreak{
 		BaseBlock: BaseBlock{},
 	}
 }
@@ -201,7 +202,7 @@ func (n *CodeBlock) IsRaw() bool {
 	return true
 }
 
-// Dump impelements Node.Dump .
+// Dump implements Node.Dump .
 func (n *CodeBlock) Dump(source []byte, level int) {
 	DumpHelper(n, source, level, nil, nil)
 }
@@ -252,7 +253,7 @@ func (n *FencedCodeBlock) IsRaw() bool {
 	return true
 }
 
-// Dump impelements Node.Dump .
+// Dump implements Node.Dump .
 func (n *FencedCodeBlock) Dump(source []byte, level int) {
 	m := map[string]string{}
 	if n.Info != nil {
@@ -282,7 +283,7 @@ type Blockquote struct {
 	BaseBlock
 }
 
-// Dump impelements Node.Dump .
+// Dump implements Node.Dump .
 func (n *Blockquote) Dump(source []byte, level int) {
 	DumpHelper(n, source, level, nil, nil)
 }
@@ -369,7 +370,10 @@ type ListItem struct {
 
 // Dump implements Node.Dump.
 func (n *ListItem) Dump(source []byte, level int) {
-	DumpHelper(n, source, level, nil, nil)
+	m := map[string]string{
+		"Offset": fmt.Sprintf("%d", n.Offset),
+	}
+	DumpHelper(n, source, level, m, nil)
 }
 
 // KindListItem is a NodeKind of the ListItem node.
@@ -394,7 +398,7 @@ type HTMLBlockType int
 
 const (
 	// HTMLBlockType1 represents type 1 html blocks
-	HTMLBlockType1 = iota + 1
+	HTMLBlockType1 HTMLBlockType = iota + 1
 	// HTMLBlockType2 represents type 2 html blocks
 	HTMLBlockType2
 	// HTMLBlockType3 represents type 3 html blocks

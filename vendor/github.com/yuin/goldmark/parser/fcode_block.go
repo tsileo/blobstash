@@ -23,14 +23,19 @@ type fenceData struct {
 	char   byte
 	indent int
 	length int
+	node   ast.Node
 }
 
 var fencedCodeBlockInfoKey = NewContextKey()
 
+func (b *fencedCodeBlockParser) Trigger() []byte {
+	return []byte{'~', '`'}
+}
+
 func (b *fencedCodeBlockParser) Open(parent ast.Node, reader text.Reader, pc Context) (ast.Node, State) {
 	line, segment := reader.PeekLine()
 	pos := pc.BlockOffset()
-	if line[pos] != '`' && line[pos] != '~' {
+	if pos < 0 || (line[pos] != '`' && line[pos] != '~') {
 		return nil, NoChildren
 	}
 	findent := pos
@@ -48,7 +53,7 @@ func (b *fencedCodeBlockParser) Open(parent ast.Node, reader text.Reader, pc Con
 		left := util.TrimLeftSpaceLength(rest)
 		right := util.TrimRightSpaceLength(rest)
 		if left < len(rest)-right {
-			infoStart, infoStop := segment.Start+i+left, segment.Stop-right
+			infoStart, infoStop := segment.Start-segment.Padding+i+left, segment.Stop-right
 			value := rest[left : len(rest)-right]
 			if fenceChar == '`' && bytes.IndexByte(value, '`') > -1 {
 				return nil, NoChildren
@@ -57,8 +62,8 @@ func (b *fencedCodeBlockParser) Open(parent ast.Node, reader text.Reader, pc Con
 			}
 		}
 	}
-	pc.Set(fencedCodeBlockInfoKey, &fenceData{fenceChar, findent, oFenceLength})
 	node := ast.NewFencedCodeBlock(info)
+	pc.Set(fencedCodeBlockInfoKey, &fenceData{fenceChar, findent, oFenceLength, node})
 	return node, NoChildren
 
 }
@@ -77,8 +82,8 @@ func (b *fencedCodeBlockParser) Continue(node ast.Node, reader text.Reader, pc C
 			return Close
 		}
 	}
+	pos, padding := util.DedentPositionPadding(line, reader.LineOffset(), segment.Padding, fdata.indent)
 
-	pos, padding := util.DedentPosition(line, fdata.indent)
 	seg := text.NewSegmentPadding(segment.Start+pos, segment.Stop, padding)
 	node.Lines().Append(seg)
 	reader.AdvanceAndSetPadding(segment.Stop-segment.Start-pos-1, padding)
@@ -86,7 +91,10 @@ func (b *fencedCodeBlockParser) Continue(node ast.Node, reader text.Reader, pc C
 }
 
 func (b *fencedCodeBlockParser) Close(node ast.Node, reader text.Reader, pc Context) {
-	pc.Set(fencedCodeBlockInfoKey, nil)
+	fdata := pc.Get(fencedCodeBlockInfoKey).(*fenceData)
+	if fdata.node == node {
+		pc.Set(fencedCodeBlockInfoKey, nil)
+	}
 }
 
 func (b *fencedCodeBlockParser) CanInterruptParagraph() bool {

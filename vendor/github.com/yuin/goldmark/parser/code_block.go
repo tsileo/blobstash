@@ -18,10 +18,14 @@ func NewCodeBlockParser() BlockParser {
 	return defaultCodeBlockParser
 }
 
+func (b *codeBlockParser) Trigger() []byte {
+	return nil
+}
+
 func (b *codeBlockParser) Open(parent ast.Node, reader text.Reader, pc Context) (ast.Node, State) {
 	line, segment := reader.PeekLine()
 	pos, padding := util.IndentPosition(line, reader.LineOffset(), 4)
-	if pos < 0 {
+	if pos < 0 || util.IsBlank(line) {
 		return nil, NoChildren
 	}
 	node := ast.NewCodeBlock()
@@ -55,7 +59,7 @@ func (b *codeBlockParser) Close(node ast.Node, reader text.Reader, pc Context) {
 	lines := node.Lines()
 	length := lines.Len() - 1
 	source := reader.Source()
-	for {
+	for length >= 0 {
 		line := lines.At(length)
 		if util.IsBlank(line.Value(source)) {
 			length--

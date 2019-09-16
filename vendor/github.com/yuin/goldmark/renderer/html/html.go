@@ -172,7 +172,7 @@ func (r *Renderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 	reg.Register(ast.KindListItem, r.renderListItem)
 	reg.Register(ast.KindParagraph, r.renderParagraph)
 	reg.Register(ast.KindTextBlock, r.renderTextBlock)
-	reg.Register(ast.KindThemanticBreak, r.renderThemanticBreak)
+	reg.Register(ast.KindThematicBreak, r.renderThematicBreak)
 
 	// inlines
 
@@ -333,7 +333,7 @@ func (r *Renderer) renderTextBlock(w util.BufWriter, source []byte, n ast.Node, 
 	return ast.WalkContinue, nil
 }
 
-func (r *Renderer) renderThemanticBreak(w util.BufWriter, source []byte, n ast.Node, entering bool) (ast.WalkStatus, error) {
+func (r *Renderer) renderThematicBreak(w util.BufWriter, source []byte, n ast.Node, entering bool) (ast.WalkStatus, error) {
 	if !entering {
 		return ast.WalkContinue, nil
 	}
@@ -505,11 +505,12 @@ func (r *Renderer) renderString(w util.BufWriter, source []byte, node ast.Node, 
 
 // RenderAttributes renders given node's attributes.
 func (r *Renderer) RenderAttributes(w util.BufWriter, node ast.Node) {
+
 	for _, attr := range node.Attributes() {
 		_, _ = w.WriteString(" ")
 		_, _ = w.Write(attr.Name)
 		_, _ = w.WriteString(`="`)
-		_, _ = w.Write(util.EscapeHTML(attr.Value))
+		_, _ = w.Write(util.EscapeHTML(attr.Value.([]byte)))
 		_ = w.WriteByte('"')
 	}
 }
@@ -577,28 +578,30 @@ func (d *defaultWriter) Write(writer util.BufWriter, source []byte) {
 			next := i + 1
 			if next < limit && source[next] == '#' {
 				nnext := next + 1
-				nc := source[nnext]
-				// code point like #x22;
-				if nnext < limit && nc == 'x' || nc == 'X' {
-					start := nnext + 1
-					i, ok = util.ReadWhile(source, [2]int{start, limit}, util.IsHexDecimal)
-					if ok && i < limit && source[i] == ';' {
-						v, _ := strconv.ParseUint(util.BytesToReadOnlyString(source[start:i]), 16, 32)
-						d.RawWrite(writer, source[n:pos])
-						n = i + 1
-						escapeRune(writer, rune(v))
-						continue
-					}
-					// code point like #1234;
-				} else if nc >= '0' && nc <= '9' {
-					start := nnext
-					i, ok = util.ReadWhile(source, [2]int{start, limit}, util.IsNumeric)
-					if ok && i < limit && i-start < 8 && source[i] == ';' {
-						v, _ := strconv.ParseUint(util.BytesToReadOnlyString(source[start:i]), 0, 32)
-						d.RawWrite(writer, source[n:pos])
-						n = i + 1
-						escapeRune(writer, rune(v))
-						continue
+				if nnext < limit {
+					nc := source[nnext]
+					// code point like #x22;
+					if nnext < limit && nc == 'x' || nc == 'X' {
+						start := nnext + 1
+						i, ok = util.ReadWhile(source, [2]int{start, limit}, util.IsHexDecimal)
+						if ok && i < limit && source[i] == ';' {
+							v, _ := strconv.ParseUint(util.BytesToReadOnlyString(source[start:i]), 16, 32)
+							d.RawWrite(writer, source[n:pos])
+							n = i + 1
+							escapeRune(writer, rune(v))
+							continue
+						}
+						// code point like #1234;
+					} else if nc >= '0' && nc <= '9' {
+						start := nnext
+						i, ok = util.ReadWhile(source, [2]int{start, limit}, util.IsNumeric)
+						if ok && i < limit && i-start < 8 && source[i] == ';' {
+							v, _ := strconv.ParseUint(util.BytesToReadOnlyString(source[start:i]), 0, 32)
+							d.RawWrite(writer, source[n:pos])
+							n = i + 1
+							escapeRune(writer, rune(v))
+							continue
+						}
 					}
 				}
 			} else {

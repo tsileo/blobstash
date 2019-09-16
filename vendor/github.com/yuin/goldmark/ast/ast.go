@@ -4,9 +4,10 @@ package ast
 import (
 	"bytes"
 	"fmt"
+	"strings"
+
 	textm "github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
-	"strings"
 )
 
 // A NodeType indicates what type a node belongs to.
@@ -41,7 +42,7 @@ func NewNodeKind(name string) NodeKind {
 // An Attribute is an attribute of the Node
 type Attribute struct {
 	Name  []byte
-	Value []byte
+	Value interface{}
 }
 
 var attrNameIDS = []byte("#")
@@ -142,17 +143,20 @@ type Node interface {
 	IsRaw() bool
 
 	// SetAttribute sets the given value to the attributes.
-	SetAttribute(name, value []byte)
+	SetAttribute(name []byte, value interface{})
+
+	// SetAttributeString sets the given value to the attributes.
+	SetAttributeString(name string, value interface{})
 
 	// Attribute returns a (attribute value, true) if an attribute
 	// associated with the given name is found, otherwise
 	// (nil, false)
-	Attribute(name []byte) ([]byte, bool)
+	Attribute(name []byte) (interface{}, bool)
 
 	// AttributeString returns a (attribute value, true) if an attribute
 	// associated with the given name is found, otherwise
 	// (nil, false)
-	AttributeString(name string) ([]byte, bool)
+	AttributeString(name string) (interface{}, bool)
 
 	// Attributes returns a list of attributes.
 	// This may be a nil if there are no attributes.
@@ -326,7 +330,7 @@ func (n *BaseNode) Text(source []byte) []byte {
 }
 
 // SetAttribute implements Node.SetAttribute.
-func (n *BaseNode) SetAttribute(name, value []byte) {
+func (n *BaseNode) SetAttribute(name []byte, value interface{}) {
 	if n.attributes == nil {
 		n.attributes = make([]Attribute, 0, 10)
 	} else {
@@ -338,21 +342,16 @@ func (n *BaseNode) SetAttribute(name, value []byte) {
 			}
 		}
 	}
-	if len(name) == 1 {
-		if name[0] == '#' {
-			n.attributes = append(n.attributes, Attribute{attrNameID, value})
-			return
-		} else if name[0] == '.' {
-			n.attributes = append(n.attributes, Attribute{attrNameClass, value})
-			return
-		}
-	}
 	n.attributes = append(n.attributes, Attribute{name, value})
-	return
+}
+
+// SetAttributeString implements Node.SetAttributeString
+func (n *BaseNode) SetAttributeString(name string, value interface{}) {
+	n.SetAttribute(util.StringToReadOnlyBytes(name), value)
 }
 
 // Attribute implements Node.Attribute.
-func (n *BaseNode) Attribute(name []byte) ([]byte, bool) {
+func (n *BaseNode) Attribute(name []byte) (interface{}, bool) {
 	if n.attributes == nil {
 		return nil, false
 	}
@@ -365,7 +364,7 @@ func (n *BaseNode) Attribute(name []byte) ([]byte, bool) {
 }
 
 // AttributeString implements Node.AttributeString.
-func (n *BaseNode) AttributeString(s string) ([]byte, bool) {
+func (n *BaseNode) AttributeString(s string) (interface{}, bool) {
 	return n.Attribute(util.StringToReadOnlyBytes(s))
 }
 
@@ -396,10 +395,8 @@ func DumpHelper(v Node, source []byte, level int, kv map[string]string, cb func(
 		fmt.Printf("\"\n")
 		fmt.Printf("%sHasBlankPreviousLines: %v\n", indent2, v.HasBlankPreviousLines())
 	}
-	if kv != nil {
-		for name, value := range kv {
-			fmt.Printf("%s%s: %s\n", indent2, name, value)
-		}
+	for name, value := range kv {
+		fmt.Printf("%s%s: %s\n", indent2, name, value)
 	}
 	if cb != nil {
 		cb(level + 1)
@@ -415,7 +412,7 @@ type WalkStatus int
 
 const (
 	// WalkStop indicates no more walking needed.
-	WalkStop = iota + 1
+	WalkStop WalkStatus = iota + 1
 
 	// WalkSkipChildren indicates that Walk wont walk on children of current
 	// node.
@@ -431,7 +428,7 @@ const (
 // If Walker returns error, Walk function immediately stop walking.
 type Walker func(n Node, entering bool) (WalkStatus, error)
 
-// Walk walks a AST tree by the depth first search algorighm.
+// Walk walks a AST tree by the depth first search algorithm.
 func Walk(n Node, walker Walker) error {
 	status, err := walker(n, true)
 	if err != nil || status == WalkStop {
