@@ -126,7 +126,6 @@ func (r *Range) Next() ([]byte, []byte, error) {
 		if r.it.Next() {
 			return buildKv(r.it)
 		}
-
 	} else {
 		if r.first {
 			if r.it.Last() {

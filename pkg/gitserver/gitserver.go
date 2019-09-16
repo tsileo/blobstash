@@ -495,12 +495,12 @@ func (gs *GitServer) Namespaces() ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		if len(keys) == 0 || !strings.HasPrefix(keys[0].Key, prefix) {
+		if len(keys) == 0 || !strings.HasPrefix(keys[0].Key, "_git:") {
 			break
 		}
 		dat := strings.Split(strings.Split(keys[0].Key, "!")[0], ":")
 		namespaces = append(namespaces, dat[1])
-		prefix = vkv.NextKey(fmt.Sprintf("_git:%s:", dat[1]))
+		prefix = vkv.NextKey(fmt.Sprintf("_git:%s", dat[1]))
 	}
 
 	return namespaces, nil

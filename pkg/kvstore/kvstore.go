@@ -89,7 +89,7 @@ func (kv *KvStore) Get(ctx context.Context, key string, version int64) (*vkv.Key
 }
 
 func (kv *KvStore) Keys(ctx context.Context, start, end string, limit int) ([]*vkv.KeyValue, string, error) {
-	kv.log.Info("OP Keys", "start", "", "end", end)
+	kv.log.Info("OP Keys", "start", start, "end", end)
 	kvs, cursor, err := kv.vkv.Keys(start, end, limit)
 	return kvs, cursor, err
 }
