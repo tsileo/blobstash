@@ -230,6 +230,19 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore, kv store.KvStore) 
 				L.Push(lua.LString(ref))
 				return 1
 			},
+			"mkdir": func(L *lua.LState) int {
+				ctx := context.TODO()
+				fs, err := ft.FS(ctx, L.ToString(1), filetree.FSKeyFmt, false, 0)
+				if err != nil {
+					panic(err)
+				}
+				node, err := fs.Mkdir(ctx, filetree.FSKeyFmt, L.ToString(2), L.ToString(3))
+				if err != nil {
+					panic(err)
+				}
+				L.Push(lua.LString(node.Hash))
+				return 1
+			},
 			"put_file_at": func(L *lua.LState) int {
 				uploader := writer.NewUploader(filetree.NewBlobStoreCompat(bs, context.TODO()))
 				name := L.ToString(1)

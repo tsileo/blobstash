@@ -782,6 +782,32 @@ func (fs *FS) Root(ctx context.Context, create bool, mtime int64) (*Node, error)
 	return node, nil
 }
 
+func (fs *FS) Mkdir(ctx context.Context, prefixFmt, path, name string) (*Node, error) {
+	mtime := time.Now().Unix()
+	node, _, _, err := fs.Path(ctx, path, 1, true, mtime)
+	fmt.Printf("NODE=%+v\n", node)
+	if err != nil {
+		panic(err)
+	}
+	if node.Type != rnode.Dir {
+		panic("only dir can be patched")
+	}
+	// initialize an empty dir node
+	newChild := &rnode.RawNode{
+		Version: rnode.V1,
+		Type:    rnode.Dir,
+		Name:    name,
+		ModTime: mtime,
+	}
+
+	newNode, _, err := fs.ft.AddChild(ctx, node, newChild, prefixFmt, mtime)
+	if err != nil {
+		panic(err)
+	}
+
+	return newNode, nil
+}
+
 // Path returns the `Node` at the given path, create it if requested
 func (fs *FS) Path(ctx context.Context, path string, depth int, create bool, mtime int64) (*Node, *rnode.RawNode, bool, error) {
 	var found bool
