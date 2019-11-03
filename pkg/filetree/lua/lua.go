@@ -1,19 +1,23 @@
 package lua // import "a4.io/blobstash/pkg/filetree/lua"
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"strings"
 	"time"
 
 	humanize "github.com/dustin/go-humanize"
 	"github.com/yuin/gopher-lua"
+	"gopkg.in/src-d/go-git.v4/utils/binary"
 
 	"a4.io/blobsfile"
 	"a4.io/blobstash/pkg/filetree"
 	rnode "a4.io/blobstash/pkg/filetree/filetreeutil/node"
 	"a4.io/blobstash/pkg/filetree/imginfo"
+	"a4.io/blobstash/pkg/filetree/reader/filereader"
 	"a4.io/blobstash/pkg/filetree/vidinfo"
 	"a4.io/blobstash/pkg/filetree/writer"
 	"a4.io/blobstash/pkg/stash/store"
@@ -27,7 +31,7 @@ func buildFSInfo(L *lua.LState, name, ref, tgzURL string) *lua.LTable {
 	return tbl
 }
 
-func convertNode(L *lua.LState, ft *filetree.FileTree, node *filetree.Node) *lua.LTable {
+func convertNode(L *lua.LState, ft *filetree.FileTree, bs store.BlobStore, node *filetree.Node) *lua.LTable {
 	tbl := L.CreateTable(0, 32)
 	dlURL, embedURL, err := ft.GetSemiPrivateLink(node)
 	if err != nil {
@@ -65,6 +69,23 @@ func convertNode(L *lua.LState, ft *filetree.FileTree, node *filetree.Node) *lua
 	} else {
 		tbl.RawSetString("is_image", lua.LFalse)
 	}
+	if node.Size < 1024*1024 {
+		f := filereader.NewFile(context.TODO(), bs, node.Meta, nil)
+		defer f.Close()
+		contents, err := ioutil.ReadAll(f)
+		if err != nil {
+			panic(err)
+		}
+		isBinary, err := binary.IsBinary(bytes.NewReader(contents))
+		if err != nil {
+			panic(err)
+		}
+		if !isBinary {
+			tbl.RawSetString("contents", lua.LString(contents))
+		}
+	} else {
+		tbl.RawSetString("contents", lua.LString(""))
+	}
 	tbl.RawSetString("hash", lua.LString(node.Hash))
 	tbl.RawSetString("name", lua.LString(node.Name))
 	tbl.RawSetString("type", lua.LString(node.Type))
@@ -76,7 +97,7 @@ func convertNode(L *lua.LState, ft *filetree.FileTree, node *filetree.Node) *lua
 	tbl.RawSetString("size_human", lua.LString(humanize.Bytes(uint64(node.Size))))
 	childrenTbl := L.CreateTable(len(node.Children), 0)
 	for _, child := range node.Children {
-		childrenTbl.Append(convertNode(L, ft, child))
+		childrenTbl.Append(convertNode(L, ft, bs, child))
 	}
 	tbl.RawSetString("children", childrenTbl)
 	if node.Type == rnode.Dir {
@@ -100,7 +121,7 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore, kv store.KvStore) 
 				if err != nil {
 					panic(err)
 				}
-				L.Push(convertNode(L, ft, node))
+				L.Push(convertNode(L, ft, bs, node))
 				return 1
 			},
 			"iter_fs": func(L *lua.LState) int {
@@ -151,7 +172,7 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore, kv store.KvStore) 
 
 					panic(err)
 				}
-				L.Push(convertNode(L, ft, node))
+				L.Push(convertNode(L, ft, bs, node))
 				return 1
 
 			},
@@ -169,7 +190,7 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore, kv store.KvStore) 
 
 					panic(err)
 				}
-				L.Push(convertNode(L, ft, node))
+				L.Push(convertNode(L, ft, bs, node))
 				return 1
 
 			},
@@ -179,7 +200,7 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore, kv store.KvStore) 
 				if err != nil {
 					panic(err)
 				}
-				L.Push(convertNode(L, ft, node))
+				L.Push(convertNode(L, ft, bs, node))
 				return 1
 			},
 			"node": func(L *lua.LState) int {
@@ -202,7 +223,7 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore, kv store.KvStore) 
 				if node.Name != "_root" {
 					spath = spath + "/" + node.Name
 				}
-				L.Push(convertNode(L, ft, node))
+				L.Push(convertNode(L, ft, bs, node))
 				L.Push(pathTable)
 				L.Push(lua.LString(spath))
 				return 3
