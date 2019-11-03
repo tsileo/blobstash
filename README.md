@@ -1,9 +1,8 @@
 BlobStash
 =========
 
-[![Travis](https://d.a4.io/api/badges/tsileo/blobstash/status.svg)](https://d.a4.io/tsileo/blobstash)
-&nbsp; &nbsp;[![Go Report Card](https://goreportcard.com/badge/a4.io/blobstash)](https://goreportcard.com/report/a4.io/blobstash)
-&nbsp; &nbsp;[![License](http://img.shields.io/badge/license-MIT-red.svg?style=flat)](https://raw.githubusercontent.com/tsileo/blobstash/master/LICENSE)
+[![builds.sr.ht status](https://builds.sr.ht/~tsileo/blobstash.svg)](https://builds.sr.ht/~tsileo/blobstash?)
+&nbsp; &nbsp;[![License](http://img.shields.io/badge/license-MIT-red.svg?style=flat)](https://git.sr.ht/~tsileo/blobstash/tree/master/LICENSE)
 
 Your personal database.
 
