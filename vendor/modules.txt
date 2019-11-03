@@ -13,7 +13,7 @@ a4.io/ssse/pkg/client
 bazil.org/fuse
 bazil.org/fuse/fs
 bazil.org/fuse/fuseutil
-# github.com/aws/aws-sdk-go v1.23.21
+# github.com/aws/aws-sdk-go v1.25.25
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/awserr
 github.com/aws/aws-sdk-go/aws/awsutil
@@ -109,13 +109,13 @@ github.com/justinas/nosurf
 github.com/kevinburke/ssh_config
 # github.com/klauspost/cpuid v1.2.1
 github.com/klauspost/cpuid
-# github.com/klauspost/reedsolomon v1.9.2
+# github.com/klauspost/reedsolomon v1.9.3
 github.com/klauspost/reedsolomon
 # github.com/konsorten/go-windows-terminal-sequences v1.0.2
 github.com/konsorten/go-windows-terminal-sequences
-# github.com/mattn/go-colorable v0.1.2
+# github.com/mattn/go-colorable v0.1.4
 github.com/mattn/go-colorable
-# github.com/mattn/go-isatty v0.0.9
+# github.com/mattn/go-isatty v0.0.10
 github.com/mattn/go-isatty
 # github.com/meatballhat/negroni-logrus v0.0.0-20170801195057-31067281800f
 github.com/meatballhat/negroni-logrus
@@ -131,7 +131,7 @@ github.com/peterhellberg/link
 github.com/phyber/negroni-gzip/gzip
 # github.com/pkg/errors v0.8.1
 github.com/pkg/errors
-# github.com/recoilme/pudge v1.0.2
+# github.com/recoilme/pudge v1.0.3
 github.com/recoilme/pudge
 # github.com/reiver/go-porterstemmer v1.0.1
 github.com/reiver/go-porterstemmer
@@ -170,7 +170,7 @@ github.com/syndtr/goleveldb/leveldb/table
 github.com/syndtr/goleveldb/leveldb/util
 # github.com/toqueteos/trie v1.0.0
 github.com/toqueteos/trie
-# github.com/unrolled/secure v1.0.3
+# github.com/unrolled/secure v1.0.4
 github.com/unrolled/secure
 # github.com/urfave/negroni v1.0.0
 github.com/urfave/negroni
@@ -181,7 +181,7 @@ github.com/vmihailenco/msgpack/codes
 github.com/xanzy/ssh-agent
 # github.com/xeonx/timeago v1.0.0-rc4
 github.com/xeonx/timeago
-# github.com/yuin/goldmark v1.1.0
+# github.com/yuin/goldmark v1.1.1
 github.com/yuin/goldmark
 github.com/yuin/goldmark/ast
 github.com/yuin/goldmark/parser
@@ -196,7 +196,7 @@ github.com/yuin/gopher-lua/parse
 github.com/yuin/gopher-lua/pm
 # github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
 github.com/zpatrick/rbac
-# golang.org/x/crypto v0.0.0-20190911031432-227b76d455e7
+# golang.org/x/crypto v0.0.0-20191029031824-8986dd9e96cf
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
 golang.org/x/crypto/blake2b
@@ -220,14 +220,14 @@ golang.org/x/crypto/scrypt
 golang.org/x/crypto/ssh
 golang.org/x/crypto/ssh/agent
 golang.org/x/crypto/ssh/knownhosts
-# golang.org/x/net v0.0.0-20190912160710-24e19bdeb0f2
+# golang.org/x/net v0.0.0-20191101175033-0deb6923b6d9
 golang.org/x/net/context
 golang.org/x/net/html
 golang.org/x/net/html/atom
 golang.org/x/net/idna
 golang.org/x/net/internal/socks
 golang.org/x/net/proxy
-# golang.org/x/sys v0.0.0-20190913121621-c3b328c6e5a7
+# golang.org/x/sys v0.0.0-20191029155521-f43be2a4598c
 golang.org/x/sys/cpu
 golang.org/x/sys/unix
 golang.org/x/sys/windows
@@ -236,7 +236,7 @@ golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
-# google.golang.org/appengine v1.6.2
+# google.golang.org/appengine v1.6.5
 google.golang.org/appengine
 google.golang.org/appengine/datastore
 google.golang.org/appengine/datastore/internal/cloudkey
@@ -308,7 +308,7 @@ gopkg.in/src-d/go-git.v4/utils/merkletrie/noder
 gopkg.in/toqueteos/substring.v1
 # gopkg.in/warnings.v0 v0.1.2
 gopkg.in/warnings.v0
-# gopkg.in/yaml.v2 v2.2.2
+# gopkg.in/yaml.v2 v2.2.4
 gopkg.in/yaml.v2
 # willnorris.com/go/microformats v1.0.0
 willnorris.com/go/microformats

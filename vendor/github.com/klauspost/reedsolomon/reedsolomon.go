@@ -666,12 +666,16 @@ func (r reedSolomon) reconstruct(shards [][]byte, dataOnly bool) error {
 	// Quick check: are all of the shards present?  If so, there's
 	// nothing to do.
 	numberPresent := 0
+	dataPresent := 0
 	for i := 0; i < r.Shards; i++ {
 		if len(shards[i]) != 0 {
 			numberPresent++
+			if i < r.DataShards {
+				dataPresent++
+			}
 		}
 	}
-	if numberPresent == r.Shards {
+	if numberPresent == r.Shards || dataOnly && dataPresent == r.DataShards {
 		// Cool.  All of the shards data data.  We don't
 		// need to do anything.
 		return nil
@@ -818,17 +822,26 @@ func (r reedSolomon) Split(data []byte) ([][]byte, error) {
 	}
 
 	// Only allocate memory if necessary
+	var padding []byte
 	if len(data) < (r.Shards * perShard) {
-		// Pad data to r.Shards*perShard.
-		padding := make([]byte, (r.Shards*perShard)-len(data))
-		data = append(data, padding...)
+		// calculate maximum number of full shards in `data` slice
+		fullShards := len(data) / perShard
+		padding = make([]byte, r.Shards*perShard-perShard*fullShards)
+		copy(padding, data[perShard*fullShards:])
+		data = data[0 : perShard*fullShards]
 	}
 
 	// Split into equal-length shards.
 	dst := make([][]byte, r.Shards)
-	for i := range dst {
-		dst[i] = data[:perShard]
+	i := 0
+	for ; i < len(dst) && len(data) >= perShard; i++ {
+		dst[i] = data[:perShard:perShard]
 		data = data[perShard:]
+	}
+
+	for j := 0; i+j < len(dst); j++ {
+		dst[i+j] = padding[:perShard:perShard]
+		padding = padding[perShard:]
 	}
 
 	return dst, nil
