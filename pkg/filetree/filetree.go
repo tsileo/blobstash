@@ -130,7 +130,7 @@ type Snapshot struct {
 
 	Hostname  string `msgpack:"h" json:"hostname,omitempty"`
 	Message   string `msgpack:"m,omitempty" json:"message,omitempty"`
-	UserAgent string `msgpack:"ua,omitempty" json:"user_agent",omitempty"`
+	UserAgent string `msgpack:"ua,omitempty" json:"user_agent,omitempty"`
 }
 
 type FS struct {
@@ -301,6 +301,7 @@ func (ft *FileTree) Register(r *mux.Router, root *mux.Router, basicAuth func(htt
 	r.Handle("/fs", basicAuth(http.HandlerFunc(ft.fsRootHandler())))
 	r.Handle("/fs/{type}/{name}/_tree_blobs", basicAuth(http.HandlerFunc(ft.treeBlobsHandler())))
 	r.Handle("/fs/{type}/{name}/_tgz", basicAuth(http.HandlerFunc(ft.tgzHandler())))
+	r.Handle("/fs/{type}/{name}/_create", basicAuth(http.HandlerFunc(ft.fsCreateHandler())))
 	r.Handle("/fs/{type}/{name}/", basicAuth(http.HandlerFunc(ft.fsHandler())))
 	r.Handle("/fs/{type}/{name}/{path:.+}", basicAuth(http.HandlerFunc(ft.fsHandler())))
 	// r.Handle("/fs", http.HandlerFunc(ft.fsHandler()))
@@ -1488,6 +1489,59 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+	}
+}
+
+func (ft *FileTree) CreateFS(ctx context.Context, fsName, prefixFmt string) (*Node, error) {
+	fs, err := ft.FS(ctx, fsName, prefixFmt, true, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	node, err := fs.Root(ctx, true, time.Now().Unix())
+	if err != nil {
+		return nil, err
+	}
+	newRef, data := node.Meta.Encode()
+	node.Hash = newRef
+	node.Meta.Hash = newRef
+	if _, err := ft.blobStore.Put(ctx, &blob.Blob{Hash: newRef, Data: data}); err != nil {
+		return nil, err
+	}
+
+	if _, _, err := ft.Update(ctx, node, node.Meta, prefixFmt, true); err != nil {
+		return nil, err
+	}
+	return node, nil
+}
+
+func (ft *FileTree) fsCreateHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+		ctx := ctxutil.WithFileTreeHostname(r.Context(), r.Header.Get(ctxutil.FileTreeHostnameHeader))
+		ctx = ctxutil.WithNamespace(ctx, r.Header.Get(ctxutil.NamespaceHeader))
+
+		// FIXME(tsileo): handle mtime in the context too, and make it optional
+
+		vars := mux.Vars(r)
+		fsName := vars["name"]
+		refType := vars["type"]
+		if refType != "fs" {
+			panic("bad ref type")
+		}
+		prefixFmt := FSKeyFmt
+		if p := r.URL.Query().Get("prefix"); p != "" {
+			prefixFmt = p + ":%s"
+		}
+		node, err := ft.CreateFS(ctx, fsName, prefixFmt)
+		if err != nil {
+			panic(err)
+		}
+		httputil.MarshalAndWrite(r, w, node)
 	}
 }
 

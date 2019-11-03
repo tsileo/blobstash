@@ -95,6 +95,14 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore, kv store.KvStore) 
 	return func(L *lua.LState) int {
 		// register functions to the table
 		mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
+			"create_fs": func(L *lua.LState) int {
+				node, err := ft.CreateFS(context.TODO(), L.ToString(1), filetree.FSKeyFmt)
+				if err != nil {
+					panic(err)
+				}
+				L.Push(convertNode(L, ft, node))
+				return 1
+			},
 			"iter_fs": func(L *lua.LState) int {
 				it, err := ft.IterFS(context.TODO(), "")
 				if err != nil {
