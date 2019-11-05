@@ -2,7 +2,6 @@ package queue
 
 import (
 	"testing"
-	"time"
 )
 
 func check(e error) {
@@ -25,10 +24,14 @@ func TestQueue(t *testing.T) {
 	item2 := &Item{"ok2"}
 	_, err = q.Enqueue(item1)
 	check(err)
-	// FIXME test InstantDequeue
-	time.Sleep(time.Second)
 	_, err = q.Enqueue(item2)
 	check(err)
+
+	cnt, err := q.Size()
+	check(err)
+	if cnt != 2 {
+		t.Errorf("2 items should queued, got %d", cnt)
+	}
 
 	deq := &Item{}
 	ok, deqFunc, err := q.Dequeue(deq)

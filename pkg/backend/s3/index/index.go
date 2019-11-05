@@ -4,19 +4,19 @@ import (
 	"encoding/hex"
 	"sync"
 
-	"github.com/recoilme/pudge"
+	"a4.io/blobstash/pkg/rangedb"
 )
 
 // Queue is a FIFO queue,
 type Index struct {
-	db   *pudge.Db
+	db   *rangedb.RangeDB
 	path string
 	sync.Mutex
 }
 
 // New creates a new database.
 func New(path string) (*Index, error) {
-	kvdb, err := pudge.Open(path, nil)
+	kvdb, err := rangedb.New(path)
 	if err != nil {
 		return nil, err
 	}
@@ -29,7 +29,7 @@ func New(path string) (*Index, error) {
 
 // Remove the underlying db file.
 func (i *Index) Remove() error {
-	return i.db.DeleteFile()
+	return i.db.Destroy()
 }
 
 // Close the underlying db file.
@@ -58,11 +58,14 @@ func (i *Index) Exists(hash string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	exists, err := i.db.Has(bhash)
+	exists, err := i.db.Get(bhash)
 	if err != nil {
 		return false, err
 	}
-	return exists, nil
+	if exists != nil {
+		return true, nil
+	}
+	return false, nil
 }
 
 func (i *Index) Get(hash string) (string, error) {
@@ -72,8 +75,8 @@ func (i *Index) Get(hash string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var v []byte
-	if err := i.db.Get(bhash, &v); err != nil {
+	v, err := i.db.Get(bhash)
+	if err != nil {
 		return "", err
 	}
 	if v != nil {

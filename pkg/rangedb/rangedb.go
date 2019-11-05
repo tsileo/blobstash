@@ -44,6 +44,10 @@ func (db *RangeDB) Set(k, v []byte) error {
 	return db.db.Put(k, v, nil)
 }
 
+func (db *RangeDB) Delete(k []byte) error {
+	return db.db.Delete(k, nil)
+}
+
 func (db *RangeDB) Get(k []byte) ([]byte, error) {
 	v, err := db.db.Get(k, nil)
 	if err != nil {
