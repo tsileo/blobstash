@@ -13,7 +13,7 @@ a4.io/ssse/pkg/client
 bazil.org/fuse
 bazil.org/fuse/fs
 bazil.org/fuse/fuseutil
-# github.com/aws/aws-sdk-go v1.25.25
+# github.com/aws/aws-sdk-go v1.25.27
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/awserr
 github.com/aws/aws-sdk-go/aws/awsutil
@@ -103,7 +103,7 @@ github.com/inconshreveable/log15/ext
 github.com/jbenet/go-context/io
 # github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af
 github.com/jmespath/go-jmespath
-# github.com/justinas/nosurf v0.0.0-20190416172904-05988550ea18
+# github.com/justinas/nosurf v1.1.0
 github.com/justinas/nosurf
 # github.com/kevinburke/ssh_config v0.0.0-20190725054713-01f96b0aa0cd
 github.com/kevinburke/ssh_config
@@ -131,8 +131,6 @@ github.com/peterhellberg/link
 github.com/phyber/negroni-gzip/gzip
 # github.com/pkg/errors v0.8.1
 github.com/pkg/errors
-# github.com/recoilme/pudge v1.0.3
-github.com/recoilme/pudge
 # github.com/reiver/go-porterstemmer v1.0.1
 github.com/reiver/go-porterstemmer
 # github.com/restic/chunker v0.2.0
@@ -196,7 +194,7 @@ github.com/yuin/gopher-lua/parse
 github.com/yuin/gopher-lua/pm
 # github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
 github.com/zpatrick/rbac
-# golang.org/x/crypto v0.0.0-20191029031824-8986dd9e96cf
+# golang.org/x/crypto v0.0.0-20191105034135-c7e5f84aec59
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
 golang.org/x/crypto/blake2b
@@ -220,14 +218,14 @@ golang.org/x/crypto/scrypt
 golang.org/x/crypto/ssh
 golang.org/x/crypto/ssh/agent
 golang.org/x/crypto/ssh/knownhosts
-# golang.org/x/net v0.0.0-20191101175033-0deb6923b6d9
+# golang.org/x/net v0.0.0-20191105084925-a882066a44e0
 golang.org/x/net/context
 golang.org/x/net/html
 golang.org/x/net/html/atom
 golang.org/x/net/idna
 golang.org/x/net/internal/socks
 golang.org/x/net/proxy
-# golang.org/x/sys v0.0.0-20191029155521-f43be2a4598c
+# golang.org/x/sys v0.0.0-20191105142833-ac3223d80179
 golang.org/x/sys/cpu
 golang.org/x/sys/unix
 golang.org/x/sys/windows
@@ -308,7 +306,7 @@ gopkg.in/src-d/go-git.v4/utils/merkletrie/noder
 gopkg.in/toqueteos/substring.v1
 # gopkg.in/warnings.v0 v0.1.2
 gopkg.in/warnings.v0
-# gopkg.in/yaml.v2 v2.2.4
+# gopkg.in/yaml.v2 v2.2.5
 gopkg.in/yaml.v2
 # willnorris.com/go/microformats v1.0.0
 willnorris.com/go/microformats
