@@ -248,6 +248,7 @@ type BlobsFiles struct {
 type Blob struct {
 	Hash string
 	Size int
+	N    int
 }
 
 // New intializes a new BlobsFileBackend.
@@ -304,6 +305,14 @@ func (backend *BlobsFiles) getConfirmation(msg string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func (backend *BlobsFiles) SealedPacks() []string {
+	packs := []string{}
+	for i := 0; i < backend.n-1; i++ {
+		packs = append(packs, backend.filename(i))
+	}
+	return packs
 }
 
 func (backend *BlobsFiles) iterOpenFiles() (files []*os.File) {
@@ -1446,6 +1455,7 @@ func (backend *BlobsFiles) Enumerate(blobs chan<- *Blob, start, end string, limi
 		blobs <- &Blob{
 			Hash: hash,
 			Size: blobPos.blobSize,
+			N:    blobPos.n,
 		}
 
 		i++
@@ -1491,6 +1501,7 @@ func (backend *BlobsFiles) EnumeratePrefix(blobs chan<- *Blob, prefix string, li
 		blobs <- &Blob{
 			Hash: hash,
 			Size: blobPos.blobSize,
+			N:    blobPos.n,
 		}
 
 		i++
