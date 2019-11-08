@@ -1,8 +1,0 @@
-language: go
-
-go:
-  - 1.11
-
-go_import_path: a4.io/blobsfile
-script:
- - go test -v -bench=. .

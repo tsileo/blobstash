@@ -193,6 +193,8 @@ type Opts struct {
 	// When trying to self-heal in case of recovery, some step need to be performed by the user
 	AskConfirmationFunc func(msg string) bool
 
+	BlobsFilesSealedFunc func(path string)
+
 	// Not implemented yet, will allow to provide repaired data in case of hard failure
 	// RepairBlobFunc func(hash string) ([]byte, error)
 }
@@ -231,8 +233,9 @@ type BlobsFiles struct {
 	lastErr      error
 	lastErrMutex sync.Mutex // mutex for guarding the lastErr
 
-	logFunc             func(string)
-	askConfirmationFunc func(string) bool
+	logFunc              func(string)
+	askConfirmationFunc  func(string) bool
+	blobsFilesSealedFunc func(string)
 
 	// Reed-solomon encoder for the parity blobs
 	rse reedsolomon.Encoder
@@ -272,14 +275,15 @@ func New(opts *Opts) (*BlobsFiles, error) {
 		return nil, err
 	}
 	backend := &BlobsFiles{
-		directory:        dir,
-		compression:      opts.Compression,
-		index:            index,
-		files:            make(map[int]*os.File),
-		maxBlobsFileSize: opts.BlobsFileSize,
-		rse:              enc,
-		reindexMode:      reindex,
-		logFunc:          opts.LogFunc,
+		directory:            dir,
+		compression:          opts.Compression,
+		index:                index,
+		files:                make(map[int]*os.File),
+		maxBlobsFileSize:     opts.BlobsFileSize,
+		blobsFilesSealedFunc: opts.BlobsFilesSealedFunc,
+		rse:                  enc,
+		reindexMode:          reindex,
+		logFunc:              opts.LogFunc,
 	}
 	if err := backend.load(); err != nil {
 		panic(fmt.Errorf("error loading %T: %v", backend, err))
@@ -1187,12 +1191,15 @@ func (backend *BlobsFiles) Put(hash string, data []byte) (err error) {
 		newBlobsFileNeeded = true
 
 		// This goroutine will write the parity blobs and close the file
-		go func(f *os.File, size int) {
+		go func(f *os.File, size int, n int) {
 			// Write some parity blobs at the end of the blobsfile using Reed-Solomon erasure coding
 			if err := backend.writeParityBlobs(f, size); err != nil {
 				backend.setLastError(err)
 			}
-		}(f, int(backend.size))
+			if backend.blobsFilesSealedFunc != nil {
+				backend.blobsFilesSealedFunc(backend.filename(n))
+			}
+		}(f, int(backend.size), backend.n)
 	}
 
 	if newBlobsFileNeeded {

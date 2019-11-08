@@ -1,8 +1,7 @@
 # BlobsFile
 
-[![Build Status](https://travis-ci.org/tsileo/blobsfile.svg?branch=master)](https://travis-ci.org/tsileo/blobsfile)
+[![builds.sr.ht status](https://builds.sr.ht/~tsileo/blobsfile.svg)](https://builds.sr.ht/~tsileo/blobsfile?)
 &nbsp; &nbsp;[![Godoc Reference](https://godoc.org/a4.io/blobsfile?status.svg)](https://godoc.org/a4.io/blobsfile)
-&nbsp; &nbsp;[![Go Report Card](https://goreportcard.com/badge/a4.io/blobsfile)](https://goreportcard.com/report/a4.io/blobsfile)
 
 *BlobsFile* is an append-only (i.e. no update and no delete) content-addressed *blob store* (using [BLAKE2b](https://blake2.net/) as hash function).
 
