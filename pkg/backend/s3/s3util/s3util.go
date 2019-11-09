@@ -60,20 +60,15 @@ func nextKey(key string) string {
 	return string(bkey)
 }
 
-func New(region string) (*s3.S3, error) {
-	sess, err := session.NewSessionWithOptions(session.Options{
+func New(region string) (*session.Session, error) {
+	return session.NewSessionWithOptions(session.Options{
 		Config: aws.Config{
 			Region: aws.String(region),
 		},
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return s3.New(sess), nil
 }
 
-func NewWithCustomEndoint(accessKey, secretKey, region, url string) (*s3.S3, error) {
+func NewWithCustomEndoint(accessKey, secretKey, region, url string) (*session.Session, error) {
 	defaultResolver := endpoints.DefaultResolver()
 	creds := credentials.NewStaticCredentials(accessKey, secretKey, "")
 	s3CustResolverFn := func(service, region string, optFns ...func(*endpoints.Options)) (endpoints.ResolvedEndpoint, error) {
@@ -85,18 +80,13 @@ func NewWithCustomEndoint(accessKey, secretKey, region, url string) (*s3.S3, err
 
 		return defaultResolver.EndpointFor(service, region, optFns...)
 	}
-	sess, err := session.NewSessionWithOptions(session.Options{
+	return session.NewSessionWithOptions(session.Options{
 		Config: aws.Config{
 			Region:           aws.String("us-east-1"),
 			EndpointResolver: endpoints.ResolverFunc(s3CustResolverFn),
 			Credentials:      creds,
 		},
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return s3.New(sess), nil
 }
 
 type Bucket struct {

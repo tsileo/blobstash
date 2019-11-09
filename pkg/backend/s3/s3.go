@@ -11,13 +11,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	humanize "github.com/dustin/go-humanize"
 	log "github.com/inconshreveable/log15"
 
@@ -64,7 +67,12 @@ type S3Backend struct {
 
 	wg sync.WaitGroup
 
-	s3   *s3.S3
+	s3 *s3.S3
+
+	// Uses to upload/download BlobsFiles packs
+	uploader   *s3manager.Uploader
+	downloader *s3manager.Downloader
+
 	stop chan struct{}
 
 	bucket string
@@ -75,6 +83,7 @@ type S3Backend struct {
 
 func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config.Config) (*S3Backend, error) {
 	// Parse config
+	var sess *session.Session
 	bucket := conf.S3Repl.Bucket
 	region := conf.S3Repl.Region
 	scanMode := conf.S3ScanMode
@@ -86,16 +95,18 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 
 	var s3svc *s3.S3
 	if conf.S3Repl.Endpoint != "" {
-		s3svc, err = s3util.NewWithCustomEndoint(conf.S3Repl.AccessKey, conf.S3Repl.SecretKey, region, conf.S3Repl.Endpoint)
+		sess, err = s3util.NewWithCustomEndoint(conf.S3Repl.AccessKey, conf.S3Repl.SecretKey, region, conf.S3Repl.Endpoint)
 		if err != nil {
 			return nil, err
 		}
+		s3svc = s3.New(sess)
 	} else {
 		// Create a S3 Session
-		s3svc, err = s3util.New(region)
+		sess, err = s3util.New(region)
 		if err != nil {
 			return nil, err
 		}
+		s3svc = s3.New(sess)
 	}
 	// Init the disk-backed queue
 	uq, err := queue.New(filepath.Join(conf.VarDir(), "s3-upload.queue"))
@@ -124,6 +135,8 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 		key:         key,
 		uploadQueue: uq,
 		index:       i,
+		uploader:    s3manager.NewUploader(sess),
+		downloader:  s3manager.NewDownloader(sess),
 	}
 
 	// FIXME(tsileo): should encypption be optional?
@@ -159,6 +172,28 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 	go s3backend.uploadWorker()
 
 	return s3backend, nil
+}
+
+func (b *S3Backend) DownloadFile(key string, dest io.WriterAt) error {
+	if _, err := b.downloader.Download(dest, &s3.GetObjectInput{
+		Bucket: aws.String(b.bucket),
+		Key:    aws.String(key),
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (b *S3Backend) UploadFile(src io.Reader, key string) error {
+	if _, err := b.uploader.Upload(&s3manager.UploadInput{
+		Bucket: aws.String(b.bucket),
+		Key:    aws.String(key),
+		Body:   src,
+	}); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (b *S3Backend) String() string {

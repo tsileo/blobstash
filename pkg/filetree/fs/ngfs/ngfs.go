@@ -16,7 +16,6 @@ import (
 	"syscall"
 	"time"
 
-	"a4.io/blobstash/pkg/backend/s3/s3util"
 	"a4.io/blobstash/pkg/client/blobstore"
 	"a4.io/blobstash/pkg/client/clientutil"
 	"a4.io/blobstash/pkg/client/kvstore"
@@ -213,27 +212,6 @@ func main() {
 		log.Fatal(err)
 	}
 	defer blobfs.bs.(*cache).Close()
-
-	if profile.RemoteConfig != nil && profile.RemoteConfig.KeyFile != "" {
-		var out [32]byte
-		data, err := ioutil.ReadFile(profile.RemoteConfig.KeyFile)
-		if err != nil {
-			log.Fatal(err)
-		}
-		copy(out[:], data)
-		blobfs.key = &out
-		if profile.RemoteConfig.Endpoint != "" {
-			blobfs.s3, err = s3util.NewWithCustomEndoint(profile.RemoteConfig.AccessKeyID, profile.RemoteConfig.SecretAccessKey, profile.RemoteConfig.Region, profile.RemoteConfig.Endpoint)
-			if err != nil {
-				log.Fatal(err)
-			}
-		} else {
-			blobfs.s3, err = s3util.New(profile.RemoteConfig.Region)
-			if err != nil {
-				log.Fatal(err)
-			}
-		}
-	}
 
 	logger.Printf("caps=%+v use_remote=%v\n", caps, useRemote)
 
