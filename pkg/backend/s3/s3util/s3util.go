@@ -132,6 +132,35 @@ func (b *Bucket) GetObject(key string) *Object {
 	}
 }
 
+func (b *Bucket) ListPrefix(prefix, marker string, max int) ([]*Object, error) {
+	var out []*Object
+	params := &s3.ListObjectsInput{
+		Bucket:    aws.String(b.Name),
+		Delimiter: aws.String("/"),
+		Marker:    aws.String(marker),
+		Prefix:    aws.String(prefix),
+		MaxKeys:   aws.Int64(int64(max)),
+	}
+	resp, err := b.s3.ListObjects(params)
+
+	if err != nil {
+		return nil, err
+	}
+
+	for _, item := range resp.Contents {
+		if strings.HasPrefix(*item.Key, "tmp/") {
+			continue
+		}
+		out = append(out, &Object{
+			s3:     b.s3,
+			Key:    *item.Key,
+			Bucket: b.Name,
+			Size:   *item.Size,
+		})
+	}
+	return out, nil
+}
+
 func (b *Bucket) List(marker string, max int) ([]*Object, error) {
 	var out []*Object
 	params := &s3.ListObjectsInput{

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync"
@@ -82,7 +83,7 @@ type S3Backend struct {
 	blobsUploadedSinceStartup int
 }
 
-func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config.Config) (*S3Backend, error) {
+func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config.Config, packsDir string) (*S3Backend, error) {
 	// Parse config
 	var sess *session.Session
 	bucket := conf.S3Repl.Bucket
@@ -164,6 +165,13 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 
 	// Trigger a re-indexing/full restore if requested
 	if scanMode || restoreMode {
+
+		/// FIXME(tsileo): move this to a command line to restore all the blobsfile
+		// packs, err := obucket.ListPrefix("packs/", "", 100)
+		// if err != nil {
+		// 	return nil, err
+		// }
+
 		if err := s3backend.reindex(obucket, restoreMode); err != nil {
 			return nil, err
 		}
@@ -173,6 +181,30 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 	go s3backend.uploadWorker()
 
 	return s3backend, nil
+}
+
+func (b *S3Backend) BlobsFilesDownloadPack(key string) error {
+	f, err := ioutil.TempFile("", "blobstash_blobsfile_download")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	if err := b.DownloadFile(key, f); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	decrypted, err := crypto.Open(b.key, f.Name())
+	if err != nil {
+		return err
+	}
+
+	if err := os.Rename(decrypted, filepath.Join("TODO packsDir", filepath.Base(key))); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (b *S3Backend) BlobsFilesUploadPack(pack string) error {
