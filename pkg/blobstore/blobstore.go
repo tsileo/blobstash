@@ -91,9 +91,18 @@ func New(logger log.Logger, root bool, dir string, conf2 *config.Config, hub *hu
 	}
 
 	if bs.root && bs.s3back != nil {
-		if err := bs.s3back.BlobsFilesSyncWorker(bs.back.SealedPacks()); err != nil {
-			return nil, err
-		}
+		bs.back.SetBlobsFilesSealedFunc(func(path string) {
+			go func(path string) {
+				if err := bs.s3back.BlobsFilesUploadPack(path); err != nil {
+					logger.Error("failed to upload pack", "path", path, "err", err)
+				}
+			}(path)
+		})
+		go func() {
+			if err := bs.s3back.BlobsFilesSyncWorker(bs.back.SealedPacks()); err != nil {
+				logger.Error("failed to sync BlobsFile", "err", err)
+			}
+		}()
 	}
 
 	return bs, nil

@@ -175,68 +175,77 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 	return s3backend, nil
 }
 
+func (b *S3Backend) BlobsFilesUploadPack(pack string) error {
+	bucket := s3util.NewBucket(b.s3, b.bucket)
+	obj := bucket.GetObject("packs/" + filepath.Base(pack))
+	exists, err := obj.Exists()
+	if err != nil {
+		return err
+	}
+	b.log.Info("checking pack", "pack", pack, "exists", exists, "obj", obj)
+
+	if exists {
+		b.log.Info("already uploaded", "pack", pack)
+		return nil
+	}
+
+	encrypted, err := crypto.Seal(b.key, pack)
+	if err != nil {
+		return err
+	}
+	b.log.Info("pack encrypted", "pack", pack, "path", encrypted)
+	defer os.Remove(encrypted)
+
+	f, err := os.Open(encrypted)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := b.UploadFile(f, "packs/"+filepath.Base(pack)); err != nil {
+		return err
+	}
+	b.log.Info("pack uploaded", "pack", pack)
+
+	blobs, err := blobsfile.ScanBlobsFile(pack)
+	if err != nil {
+		return fmt.Errorf("failed to scan blobsfile: %v", err)
+	}
+
+	b.uploadQueue.Lock()
+	if err := b.uploadQueue.RemoveBlobs(blobs); err != nil {
+		b.uploadQueue.Unlock()
+		return fmt.Errorf("failed to remove blobs: %v", err)
+	}
+	b.uploadQueue.Unlock()
+
+	for _, h := range blobs {
+		exists, err := b.index.Exists(h)
+		if err != nil {
+			return err
+		}
+		b.log.Debug("deleting blob", "hash", h, "exists", exists)
+		if exists {
+			ehash, err := b.index.Get(h)
+			if err == nil && ehash != "" {
+				if err := bucket.GetObject(ehash).Delete(); err != nil {
+					return fmt.Errorf("failed to remove blob:%s/%s: %v", h, ehash, err)
+				}
+				if err := b.index.Delete(h); err != nil {
+					return err
+				}
+				b.log.Debug("blob deleted", "hash", h)
+			}
+		}
+	}
+	b.log.Info(fmt.Sprintf("%d blobs deleted", len(blobs)))
+	return nil
+}
+
 func (b *S3Backend) BlobsFilesSyncWorker(sealedPacks []string) error {
 	b.log.Info(fmt.Sprintf("found %d BlobsFiles sealed packs", len(sealedPacks)))
-	bucket := s3util.NewBucket(b.s3, b.bucket)
 	for _, pack := range sealedPacks {
-		obj := bucket.GetObject("packs/" + filepath.Base(pack))
-		exists, err := obj.Exists()
-		if err != nil {
+		if err := b.BlobsFilesUploadPack(pack); err != nil {
 			return err
-		}
-		b.log.Info("checking pack", "name", pack, "exists", exists, "obj", obj)
-
-		if exists {
-			continue
-		}
-
-		encrypted, err := crypto.Seal(b.key, pack)
-		if err != nil {
-			return err
-		}
-		b.log.Info("pack encrypted", "pack", pack, "path", encrypted)
-		defer os.Remove(encrypted)
-
-		f, err := os.Open(encrypted)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		if err := b.UploadFile(f, "packs/"+filepath.Base(pack)); err != nil {
-			return err
-		}
-		b.log.Info("pack uploaded", "pack", pack)
-
-		blobs, err := blobsfile.ScanBlobsFile(pack)
-		if err != nil {
-			return fmt.Errorf("failed to scan blobsfile: %v", err)
-		}
-
-		b.uploadQueue.Lock()
-		if err := b.uploadQueue.RemoveBlobs(blobs); err != nil {
-			b.uploadQueue.Unlock()
-			return fmt.Errorf("failed to remove blobs: %v", err)
-		}
-		b.uploadQueue.Unlock()
-
-		for _, h := range blobs {
-			exists, err := b.index.Exists(h)
-			if err != nil {
-				return err
-			}
-			b.log.Info("deleting blob", "hash", h, "exists", exists)
-			if exists {
-				ehash, err := b.index.Get(h)
-				if err == nil && ehash != "" {
-					if err := bucket.GetObject(ehash).Delete(); err != nil {
-						return fmt.Errorf("failed to remove blob:%s/%s: %v", h, ehash, err)
-					}
-					if err := b.index.Delete(h); err != nil {
-						return err
-					}
-					b.log.Info("blob deleted", "hash", h)
-				}
-			}
 		}
 	}
 	return nil

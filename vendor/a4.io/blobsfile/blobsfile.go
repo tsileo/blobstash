@@ -292,6 +292,10 @@ func New(opts *Opts) (*BlobsFiles, error) {
 	return backend, nil
 }
 
+func (backend *BlobsFiles) SetBlobsFilesSealedFunc(f func(string)) {
+	backend.blobsFilesSealedFunc = f
+}
+
 func (backend *BlobsFiles) getConfirmation(msg string) (bool, error) {
 	// askConfirmationFunc func(string) bool
 	if backend.askConfirmationFunc == nil {
