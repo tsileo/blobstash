@@ -51,6 +51,19 @@ func (i *Index) Index(plainHash, encryptedHash string) error {
 	return i.db.Set(phash, ehash)
 }
 
+func (i *Index) Delete(hash string) error {
+	i.Lock()
+	defer i.Unlock()
+	bhash, err := hex.DecodeString(hash)
+	if err != nil {
+		return err
+	}
+	if err := i.db.Delete(bhash); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (i *Index) Exists(hash string) (bool, error) {
 	i.Lock()
 	defer i.Unlock()

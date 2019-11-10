@@ -30,6 +30,7 @@ import (
 	"a4.io/blobstash/pkg/backend/s3/s3util"
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/config"
+	"a4.io/blobstash/pkg/crypto"
 	"a4.io/blobstash/pkg/docstore/id"
 	"a4.io/blobstash/pkg/hashutil"
 	"a4.io/blobstash/pkg/hub"
@@ -172,6 +173,73 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 	go s3backend.uploadWorker()
 
 	return s3backend, nil
+}
+
+func (b *S3Backend) BlobsFilesSyncWorker(sealedPacks []string) error {
+	b.log.Info(fmt.Sprintf("found %d BlobsFiles sealed packs", len(sealedPacks)))
+	bucket := s3util.NewBucket(b.s3, b.bucket)
+	for _, pack := range sealedPacks {
+		obj := bucket.GetObject("packs/" + filepath.Base(pack))
+		exists, err := obj.Exists()
+		if err != nil {
+			return err
+		}
+		b.log.Info("checking pack", "name", pack, "exists", exists, "obj", obj)
+
+		if exists {
+			continue
+		}
+
+		encrypted, err := crypto.Seal(b.key, pack)
+		if err != nil {
+			return err
+		}
+		b.log.Info("pack encrypted", "pack", pack, "path", encrypted)
+		defer os.Remove(encrypted)
+
+		f, err := os.Open(encrypted)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		if err := b.UploadFile(f, "packs/"+filepath.Base(pack)); err != nil {
+			return err
+		}
+		b.log.Info("pack uploaded", "pack", pack)
+
+		blobs, err := blobsfile.ScanBlobsFile(pack)
+		if err != nil {
+			return fmt.Errorf("failed to scan blobsfile: %v", err)
+		}
+
+		b.uploadQueue.Lock()
+		if err := b.uploadQueue.RemoveBlobs(blobs); err != nil {
+			b.uploadQueue.Unlock()
+			return fmt.Errorf("failed to remove blobs: %v", err)
+		}
+		b.uploadQueue.Unlock()
+
+		for _, h := range blobs {
+			exists, err := b.index.Exists(h)
+			if err != nil {
+				return err
+			}
+			b.log.Info("deleting blob", "hash", h, "exists", exists)
+			if exists {
+				ehash, err := b.index.Get(h)
+				if err == nil && ehash != "" {
+					if err := bucket.GetObject(ehash).Delete(); err != nil {
+						return fmt.Errorf("failed to remove blob:%s/%s: %v", h, ehash, err)
+					}
+					if err := b.index.Delete(h); err != nil {
+						return err
+					}
+					b.log.Info("blob deleted", "hash", h)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (b *S3Backend) DownloadFile(key string, dest io.WriterAt) error {
@@ -344,15 +412,20 @@ L:
 			log.Debug("worker stopped")
 			break L
 		default:
+			b.uploadQueue.Lock()
 			// log.Debug("polling")
 			blb := &blob.Blob{}
 			ok, deqFunc, err := b.uploadQueue.Dequeue(blb)
 			if err != nil {
 				panic(err)
 			}
+			if !ok {
+				b.uploadQueue.Unlock()
+			}
 			if ok {
 				if err := func(blob *blob.Blob) error {
 					t := time.Now()
+					defer b.uploadQueue.Unlock()
 					b.wg.Add(1)
 					defer b.wg.Done()
 					data, err := b.backend.Get(blob.Hash)
@@ -445,10 +518,7 @@ func (b *S3Backend) Get(hash string) ([]byte, error) {
 		return nil, err
 	}
 
-	obj, err := s3util.NewBucket(b.s3, b.bucket).GetObject(ehash)
-	if err != nil {
-		return nil, err
-	}
+	obj := s3util.NewBucket(b.s3, b.bucket).GetObject(ehash)
 	eblob := s3util.NewEncryptedBlob(obj, b.key)
 	fhash, data, err := eblob.HashAndPlainText()
 	if fhash != hash {
@@ -456,10 +526,6 @@ func (b *S3Backend) Get(hash string) ([]byte, error) {
 	}
 
 	return data, err
-}
-
-func (b *S3Backend) GetRemoteRef(pref string) (string, error) {
-	return b.index.Get(pref)
 }
 
 func (b *S3Backend) Close() {

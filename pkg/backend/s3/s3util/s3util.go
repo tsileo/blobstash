@@ -124,12 +124,12 @@ func (b *Bucket) Exists() (bool, error) {
 	return false, err
 }
 
-func (b *Bucket) GetObject(key string) (*Object, error) {
+func (b *Bucket) GetObject(key string) *Object {
 	return &Object{
 		s3:     b.s3,
 		Bucket: b.Name,
 		Key:    key,
-	}, nil
+	}
 }
 
 func (b *Bucket) List(marker string, max int) ([]*Object, error) {
@@ -196,7 +196,7 @@ func (o *Object) Delete() error {
 		Key:    aws.String(o.Key),
 	}
 	if _, err := o.s3.DeleteObject(params); err != nil {
-		return err
+		return fmt.Errorf("failed to delete object: %v", err)
 	}
 	return nil
 }
@@ -221,7 +221,7 @@ func (o *Object) Exists() (bool, error) {
 	}
 	_, err := o.s3.HeadObject(params)
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == s3.ErrCodeNoSuchKey {
+		if aerr, ok := err.(awserr.RequestFailure); ok && aerr.StatusCode() == 404 {
 			return false, nil
 		}
 		return false, err

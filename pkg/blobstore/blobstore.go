@@ -53,6 +53,7 @@ type BlobStore struct {
 
 	hub  *hub.Hub
 	root bool
+	stop chan struct{}
 
 	log log.Logger
 }
@@ -80,13 +81,22 @@ func New(logger log.Logger, root bool, dir string, conf2 *config.Config, hub *hu
 			}
 		}
 	}
-	return &BlobStore{
+	bs := &BlobStore{
 		back:   back,
 		root:   root,
 		s3back: s3back,
 		hub:    hub,
 		log:    logger,
-	}, nil
+		stop:   make(chan struct{}),
+	}
+
+	if bs.root && bs.s3back != nil {
+		if err := bs.s3back.BlobsFilesSyncWorker(bs.back.SealedPacks()); err != nil {
+			return nil, err
+		}
+	}
+
+	return bs, nil
 }
 
 func (bs *BlobStore) Check() error {
@@ -111,14 +121,6 @@ func (bs *BlobStore) Close() error {
 		return err
 	}
 	return nil
-}
-
-func (bs *BlobStore) GetRemoteRef(ref string) (string, error) {
-	fmt.Printf("GetRemoteRef %s %+v %+v\n\n", ref, bs.root, bs.s3back)
-	if !bs.root || bs.s3back == nil {
-		return "", ErrRemoteNotAvailable
-	}
-	return bs.s3back.GetRemoteRef(ref)
 }
 
 func (bs *BlobStore) S3Stats() (map[string]interface{}, error) {

@@ -309,7 +309,7 @@ func (backend *BlobsFiles) getConfirmation(msg string) (bool, error) {
 
 func (backend *BlobsFiles) SealedPacks() []string {
 	packs := []string{}
-	for i := 0; i < backend.n-1; i++ {
+	for i := 0; i < backend.n; i++ {
 		packs = append(packs, backend.filename(i))
 	}
 	return packs
@@ -540,6 +540,95 @@ func (backend *BlobsFiles) scanBlobsFile(n int, iterFunc func(*blobPos, byte, st
 	}
 
 	return nil
+}
+
+// scanBlobsFile scan a single BlobsFile (#n), and execute `iterFunc` for each indexed blob.
+// `iterFunc` is optional, and without it, this func will check the consistency of each blob, and return
+// a `corruptedError` if a blob is corrupted.
+func ScanBlobsFile(path string) ([]string, error) {
+	hashes := []string{}
+	blobsfile, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer blobsfile.Close()
+
+	// Seek at the start of data
+	offset := int64(headerSize)
+	if _, err := blobsfile.Seek(int64(headerSize), os.SEEK_SET); err != nil {
+		return nil, err
+	}
+
+	blobsIndexed := 0
+
+	blobHash := make([]byte, hashSize)
+	blobSizeEncoded := make([]byte, 4)
+	flags := make([]byte, 2)
+
+	for {
+		// Read the hash
+		if _, err := blobsfile.Read(blobHash); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, &corruptedError{0, nil, offset, fmt.Errorf("failed to read hash: %v", err)}
+		}
+
+		// Read the 2 byte flags
+		if _, err := blobsfile.Read(flags); err != nil {
+			return nil, &corruptedError{0, nil, offset, fmt.Errorf("failed to read flag: %v", err)}
+		}
+
+		// If we reached the EOF blob, we're done
+		if flags[0] == flagEOF {
+			break
+		}
+
+		// Read the size of the blob
+		if _, err := blobsfile.Read(blobSizeEncoded); err != nil {
+			return nil, &corruptedError{0, nil, offset, fmt.Errorf("failed to read blob size: %v", err)}
+		}
+
+		// Read the actual blob
+		blobSize := int64(binary.LittleEndian.Uint32(blobSizeEncoded))
+		rawBlob := make([]byte, int(blobSize))
+		read, err := blobsfile.Read(rawBlob)
+		if err != nil || read != int(blobSize) {
+			return nil, &corruptedError{0, nil, offset, fmt.Errorf("error while reading raw blob: %v", err)}
+		}
+
+		// Build the `blobPos`
+		offset += blobOverhead + blobSize
+
+		// Decompress the blob if needed
+		var blob []byte
+		if flags[0] == flagCompressed && flags[1] != 0 {
+			var err error
+			var blobDecoded []byte
+			switch CompressionAlgorithm(flags[1]) {
+			case Snappy:
+				blobDecoded, err = snappy.Decode(nil, rawBlob)
+			}
+			if err != nil {
+				return nil, &corruptedError{0, nil, offset, fmt.Errorf("failed to decode blob: %v %v %v", err, blobSize, flags)}
+			}
+			blob = blobDecoded
+
+		} else {
+			blob = rawBlob
+		}
+
+		// Ensure the blob is not corrupted
+		hash := fmt.Sprintf("%x", blake2b.Sum256(blob))
+		if fmt.Sprintf("%x", blobHash) == hash {
+			hashes = append(hashes, hash)
+			blobsIndexed++
+		} else {
+			panic("corrupted")
+		}
+	}
+
+	return hashes, nil
 }
 
 func copyShards(i [][]byte) (o [][]byte) {

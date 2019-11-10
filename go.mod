@@ -3,7 +3,7 @@ module a4.io/blobstash
 replace github.com/go-interpreter/wagon v0.0.0 => github.com/perlin-network/wagon v0.3.1-0.20180825141017-f8cb99b55a39
 
 require (
-	a4.io/blobsfile v0.3.3
+	a4.io/blobsfile v0.3.5
 	a4.io/gluapp v0.0.0-20190530193846-2ad05291e3be
 	a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f
 	a4.io/go/indieauth v1.0.0

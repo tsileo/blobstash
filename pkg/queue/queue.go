@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"a4.io/blobstash/pkg/blob"
@@ -20,6 +21,7 @@ import (
 type Queue struct {
 	db   *rangedb.RangeDB
 	path string
+	sync.Mutex
 }
 
 // New creates a new database.
@@ -58,6 +60,33 @@ func (q *Queue) Size() (int, error) {
 		cnt++
 	}
 	return cnt, nil
+}
+
+func (q *Queue) RemoveBlobs(blobs []string) error {
+	idx := map[string]struct{}{}
+	for _, h := range blobs {
+		idx[h] = struct{}{}
+	}
+	c := q.db.PrefixRange([]byte(""), false)
+	defer c.Close()
+
+	// Iterate the range
+	k, v, err := c.Next()
+	for ; err == nil; k, v, err = c.Next() {
+		b := &blob.Blob{}
+		if err := json.Unmarshal(v, b); err != nil {
+			return err
+		}
+		if _, ok := idx[b.Hash]; ok {
+			if err := q.db.Delete(k); err != nil {
+				return err
+			}
+		}
+	}
+	if err == io.EOF {
+		return nil
+	}
+	return err
 }
 
 func (q *Queue) Blobs() ([]*blob.Blob, error) {
