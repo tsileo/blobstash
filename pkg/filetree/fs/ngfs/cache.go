@@ -130,41 +130,6 @@ func (c *cache) PutRemote(ctx context.Context, hash string, data []byte) error {
 	return nil
 }
 
-// Get implements the BlobStore interface for filereader.File
-func (c *cache) GetRemote(ctx context.Context, hash string) ([]byte, error) {
-	if !c.fs.useRemote {
-		return c.Get(ctx, hash)
-	}
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	var err error
-	cachedBlob, ok, err := c.blobsCache.Get(hash)
-	if err != nil {
-		return nil, fmt.Errorf("cache failed: %v", err)
-	}
-	logger.Printf("[remote] downloading %s from remote", hash)
-	var data []byte
-	if ok {
-		data = cachedBlob
-	} else {
-		obj, err := s3util.NewBucket(c.fs.s3, c.fs.profile.RemoteConfig.Bucket).GetObject(hash)
-		if err != nil {
-			return nil, err
-		}
-		eblob := s3util.NewEncryptedBlob(obj, c.fs.key)
-		data, err = eblob.PlainText()
-		if err != nil {
-			return nil, err
-		}
-		if err := c.blobsCache.Add(hash, data); err != nil {
-			return nil, fmt.Errorf("failed to add to cache: %v", err)
-		}
-	}
-
-	return data, nil
-}
-
 // Get implements the blobStore interface for filereader.File
 func (c *cache) Get(ctx context.Context, hash string) ([]byte, error) {
 	logger.Printf("Cache.Get(%q)\n", hash)
