@@ -165,13 +165,6 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 
 	// Trigger a re-indexing/full restore if requested
 	if scanMode || restoreMode {
-
-		/// FIXME(tsileo): move this to a command line to restore all the blobsfile
-		// packs, err := obucket.ListPrefix("packs/", "", 100)
-		// if err != nil {
-		// 	return nil, err
-		// }
-
 		if err := s3backend.reindex(obucket, restoreMode); err != nil {
 			return nil, err
 		}

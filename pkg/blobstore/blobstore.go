@@ -61,8 +61,9 @@ type BlobStore struct {
 func New(logger log.Logger, root bool, dir string, conf2 *config.Config, hub *hub.Hub) (*BlobStore, error) {
 	logger.Debug("init")
 	back, err := blobsfile.New(&blobsfile.Opts{
-		Compression: blobsfile.Snappy,
-		Directory:   filepath.Join(dir, "blobs"),
+		BlobsFileSize: 5 << 20,
+		Compression:   blobsfile.Snappy,
+		Directory:     filepath.Join(dir, "blobs"),
 		LogFunc: func(msg string) {
 			logger.Info(msg, "submodule", "blobsfile")
 		},
