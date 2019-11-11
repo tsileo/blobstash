@@ -155,7 +155,7 @@ github.com/src-d/gcfg/token
 github.com/src-d/gcfg/types
 # github.com/src-d/go-oniguruma v1.1.0
 github.com/src-d/go-oniguruma
-# github.com/syndtr/goleveldb v1.0.0
+# github.com/syndtr/goleveldb v1.0.1-0.20190923125748-758128399b1d
 github.com/syndtr/goleveldb/leveldb
 github.com/syndtr/goleveldb/leveldb/cache
 github.com/syndtr/goleveldb/leveldb/comparer

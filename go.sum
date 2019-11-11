@@ -284,6 +284,8 @@ github.com/syndtr/goleveldb v0.0.0-20181128100959-b001fa50d6b2 h1:GnOzE5fEFN3b2z
 github.com/syndtr/goleveldb v0.0.0-20181128100959-b001fa50d6b2/go.mod h1:Z4AUp2Km+PwemOoO/VB5AOx9XSsIItzFjoJlOSiYmn0=
 github.com/syndtr/goleveldb v1.0.0 h1:fBdIW9lB4Iz0n9khmH8w27SJ3QEJ7+IgjPEwGSZiFdE=
 github.com/syndtr/goleveldb v1.0.0/go.mod h1:ZVVdQEZoIme9iO1Ch2Jdy24qqXrMMOU6lpPAyBWyWuQ=
+github.com/syndtr/goleveldb v1.0.1-0.20190923125748-758128399b1d h1:gZZadD8H+fF+n9CmNhYL1Y0dJB+kLOmKd7FbPJLeGHs=
+github.com/syndtr/goleveldb v1.0.1-0.20190923125748-758128399b1d/go.mod h1:9OrXJhf154huy1nPWmuSrkgjPUtUNhA+Zmy+6AESzuA=
 github.com/toqueteos/trie v0.0.0-20150530104557-56fed4a05683 h1:ej8ns+4aeQO+mm9VIzwnJElkqR0Vs6kTfIcvgyJFoMY=
 github.com/toqueteos/trie v0.0.0-20150530104557-56fed4a05683/go.mod h1:Ywk48QhEqhU1+DwhMkJ2x7eeGxDHiGkAdc9+0DYcbsM=
 github.com/toqueteos/trie v1.0.0 h1:8i6pXxNUXNRAqP246iibb7w/pSFquNTQ+uNfriG7vlk=

@@ -42,7 +42,7 @@ require (
 	github.com/sirupsen/logrus v1.4.2 // indirect
 	github.com/src-d/go-oniguruma v1.1.0 // indirect
 	github.com/stretchr/testify v1.4.0 // indirect
-	github.com/syndtr/goleveldb v1.0.0
+	github.com/syndtr/goleveldb v1.0.1-0.20190923125748-758128399b1d
 	github.com/toqueteos/trie v1.0.0 // indirect
 	github.com/unrolled/secure v1.0.4
 	github.com/vmihailenco/msgpack v4.0.4+incompatible
