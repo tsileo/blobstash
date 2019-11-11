@@ -72,12 +72,17 @@ func main() {
 		panic(err)
 	}
 
+	var cnt int
+	fmt.Printf("Restoring ")
 	for _, pack := range packs {
+		fmt.Printf("%s ", filepath.Base(pack.Key))
 		if err := BlobsFilesDownloadPack(key, downloader, packsDir, bucket, pack.Key); err != nil {
 			panic(err)
 		}
+		cnt++
 	}
 
+	fmt.Printf("\n\n%d BlobsFiles packs restored.\n\nPlease run the following command to finishing restoring:\n\n\tblobstash -scan -s3-restore /path/to/config\n\n", cnt)
 	os.Exit(0)
 }
 

@@ -163,13 +163,6 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 		}
 	}
 
-	// Trigger a re-indexing/full restore if requested
-	//if scanMode || restoreMode {
-	//	if err := s3backend.reindex(restoreMode); err != nil {
-	//		return nil, err
-	//	}
-	//}
-
 	// Initialize the worker (queue consumer)
 	go s3backend.uploadWorker()
 
