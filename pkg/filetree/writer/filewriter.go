@@ -97,12 +97,8 @@ func (up *Uploader) putFile(path, filename string, extraMeta bool) (*rnode.RawNo
 	meta.Type = "file"
 
 	if extraMeta {
-		// Only set the mode if it's not the default one
 		mode := uint32(fstat.Mode())
-		if mode != 0644 {
-			meta.Mode = mode
-		}
-
+		meta.Mode = mode
 		// Mtime/Ctime handling
 		meta.ModTime = fstat.ModTime().Unix()
 		setMtime(meta, fstat)
@@ -203,6 +199,7 @@ func (up *Uploader) PutReader(name string, reader io.Reader, data map[string]int
 	meta := &rnode.RawNode{}
 	meta.Name = filepath.Base(name)
 	meta.Type = "file"
+	meta.Mode = uint32(0644)
 	meta.ModTime = time.Now().Unix()
 	if data != nil {
 		for k, v := range data {

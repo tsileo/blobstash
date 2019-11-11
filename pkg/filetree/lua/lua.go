@@ -14,6 +14,7 @@ import (
 	"gopkg.in/src-d/go-git.v4/utils/binary"
 
 	"a4.io/blobsfile"
+	"a4.io/blobstash/pkg/apps/luautil"
 	"a4.io/blobstash/pkg/filetree"
 	rnode "a4.io/blobstash/pkg/filetree/filetreeutil/node"
 	"a4.io/blobstash/pkg/filetree/imginfo"
@@ -70,6 +71,7 @@ func convertNode(L *lua.LState, ft *filetree.FileTree, bs store.BlobStore, node 
 		tbl.RawSetString("is_image", lua.LFalse)
 	}
 	if node.Size < 1024*1024 {
+		// FIXME(tsileo): check only the firsr blob, cache the result in a LRU and uses it for Node.FileType
 		f := filereader.NewFile(context.TODO(), bs, node.Meta, nil)
 		defer f.Close()
 		contents, err := ioutil.ReadAll(f)
@@ -268,8 +270,9 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore, kv store.KvStore) 
 			},
 			"put_file_at": func(L *lua.LState) int {
 				uploader := writer.NewUploader(filetree.NewBlobStoreCompat(bs, context.TODO()))
-				name := L.ToString(1)
-				contents := L.ToString(2)
+				snap := toSnap(luautil.TableToMap(L.ToTable(1)))
+				name := L.ToString(2)
+				contents := L.ToString(3)
 				var ref string
 				node, err := uploader.PutReader(name, strings.NewReader(contents), nil)
 				if err != nil {
@@ -279,13 +282,13 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore, kv store.KvStore) 
 				ref = node.Hash
 				ctx := context.TODO()
 
-				fs, err := ft.FS(ctx, L.ToString(3), filetree.FSKeyFmt, false, 0)
+				fs, err := ft.FS(ctx, L.ToString(4), filetree.FSKeyFmt, false, 0)
 				if err != nil {
 					panic(err)
 				}
 
 				t := time.Now().Unix()
-				parentNode, _, _, err := fs.Path(ctx, L.ToString(4), 1, true, t)
+				parentNode, _, _, err := fs.Path(ctx, L.ToString(5), 1, true, t)
 				if err != nil {
 					panic(err)
 				}
@@ -293,7 +296,7 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore, kv store.KvStore) 
 					panic("only dir can be patched")
 				}
 
-				newParent, _, err := ft.AddChild(ctx, parentNode, node, filetree.FSKeyFmt, t)
+				newParent, _, err := ft.AddChild(ctx, snap, parentNode, node, filetree.FSKeyFmt, t)
 				if err != nil {
 					panic(err)
 				}
@@ -308,6 +311,17 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore, kv store.KvStore) 
 		L.Push(mod)
 		return 1
 	}
+}
+
+func toSnap(dat map[string]interface{}) *filetree.Snapshot {
+	snap := &filetree.Snapshot{}
+	if iua, ok := dat["user_agent"]; ok {
+		snap.UserAgent = iua.(string)
+	}
+	if imessage, ok := dat["message"]; ok {
+		snap.Message = imessage.(string)
+	}
+	return snap
 }
 
 // Setup loads the filetree Lua module

@@ -358,7 +358,7 @@ type Node struct {
 }
 
 // Update the given node with the given meta, the updated/new node is assumed to be already saved
-func (ft *FileTree) Update(ctx context.Context, n *Node, m *rnode.RawNode, prefixFmt string, first bool) (*Node, int64, error) {
+func (ft *FileTree) Update(ctx context.Context, snap *Snapshot, n *Node, m *rnode.RawNode, prefixFmt string, first bool) (*Node, int64, error) {
 	newNode, err := MetaToNode(m)
 	if err != nil {
 		return nil, 0, err
@@ -376,7 +376,9 @@ func (ft *FileTree) Update(ctx context.Context, n *Node, m *rnode.RawNode, prefi
 		// if err != nil {
 		// return nil, err
 		// }
-		snap := &Snapshot{}
+		if snap == nil {
+			snap = &Snapshot{}
+		}
 		if h, ok := ctxutil.FileTreeHostname(ctx); ok {
 			snap.Hostname = h
 		}
@@ -433,7 +435,7 @@ func (ft *FileTree) Update(ctx context.Context, n *Node, m *rnode.RawNode, prefi
 	// n.parent.Hash = newRef
 	// parentMeta.Hash = newRef
 	// Propagate the change to the parents
-	_, kvVersion, err := ft.Update(ctx, newNode.parent, newNode.parent.Meta, prefixFmt, false)
+	_, kvVersion, err := ft.Update(ctx, snap, newNode.parent, newNode.parent.Meta, prefixFmt, false)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -441,7 +443,7 @@ func (ft *FileTree) Update(ctx context.Context, n *Node, m *rnode.RawNode, prefi
 }
 
 // Update the given node with the given meta, the updated/new node is assumed to be already saved
-func (ft *FileTree) AddChild(ctx context.Context, n *Node, newChild *rnode.RawNode, prefixFmt string, mtime int64) (*Node, int64, error) {
+func (ft *FileTree) AddChild(ctx context.Context, snap *Snapshot, n *Node, newChild *rnode.RawNode, prefixFmt string, mtime int64) (*Node, int64, error) {
 	// Save the new child meta
 	//newChild.ModTime = time.Now().UTC().Unix()
 	newChildRef, data := newChild.Encode()
@@ -487,11 +489,11 @@ func (ft *FileTree) AddChild(ctx context.Context, n *Node, newChild *rnode.RawNo
 	}
 
 	// Proagate the change up to the ~moon~ root
-	return ft.Update(ctx, n, n.Meta, prefixFmt, true)
+	return ft.Update(ctx, snap, n, n.Meta, prefixFmt, true)
 }
 
 // Delete removes the given node from its parent children
-func (ft *FileTree) Delete(ctx context.Context, n *Node, prefixFmt string, mtime int64) (*Node, int64, error) {
+func (ft *FileTree) Delete(ctx context.Context, snap *Snapshot, n *Node, prefixFmt string, mtime int64) (*Node, int64, error) {
 	if n.parent == nil {
 		panic("can't delete root")
 	}
@@ -518,7 +520,7 @@ func (ft *FileTree) Delete(ctx context.Context, n *Node, prefixFmt string, mtime
 		return nil, 0, err
 	}
 
-	return ft.Update(ctx, parent, parent.Meta, prefixFmt, true)
+	return ft.Update(ctx, snap, parent, parent.Meta, prefixFmt, true)
 }
 
 func (n *Node) Close() error {
@@ -550,6 +552,7 @@ func MetaToNode(m *rnode.RawNode) (*Node, error) {
 	}
 	if n.Type == rnode.Dir {
 		n.ChildrenCount = len(m.Refs)
+		n.Mode = int(os.FileMode(n.Mode) | os.ModeDir)
 	} else {
 		n.FileType = FTBinary
 		if imginfo.IsImage(m.Name) {
@@ -815,9 +818,10 @@ func (fs *FS) Mkdir(ctx context.Context, prefixFmt, path, name string) (*Node, e
 		Type:    rnode.Dir,
 		Name:    name,
 		ModTime: mtime,
+		Mode:    uint32(0755),
 	}
 
-	newNode, _, err := fs.ft.AddChild(ctx, node, newChild, prefixFmt, mtime)
+	newNode, _, err := fs.ft.AddChild(ctx, nil, node, newChild, prefixFmt, mtime)
 	if err != nil {
 		panic(err)
 	}
@@ -1352,7 +1356,8 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 
 			// Update the Node with the new Meta
 			// fmt.Printf("uploaded meta=%+v\nold node=%+v", meta, node)
-			newNode, revision, err := ft.Update(ctx, node, meta, prefixFmt, true)
+			// FIXME(tisleo): add a &Snapshot{} !
+			newNode, revision, err := ft.Update(ctx, nil, node, meta, prefixFmt, true)
 			if err != nil {
 				panic(err)
 			}
@@ -1463,7 +1468,8 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 				newChild.ChangeTime = 0
 			}
 
-			newNode, revision, err := ft.AddChild(ctx, node, newChild, prefixFmt, mtime)
+			// FIXME(tsileo): add a &Snapshot{}
+			newNode, revision, err := ft.AddChild(ctx, nil, node, newChild, prefixFmt, mtime)
 			if err != nil {
 				panic(err)
 			}
@@ -1506,7 +1512,8 @@ func (ft *FileTree) fsHandler() func(http.ResponseWriter, *http.Request) {
 				}
 			}
 
-			_, revision, err := ft.Delete(ctx, node, prefixFmt, mtime)
+			// FIXME(tsileo): add a &Snapshot{} !
+			_, revision, err := ft.Delete(ctx, nil, node, prefixFmt, mtime)
 			if err != nil {
 				panic(err)
 			}
@@ -1552,7 +1559,8 @@ func (ft *FileTree) CreateFS(ctx context.Context, fsName, prefixFmt string) (*No
 		return nil, err
 	}
 
-	if _, _, err := ft.Update(ctx, node, node.Meta, prefixFmt, true); err != nil {
+	// FIXME(tsileo): add a &Snapshot{}
+	if _, _, err := ft.Update(ctx, nil, node, node.Meta, prefixFmt, true); err != nil {
 		return nil, err
 	}
 	return node, nil
@@ -2184,7 +2192,6 @@ func (ft *FileTree) nodeTgzHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-// Fetch a Node outside any FS
 func (ft *FileTree) nodeSnapshotHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
