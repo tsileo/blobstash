@@ -996,6 +996,10 @@ func (backend *BlobsFiles) reindex() error {
 	backend.wg.Add(1)
 	defer backend.wg.Done()
 
+	if err := backend.index.remove(); err != nil {
+		return err
+	}
+
 	var err error
 	backend.index.db, err = rangedb.New(backend.index.path)
 	if err != nil {
@@ -1292,16 +1296,21 @@ func (backend *BlobsFiles) Put(hash string, data []byte) (err error) {
 		backend.current = nil
 		newBlobsFileNeeded = true
 
-		// This goroutine will write the parity blobs and close the file
-		go func(f *os.File, size int, n int) {
-			// Write some parity blobs at the end of the blobsfile using Reed-Solomon erasure coding
-			if err := backend.writeParityBlobs(f, size); err != nil {
-				backend.setLastError(err)
-			}
-			if backend.blobsFilesSealedFunc != nil {
-				backend.blobsFilesSealedFunc(backend.filename(n))
-			}
-		}(f, int(backend.size), backend.n)
+		// When restoring, the latest opened blob may already have the parity blobs written
+		// TODO(tsileo): make this cleaner
+		if backend.size < backend.maxBlobsFileSize {
+
+			// This goroutine will write the parity blobs and close the file
+			go func(f *os.File, size int, n int) {
+				// Write some parity blobs at the end of the blobsfile using Reed-Solomon erasure coding
+				if err := backend.writeParityBlobs(f, size); err != nil {
+					backend.setLastError(err)
+				}
+				if backend.blobsFilesSealedFunc != nil {
+					backend.blobsFilesSealedFunc(backend.filename(n))
+				}
+			}(f, int(backend.size), backend.n)
+		}
 	}
 
 	if newBlobsFileNeeded {

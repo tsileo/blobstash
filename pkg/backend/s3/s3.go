@@ -164,11 +164,11 @@ func New(logger log.Logger, back *blobsfile.BlobsFiles, h *hub.Hub, conf *config
 	}
 
 	// Trigger a re-indexing/full restore if requested
-	if scanMode || restoreMode {
-		if err := s3backend.reindex(obucket, restoreMode); err != nil {
-			return nil, err
-		}
-	}
+	//if scanMode || restoreMode {
+	//	if err := s3backend.reindex(restoreMode); err != nil {
+	//		return nil, err
+	//	}
+	//}
 
 	// Initialize the worker (queue consumer)
 	go s3backend.uploadWorker()
@@ -341,7 +341,8 @@ func (b *S3Backend) Put(hash string) error {
 	return nil
 }
 
-func (b *S3Backend) reindex(bucket *s3util.Bucket, restore bool) error {
+func (b *S3Backend) Reindex(restore bool) error {
+	bucket := s3util.NewBucket(b.s3, b.bucket)
 	b.log.Info("Starting S3 re-indexing")
 	start := time.Now()
 	max := 100
@@ -462,11 +463,7 @@ L:
 					defer b.uploadQueue.Unlock()
 					b.wg.Add(1)
 					defer b.wg.Done()
-					data, err := b.backend.Get(blob.Hash)
-					if err != nil {
-						deqFunc(false)
-						return err
-					}
+
 					// Double check the blob does not exists
 					exists, err := b.index.Exists(blob.Hash)
 					if err != nil {
@@ -477,6 +474,12 @@ L:
 						log.Debug("blob already exist", "hash", blob.Hash)
 						deqFunc(true)
 						return nil
+					}
+
+					data, err := b.backend.Get(blob.Hash)
+					if err != nil {
+						deqFunc(false)
+						return err
 					}
 
 					if err := b.put(blob.Hash, data); err != nil {

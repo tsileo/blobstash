@@ -279,6 +279,12 @@ func (s *Server) Bootstrap() error {
 		}
 		s.log.Info("Scan done")
 	}
+	if s.conf.S3ScanMode || s.conf.S3RestoreMode {
+		if err := s.blobstore.S3Backend().Reindex(s.conf.S3RestoreMode); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

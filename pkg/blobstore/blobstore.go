@@ -61,7 +61,7 @@ type BlobStore struct {
 func New(logger log.Logger, root bool, dir string, conf2 *config.Config, hub *hub.Hub) (*BlobStore, error) {
 	logger.Debug("init")
 	back, err := blobsfile.New(&blobsfile.Opts{
-		BlobsFileSize: 5 << 20,
+		BlobsFileSize: 2 << 20,
 		Compression:   blobsfile.Snappy,
 		Directory:     filepath.Join(dir, "blobs"),
 		LogFunc: func(msg string) {
@@ -115,6 +115,10 @@ func (bs *BlobStore) Check() error {
 	}
 
 	return nil
+}
+
+func (bs *BlobStore) S3Backend() *s3.S3Backend {
+	return bs.s3back
 }
 
 func (bs *BlobStore) ReplicationEnabled() bool {
