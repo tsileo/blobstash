@@ -53,6 +53,15 @@ var (
 	MaxUploadSize int64 = 512 << 20 // 512MB
 )
 
+const (
+	FTBinary   = "binary"
+	FTText     = "text"
+	FTVideo    = "video"
+	FTImage    = "image"
+	FTArchive  = "archive"
+	FTDocument = "document"
+)
+
 // FSUpdateEvent represents an even fired on FS update to the Oplog
 type FSUpdateEvent struct {
 	Name      string `json:"fs_name"`
@@ -326,6 +335,7 @@ func (ft *FileTree) Register(r *mux.Router, root *mux.Router, basicAuth func(htt
 type Node struct {
 	Name          string  `json:"name" msgpack:"n"`
 	Type          string  `json:"type" msgpack:"t"`
+	FileType      string  `json:"file_type,omitempty" msgpack:"ft,omitempty"`
 	Size          int     `json:"size,omitempty" msgpack:"s,omitempty"`
 	Mode          int     `json:"mode,omitempty" msgpack:"mo,omitempty"`
 	ModTime       string  `json:"mtime" msgpack:"mt"`
@@ -540,6 +550,13 @@ func MetaToNode(m *rnode.RawNode) (*Node, error) {
 	}
 	if n.Type == rnode.Dir {
 		n.ChildrenCount = len(m.Refs)
+	} else {
+		n.FileType = FTBinary
+		if imginfo.IsImage(m.Name) {
+			n.FileType = FTImage
+		} else if vidinfo.IsVideo(m.Name) {
+			n.FileType = FTVideo
+		}
 	}
 	if m.ModTime > 0 {
 		n.ModTime = time.Unix(m.ModTime, 0).Format(time.RFC3339)
@@ -984,7 +1001,7 @@ func (ft *FileTree) fetchInfo(reader io.ReadSeeker, filename, hash, contentHash 
 			return info, nil
 		}
 	}
-	if strings.HasSuffix(lname, ".jpg") || strings.HasSuffix(lname, ".png") || strings.HasSuffix(lname, ".gif") {
+	if imginfo.IsImage(lname) {
 		var parseExif bool
 		if strings.HasSuffix(lname, ".jpg") {
 			parseExif = true

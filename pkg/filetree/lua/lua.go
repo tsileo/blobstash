@@ -108,6 +108,8 @@ func convertNode(L *lua.LState, ft *filetree.FileTree, bs store.BlobStore, node 
 
 		tbl.RawSetString("tgz_url", lua.LString(tgzURL))
 		tbl.RawSetString("children_count", lua.LNumber(node.ChildrenCount))
+	} else {
+		tbl.RawSetString("file_type", lua.LString(node.FileType))
 	}
 	return tbl
 }
