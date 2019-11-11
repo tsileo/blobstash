@@ -13,7 +13,7 @@ import (
 
 func IsVideo(filename string) bool {
 	lname := strings.ToLower(filename)
-	if strings.HasSuffix(lname, ".avi") {
+	if strings.HasSuffix(lname, ".avi") || strings.HasSuffix(lname, ".mkv") || strings.HasSuffix(lname, ".mp4") {
 		return true
 	}
 	return false
@@ -54,7 +54,7 @@ func buildThumbnail(conf *config.Config, p, hash string, duration int) error {
 	rp := ThumbnailPath(conf, hash)
 	//sec := math.Max(float64(duration), 59.0) / 2
 	// FIXME(tsileo): compute a random screenshot ss
-	cmd := exec.Command("ffmpeg", "-ss", fmt.Sprintf("00:00:12"), "-i", p, "-vframes", "1", "-vf", "scale='w=if(gt(a,16/9),854,-2):h=if(gt(a,16/9),-2,480)'", "-q:v", "2", rp)
+	cmd := exec.Command("ffmpeg", "-ss", fmt.Sprintf("00:00:12"), "-i", p, "-vframes", "1", "-vf", "scale=w=720:h=480:force_original_aspect_ratio=decrease", "-q:v", "2", rp)
 	fmt.Printf("CMD=%+v\n", cmd)
 	if dat, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("%s: %v", dat, err)
@@ -64,7 +64,7 @@ func buildThumbnail(conf *config.Config, p, hash string, duration int) error {
 
 func buildWebm(conf *config.Config, p, hash string) error {
 	webmPath := WebmPath(conf, hash)
-	cmd := exec.Command("ffmpeg", "-i", p, "-vcodec", "libvpx", "-acodec", "libvorbis", "-vf", "scale='w=if(gt(a,16/9),854,-2):h=if(gt(a,16/9),-2,480)'", webmPath)
+	cmd := exec.Command("ffmpeg", "-i", p, "-vcodec", "libvpx", "-acodec", "libvorbis", "-vf", "scale=w=720:h=480:force_original_aspect_ratio=decrease", webmPath)
 	fmt.Printf("CMD=%+v\n", cmd)
 	if err := cmd.Run(); err != nil {
 		return err
