@@ -9,7 +9,7 @@ require (
 	a4.io/go/indieauth v1.0.0
 	a4.io/ssse v0.0.0-20181202155639-1949828a8689
 	bazil.org/fuse v0.0.0-20180421153158-65cc252bf669
-	github.com/aws/aws-sdk-go v1.25.30
+	github.com/aws/aws-sdk-go v1.25.31
 	github.com/blevesearch/segment v0.0.0-20160915185041-762005e7a34f
 	github.com/carbocation/interpose v0.0.0-20161206215253-723534742ba3
 	github.com/dave/jennifer v1.3.0
@@ -47,12 +47,12 @@ require (
 	github.com/unrolled/secure v1.0.4
 	github.com/vmihailenco/msgpack v4.0.4+incompatible
 	github.com/xeonx/timeago v1.0.0-rc4
-	github.com/yuin/goldmark v1.1.1
+	github.com/yuin/goldmark v1.1.2
 	github.com/yuin/gopher-lua v0.0.0-20190514113301-1cd887cd7036
 	github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
-	golang.org/x/crypto v0.0.0-20191107222254-f4817d981bb6
-	golang.org/x/net v0.0.0-20191108174545-380dde419d29
-	golang.org/x/sys v0.0.0-20191105231009-c1f44814a5cd // indirect
+	golang.org/x/crypto v0.0.0-20191108234033-bd318be0434a
+	golang.org/x/net v0.0.0-20191109021931-daa7c04131f5
+	golang.org/x/sys v0.0.0-20191110163157-d32e6e3b99c4 // indirect
 	google.golang.org/appengine v1.6.5 // indirect
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 	gopkg.in/inconshreveable/log15.v2 v2.0.0-20180818164646-67afb5ed74ec
