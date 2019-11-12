@@ -119,6 +119,8 @@ func (up *Uploader) DirWriterNode(node *node) {
 
 	node.meta = &rnode.RawNode{
 		Version: rnode.V1,
+		Mode:    uint32(node.fi.Mode()),
+		ModTime: node.fi.ModTime().Unix(),
 	}
 	sort.Strings(hashes)
 	for _, hash := range hashes {
