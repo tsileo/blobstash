@@ -23,6 +23,7 @@ import (
 	"github.com/hashicorp/golang-lru"
 	log "github.com/inconshreveable/log15"
 	"github.com/vmihailenco/msgpack"
+	"gopkg.in/src-d/go-git.v4/utils/binary"
 
 	"a4.io/blobsfile"
 	"a4.io/blobstash/pkg/auth"
@@ -95,8 +96,11 @@ type FileTree struct {
 
 	thumbCache    *cache.Cache
 	metadataCache *cache.Cache
-	nodeCache     *lru.Cache
-	webmQueue     *queue.Queue
+	// TODO(tsileo): use the node cache
+	nodeCache *lru.Cache
+	webmQueue *queue.Queue
+
+	fileTypeCache *lru.Cache
 
 	log log.Logger
 }
@@ -171,6 +175,10 @@ func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bo
 	if err != nil {
 		return nil, err
 	}
+	fileTypeCache, err := lru.New(1024)
+	if err != nil {
+		return nil, err
+	}
 
 	webmQueue, err := queue.New(filepath.Join(conf.VarDir(), "filetree-webm.queue"))
 	if err != nil {
@@ -189,6 +197,7 @@ func New(logger log.Logger, conf *config.Config, authFunc func(*http.Request) bo
 		thumbCache:    thumbscache,
 		metadataCache: metacache,
 		nodeCache:     nodeCache,
+		fileTypeCache: fileTypeCache,
 		authFunc:      authFunc,
 		shareTTL:      1 * time.Hour,
 		hub:           chub,
@@ -359,7 +368,7 @@ type Node struct {
 
 // Update the given node with the given meta, the updated/new node is assumed to be already saved
 func (ft *FileTree) Update(ctx context.Context, snap *Snapshot, n *Node, m *rnode.RawNode, prefixFmt string, first bool) (*Node, int64, error) {
-	newNode, err := MetaToNode(m)
+	newNode, err := ft.metaToNode(ctx, m)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -451,7 +460,7 @@ func (ft *FileTree) AddChild(ctx context.Context, snap *Snapshot, n *Node, newCh
 	if _, err := ft.blobStore.Put(ctx, &blob.Blob{Hash: newChildRef, Data: data}); err != nil {
 		return nil, 0, err
 	}
-	newChildNode, err := MetaToNode(newChild)
+	newChildNode, err := ft.metaToNode(ctx, newChild)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -533,7 +542,7 @@ func (s byName) Len() int           { return len(s) }
 func (s byName) Less(i, j int) bool { return s[i].Name < s[j].Name }
 func (s byName) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
-func MetaToNode(m *rnode.RawNode) (*Node, error) {
+func (ft *FileTree) metaToNode(ctx context.Context, m *rnode.RawNode) (*Node, error) {
 	if m.Version != rnode.V1 {
 		return nil, fmt.Errorf("bad node version \"%s\" for node %+v", m.Version, m)
 	}
@@ -559,8 +568,31 @@ func MetaToNode(m *rnode.RawNode) (*Node, error) {
 			n.FileType = FTImage
 		} else if vidinfo.IsVideo(m.Name) {
 			n.FileType = FTVideo
+		} else {
+			if len(m.Refs) > 0 {
+				firstBlob := m.Refs[0].([]interface{})[1].(string)
+				var isBinary bool
+				if cached, ok := ft.fileTypeCache.Get(firstBlob); ok {
+					isBinary = cached.(bool)
+				} else {
+					blob, err := ft.blobStore.Get(ctx, firstBlob)
+					if err != nil {
+						return nil, err
+					}
+					isBinary, err = binary.IsBinary(bytes.NewReader(blob))
+					if err != nil {
+						return nil, err
+					}
+
+					ft.fileTypeCache.Add(firstBlob, isBinary)
+				}
+				if !isBinary {
+					n.FileType = FTText
+				}
+			}
 		}
 	}
+
 	if m.ModTime > 0 {
 		n.ModTime = time.Unix(m.ModTime, 0).Format(time.RFC3339)
 	}
@@ -790,7 +822,7 @@ func (fs *FS) Root(ctx context.Context, create bool, mtime int64) (*Node, error)
 			Name:    "_root",
 			ModTime: mtime,
 		}
-		node, err = MetaToNode(meta)
+		node, err = fs.ft.metaToNode(ctx, meta)
 		if err != nil {
 			return nil, err
 		}
@@ -895,7 +927,7 @@ func (fs *FS) Path(ctx context.Context, path string, depth int, create bool, mti
 				cmeta.Type = rnode.File
 			}
 			//  we don't set the meta type, it will be set on Update if it doesn't exist
-			node, err = MetaToNode(cmeta)
+			node, err = fs.ft.metaToNode(ctx, cmeta)
 			if err != nil {
 				return nil, nil, found, err
 			}
@@ -951,7 +983,7 @@ func (ft *FileTree) uploadHandler() func(http.ResponseWriter, *http.Request) {
 		if err != nil {
 			panic(err)
 		}
-		node, err := MetaToNode(meta)
+		node, err := ft.metaToNode(ctx, meta)
 		if err != nil {
 			panic(err)
 		}
@@ -2262,7 +2294,7 @@ func (ft *FileTree) nodeByRef(ctx context.Context, hash string) (*Node, error) {
 		return nil, err
 	}
 
-	n, err := MetaToNode(m)
+	n, err := ft.metaToNode(ctx, m)
 	if err != nil {
 		return nil, err
 	}

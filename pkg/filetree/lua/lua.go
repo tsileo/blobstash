@@ -1,7 +1,6 @@
 package lua // import "a4.io/blobstash/pkg/filetree/lua"
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -11,7 +10,6 @@ import (
 
 	humanize "github.com/dustin/go-humanize"
 	"github.com/yuin/gopher-lua"
-	"gopkg.in/src-d/go-git.v4/utils/binary"
 
 	"a4.io/blobsfile"
 	"a4.io/blobstash/pkg/apps/luautil"
@@ -70,7 +68,7 @@ func convertNode(L *lua.LState, ft *filetree.FileTree, bs store.BlobStore, node 
 	} else {
 		tbl.RawSetString("is_image", lua.LFalse)
 	}
-	if node.Size < 1024*1024 {
+	if node.FileType == "text" {
 		// FIXME(tsileo): check only the firsr blob, cache the result in a LRU and uses it for Node.FileType
 		f := filereader.NewFile(context.TODO(), bs, node.Meta, nil)
 		defer f.Close()
@@ -78,13 +76,7 @@ func convertNode(L *lua.LState, ft *filetree.FileTree, bs store.BlobStore, node 
 		if err != nil {
 			panic(err)
 		}
-		isBinary, err := binary.IsBinary(bytes.NewReader(contents))
-		if err != nil {
-			panic(err)
-		}
-		if !isBinary {
-			tbl.RawSetString("contents", lua.LString(contents))
-		}
+		tbl.RawSetString("contents", lua.LString(contents))
 	} else {
 		tbl.RawSetString("contents", lua.LString(""))
 	}
