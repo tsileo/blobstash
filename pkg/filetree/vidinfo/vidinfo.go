@@ -13,7 +13,7 @@ import (
 
 func IsVideo(filename string) bool {
 	lname := strings.ToLower(filename)
-	if strings.HasSuffix(lname, ".avi") || strings.HasSuffix(lname, ".mkv") || strings.HasSuffix(lname, ".mp4") {
+	if strings.HasSuffix(lname, ".avi") || strings.HasSuffix(lname, ".mkv") || strings.HasSuffix(lname, ".mp4") || strings.HasSuffix(lname, ".mov") || strings.HasSuffix(lname, ".ogg") || strings.HasSuffix(lname, ".mpeg") || strings.HasSuffix(lname, ".mpg") || strings.HasSuffix(lname, ".3gp") || strings.HasSuffix(lname, ".flv") {
 		return true
 	}
 	return false
