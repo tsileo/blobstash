@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
@@ -219,8 +220,21 @@ func (b *S3Backend) BlobsFilesUploadPack(pack string) error {
 		return err
 	}
 	defer f.Close()
-	if err := b.UploadFile(f, "packs/"+filepath.Base(pack)); err != nil {
-		return err
+
+	// Upload to S3 (with extra retries)
+	for i := 0; i < 3; i++ {
+		tlog := b.log.New("pack", pack, "try", i+1)
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			return err
+		}
+		if err := b.UploadFile(f, "packs/"+filepath.Base(pack)); err != nil {
+			if !request.IsErrorRetryable(err) {
+				tlog.Info("failed to upload pack", "err", err)
+				return err
+			}
+			tlog.Info("failed to upload pack, will retry", "pack", pack, "err", err)
+		}
+		break
 	}
 	b.log.Info("pack uploaded", "pack", pack)
 
