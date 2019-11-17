@@ -1,4 +1,4 @@
-package main
+package fs // import "a4.io/blobstash/pkg/filetree/fs"
 
 import (
 	"flag"
@@ -41,7 +41,7 @@ var startedAt = time.Now()
 
 func usage() {
 	fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
-	fmt.Fprintf(os.Stderr, "  %s MOUNTPOINT\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "  %s MOUNTPOINT FSNAME\n", os.Args[0])
 	flag.PrintDefaults()
 }
 
@@ -61,13 +61,11 @@ const (
 	otherExecute
 )
 
-func main() {
+func Main() {
 	// Scans the arg list and sets up flags
 	//debug := flag.Bool("debug", false, "print debugging messages.")
 	resetCache := flag.Bool("reset-cache", false, "remove the local cache before starting.")
 	syncDelay := flag.Duration("sync-delay", 5*time.Minute, "delay to wait after the last modification to initate a sync")
-	forceRemote := flag.Bool("force-remote", false, "force fetching data blobs from object storage")
-	disableRemote := flag.Bool("disable-remote", false, "disable fetching data blobs from object storage")
 	configFile := flag.String("config-file", filepath.Join(pathutil.ConfigDir(), "fs_client.yaml"), "confg file path")
 	configProfile := flag.String("config-profile", "default", "config profile name")
 
@@ -157,18 +155,7 @@ func main() {
 		fmt.Printf("invalid BLOBS_API_HOST")
 		os.Exit(1)
 	}
-
-	var useRemote bool
-	switch {
-	case *disableRemote, !caps.ReplicationEnabled:
-		if *forceRemote {
-			logger.Printf("WARNING: disabling remote as server does not support it\n")
-		}
-	case *forceRemote:
-		useRemote = true
-	case isHostLocal:
-		useRemote = isHostLocal
-	}
+	fmt.Printf("isHostLocal=%v\n", isHostLocal)
 
 	c, err := fuse.Mount(
 		mountpoint,
@@ -205,7 +192,6 @@ func main() {
 		freaderCache: freaderCache,
 		atCache:      atCache,
 		caps:         caps,
-		useRemote:    useRemote,
 	}
 	blobfs.bs, err = newCache(blobfs, bs, cacheDir)
 	if err != nil {
@@ -213,7 +199,7 @@ func main() {
 	}
 	defer blobfs.bs.(*cache).Close()
 
-	logger.Printf("caps=%+v use_remote=%v\n", caps, useRemote)
+	logger.Printf("caps=%+v\n", caps)
 
 	go func() {
 		ticker := time.NewTicker(45 * time.Second)
@@ -279,8 +265,7 @@ type FS struct {
 	caps       *clientutil.Caps
 
 	// config profile
-	profile   *profile
-	useRemote bool
+	profile *profile
 
 	// S3 client and key
 	s3  *s3.S3
@@ -1321,14 +1306,7 @@ func (f *file) Reader() (fileReader, error) {
 	}
 
 	// Instanciate the filereader
-	var fr preloadableFileReader
-	logger.Printf("use_remote=%v remote_refs=%+v\n", f.fs.useRemote, n.RemoteRefs)
-	if f.fs.useRemote && n.RemoteRefs != nil {
-		logger.Println("opening file with remote")
-		fr = filereader.NewFileRemote(context.Background(), f.fs.bs, meta, n.RemoteRefs, f.fs.freaderCache)
-	} else {
-		fr = filereader.NewFile(context.Background(), f.fs.bs, meta, f.fs.freaderCache)
-	}
+	fr := filereader.NewFile(context.Background(), f.fs.bs, meta, f.fs.freaderCache)
 
 	// FIXME(tsileo): test if preloading is worth it
 	// fr.PreloadChunks()

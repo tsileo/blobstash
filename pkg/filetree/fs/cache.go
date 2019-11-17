@@ -1,26 +1,19 @@
-package main
+package fs
 
 import (
-	"bytes"
 	"fmt"
 	"sync"
 
-	"a4.io/blobstash/pkg/backend/s3/s3util"
-	"a4.io/blobstash/pkg/blob"
 	bcache "a4.io/blobstash/pkg/cache"
 	"a4.io/blobstash/pkg/client/blobstore"
-	"a4.io/blobstash/pkg/hashutil"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/s3"
 	"golang.org/x/net/context"
 )
 
 // cache implements the blobStore interface with a local disk-backed LRU cache
 type cache struct {
-	fs         *FS
-	bs         *blobstore.BlobStore
-	mu         sync.Mutex
-	remoteRefs map[string]string
+	fs *FS
+	bs *blobstore.BlobStore
+	mu sync.Mutex
 
 	blobsCache *bcache.Cache
 }
@@ -36,14 +29,7 @@ func newCache(fs *FS, bs *blobstore.BlobStore, path string) (*cache, error) {
 		fs:         fs,
 		bs:         bs,
 		blobsCache: blobsCache,
-		remoteRefs: map[string]string{},
 	}, nil
-}
-
-func (c *cache) RemoteRefs() map[string]string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.remoteRefs
 }
 
 // Close implements the io.Closer interface
@@ -55,11 +41,6 @@ func (c *cache) Close() error {
 func (c *cache) Stat(ctx context.Context, hash string) (bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
-	// Check if the blob has already been uploaded to the remote storage
-	if _, ok := c.remoteRefs[hash]; ok {
-		return true, nil
-	}
 
 	stat, err := c.bs.Stat(context.TODO(), hash)
 	if err != nil {
@@ -81,51 +62,6 @@ func (c *cache) Put(ctx context.Context, hash string, data []byte) error {
 	if err := c.blobsCache.Add(hash, data); err != nil {
 		return err
 	}
-	return nil
-}
-
-// Get implements the BlobStore interface for filereader.File
-func (c *cache) PutRemote(ctx context.Context, hash string, data []byte) error {
-	if !c.fs.useRemote {
-		return c.Put(ctx, hash, data)
-	}
-	logger.Printf("[remote] uploading %s (%d bytes) to remote", hash, len(data))
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	var err error
-
-	if _, ok := c.remoteRefs[hash]; ok {
-		return nil
-	}
-
-	if err := c.blobsCache.Add(hash, data); err != nil {
-		return err
-	}
-
-	// Encrypt
-	data, err = s3util.Seal(c.fs.key, &blob.Blob{Hash: hash, Data: data})
-	if err != nil {
-		return err
-	}
-	// Re-compute the hash
-	ehash := hashutil.Compute(data)
-
-	// Prepare the upload request
-	params := &s3.PutObjectInput{
-		Bucket:   aws.String(c.fs.profile.RemoteConfig.Bucket),
-		Key:      aws.String("tmp/" + ehash),
-		Body:     bytes.NewReader(data),
-		Metadata: map[string]*string{},
-	}
-
-	// Actually upload the blob
-	if _, err := c.fs.s3.PutObject(params); err != nil {
-		return err
-	}
-
-	c.remoteRefs[hash] = "tmp/" + ehash
-
 	return nil
 }
 
