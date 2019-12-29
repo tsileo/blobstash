@@ -18,24 +18,27 @@ type ServiceName string
 const (
 	Read     ActionType = "read"
 	Stat     ActionType = "stat"
+	Delete   ActionType = "delete"
 	Write    ActionType = "write"
 	List     ActionType = "list"
 	Snapshot ActionType = "snapshot"
 	Search   ActionType = "search"
 	GC       ActionType = "gc"
 	Destroy  ActionType = "destroy"
+	Admin    ActionType = "admin" // Catch-all action for admin/advanced feature
 )
 
 // Object types
 const (
-	Blob         ObjectType = "blob"
-	KVEntry      ObjectType = "kv"
-	FS           ObjectType = "fs"
-	Node         ObjectType = "node"
-	GitRepo      ObjectType = "git-repo"
-	GitNs        ObjectType = "git-ns"
-	Namespace    ObjectType = "namespace"
-	JSONDocument ObjectType = "json-doc"
+	Blob           ObjectType = "blob"
+	KVEntry        ObjectType = "kv"
+	FS             ObjectType = "fs"
+	Node           ObjectType = "node"
+	GitRepo        ObjectType = "git-repo"
+	GitNs          ObjectType = "git-ns"
+	Namespace      ObjectType = "namespace"
+	JSONDocument   ObjectType = "json-doc"
+	JSONCollection ObjectType = "json-col"
 )
 
 // Services

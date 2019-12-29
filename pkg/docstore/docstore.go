@@ -504,6 +504,16 @@ func (docstore *DocStore) storedQueriesHandler() func(http.ResponseWriter, *http
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
+			if !auth.Can(
+				w,
+				r,
+				perms.Action(perms.Admin, perms.JSONCollection),
+				perms.Resource(perms.DocStore, perms.JSONCollection),
+			) {
+				auth.Forbidden(w)
+				return
+			}
+
 			httputil.WriteJSON(w, docstore.storedQueries)
 			return
 		default:
@@ -518,8 +528,15 @@ func (docstore *DocStore) collectionsHandler() func(http.ResponseWriter, *http.R
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
-			// Ensure the client has the needed permissions
-			// permissions.CheckPerms(r, PermCollectionName)
+			if !auth.Can(
+				w,
+				r,
+				perms.Action(perms.List, perms.JSONCollection),
+				perms.Resource(perms.DocStore, perms.JSONCollection),
+			) {
+				auth.Forbidden(w)
+				return
+			}
 
 			collections, err := docstore.Collections()
 			if err != nil {
@@ -1041,9 +1058,8 @@ func (docstore *DocStore) reindexDocsHandler() func(http.ResponseWriter, *http.R
 			if !auth.Can(
 				w,
 				r,
-				// TODO(tsileo): tweak the perms
-				perms.Action(perms.List, perms.JSONDocument),
-				perms.Resource(perms.DocStore, perms.JSONDocument),
+				perms.Action(perms.Admin, perms.JSONCollection),
+				perms.Resource(perms.DocStore, perms.JSONCollection),
 			) {
 				auth.Forbidden(w)
 				return
@@ -1075,8 +1091,8 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			if !auth.Can(
 				w,
 				r,
-				perms.Action(perms.List, perms.JSONDocument),
-				perms.Resource(perms.DocStore, perms.JSONDocument),
+				perms.Action(perms.Read, perms.JSONCollection),
+				perms.ResourceWithID(perms.DocStore, perms.JSONCollection, collection),
 			) {
 				auth.Forbidden(w)
 				return
@@ -1169,7 +1185,16 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				},
 			})
 		case "POST":
-			// permissions.CheckPerms(r, PermCollectionName, collection, PermWrite)
+			if !auth.Can(
+				w,
+				r,
+				perms.Action(perms.Write, perms.JSONCollection),
+				perms.ResourceWithID(perms.DocStore, perms.JSONCollection, collection),
+			) {
+				auth.Forbidden(w)
+				return
+			}
+
 			// Read the whole body
 			blob, err := ioutil.ReadAll(r.Body)
 			if err != nil {
@@ -1242,6 +1267,16 @@ func (docstore *DocStore) mapReduceHandler() func(http.ResponseWriter, *http.Req
 		}
 		switch r.Method {
 		case "POST":
+			if !auth.Can(
+				w,
+				r,
+				perms.Action(perms.List, perms.JSONCollection),
+				perms.ResourceWithID(perms.DocStore, perms.JSONCollection, collection),
+			) {
+				auth.Forbidden(w)
+				return
+			}
+
 			input := &mapReduceInput{}
 			if err := json.NewDecoder(r.Body).Decode(input); err != nil {
 				panic(httputil.NewPublicErrorFmt("Invalid JSON input"))
@@ -1556,7 +1591,16 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 		switch r.Method {
 		case "GET", "HEAD":
 			// Serve the document JSON encoded
-			// permissions.CheckPerms(r, PermCollectionName, collection, PermRead)
+			if !auth.Can(
+				w,
+				r,
+				perms.Action(perms.Read, perms.JSONCollection),
+				perms.ResourceWithID(perms.DocStore, perms.JSONCollection, collection),
+			) {
+				auth.Forbidden(w)
+				return
+			}
+
 			// js := []byte{}
 			var doc, pointers map[string]interface{}
 
@@ -1595,6 +1639,15 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			}
 			return
 		case "PATCH":
+			if !auth.Can(
+				w,
+				r,
+				perms.Action(perms.Write, perms.JSONCollection),
+				perms.ResourceWithID(perms.DocStore, perms.JSONCollection, collection),
+			) {
+				auth.Forbidden(w)
+				return
+			}
 			// Patch the document (JSON-Patch/RFC6902)
 
 			// Lock the document before making any change to it, this way the PATCH operation is *truly* atomic/safe
@@ -1677,6 +1730,15 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 
 			return
 		case "POST":
+			if !auth.Can(
+				w,
+				r,
+				perms.Action(perms.Write, perms.JSONCollection),
+				perms.ResourceWithID(perms.DocStore, perms.JSONCollection, collection),
+			) {
+				auth.Forbidden(w)
+				return
+			}
 			// Update the whole document
 
 			// Parse the update query
@@ -1711,6 +1773,16 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 
 			return
 		case "DELETE":
+			if !auth.Can(
+				w,
+				r,
+				perms.Action(perms.Delete, perms.JSONCollection),
+				perms.ResourceWithID(perms.DocStore, perms.JSONCollection, collection),
+			) {
+				auth.Forbidden(w)
+				return
+			}
+
 			_, err := docstore.Remove(collection, sid)
 			switch err {
 			case nil:
@@ -1740,6 +1812,16 @@ func (docstore *DocStore) docVersionsHandler() func(http.ResponseWriter, *http.R
 		var _id *id.ID
 		switch r.Method {
 		case "GET", "HEAD":
+			if !auth.Can(
+				w,
+				r,
+				perms.Action(perms.Read, perms.JSONCollection),
+				perms.ResourceWithID(perms.DocStore, perms.JSONCollection, collection),
+			) {
+				auth.Forbidden(w)
+				return
+			}
+
 			q := httputil.NewQuery(r.URL.Query())
 			limit, err := q.GetIntDefault("limit", 50)
 			if err != nil {
