@@ -913,13 +913,13 @@ QUERY:
 			stats.TotalDocsExamined++
 
 			// Check if the doc match the query
+			addSpecialFields(doc, _id)
 			ok, err := qmatcher.Match(doc)
 			if err != nil {
 				return nil, nil, stats, err
 			}
 			if ok {
 				// The document  matches the query
-				addSpecialFields(doc, _id)
 				if fetchPointers {
 					for k, v := range docPointers {
 						pointers[k] = v
@@ -1330,7 +1330,6 @@ func (docstore *DocStore) mapReduceHandler() func(http.ResponseWriter, *http.Req
 				default:
 					// Fetch a page
 					if !hasMore {
-						time.Sleep(50 * time.Millisecond)
 						break
 					}
 					docs, _, stats, err := docstore.query(nil, collection, q, cursor, limit, true, asOf)
@@ -1380,7 +1379,7 @@ func (docstore *DocStore) mapReduceHandler() func(http.ResponseWriter, *http.Req
 						break QUERY_LOOP
 					}
 
-					cursor = vkv.PrevKey(stats.LastID)
+					cursor = stats.Cursor
 				}
 			}
 
