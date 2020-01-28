@@ -1,6 +1,12 @@
 BlobStash
 =========
 
+<p align="center">
+  <img 
+    src="https://sos-ch-dk-2.exo.io/microblogpub/microblobpub.png" 
+    width="192" height="192" border="0" alt="microblog.pub">
+</p>
+
 [![builds.sr.ht status](https://builds.sr.ht/~tsileo/blobstash.svg)](https://builds.sr.ht/~tsileo/blobstash?)
 &nbsp; &nbsp;[![License](http://img.shields.io/badge/license-MIT-red.svg?style=flat)](https://git.sr.ht/~tsileo/blobstash/tree/master/LICENSE)
 
