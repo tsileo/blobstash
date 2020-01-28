@@ -3,7 +3,7 @@ BlobStash
 
 <p align="center">
   <img 
-    src="https://sos-ch-dk-2.exo.io/microblogpub/microblobpub.png" 
+    src="https://sos-ch-dk-2.exo.io/hexaninja/blobstash.png" 
     width="192" height="192" border="0" alt="microblog.pub">
 </p>
 
