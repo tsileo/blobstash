@@ -111,6 +111,8 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 
-	// Write the request
-	resp.WriteTo(w)
+	if resp != nil {
+		// Write the request
+		resp.WriteTo(w)
+	}
 }

@@ -127,15 +127,15 @@ func ScanDelimiter(line []byte, before rune, min int, processor DelimiterProcess
 			after = util.ToRune(line, j)
 		}
 
-		isLeft, isRight, canOpen, canClose := false, false, false, false
+		canOpen, canClose := false, false
 		beforeIsPunctuation := unicode.IsPunct(before)
 		beforeIsWhitespace := unicode.IsSpace(before)
 		afterIsPunctuation := unicode.IsPunct(after)
 		afterIsWhitespace := unicode.IsSpace(after)
 
-		isLeft = !afterIsWhitespace &&
+		isLeft := !afterIsWhitespace &&
 			(!afterIsPunctuation || beforeIsWhitespace || beforeIsPunctuation)
-		isRight = !beforeIsWhitespace &&
+		isRight := !beforeIsWhitespace &&
 			(!beforeIsPunctuation || afterIsWhitespace || afterIsPunctuation)
 
 		if line[i] == '_' {
@@ -156,20 +156,23 @@ func ScanDelimiter(line []byte, before rune, min int, processor DelimiterProcess
 // If you implement an inline parser that can have other inline nodes as
 // children, you should call this function when nesting span has closed.
 func ProcessDelimiters(bottom ast.Node, pc Context) {
-	if pc.LastDelimiter() == nil {
+	lastDelimiter := pc.LastDelimiter()
+	if lastDelimiter == nil {
 		return
 	}
 	var closer *Delimiter
 	if bottom != nil {
-		for c := pc.LastDelimiter().PreviousSibling(); c != nil; {
-			if d, ok := c.(*Delimiter); ok {
-				closer = d
+		if bottom != lastDelimiter {
+			for c := lastDelimiter.PreviousSibling(); c != nil; {
+				if d, ok := c.(*Delimiter); ok {
+					closer = d
+				}
+				prev := c.PreviousSibling()
+				if prev == bottom {
+					break
+				}
+				c = prev
 			}
-			prev := c.PreviousSibling()
-			if prev == bottom {
-				break
-			}
-			c = prev
 		}
 	} else {
 		closer = pc.FirstDelimiter()

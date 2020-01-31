@@ -56,7 +56,7 @@ func (r *reference) String() string {
 // An IDs interface is a collection of the element ids.
 type IDs interface {
 	// Generate generates a new element id.
-	Generate(value, prefix []byte) []byte
+	Generate(value []byte, kind ast.NodeKind) []byte
 
 	// Put puts a given element id to the used ids table.
 	Put(value []byte)
@@ -72,7 +72,7 @@ func newIDs() IDs {
 	}
 }
 
-func (s *ids) Generate(value, prefix []byte) []byte {
+func (s *ids) Generate(value []byte, kind ast.NodeKind) []byte {
 	value = util.TrimLeftSpace(value)
 	value = util.TrimRightSpace(value)
 	result := []byte{}
@@ -88,13 +88,13 @@ func (s *ids) Generate(value, prefix []byte) []byte {
 				v += 'a' - 'A'
 			}
 			result = append(result, v)
-		} else if util.IsSpace(v) {
+		} else if util.IsSpace(v) || v == '-' || v == '_' {
 			result = append(result, '-')
 		}
 	}
 	if len(result) == 0 {
-		if prefix != nil {
-			result = append(make([]byte, 0, len(prefix)), prefix...)
+		if kind == ast.KindHeading {
+			result = []byte("heading")
 		} else {
 			result = []byte("id")
 		}
@@ -104,7 +104,7 @@ func (s *ids) Generate(value, prefix []byte) []byte {
 		return result
 	}
 	for i := 1; ; i++ {
-		newResult := fmt.Sprintf("%s%d", result, i)
+		newResult := fmt.Sprintf("%s-%d", result, i)
 		if _, ok := s.values[newResult]; !ok {
 			s.values[newResult] = true
 			return []byte(newResult)
@@ -196,6 +196,24 @@ type Context interface {
 
 	// LastOpenedBlock returns a last node that is currently in parsing.
 	LastOpenedBlock() Block
+
+	// IsInLinkLabel returns true if current position seems to be in link label.
+	IsInLinkLabel() bool
+}
+
+// A ContextConfig struct is a data structure that holds configuration of the Context.
+type ContextConfig struct {
+	IDs IDs
+}
+
+// An ContextOption is a functional option type for the Context.
+type ContextOption func(*ContextConfig)
+
+// WithIDs is a functional option for the Context.
+func WithIDs(ids IDs) ContextOption {
+	return func(c *ContextConfig) {
+		c.IDs = ids
+	}
 }
 
 type parseContext struct {
@@ -210,11 +228,18 @@ type parseContext struct {
 }
 
 // NewContext returns a new Context.
-func NewContext() Context {
+func NewContext(options ...ContextOption) Context {
+	cfg := &ContextConfig{
+		IDs: newIDs(),
+	}
+	for _, option := range options {
+		option(cfg)
+	}
+
 	return &parseContext{
 		store:         make([]interface{}, ContextKeyMax+1),
 		refs:          map[string]Reference{},
-		ids:           newIDs(),
+		ids:           cfg.IDs,
 		blockOffset:   -1,
 		blockIndent:   -1,
 		delimiters:    nil,
@@ -354,6 +379,11 @@ func (p *parseContext) LastOpenedBlock() Block {
 		return p.openedBlocks[l-1]
 	}
 	return Block{}
+}
+
+func (p *parseContext) IsInLinkLabel() bool {
+	tlist := p.Get(linkLabelStateKey)
+	return tlist != nil
 }
 
 // State represents parser's state.
@@ -824,7 +854,7 @@ func (p *parser) Parse(reader text.Reader, opts ...ParseOption) ast.Node {
 	for _, at := range p.astTransformers {
 		at.Transform(root, reader, pc)
 	}
-	//root.Dump(reader.Source(), 0)
+	// root.Dump(reader.Source(), 0)
 	return root
 }
 
@@ -874,7 +904,7 @@ func (p *parser) openBlocks(parent ast.Node, blankLine bool, reader text.Reader,
 retry:
 	var bps []BlockParser
 	line, _ := reader.PeekLine()
-	w, pos := util.IndentWidth(line, 0)
+	w, pos := util.IndentWidth(line, reader.LineOffset())
 	if w >= len(line) {
 		pc.SetBlockOffset(-1)
 		pc.SetBlockIndent(-1)
@@ -903,7 +933,7 @@ retry:
 		if w > 3 && !bp.CanAcceptIndentedLine() {
 			continue
 		}
-		lastBlock := pc.LastOpenedBlock()
+		lastBlock = pc.LastOpenedBlock()
 		last := lastBlock.Node
 		node, state := bp.Open(parent, reader, pc)
 		if node != nil {
@@ -969,8 +999,9 @@ type lineStat struct {
 }
 
 func isBlankLine(lineNum, level int, stats []lineStat) bool {
-	ret := false
+	ret := true
 	for i := len(stats) - 1 - level; i >= 0; i-- {
+		ret = false
 		s := stats[i]
 		if s.lineNum == lineNum {
 			if s.level < level && s.isBlank {
@@ -1086,13 +1117,28 @@ func (p *parser) parseBlock(block text.BlockReader, parent ast.Node, pc Context)
 			break
 		}
 		lineLength := len(line)
+		hardlineBreak := false
+		softLinebreak := line[lineLength-1] == '\n'
+		if lineLength >= 2 && line[lineLength-2] == '\\' && softLinebreak { // ends with \\n
+			lineLength -= 2
+			hardlineBreak = true
+
+		} else if lineLength >= 3 && line[lineLength-3] == '\\' && line[lineLength-2] == '\r' && softLinebreak { // ends with \\r\n
+			lineLength -= 3
+			hardlineBreak = true
+		} else if lineLength >= 3 && line[lineLength-3] == ' ' && line[lineLength-2] == ' ' && softLinebreak { // ends with [space][space]\n
+			lineLength -= 3
+			hardlineBreak = true
+		} else if lineLength >= 4 && line[lineLength-4] == ' ' && line[lineLength-3] == ' ' && line[lineLength-2] == '\r' && softLinebreak { // ends with [space][space]\r\n
+			lineLength -= 4
+			hardlineBreak = true
+		}
+
 		l, startPosition := block.Position()
 		n := 0
-		softLinebreak := false
 		for i := 0; i < lineLength; i++ {
 			c := line[i]
 			if c == '\n' {
-				softLinebreak = true
 				break
 			}
 			isSpace := util.IsSpace(c)
@@ -1150,13 +1196,6 @@ func (p *parser) parseBlock(block text.BlockReader, parent ast.Node, pc Context)
 		}
 		diff := startPosition.Between(currentPosition)
 		stop := diff.Stop
-		hardlineBreak := false
-		if lineLength > 2 && line[lineLength-2] == '\\' && softLinebreak { // ends with \\n
-			stop--
-			hardlineBreak = true
-		} else if lineLength > 3 && line[lineLength-3] == ' ' && line[lineLength-2] == ' ' && softLinebreak { // ends with [space][space]\n
-			hardlineBreak = true
-		}
 		rest := diff.WithStop(stop)
 		text := ast.NewTextSegment(rest.TrimRightSpace(source))
 		text.SetSoftLineBreak(softLinebreak)
@@ -1169,5 +1208,4 @@ func (p *parser) parseBlock(block text.BlockReader, parent ast.Node, pc Context)
 	for _, ip := range p.closeBlockers {
 		ip.CloseBlock(parent, block, pc)
 	}
-
 }

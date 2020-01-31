@@ -34,7 +34,8 @@ type Middleware struct {
 	Before func(*logrus.Entry, *http.Request, string) *logrus.Entry
 	After  func(*logrus.Entry, negroni.ResponseWriter, time.Duration, string) *logrus.Entry
 
-	logStarting bool
+	logStarting  bool
+	logCompleted bool
 
 	clock timer
 
@@ -59,8 +60,9 @@ func NewCustomMiddleware(level logrus.Level, formatter logrus.Formatter, name st
 		Before: DefaultBefore,
 		After:  DefaultAfter,
 
-		logStarting: true,
-		clock:       &realClock{},
+		logStarting:  true,
+		logCompleted: true,
+		clock:        &realClock{},
 	}
 }
 
@@ -72,8 +74,9 @@ func NewMiddlewareFromLogger(logger *logrus.Logger, name string) *Middleware {
 		Before: DefaultBefore,
 		After:  DefaultAfter,
 
-		logStarting: true,
-		clock:       &realClock{},
+		logStarting:  true,
+		logCompleted: true,
+		clock:        &realClock{},
 	}
 }
 
@@ -81,6 +84,12 @@ func NewMiddlewareFromLogger(logger *logrus.Logger, name string) *Middleware {
 // request" prior to passing to the next middleware
 func (m *Middleware) SetLogStarting(v bool) {
 	m.logStarting = v
+}
+
+// SetLogCompleted accepts a bool to control the logging of "completed handling
+// request" after returning from the next middleware
+func (m *Middleware) SetLogCompleted(v bool) {
+	m.logCompleted = v
 }
 
 // ExcludeURL adds a new URL u to be ignored during logging. The URL u is parsed, hence the returned error
@@ -138,7 +147,9 @@ func (m *Middleware) ServeHTTP(rw http.ResponseWriter, r *http.Request, next htt
 	latency := m.clock.Since(start)
 	res := rw.(negroni.ResponseWriter)
 
-	m.After(entry, res, latency, m.Name).Info("completed handling request")
+	if m.logCompleted {
+		m.After(entry, res, latency, m.Name).Info("completed handling request")
+	}
 }
 
 // BeforeFunc is the func type used to modify or replace the *logrus.Entry prior
@@ -161,9 +172,9 @@ func DefaultBefore(entry *logrus.Entry, req *http.Request, remoteAddr string) *l
 // DefaultAfter is the default func assigned to *Middleware.After
 func DefaultAfter(entry *logrus.Entry, res negroni.ResponseWriter, latency time.Duration, name string) *logrus.Entry {
 	return entry.WithFields(logrus.Fields{
-		"status":      res.Status(),
-		"text_status": http.StatusText(res.Status()),
-		"took":        latency,
+		"status":                                res.Status(),
+		"text_status":                           http.StatusText(res.Status()),
+		"took":                                  latency,
 		fmt.Sprintf("measure#%s.latency", name): latency.Nanoseconds(),
 	})
 }

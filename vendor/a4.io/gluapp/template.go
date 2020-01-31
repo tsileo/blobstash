@@ -65,6 +65,7 @@ func setupTemplate(path string) func(*lua.LState) int {
 
 				var templates []string
 				for i := 1; i < L.GetTop(); i++ {
+					// FIXME: remove dot in the filename
 					templates = append(templates, filepath.Join(path, string(L.ToString(i))))
 				}
 

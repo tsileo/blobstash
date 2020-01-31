@@ -119,10 +119,13 @@ var linkBottom = NewContextKey()
 
 func (s *linkParser) Parse(parent ast.Node, block text.Reader, pc Context) ast.Node {
 	line, segment := block.PeekLine()
-	if line[0] == '!' && len(line) > 1 && line[1] == '[' {
-		block.Advance(1)
-		pc.Set(linkBottom, pc.LastDelimiter())
-		return processLinkLabelOpen(block, segment.Start+1, true, pc)
+	if line[0] == '!' {
+		if len(line) > 1 && line[1] == '[' {
+			block.Advance(1)
+			pc.Set(linkBottom, pc.LastDelimiter())
+			return processLinkLabelOpen(block, segment.Start+1, true, pc)
+		}
+		return nil
 	}
 	if line[0] == '[' {
 		pc.Set(linkBottom, pc.LastDelimiter())
@@ -348,14 +351,31 @@ func parseLinkTitle(block text.Reader) ([]byte, bool) {
 	if opener == '(' {
 		closer = ')'
 	}
-	line, _ := block.PeekLine()
-	pos := util.FindClosure(line[1:], opener, closer, false, true)
-	if pos < 0 {
-		return nil, false
+	savedLine, savedPosition := block.Position()
+	var title []byte
+	for i := 0; ; i++ {
+		line, _ := block.PeekLine()
+		if line == nil {
+			block.SetPosition(savedLine, savedPosition)
+			return nil, false
+		}
+		offset := 0
+		if i == 0 {
+			offset = 1
+		}
+		pos := util.FindClosure(line[offset:], opener, closer, false, true)
+		if pos < 0 {
+			title = append(title, line[offset:]...)
+			block.AdvanceLine()
+			continue
+		}
+		pos += offset + 1 // 1: closer
+		block.Advance(pos)
+		if i == 0 { // avoid allocating new slice
+			return line[offset : pos-1], true
+		}
+		return append(title, line[offset:pos-1]...), true
 	}
-	pos += 2 // opener + closer
-	block.Advance(pos)
-	return line[1 : pos-1], true
 }
 
 func (s *linkParser) CloseBlock(parent ast.Node, block text.Reader, pc Context) {

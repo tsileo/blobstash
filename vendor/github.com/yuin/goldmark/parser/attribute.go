@@ -2,9 +2,11 @@ package parser
 
 import (
 	"bytes"
+	"io"
+	"strconv"
+
 	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
-	"strconv"
 )
 
 var attrNameID = []byte("id")
@@ -97,6 +99,9 @@ func parseAttribute(reader text.Reader) (Attribute, bool) {
 		return Attribute{Name: name, Value: line[0:i]}, true
 	}
 	line, _ := reader.PeekLine()
+	if len(line) == 0 {
+		return Attribute{}, false
+	}
 	c = line[0]
 	if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
 		c == '_' || c == ':') {
@@ -104,7 +109,7 @@ func parseAttribute(reader text.Reader) (Attribute, bool) {
 	}
 	i := 0
 	for ; i < len(line); i++ {
-		c := line[i]
+		c = line[i]
 		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
 			(c >= '0' && c <= '9') ||
 			c == '_' || c == ':' || c == '.' || c == '-') {
@@ -125,7 +130,6 @@ func parseAttribute(reader text.Reader) (Attribute, bool) {
 		return Attribute{}, false
 	}
 	return Attribute{Name: name, Value: value}, true
-
 }
 
 func parseAttributeValue(reader text.Reader) (interface{}, bool) {
@@ -153,7 +157,6 @@ func parseAttributeValue(reader text.Reader) (interface{}, bool) {
 		return nil, false
 	}
 	return value, true
-
 }
 
 func parseAttributeArray(reader text.Reader) ([]interface{}, bool) {
@@ -228,7 +231,7 @@ func parseAttributeString(reader text.Reader) ([]byte, bool) {
 	return nil, false
 }
 
-func scanAttributeDecimal(reader text.Reader, w *bytes.Buffer) {
+func scanAttributeDecimal(reader text.Reader, w io.ByteWriter) {
 	for {
 		c := reader.Peek()
 		if util.IsNumeric(c) {

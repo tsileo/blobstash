@@ -1,16 +1,11 @@
 language: go
-sudo: false
-dist: trusty
 go:
-- 1.6.x
-- 1.7.x
-- 1.8.x
+- stable
 - master
 before_install:
 - go get -u golang.org/x/tools/cmd/cover
-- go get -u github.com/alecthomas/gometalinter
-- gometalinter --install --update
+- curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.21.0
 script:
-- gometalinter --deadline=1m .
+- golangci-lint run
 - go test -v -coverprofile=package.coverprofile
 - go tool cover -func=package.coverprofile
