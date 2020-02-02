@@ -4,7 +4,7 @@ replace github.com/go-interpreter/wagon v0.0.0 => github.com/perlin-network/wago
 
 require (
 	a4.io/blobsfile v0.3.8
-	a4.io/gluapp v0.0.0-20200202110637-971b705265cd
+	a4.io/gluapp v0.0.0-20200202115504-51581a8e4642
 	a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f
 	a4.io/go/indieauth v1.0.0
 	a4.io/ssse v0.0.0-20181202155639-1949828a8689
@@ -15,26 +15,20 @@ require (
 	github.com/dave/jennifer v1.4.0
 	github.com/dustin/go-humanize v1.0.0
 	github.com/evanphx/json-patch v4.5.0+incompatible
-	github.com/golang/protobuf v1.3.3 // indirect
 	github.com/golang/snappy v0.0.1
+	github.com/gomarkdown/markdown v0.0.0-20200127000047-1813ea067497 // indirect
 	github.com/gorilla/context v1.1.1
 	github.com/gorilla/handlers v1.4.2
 	github.com/gorilla/mux v1.7.3
 	github.com/gorilla/sessions v1.2.0
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/inconshreveable/log15 v0.0.0-20200109203555-b30bc20e4fd1
-	github.com/klauspost/cpuid v1.2.3 // indirect
-	github.com/mattn/go-isatty v0.0.12 // indirect
-	github.com/meatballhat/negroni-logrus v1.1.0 // indirect
 	github.com/mitchellh/go-ps v0.0.0-20190716172923-621e5597135b
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
-	github.com/peterhellberg/link v1.1.0 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/reiver/go-porterstemmer v1.0.1
 	github.com/restic/chunker v0.2.0
 	github.com/robfig/cron v1.2.0
 	github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd
-	github.com/sergi/go-diff v1.1.0 // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20190923125748-758128399b1d
 	github.com/unrolled/secure v1.0.7
 	github.com/vmihailenco/msgpack v4.0.4+incompatible
@@ -44,7 +38,6 @@ require (
 	github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
 	golang.org/x/crypto v0.0.0-20200128174031-69ecbb4d6d5d
 	golang.org/x/net v0.0.0-20200202094626-16171245cfb2
-	golang.org/x/sys v0.0.0-20200124204421-9fbb57f87de9 // indirect
 	gopkg.in/inconshreveable/log15.v2 v2.0.0-20200109203555-b30bc20e4fd1
 	gopkg.in/src-d/enry.v1 v1.7.3
 	gopkg.in/src-d/go-git.v4 v4.13.1

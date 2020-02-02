@@ -195,13 +195,13 @@ func requestFile(L *lua.LState) int {
 	return 1
 }
 
-func requestFile(L *lua.LState) int {
+func requestBasicAuth(L *lua.LState) int {
 	request := checkRequest(L)
 	if request == nil {
 		return 1
 	}
 
-	user, pass, ok := request.BasicAuth()
+	user, pass, ok := request.request.BasicAuth()
 
 	L.Push(lua.LString(user))
 	L.Push(lua.LString(pass))

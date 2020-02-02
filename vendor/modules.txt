@@ -1,6 +1,6 @@
 # a4.io/blobsfile v0.3.8
 a4.io/blobsfile
-# a4.io/gluapp v0.0.0-20200202110637-971b705265cd
+# a4.io/gluapp v0.0.0-20200202115504-51581a8e4642
 a4.io/gluapp
 a4.io/gluapp/util
 # a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f
