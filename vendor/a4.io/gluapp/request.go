@@ -41,8 +41,6 @@ func getIPAddress(r *http.Request) string {
 	return hdrRealIp
 }
 
-// TODO(tsileo): handle basic auth with fixed config + helper for request.BasicAuth wrapper
-
 // request represents the incoming HTTP request
 type request struct {
 	uploadMaxMemory int64
@@ -72,6 +70,7 @@ func newRequest(L *lua.LState, r *http.Request) (*lua.LUserData, error) {
 		"scheme":      requestScheme,
 		"host":        requestHost,
 		"file":        requestFile,
+		"basic_auth":  requestBasicAuth,
 	}))
 	ud := L.NewUserData()
 	ud.Value = req
@@ -194,6 +193,25 @@ func requestFile(L *lua.LState) int {
 	out.RawSetH(lua.LString("contents"), lua.LString(fdata))
 	L.Push(out)
 	return 1
+}
+
+func requestFile(L *lua.LState) int {
+	request := checkRequest(L)
+	if request == nil {
+		return 1
+	}
+
+	user, pass, ok := request.BasicAuth()
+
+	L.Push(lua.LString(user))
+	L.Push(lua.LString(pass))
+	if ok {
+		L.Push(lua.LTrue)
+	} else {
+		L.Push(lua.LFalse)
+	}
+
+	return 3
 }
 
 func requestRemoteAddr(L *lua.LState) int {

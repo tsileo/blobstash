@@ -1,6 +1,6 @@
 # a4.io/blobsfile v0.3.8
 a4.io/blobsfile
-# a4.io/gluapp v0.0.0-20200131211012-723a51b0e790
+# a4.io/gluapp v0.0.0-20200202110637-971b705265cd
 a4.io/gluapp
 a4.io/gluapp/util
 # a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f
@@ -223,7 +223,7 @@ golang.org/x/crypto/scrypt
 golang.org/x/crypto/ssh
 golang.org/x/crypto/ssh/agent
 golang.org/x/crypto/ssh/knownhosts
-# golang.org/x/net v0.0.0-20200114155413-6afb5195e5aa
+# golang.org/x/net v0.0.0-20200202094626-16171245cfb2
 golang.org/x/net/context
 golang.org/x/net/html
 golang.org/x/net/html/atom

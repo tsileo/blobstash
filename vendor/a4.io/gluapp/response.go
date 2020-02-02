@@ -69,14 +69,13 @@ func newResponse(L *lua.LState, w http.ResponseWriter, r *http.Request) (*lua.LU
 	mt := L.NewTypeMetatable("response")
 	// methods
 	responseMethods := map[string]lua.LGFunction{
-		"redirect":   responseRedirect,
-		"set_status": responseStatus,
-		"headers":    responseHeaders,
-		"write":      responseWrite,
-		"jsonify":    responseJsonify,
-		"error":      responseError,
-		// TODO(tsileo): see how to deal with basic auth
-		// "authenticate": responseAuthenticate,
+		"redirect":     responseRedirect,
+		"set_status":   responseStatus,
+		"headers":      responseHeaders,
+		"write":        responseWrite,
+		"jsonify":      responseJsonify,
+		"error":        responseError,
+		"authenticate": responseAuthenticate,
 	}
 	L.SetField(mt, "__index", L.SetFuncs(L.NewTable(), responseMethods))
 	ud := L.NewUserData()
