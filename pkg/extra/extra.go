@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"github.com/yuin/gopher-lua"
 )
@@ -31,6 +32,13 @@ func setupExtra(e *Extra) func(*lua.LState) int {
 				} else {
 					L.Push(lua.LFalse)
 				}
+				return 1
+			},
+			"replace": func(L *lua.LState) int {
+				in := L.ToString(1)
+				toreplace := L.ToString(2)
+				replacement := L.ToString(3)
+				L.Push(lua.LString(strings.Replace(in, toreplace, replacement, 1)))
 				return 1
 			},
 			"embed_http_resource": func(L *lua.LState) int {
