@@ -338,80 +338,90 @@ func (docstore *DocStore) Register(r *mux.Router, basicAuth func(http.Handler) h
 	r.Handle("/{collection}/{_id}/_versions", basicAuth(http.HandlerFunc(docstore.docVersionsHandler())))
 }
 
+func (docstore *DocStore) fetchPointersRec(v interface{}, pointers map[string]interface{}) error {
+	switch vv := v.(type) {
+	case map[string]interface{}:
+		for _, value := range vv {
+			if err := docstore.fetchPointersRec(value, pointers); err != nil {
+				return err
+			}
+		}
+		return nil
+	case []interface{}:
+		for _, item := range vv {
+			if err := docstore.fetchPointersRec(item, pointers); err != nil {
+				return err
+			}
+		}
+		return nil
+	case string:
+		switch {
+		case strings.HasPrefix(vv, pointerBlobJSON):
+			if _, ok := pointers[vv]; ok {
+				// The reference has already been fetched
+				return nil
+			}
+			// XXX(tsileo): here and at other place, add a util func in hashutil to detect invalid string length at least
+			blob, err := docstore.blobStore.Get(context.TODO(), vv[len(pointerBlobJSON):])
+			if err != nil {
+				return fmt.Errorf("failed to fetch JSON ref: \"%v => %v\": %v", pointerBlobJSON, v, err)
+			}
+			p := map[string]interface{}{}
+			if err := json.Unmarshal(blob, &p); err != nil {
+				return fmt.Errorf("failed to unmarshal blob  \"%v => %v\": %v", pointerBlobJSON, v, err)
+			}
+			pointers[vv] = p
+		case strings.HasPrefix(vv, pointerFiletreeRef):
+			if _, ok := pointers[vv]; ok {
+				// The reference has already been fetched
+				return nil
+			}
+			// XXX(tsileo): here and at other place, add a util func in hashutil to detect invalid string length at least
+			hash := vv[len(pointerFiletreeRef):]
+			// TODO(tsileo): call filetree to get a node
+			// blob, err := docstore.blobStore.Get(context.TODO(), hash)
+			// if err != nil {
+			// 	return nil, fmt.Errorf("failed to fetch JSON ref: \"%v => %v\": %v", pointerFiletreeRef, v, err)
+			// }
+
+			// // Reconstruct the Meta
+			// var p map[string]interface{}
+			// if err := json.Unmarshal(blob, &p); err != nil {
+			// 	return nil, fmt.Errorf("failed to unmarshal meta  \"%v => %v\": %v", pointerBlobJSON, v, err)
+			// }
+			node, err := docstore.filetree.Node(context.TODO(), hash)
+			if err != nil {
+				return err
+			}
+
+			// Create a temporary authorization for the file (with a bewit)
+			u := &url.URL{Path: fmt.Sprintf("/%s/%s", node.Type[0:1], hash)}
+			if err := bewit.Bewit(docstore.filetree.SharingCred(), u, shareDuration); err != nil {
+				return fmt.Errorf("failed to generate bewit: %v", err)
+			}
+			node.URL = u.String()
+
+			pointers[vv] = node
+		}
+
+		return nil
+	default:
+		return nil
+	}
+}
+
 // Expand a doc keys (fetch the blob as JSON, or a filesystem reference)
 // e.g: {"ref": "@blobstash/json:<hash>"}
 //      => {"ref": {"blob": "json decoded"}}
 // XXX(tsileo): expanded ref must also works for marking a blob during GC
-// FIXME(tsileo): rename this to "pointers" and return {"data":{[...]}, "pointers": {}}
-func (docstore *DocStore) fetchPointers(doc map[string]interface{}) (map[string]interface{}, error) {
-	pointers := map[string]interface{}{}
-	// docstore.logger.Info("expandKeys")
-
+func (docstore *DocStore) fetchPointers(doc map[string]interface{}, pointers map[string]interface{}) error {
 	for _, v := range doc {
-		switch vv := v.(type) {
-		case map[string]interface{}:
-			docPointers, err := docstore.fetchPointers(vv)
-			if err != nil {
-				return nil, err
-			}
-			for k, v := range docPointers {
-				pointers[k] = v
-			}
-			continue
-		case string:
-			switch {
-			case strings.HasPrefix(vv, pointerBlobJSON):
-				if _, ok := pointers[vv]; ok {
-					// The reference has already been fetched
-					continue
-				}
-				// XXX(tsileo): here and at other place, add a util func in hashutil to detect invalid string length at least
-				blob, err := docstore.blobStore.Get(context.TODO(), vv[len(pointerBlobJSON):])
-				if err != nil {
-					return nil, fmt.Errorf("failed to fetch JSON ref: \"%v => %v\": %v", pointerBlobJSON, v, err)
-				}
-				p := map[string]interface{}{}
-				if err := json.Unmarshal(blob, &p); err != nil {
-					return nil, fmt.Errorf("failed to unmarshal blob  \"%v => %v\": %v", pointerBlobJSON, v, err)
-				}
-				pointers[vv] = p
-			case strings.HasPrefix(vv, pointerFiletreeRef):
-				if _, ok := pointers[vv]; ok {
-					// The reference has already been fetched
-					continue
-				}
-				// XXX(tsileo): here and at other place, add a util func in hashutil to detect invalid string length at least
-				hash := vv[len(pointerFiletreeRef):]
-				// TODO(tsileo): call filetree to get a node
-				// blob, err := docstore.blobStore.Get(context.TODO(), hash)
-				// if err != nil {
-				// 	return nil, fmt.Errorf("failed to fetch JSON ref: \"%v => %v\": %v", pointerFiletreeRef, v, err)
-				// }
-
-				// // Reconstruct the Meta
-				// var p map[string]interface{}
-				// if err := json.Unmarshal(blob, &p); err != nil {
-				// 	return nil, fmt.Errorf("failed to unmarshal meta  \"%v => %v\": %v", pointerBlobJSON, v, err)
-				// }
-				node, err := docstore.filetree.Node(context.TODO(), hash)
-				if err != nil {
-					return nil, err
-				}
-
-				// Create a temporary authorization for the file (with a bewit)
-				u := &url.URL{Path: fmt.Sprintf("/%s/%s", node.Type[0:1], hash)}
-				if err := bewit.Bewit(docstore.filetree.SharingCred(), u, shareDuration); err != nil {
-					return nil, fmt.Errorf("failed to generate bewit: %v", err)
-				}
-				node.URL = u.String()
-
-				pointers[vv] = node
-			}
-
+		if err := docstore.fetchPointersRec(v, pointers); err != nil {
+			return err
 		}
 	}
 
-	return pointers, nil
+	return nil
 }
 
 // nextKey returns the next key for lexigraphical ordering (key = nextKey(lastkey))
@@ -1491,12 +1501,8 @@ func (docstore *DocStore) FetchVersions(collection, sid string, start int64, lim
 		}
 
 		if fetchPointers {
-			docPointers, err := docstore.fetchPointers(doc)
-			if err != nil {
+			if err := docstore.fetchPointers(doc, pointers); err != nil {
 				return nil, nil, cursor, err
-			}
-			for k, v := range docPointers {
-				pointers[k] = v
 			}
 		}
 
@@ -1531,7 +1537,7 @@ func (docstore *DocStore) Fetch(collection, sid string, res interface{}, fetchPo
 	// XXX(tsileo): add/handle a `Deleted` flag
 	blob := kv.Data[1:]
 
-	var pointers map[string]interface{}
+	pointers := map[string]interface{}{}
 
 	// FIXME(tsileo): handle deleted docs (also in the admin/query)
 	if len(blob) > 0 {
@@ -1546,8 +1552,7 @@ func (docstore *DocStore) Fetch(collection, sid string, res interface{}, fetchPo
 			}
 			// TODO(tsileo): set the special fields _created/_updated/_hash
 			if fetchPointers {
-				pointers, err = docstore.fetchPointers(*idoc)
-				if err != nil {
+				if err := docstore.fetchPointers(*idoc, pointers); err != nil {
 					return nil, nil, err
 				}
 			}
