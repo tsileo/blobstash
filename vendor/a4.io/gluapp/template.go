@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"a4.io/blobstash/pkg/apps/luautil"
+	"mvdan.cc/xurls"
 
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/renderer/html"
 	"github.com/yuin/gopher-lua"
 )
@@ -19,6 +21,18 @@ var mdc = goldmark.New(
 	goldmark.WithRendererOptions(
 		html.WithHardWraps(),
 		html.WithUnsafe(),
+	),
+	goldmark.WithExtensions(
+		extension.Table,
+		extension.NewLinkify(
+			extension.WithLinkifyAllowedProtocols([][]byte{
+				[]byte("http:"),
+				[]byte("https:"),
+			}),
+			extension.WithLinkifyURLRegexp(
+				xurls.Strict,
+			),
+		),
 	),
 )
 

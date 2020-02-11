@@ -9,11 +9,14 @@ a4.io/blobstash v0.0.0-20191229152948-bc315003dfb2 h1:IrSuuUq3Ib1+DSOkqP3MOoasNG
 a4.io/blobstash v0.0.0-20191229152948-bc315003dfb2/go.mod h1:YrXxObZG8guBDGhUolW6/MlbngxiUk7+H5liKBxDd3s=
 a4.io/blobstash v0.0.0-20200131212433-e97337e98c5e h1:BoQS5Wt9GqjeNJhAI/5U9pzJgcPoQAiPE3xmhVKfFw8=
 a4.io/blobstash v0.0.0-20200131212433-e97337e98c5e/go.mod h1:SrGKNSU1yJ6esqF0aqD53kjCrpHoEl28kuQdKHUvXsc=
+a4.io/blobstash v0.0.0-20200202192640-d62b4924ec01 h1:Cxt+qvHHH+W20N1/9WhKEbYjlymaOIz3HPEGvDYdSN0=
+a4.io/blobstash v0.0.0-20200202192640-d62b4924ec01/go.mod h1:38J1ivXRQHMj5UZasbPi7o/P5nc7snAeaAu7lIXL1gM=
 a4.io/gluapp v0.0.0-20181203183836-c136dc4e9123/go.mod h1:rK/CQwI+tDICKCR1szNtBP0rJdH1LCrO/ZnculcIjWI=
 a4.io/gluapp v0.0.0-20181217122610-c6ba9b02f21b/go.mod h1:hDz8O30eiYv+1bAFzssTvbRaLy27xwk7pdR7v2md7Ew=
 a4.io/gluapp v0.0.0-20181218195258-2be1706b2908/go.mod h1:hDz8O30eiYv+1bAFzssTvbRaLy27xwk7pdR7v2md7Ew=
 a4.io/gluapp v0.0.0-20190530193846-2ad05291e3be/go.mod h1:46QpRqVnBeahZFsw+6+/NPhwex2jY7ZrFvPoRdhgu5Y=
 a4.io/gluapp v0.0.0-20200131211012-723a51b0e790/go.mod h1:XvZKnPX9E8UAoNcbJ5ESYCr9c6yYTRyv/4iDsDt/Eyo=
+a4.io/gluapp v0.0.0-20200202115504-51581a8e4642/go.mod h1:jgLJ6nULqKUJSJsT4W0KuNhh/lqXo6cS/pDuuESx4ko=
 a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f h1:mfEWN0Dd2AfIXU5WO5ZfqbFVk63Qz5M/CANs182pm+U=
 a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f/go.mod h1:t7OhwCmPQfuUf8cjm7n8chSbZt5CTILu+dTLu1MQKjQ=
 a4.io/go/indieauth v1.0.0/go.mod h1:yCJuSTw9d22VdPWrZ8frGLwVOdwscJTiXjG4IgVL0Vw=
@@ -69,6 +72,7 @@ github.com/golang/protobuf v1.3.3/go.mod h1:vzj43D7+SQXF/4pzW/hwtAqwc6iTitCiVSaW
 github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db/go.mod h1:/XxbfmMg8lxefKM7IXC3fBNl/7bRcc72aCRzEWrmP2Q=
 github.com/golang/snappy v0.0.1/go.mod h1:/XxbfmMg8lxefKM7IXC3fBNl/7bRcc72aCRzEWrmP2Q=
 github.com/gomarkdown/markdown v0.0.0-20181104084050-d1d0edeb5d85/go.mod h1:gmFANS06wAVmF0B9yi65QKsRmPQ97tze7FRLswua+OY=
+github.com/gomarkdown/markdown v0.0.0-20200127000047-1813ea067497/go.mod h1:aii0r/K0ZnHv7G0KF7xy1v0A7s2Ljrb5byB7MO5p6TU=
 github.com/goods/httpbuf v0.0.0-20120503183857-5709e9bb814c/go.mod h1:cHMBumiwaaRxRQ6NT8sU3zQSkXbYaPjbBcXa8UgTzAE=
 github.com/google/go-cmp v0.2.0/go.mod h1:oXzfMopK8JAjlY9xF4vHSVASa0yLyX7SntLO5aqRK0M=
 github.com/google/go-cmp v0.3.0/go.mod h1:8QqcDgzrUqlUb/G2PQTWiueGozuR1884gddMywk6iLU=
@@ -186,6 +190,7 @@ github.com/yuin/gopher-lua v0.0.0-20190514113301-1cd887cd7036/go.mod h1:gqRgreBU
 github.com/yuin/gopher-lua v0.0.0-20191220021717-ab39c6098bdb h1:ZkM6LRnq40pR1Ox0hTHlnpkcOTuFIDQpZ1IN8rKKhX0=
 github.com/yuin/gopher-lua v0.0.0-20191220021717-ab39c6098bdb/go.mod h1:gqRgreBUhTSL0GeU64rtZ3Uq3wtjOa/TB2YfrtkCbVQ=
 github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28/go.mod h1:WBaExyQHBJO9SelgH0SNqmlwYKV62vfnHCX5lXii91c=
+golang.org/dl v0.0.0-20190829154251-82a15e2f2ead/go.mod h1:IUMfjQLJQd4UTqG1Z90tenwKoCX93Gn3MAQJMOSBsDQ=
 golang.org/x/crypto v0.0.0-20180904163835-0709b304e793/go.mod h1:6SG95UA2DQfeDnfUPMdvaQW0Q7yPrPDi9nlGo2tz2b4=
 golang.org/x/crypto v0.0.0-20181203042331-505ab145d0a9/go.mod h1:6SG95UA2DQfeDnfUPMdvaQW0Q7yPrPDi9nlGo2tz2b4=
 golang.org/x/crypto v0.0.0-20190219172222-a4c6cb3142f2/go.mod h1:6SG95UA2DQfeDnfUPMdvaQW0Q7yPrPDi9nlGo2tz2b4=
@@ -205,6 +210,7 @@ golang.org/x/net v0.0.0-20190620200207-3b0461eec859/go.mod h1:z5CRVTTTmAJ677TzLL
 golang.org/x/net v0.0.0-20190724013045-ca1201d0de80/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
 golang.org/x/net v0.0.0-20191109021931-daa7c04131f5/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
 golang.org/x/net v0.0.0-20200114155413-6afb5195e5aa/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
+golang.org/x/net v0.0.0-20200202094626-16171245cfb2/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
 golang.org/x/sync v0.0.0-20180314180146-1d60e4601c6f/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.0.0-20181108010431-42b317875d0f/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.0.0-20181221193216-37e7f081c4d4/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
@@ -259,4 +265,6 @@ gopkg.in/yaml.v2 v2.2.4/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
 gopkg.in/yaml.v2 v2.2.5/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
 gopkg.in/yaml.v2 v2.2.8 h1:obN1ZagJSUGI0Ek/LBmuj4SNLPfIny3KsKFopxRdj10=
 gopkg.in/yaml.v2 v2.2.8/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
+mvdan.cc/xurls v1.1.0 h1:kj0j2lonKseISJCiq1Tfk+iTv65dDGCl0rTbanXJGGc=
+mvdan.cc/xurls v1.1.0/go.mod h1:TNWuhvo+IqbUCmtUIb/3LJSQdrzel8loVpgFm0HikbI=
 willnorris.com/go/microformats v1.0.0/go.mod h1:AXRtimOA0J5fDmM2sxlka4G6PNLWC4bCNJcZjLvFdDw=

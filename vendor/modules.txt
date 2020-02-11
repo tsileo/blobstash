@@ -1,6 +1,6 @@
 # a4.io/blobsfile v0.3.8
 a4.io/blobsfile
-# a4.io/gluapp v0.0.0-20200202115504-51581a8e4642
+# a4.io/gluapp v0.0.0-20200211221502-1cf72ec06507
 a4.io/gluapp
 a4.io/gluapp/util
 # a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f
@@ -187,6 +187,8 @@ github.com/xeonx/timeago
 # github.com/yuin/goldmark v1.1.22
 github.com/yuin/goldmark
 github.com/yuin/goldmark/ast
+github.com/yuin/goldmark/extension
+github.com/yuin/goldmark/extension/ast
 github.com/yuin/goldmark/parser
 github.com/yuin/goldmark/renderer
 github.com/yuin/goldmark/renderer/html
@@ -315,5 +317,7 @@ gopkg.in/toqueteos/substring.v1
 gopkg.in/warnings.v0
 # gopkg.in/yaml.v2 v2.2.8
 gopkg.in/yaml.v2
+# mvdan.cc/xurls v1.1.0
+mvdan.cc/xurls
 # willnorris.com/go/microformats v1.0.0
 willnorris.com/go/microformats
