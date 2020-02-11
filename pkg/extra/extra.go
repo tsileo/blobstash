@@ -41,6 +41,14 @@ func setupExtra(e *Extra) func(*lua.LState) int {
 				L.Push(lua.LString(strings.Replace(in, toreplace, replacement, 1)))
 				return 1
 			},
+			"split": func(L *lua.LState) int {
+				tbl := L.NewTable()
+				for _, part := range strings.Split(L.ToString(1), L.ToString(2)) {
+					tbl.Append(lua.LString(part))
+				}
+				L.Push(tbl)
+				return 1
+			},
 			"embed_http_resource": func(L *lua.LState) int {
 				url := L.ToString(1)
 
