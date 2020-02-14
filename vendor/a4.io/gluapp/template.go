@@ -12,6 +12,7 @@ import (
 	"mvdan.cc/xurls"
 
 	"github.com/yuin/goldmark"
+	highlighting "github.com/yuin/goldmark-highlighting"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/renderer/html"
 	"github.com/yuin/gopher-lua"
@@ -23,6 +24,7 @@ var mdc = goldmark.New(
 		html.WithUnsafe(),
 	),
 	goldmark.WithExtensions(
+		highlighting.Highlighting,
 		extension.Table,
 		extension.NewLinkify(
 			extension.WithLinkifyAllowedProtocols([][]byte{

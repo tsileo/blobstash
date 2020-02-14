@@ -4,7 +4,7 @@ replace github.com/go-interpreter/wagon v0.0.0 => github.com/perlin-network/wago
 
 require (
 	a4.io/blobsfile v0.3.8
-	a4.io/gluapp v0.0.0-20200211221502-1cf72ec06507
+	a4.io/gluapp v0.0.0-20200214202429-b4a08105811e
 	a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f
 	a4.io/go/indieauth v1.0.0
 	a4.io/ssse v0.0.0-20181202155639-1949828a8689

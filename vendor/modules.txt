@@ -1,6 +1,6 @@
 # a4.io/blobsfile v0.3.8
 a4.io/blobsfile
-# a4.io/gluapp v0.0.0-20200211221502-1cf72ec06507
+# a4.io/gluapp v0.0.0-20200214202429-b4a08105811e
 a4.io/gluapp
 a4.io/gluapp/util
 # a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f
@@ -13,6 +13,37 @@ a4.io/ssse/pkg/client
 bazil.org/fuse
 bazil.org/fuse/fs
 bazil.org/fuse/fuseutil
+# github.com/alecthomas/chroma v0.7.1
+github.com/alecthomas/chroma
+github.com/alecthomas/chroma/formatters/html
+github.com/alecthomas/chroma/lexers
+github.com/alecthomas/chroma/lexers/a
+github.com/alecthomas/chroma/lexers/b
+github.com/alecthomas/chroma/lexers/c
+github.com/alecthomas/chroma/lexers/circular
+github.com/alecthomas/chroma/lexers/d
+github.com/alecthomas/chroma/lexers/e
+github.com/alecthomas/chroma/lexers/f
+github.com/alecthomas/chroma/lexers/g
+github.com/alecthomas/chroma/lexers/h
+github.com/alecthomas/chroma/lexers/i
+github.com/alecthomas/chroma/lexers/internal
+github.com/alecthomas/chroma/lexers/j
+github.com/alecthomas/chroma/lexers/k
+github.com/alecthomas/chroma/lexers/l
+github.com/alecthomas/chroma/lexers/m
+github.com/alecthomas/chroma/lexers/n
+github.com/alecthomas/chroma/lexers/o
+github.com/alecthomas/chroma/lexers/p
+github.com/alecthomas/chroma/lexers/q
+github.com/alecthomas/chroma/lexers/r
+github.com/alecthomas/chroma/lexers/s
+github.com/alecthomas/chroma/lexers/t
+github.com/alecthomas/chroma/lexers/v
+github.com/alecthomas/chroma/lexers/w
+github.com/alecthomas/chroma/lexers/x
+github.com/alecthomas/chroma/lexers/y
+github.com/alecthomas/chroma/styles
 # github.com/aws/aws-sdk-go v1.29.0
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/arn
@@ -65,8 +96,13 @@ github.com/carbocation/interpose/adaptors
 github.com/carbocation/interpose/middleware
 # github.com/codegangsta/inject v0.0.0-20150114235600-33e0aa1cb7c0
 github.com/codegangsta/inject
+# github.com/danwakefield/fnmatch v0.0.0-20160403171240-cbb64ac3d964
+github.com/danwakefield/fnmatch
 # github.com/dave/jennifer v1.4.0
 github.com/dave/jennifer/jen
+# github.com/dlclark/regexp2 v1.2.0
+github.com/dlclark/regexp2
+github.com/dlclark/regexp2/syntax
 # github.com/dustin/go-humanize v1.0.0
 github.com/dustin/go-humanize
 # github.com/emirpasic/gods v1.12.0
@@ -194,6 +230,8 @@ github.com/yuin/goldmark/renderer
 github.com/yuin/goldmark/renderer/html
 github.com/yuin/goldmark/text
 github.com/yuin/goldmark/util
+# github.com/yuin/goldmark-highlighting v0.0.0-20191202084645-78f32c8dd6d5
+github.com/yuin/goldmark-highlighting
 # github.com/yuin/gopher-lua v0.0.0-20191220021717-ab39c6098bdb
 github.com/yuin/gopher-lua
 github.com/yuin/gopher-lua/ast
