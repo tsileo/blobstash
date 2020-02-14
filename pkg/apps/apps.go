@@ -38,6 +38,7 @@ import (
 	"a4.io/blobstash/pkg/stash/store"
 	"a4.io/gluapp"
 	"a4.io/go/indieauth"
+	"github.com/hashicorp/golang-lru"
 	"github.com/robfig/cron"
 )
 
@@ -91,6 +92,8 @@ type App struct {
 	proxyTarget *url.URL
 	proxy       *rhttputil.ReverseProxy
 
+	appCache *lru.Cache
+
 	docstore *docstore.DocStore
 	app      *gluapp.App
 	repo     *git.Repository
@@ -102,6 +105,10 @@ type App struct {
 }
 
 func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
+	appCache, err := lru.New(512)
+	if err != nil {
+		return nil, err
+	}
 	app := &App{
 		docstore:   apps.docstore,
 		path:       appConf.Path,
@@ -110,6 +117,7 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 		remote:     appConf.Remote,
 		entrypoint: appConf.Entrypoint,
 		config:     appConf.Config,
+		appCache:   appCache,
 		scheduled:  appConf.Scheduled,
 		log:        apps.log.New("app", appConf.Name),
 		mu:         sync.Mutex{},
@@ -190,11 +198,13 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 			Path:       app.path,
 			Entrypoint: app.entrypoint,
 			SetupState: func(L *lua.LState) error {
+				cache := app.buildCache(L)
 
-				// Set the `app` global variable
 				confTable := L.NewTable()
+				// Set the `app` global variable
 				fmt.Printf("app=%+v\n", app)
 				confTable.RawSetString("app_id", lua.LString(app.name))
+				confTable.RawSetString("cache", cache)
 				L.SetGlobal("blobstash", confTable)
 
 				docstore.SetLuaGlobals(L)
@@ -217,6 +227,28 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 	// TODO(tsileo): check that `path` exists, create it if it doesn't exist?
 	app.log.Debug("new app")
 	return app, nil
+}
+
+func (app *App) buildCache(L *lua.LState) *lua.LTable {
+	confTable := L.NewTable()
+	mt := L.NewTypeMetatable("blobstash_cache")
+	L.SetField(mt, "__index", L.NewFunction(func(ls *lua.LState) int {
+		cached, ok := app.appCache.Get(ls.Get(2))
+		if !ok {
+			ls.Push(lua.LNil)
+		} else {
+			ls.Push(cached.(lua.LValue))
+		}
+		return 1
+	}))
+	L.SetField(mt, "__newindex", L.NewFunction(func(ls *lua.LState) int {
+		// FIXME(tsileo): extract the LGFunction for functions and reject invalid types
+		app.appCache.Add(ls.Get(2), ls.Get(3))
+		return 0
+	}))
+
+	L.SetMetatable(confTable, L.GetTypeMetatable("blobstash_cache"))
+	return confTable
 }
 
 // Serve the request for the given path
