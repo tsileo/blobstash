@@ -44,7 +44,7 @@ github.com/alecthomas/chroma/lexers/w
 github.com/alecthomas/chroma/lexers/x
 github.com/alecthomas/chroma/lexers/y
 github.com/alecthomas/chroma/styles
-# github.com/aws/aws-sdk-go v1.29.0
+# github.com/aws/aws-sdk-go v1.29.3
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/arn
 github.com/aws/aws-sdk-go/aws/awserr
@@ -64,6 +64,7 @@ github.com/aws/aws-sdk-go/aws/endpoints
 github.com/aws/aws-sdk-go/aws/request
 github.com/aws/aws-sdk-go/aws/session
 github.com/aws/aws-sdk-go/aws/signer/v4
+github.com/aws/aws-sdk-go/internal/context
 github.com/aws/aws-sdk-go/internal/ini
 github.com/aws/aws-sdk-go/internal/s3err
 github.com/aws/aws-sdk-go/internal/sdkio
@@ -72,6 +73,7 @@ github.com/aws/aws-sdk-go/internal/sdkrand
 github.com/aws/aws-sdk-go/internal/sdkuri
 github.com/aws/aws-sdk-go/internal/shareddefaults
 github.com/aws/aws-sdk-go/internal/strings
+github.com/aws/aws-sdk-go/internal/sync/singleflight
 github.com/aws/aws-sdk-go/private/protocol
 github.com/aws/aws-sdk-go/private/protocol/eventstream
 github.com/aws/aws-sdk-go/private/protocol/eventstream/eventstreamapi
@@ -128,7 +130,7 @@ github.com/goods/httpbuf
 github.com/gorilla/context
 # github.com/gorilla/handlers v1.4.2
 github.com/gorilla/handlers
-# github.com/gorilla/mux v1.7.3
+# github.com/gorilla/mux v1.7.4
 github.com/gorilla/mux
 # github.com/gorilla/securecookie v1.1.1
 github.com/gorilla/securecookie
@@ -174,7 +176,7 @@ github.com/phyber/negroni-gzip/gzip
 github.com/pkg/errors
 # github.com/reiver/go-porterstemmer v1.0.1
 github.com/reiver/go-porterstemmer
-# github.com/restic/chunker v0.2.0
+# github.com/restic/chunker v0.3.0
 github.com/restic/chunker
 # github.com/robfig/cron v1.2.0
 github.com/robfig/cron
@@ -239,7 +241,7 @@ github.com/yuin/gopher-lua/parse
 github.com/yuin/gopher-lua/pm
 # github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
 github.com/zpatrick/rbac
-# golang.org/x/crypto v0.0.0-20200210222208-86ce3cb69678
+# golang.org/x/crypto v0.0.0-20200214034016-1d94cc7ab1c6
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
 golang.org/x/crypto/blake2b
@@ -272,7 +274,7 @@ golang.org/x/net/html/atom
 golang.org/x/net/idna
 golang.org/x/net/internal/socks
 golang.org/x/net/proxy
-# golang.org/x/sys v0.0.0-20200202164722-d101bd2416d5
+# golang.org/x/sys v0.0.0-20200212091648-12a6c2dcc1e4
 golang.org/x/sys/cpu
 golang.org/x/sys/unix
 golang.org/x/sys/windows
