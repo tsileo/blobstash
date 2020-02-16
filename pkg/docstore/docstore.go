@@ -112,6 +112,7 @@ const (
 
 type executionStats struct {
 	NReturned         int    `json:"nReturned"`
+	NQueryCached      int    `json:"nQueryCached"`
 	TotalDocsExamined int    `json:"totalDocsExamined"`
 	ExecutionTimeNano int64  `json:"executionTimeNano"`
 	LastID            string `json:"-"`
@@ -132,6 +133,8 @@ type DocStore struct {
 	hooks         *LuaHooks
 	fdocs         *FDocs
 	storedQueries map[string]*storedQuery
+
+	queryCache *vkv.DB
 
 	locker *locker
 
@@ -196,7 +199,13 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 		return nil, err
 	}
 
+	queryCache, err := vkv.New(filepath.Join(conf.VarDir(), "docstore_query_cache.cache"))
+	if err != nil {
+		return nil, err
+	}
+
 	return &DocStore{
+		queryCache:    queryCache,
 		kvStore:       kvStore,
 		blobStore:     blobStore,
 		filetree:      ft,
@@ -215,6 +224,9 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 
 // Close closes all the open DB files.
 func (docstore *DocStore) Close() error {
+	if err := docstore.queryCache.Close(); err != nil {
+		return err
+	}
 	for _, indexes := range docstore.indexes {
 		for _, index := range indexes {
 			if err := index.Close(); err != nil {
@@ -941,9 +953,36 @@ QUERY:
 
 			// Check if the doc match the query
 			addSpecialFields(doc, _id)
-			ok, err := qmatcher.Match(doc)
-			if err != nil {
+
+			cacheKey := fmt.Sprintf("%v:%v:%v", qmatcher.CacheKey(), _id.String(), _id.Version())
+			cached, err := docstore.queryCache.Get(cacheKey, asOf)
+			if err != nil && err != vkv.ErrNotFound {
 				return nil, nil, stats, err
+			}
+			var ok bool
+			if cached != nil {
+				if cached.Data[0] == '1' {
+					ok = true
+				}
+				qLogger.Debug("got query result from cache", "key", cacheKey, "value", ok)
+			} else {
+				ok, err = qmatcher.Match(doc)
+				if err != nil {
+					return nil, nil, stats, err
+				}
+				if qmatcher.Cacheable() {
+					qLogger.Debug("caching query result", "key", cacheKey, "value", ok)
+					dat := []byte{'0'}
+					if ok {
+						dat = []byte{'1'}
+					}
+					if err := docstore.queryCache.Put(&vkv.KeyValue{
+						Key:  fmt.Sprintf("%v:%v:%v", qmatcher.CacheKey(), _id.String(), _id.Version()),
+						Data: dat,
+					}); err != nil {
+						return nil, nil, stats, err
+					}
+				}
 			}
 			if ok {
 				// The document  matches the query
