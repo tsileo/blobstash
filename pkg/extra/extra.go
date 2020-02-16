@@ -1,11 +1,9 @@
 package extra // import "a4.io/blobstash/pkg/extra"
 
 import (
-	"fmt"
-	"io/ioutil"
-	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/yuin/gopher-lua"
 )
@@ -34,11 +32,16 @@ func setupExtra(e *Extra) func(*lua.LState) int {
 				}
 				return 1
 			},
-			"replace": func(L *lua.LState) int {
-				in := L.ToString(1)
-				toreplace := L.ToString(2)
-				replacement := L.ToString(3)
-				L.Push(lua.LString(strings.Replace(in, toreplace, replacement, 1)))
+			"format_datetime": func(L *lua.LState) int {
+				dt := L.ToString(1)
+				layout := L.ToString(2)
+				t, err := time.Parse(layout, dt)
+				if err != nil {
+					panic(err)
+				}
+
+				L.Push(lua.LString(t.Format(L.ToString(3))))
+
 				return 1
 			},
 			"split": func(L *lua.LState) int {
@@ -47,27 +50,6 @@ func setupExtra(e *Extra) func(*lua.LState) int {
 					tbl.Append(lua.LString(part))
 				}
 				L.Push(tbl)
-				return 1
-			},
-			"embed_http_resource": func(L *lua.LState) int {
-				url := L.ToString(1)
-
-				resp, err := http.Get(url)
-				if err != nil {
-					panic(fmt.Errorf("failed to fetch URL: %s: %s", url, err))
-				}
-				defer resp.Body.Close()
-
-				body, err := ioutil.ReadAll(resp.Body)
-				if err != nil {
-					panic(fmt.Errorf("failed to read response: %s", err))
-				}
-
-				data := lua.LString(body)
-
-				e.resourceCache[url] = data
-
-				L.Push(data)
 				return 1
 			},
 		})
