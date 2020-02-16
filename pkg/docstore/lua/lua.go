@@ -259,6 +259,7 @@ func colQuery(L *lua.LState) int {
 	lstats.RawSetString("index", lua.LString(stats.Index))
 	lstats.RawSetString("engine", lua.LString(stats.Engine))
 	lstats.RawSetString("cursor", lua.LString(stats.Cursor))
+	lstats.RawSetString("query_cached", lua.LNumber(stats.NQueryCached))
 	lstats.RawSetString("docs_returned", lua.LNumber(stats.NReturned))
 	lstats.RawSetString("docs_examined", lua.LNumber(stats.TotalDocsExamined))
 	lstats.RawSetString("exec_time_ms", lua.LNumber(stats.ExecutionTimeNano/1000000))

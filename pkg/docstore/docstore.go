@@ -965,6 +965,7 @@ QUERY:
 					ok = true
 				}
 				qLogger.Debug("got query result from cache", "key", cacheKey, "value", ok)
+				stats.NQueryCached++
 			} else {
 				ok, err = qmatcher.Match(doc)
 				if err != nil {
