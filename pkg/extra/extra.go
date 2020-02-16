@@ -9,7 +9,6 @@ import (
 )
 
 type Extra struct {
-	resourceCache map[string]lua.LString
 }
 
 func setupExtra(e *Extra) func(*lua.LState) int {
@@ -60,9 +59,7 @@ func setupExtra(e *Extra) func(*lua.LState) int {
 }
 
 func Setup(L *lua.LState) *Extra {
-	e := &Extra{
-		resourceCache: map[string]lua.LString{},
-	}
+	e := &Extra{}
 	// luautil.InterfaceToLValue(L, nil)
 	L.PreloadModule("extra", setupExtra(e))
 	return e
