@@ -3,11 +3,18 @@ package docstore
 import (
 	"testing"
 
+	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/docstore/id"
 )
 
+func testConf() *config.Config {
+	return &config.Config{
+		DataDir: ".",
+	}
+}
+
 func TestIndexBasic(t *testing.T) {
-	i, err := newSortIndex("name", "name")
+	i, err := newSortIndex(testConf(), "name", "name")
 	if err != nil {
 		panic(err)
 	}
@@ -31,7 +38,7 @@ func TestBuildIndexKey(t *testing.T) {
 }
 
 func TestIndex(t *testing.T) {
-	i, err := newSortIndex("letter", "letter")
+	i, err := newSortIndex(testConf(), "letter", "letter")
 	if err != nil {
 		panic(err)
 	}
@@ -125,7 +132,7 @@ func TestIndex(t *testing.T) {
 }
 
 func TestIndexUpdatedField(t *testing.T) {
-	i, err := newSortIndex("letter", "_updated")
+	i, err := newSortIndex(testConf(), "letter", "_updated")
 	if err != nil {
 		panic(err)
 	}
