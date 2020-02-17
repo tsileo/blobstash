@@ -67,6 +67,10 @@ var (
 	IndexKeyFmt       = PrefixIndexKeyFmt + ":%s"
 )
 
+var ErrSortIndexInvalidNameOrField = errors.New("sort index invalid (bad name or field)")
+
+var ErrSortIndexNotFound = errors.New("sort index not found")
+
 // ErrUnprocessableEntity is returned when a document is faulty
 var ErrUnprocessableEntity = errors.New("unprocessable entity")
 
@@ -177,18 +181,18 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 	}
 
 	// Load the sort indexes definitions if any
-	if conf.Docstore != nil && conf.Docstore.SortIndexes != nil {
-		for collection, indexes := range conf.Docstore.SortIndexes {
-			sortIndexes[collection] = map[string]Indexer{}
-			for sortIndexName, sortIndex := range indexes {
-				sortIndexes[collection][sortIndexName], err = newSortIndex(sortIndexName, sortIndex.Fields[0])
-				if err != nil {
-					return nil, fmt.Errorf("failed to init index: %v", err)
-				}
-			}
-		}
-		logger.Debug("indexes setup", "indexes", fmt.Sprintf("%+v", sortIndexes))
-	}
+	//if conf.Docstore != nil && conf.Docstore.SortIndexes != nil {
+	//	for collection, indexes := range conf.Docstore.SortIndexes {
+	//		sortIndexes[collection] = map[string]Indexer{}
+	//		for _, sortIndex := range indexes {
+	//			sortIndexes[collection][sortIndex.Fields[0]], err = newSortIndex(conf, collection, sortIndex.Fields[0])
+	//			if err != nil {
+	//				return nil, fmt.Errorf("failed to init index: %v", err)
+	//			}
+	//		}
+	//	}
+	//	logger.Debug("indexes setup", "indexes", fmt.Sprintf("%+v", sortIndexes))
+	//}
 
 	hooks, err := newLuaHooks(conf, ft, blobStore, kvStore)
 	if err != nil {
@@ -204,7 +208,7 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 		return nil, err
 	}
 
-	return &DocStore{
+	dc := &DocStore{
 		queryCache:    queryCache,
 		kvStore:       kvStore,
 		blobStore:     blobStore,
@@ -219,7 +223,19 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 		schemas:       map[string][]*LuaSchemaField{},
 		exts:          map[string]map[string]map[string]interface{}{},
 		actions:       map[string]map[string]string{},
-	}, nil
+	}
+
+	collections, err := dc.Collections()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list collections: %w", err)
+	}
+	for _, col := range collections {
+		if err := dc.RebuildIndexes(col); err != nil {
+			return nil, fmt.Errorf("failed to rebuild indexes for collection %v: %w", col, err)
+		}
+	}
+
+	return dc, nil
 }
 
 // Close closes all the open DB files.
@@ -235,6 +251,36 @@ func (docstore *DocStore) Close() error {
 		}
 	}
 	return nil
+}
+
+// GetSortIndex lazy-loads a sort index
+func (dc *DocStore) GetSortIndex(col, name string) (Indexer, error) {
+	if name == "_id" || name == "_created" {
+		return nil, fmt.Errorf("cannot create sort index: %q", ErrSortIndexInvalidNameOrField)
+	}
+
+	// Is the sort index already cached
+	if indexes, ok := dc.indexes[col]; ok {
+		if sortIndex, ok := indexes[name]; ok {
+			return sortIndex, nil
+		}
+	}
+
+	// If the special "_updated" sort index is requested, create it on the fly
+	if name == "_updated" {
+		si, err := newSortIndex(dc.conf, col, name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create sort index: %w", err)
+		}
+		if _, ok := dc.indexes[col]; ok {
+			dc.indexes[col][name] = si
+		} else {
+			dc.indexes[col] = map[string]Indexer{name: si}
+		}
+		return si, nil
+	}
+
+	return nil, fmt.Errorf("failed to fetch index %v/%v: %w", col, name, ErrSortIndexNotFound)
 }
 
 func (dc *DocStore) LuaGetActions(col string) []string {
@@ -270,17 +316,7 @@ func (dc *DocStore) LuaGetAction(col, name string) (lua.LString, error) {
 }
 
 func (dc *DocStore) LuaSetupSortIndex(col, name, field string) error {
-	if _, ok := dc.indexes[col]; !ok {
-		dc.indexes[col] = map[string]Indexer{}
-	}
-	if _, ok := dc.indexes[col][name]; ok {
-		return nil
-	}
-	var err error
-	dc.indexes[col][name], err = newSortIndex(name, field)
-	if err != nil {
-		return fmt.Errorf("failed to init index: %v", err)
-	}
+	// FIXME(tsileo): re-implement
 	return nil
 }
 
@@ -583,81 +619,6 @@ func isQueryAll(q string) bool {
 	}
 	return false
 }
-
-// Indexes return the list of `Index` for the given collection
-// func (docstore *DocStoreExt) Indexes(collection string) ([]*index.Index, error) {
-// 	res, err := docstore.kvStore.ReversePrefixKeys(fmt.Sprintf(PrefixIndexKeyFmt, collection), "", "\xff", 50)
-// 	indexes := []*index.Index{}
-// 	if err != nil {
-// 		panic(err)
-// 	}
-// 	for _, kv := range res {
-// 		// FIXME(tsileo): this check shouldn't be here, it should be handled by ReversePrefixKeys!
-// 		if !strings.HasPrefix(kv.Key, fmt.Sprintf(IndexKeyFmt, collection, "")) {
-// 			break
-// 		}
-// 		index := &index.Index{ID: strings.Replace(kv.Key, fmt.Sprintf(IndexKeyFmt, collection, ""), "", 1)}
-// 		if err := json.Unmarshal([]byte(kv.Value), index); err != nil {
-// 			docstore.logger.Error("failed to unmarshal log entry", "err", err, "js", kv.Value)
-// 			// return nil, err
-// 			continue
-// 		}
-// 		indexes = append(indexes, index)
-// 	}
-// 	return indexes, nil
-// }
-
-// func (docstore *DocStoreExt) AddIndex(collection string, idx *index.Index) error {
-// 	if len(idx.Fields) > 1 {
-// 		return httputil.NewPublicErrorFmt("Only single field index are support for now")
-// 	}
-
-// 	var err error
-
-// 	js, err := json.Marshal(idx)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	// FIXME(tsileo): ensure we can't create duplicate index
-
-// 	switch len(idx.Fields) {
-// 	case 1:
-// 		hashKey := fmt.Sprintf("single-field-%s", idx.Fields[0])
-// 		_, err = docstore.kvStore.PutPrefix(fmt.Sprintf(PrefixIndexKeyFmt, collection), hashKey, string(js), -1, "")
-// 	default:
-// 		err = httputil.NewPublicErrorFmt("Bad index")
-// 	}
-// 	return err
-// }
-
-// IndexDoc indexes the given doc if needed, should never be called by the client,
-// this method is exported to support re-indexing at the blob level and rebuild the index from it.
-// func (docstore *DocStoreExt) IndexDoc(collection string, _id *id.ID, doc *map[string]interface{}) error {
-// 	// Check if the document should be indexed by the full-text indexer (Bleve)
-// 	if _id.Flag() == FlagFullTextIndexed {
-// 		if err := docstore.index.Index(_id.String(), doc); err != nil {
-// 			return err
-// 		}
-// 	}
-
-// 	// Check if the document need to be indexed
-// 	indexes, err := docstore.Indexes(collection)
-// 	if err != nil {
-// 		return fmt.Errorf("Failed to fetch index")
-// 	}/)
-// 	optz := optimizer.New(docstore.logger.New("module", "query optimizer"), indexes)
-// 	shouldIndex, idx, idxKey := optz.ShouldIndex(*doc)
-// 	if shouldIndex {
-// 		docstore.logger.Debug("indexing document", "idx-key", idxKey, "_id", _id.String())
-// 		// FIXME(tsileo): returns a special status code on `index.DuplicateIndexError`
-// 		if err := docstore.docIndex.Index(collection, idx, idxKey, _id.String()); err != nil {
-// 			return err
-// 		}
-// 	}
-
-// 	return nil
-// }
 
 // Insert the given doc (`*map[string]interface{}` for now) in the given collection
 func (docstore *DocStore) Insert(collection string, doc map[string]interface{}) (*id.ID, error) {
@@ -1011,21 +972,19 @@ QUERY:
 	}
 
 	duration := time.Since(tstart)
-	qLogger.Debug("scan done", "duration", duration, "nReturned", stats.NReturned, "scanned", stats.TotalDocsExamined, "cursor", stats.Cursor)
+	qLogger.Debug("scan done", "duration", duration, "nReturned", stats.NReturned, "nQueryCached", stats.NQueryCached, "scanned", stats.TotalDocsExamined, "cursor", stats.Cursor)
 	stats.ExecutionTimeNano = duration.Nanoseconds()
 	return docs, pointers, stats, nil
 }
 
 func (docstore *DocStore) RebuildIndexes(collection string) error {
 	// FIXME(tsileo): locking
-
-	if indexes, ok := docstore.indexes[collection]; ok {
-		for _, index := range indexes {
-			// FIXME(tsileo): make an preprareRebuild interface optional
-			if err := index.(*sortIndex).prepareRebuild(); err != nil {
-				panic(err)
-			}
-		}
+	sidx, err := docstore.GetSortIndex(collection, "_updated")
+	if err != nil {
+		return err
+	}
+	if err := sidx.(*sortIndex).prepareRebuild(); err != nil {
+		panic(err)
 	}
 
 	end := fmt.Sprintf(keyFmt, collection, "")

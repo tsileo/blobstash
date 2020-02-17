@@ -7,7 +7,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"path/filepath"
 
+	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/docstore/id"
 	"a4.io/blobstash/pkg/vkv"
 )
@@ -20,21 +22,21 @@ type Indexer interface {
 }
 
 type sortIndex struct {
-	db     *vkv.DB
-	fields []string
-	name   string
+	db               *vkv.DB
+	conf             *config.Config
+	name, collection string
 }
 
-func newSortIndex(name string, fields ...string) (*sortIndex, error) {
-	// FIXME(tsileo): add the path
-	db, err := vkv.New(fmt.Sprintf("docstore_%s.index", name))
+func newSortIndex(conf *config.Config, collection, field string) (*sortIndex, error) {
+	db, err := vkv.New(filepath.Join(conf.VarDir(), fmt.Sprintf("docstore_%s_%s.index", collection, field)))
 	if err != nil {
 		return nil, err
 	}
 	return &sortIndex{
-		db:     db,
-		name:   name,
-		fields: fields,
+		db:         db,
+		name:       field,
+		collection: collection,
+		conf:       conf,
 	}, nil
 }
 
@@ -47,7 +49,7 @@ func (si *sortIndex) prepareRebuild() error {
 	if err != nil {
 		return err
 	}
-	si.db, err = vkv.New(fmt.Sprintf("docstore_%s.index", si.name))
+	si.db, err = vkv.New(filepath.Join(si.conf.VarDir(), fmt.Sprintf("docstore_%s_%s.index", si.collection, si.name)))
 	return err
 }
 
@@ -190,10 +192,10 @@ func (si *sortIndex) Index(_id *id.ID, doc map[string]interface{}) error {
 	}
 
 	var sortKey []byte
-	if si.fields[0] == "_updated" {
+	if si.name == "_updated" {
 		sortKey = buildKey(_id.Version())
 	} else {
-		sortKey = buildKey(doc[si.fields[0]])
+		sortKey = buildKey(doc[si.name])
 	}
 
 	if err := si.db.Put(&vkv.KeyValue{
