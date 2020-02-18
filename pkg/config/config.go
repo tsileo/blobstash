@@ -133,8 +133,7 @@ func (c *Config) LogLvl() log15.Lvl {
 }
 
 type DocstoreSortIndex struct {
-	Fields  []string `yaml:"fields"`
-	Default bool     `yaml:"default"`
+	Field string `yaml:"field"`
 }
 
 type DocstoreConfig struct {

@@ -148,18 +148,18 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 	var err error
 
 	// Load the sort indexes definitions if any
-	//if conf.Docstore != nil && conf.Docstore.SortIndexes != nil {
-	//	for collection, indexes := range conf.Docstore.SortIndexes {
-	//		sortIndexes[collection] = map[string]Indexer{}
-	//		for _, sortIndex := range indexes {
-	//			sortIndexes[collection][sortIndex.Fields[0]], err = newSortIndex(conf, collection, sortIndex.Fields[0])
-	//			if err != nil {
-	//				return nil, fmt.Errorf("failed to init index: %v", err)
-	//			}
-	//		}
-	//	}
-	//	logger.Debug("indexes setup", "indexes", fmt.Sprintf("%+v", sortIndexes))
-	//}
+	if conf.Docstore != nil && conf.Docstore.SortIndexes != nil {
+		for collection, indexes := range conf.Docstore.SortIndexes {
+			sortIndexes[collection] = map[string]Indexer{}
+			for _, sortIndex := range indexes {
+				sortIndexes[collection][sortIndex.Field], err = newSortIndex(conf, collection, sortIndex.Field)
+				if err != nil {
+					return nil, fmt.Errorf("failed to init index: %v", err)
+				}
+			}
+		}
+		logger.Debug("indexes setup", "indexes", fmt.Sprintf("%+v", sortIndexes))
+	}
 
 	queryCache, err := vkv.New(filepath.Join(conf.VarDir(), "docstore_query_cache.cache"))
 	if err != nil {
@@ -182,6 +182,11 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 		return nil, fmt.Errorf("failed to list collections: %w", err)
 	}
 	for _, col := range collections {
+		// Create/load the default sort indexes
+		if _, err := dc.GetSortIndex(col, "_updated"); err != nil {
+			return nil, fmt.Errorf("failed to build index %v/_updated: %w", col, err)
+		}
+		// FIXME(tsileo): only rebuild config.RebuildDocStoreIndexes flag is set
 		if err := dc.RebuildIndexes(col); err != nil {
 			return nil, fmt.Errorf("failed to rebuild indexes for collection %v: %w", col, err)
 		}
@@ -203,6 +208,16 @@ func (docstore *DocStore) Close() error {
 		}
 	}
 	return nil
+}
+
+func (dc *DocStore) GetSortIndexes(col string) ([]Indexer, error) {
+	out := []Indexer{}
+	if indexes, ok := dc.indexes[col]; ok {
+		for _, idx := range indexes {
+			out = append(out, idx)
+		}
+	}
+	return out, nil
 }
 
 // GetSortIndex lazy-loads a sort index
@@ -247,7 +262,7 @@ func (docstore *DocStore) Register(r *mux.Router, basicAuth func(http.Handler) h
 	r.Handle("/{collection}", basicAuth(http.HandlerFunc(docstore.docsHandler())))
 	r.Handle("/{collection}/_rebuild_indexes", basicAuth(http.HandlerFunc(docstore.reindexDocsHandler())))
 	r.Handle("/{collection}/_map_reduce", basicAuth(http.HandlerFunc(docstore.mapReduceHandler())))
-	// r.Handle("/{collection}/_indexes", middlewares.Auth(http.HandlerFunc(docstore.indexesHandler())))
+	r.Handle("/{collection}/_indexes", basicAuth(http.HandlerFunc(docstore.indexesHandler())))
 	r.Handle("/{collection}/{_id}", basicAuth(http.HandlerFunc(docstore.docHandler())))
 	r.Handle("/{collection}/{_id}/_versions", basicAuth(http.HandlerFunc(docstore.docVersionsHandler())))
 }
@@ -382,46 +397,59 @@ func (docstore *DocStore) Collections() ([]string, error) {
 }
 
 // HTTP handler to manage indexes for a collection
-// func (docstore *DocStoreExt) indexesHandler() func(http.ResponseWriter, *http.Request) {
-// 	return func(w http.ResponseWriter, r *http.Request) {
-// 		vars := mux.Vars(r)
-// 		collection := vars["collection"]
-// 		if collection == "" {
-// 			httputil.WriteJSONError(w, http.StatusInternalServerError, "Missing collection in the URL")
-// 			return
-// 		}
+func (docstore *DocStore) indexesHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		collection := vars["collection"]
+		if collection == "" {
+			httputil.WriteJSONError(w, http.StatusInternalServerError, "Missing collection in the URL")
+			return
+		}
 
-// 		// Ensure the client has the needed permissions
-// 		permissions.CheckPerms(r, PermCollectionName, collection)
+		if !auth.Can(
+			w,
+			r,
+			perms.Action(perms.Admin, perms.JSONCollection),
+			perms.Resource(perms.DocStore, perms.JSONCollection),
+		) {
+			auth.Forbidden(w)
+			return
+		}
 
-// 		switch r.Method {
-// 		case "GET":
-// 			// GET request, just list all the indexes
-// 			srw := httputil.NewSnappyResponseWriter(w, r)
-// 			indexes, err := docstore.Indexes(collection)
-// 			if err != nil {
-// 				panic(err)
-// 			}
-// 			httputil.WriteJSON(srw, indexes)
-// 			srw.Close()
-// 		case "POST":
-// 			// POST request, create a new index from the body
-// 			q := &index.Index{}
-// 			if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
-// 				panic(err)
-// 			}
+		switch r.Method {
+		case "GET":
+			// GET request, just list all the indexes
+			srw := httputil.NewSnappyResponseWriter(w, r)
+			indexes, err := docstore.GetSortIndexes(collection)
+			if err != nil {
+				panic(err)
+			}
+			fields := []string{"_id"}
+			for _, idx := range indexes {
+				fields = append(fields, idx.Name())
+			}
+			httputil.WriteJSON(srw, map[string]interface{}{
+				"indexes": fields,
+			})
+			srw.Close()
+			// 		case "POST":
+			// 			// POST request, create a new index from the body
+			// 			q := &index.Index{}
+			// 			if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
+			// 				panic(err)
+			// 			}
 
-// 			// Actually save the index
-// 			if err := docstore.AddIndex(collection, q); err != nil {
-// 				panic(err)
-// 			}
+			// 			// Actually save the index
+			// 			if err := docstore.AddIndex(collection, q); err != nil {
+			// 				panic(err)
+			// 			}
 
-// 			w.WriteHeader(http.StatusCreated)
-// 		default:
-// 			w.WriteHeader(http.StatusMethodNotAllowed)
-// 		}
-// 	}
-// }
+			// 			w.WriteHeader(http.StatusCreated)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}
+}
 
 // HTTP handler for getting the collections list
 func (docstore *DocStore) collectionsHandler() func(http.ResponseWriter, *http.Request) {
@@ -880,6 +908,7 @@ func (docstore *DocStore) RebuildIndexes(collection string) error {
 				}
 			}
 		}
+		return nil
 	}); err != nil {
 		return err
 	}
