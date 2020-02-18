@@ -956,7 +956,7 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			}, cursor, limit, true, asOf)
 			if err != nil {
 				if errors.Is(err, ErrSortIndexNotFound) {
-					docstore.logger.Error("sort index not found", "sort_index", q.Get("sort_index"))
+					docstore.logger.Error("sort index not found", "collection", collection, "sort_index", q.Get("sort_index"))
 					httputil.WriteJSONError(w, http.StatusUnprocessableEntity, fmt.Sprintf("The sort index %q does not exists", q.Get("sort_index")))
 					return
 				}
@@ -976,11 +976,6 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			}
 			w.Header().Set("BlobStash-DocStore-Iter-Has-More", strconv.FormatBool(hasMore))
 			w.Header().Set("BlobStash-DocStore-Iter-Cursor", stats.Cursor)
-
-			// w.Header().Set("BlobStash-DocStore-Query-Optimizer", stats.Optimizer)
-			// if stats.Optimizer != optimizer.Linear {
-			// 	w.Header().Set("BlobStash-DocStore-Query-Index", stats.Index)
-			// }
 
 			// Set headers for the query stats
 			w.Header().Set("BlobStash-DocStore-Query-Index", stats.Index)
