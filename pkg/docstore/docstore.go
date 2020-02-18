@@ -890,7 +890,7 @@ QUERY:
 		// FIXME(tsileo): use `PrefixKeys` if ?sort=_id (-_id by default).
 
 		// Fetch a batch from the iterator
-		_ids, cursor, err := it.Iter(collection, start, fetchLimit, asOf)
+		_ids, cursor, err := it.Iter(collection, start, true, fetchLimit, asOf)
 		if err != nil {
 			panic(err)
 		}

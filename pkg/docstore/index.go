@@ -21,6 +21,7 @@ type Indexer interface {
 	IDIterator
 }
 
+// sortIndex implements a "temporal" index
 type sortIndex struct {
 	db               *vkv.DB
 	conf             *config.Config
@@ -216,23 +217,38 @@ func (si *sortIndex) Index(_id *id.ID, doc map[string]interface{}) error {
 }
 
 // Iter implements the IDIterator interface
-func (si *sortIndex) Iter(collection, cursor string, fetchLimit int, asOf int64) ([]*id.ID, string, error) {
+func (si *sortIndex) Iter(collection, cursor string, desc bool, fetchLimit int, asOf int64) ([]*id.ID, string, error) {
 	// asOfStr := strconv.FormatInt(asOf, 10)
 	_ids := []*id.ID{}
 
 	// Handle the cursor
-	start := "k:\xff"
+	var start string
+	var nextFunc func(string) string
+	if desc {
+		start = "k:\xff"
+		nextFunc = vkv.PrevKey
+	} else {
+		start = "k:"
+		nextFunc = vkv.NextKey
+	}
 	if cursor != "" {
 		decodedCursor, err := base64.URLEncoding.DecodeString(cursor)
 		if err != nil {
 			return nil, "", err
 		}
 		start = string(decodedCursor)
-		// start = fmt.Sprintf("k:%s", decodedCursor)
 	}
 
 	// List keys from the kvstore
-	res, nextCursor, err := si.db.ReverseKeys("k:", start, 50)
+	var res []*vkv.KeyValue
+	var err error
+	var nextCursor string
+
+	if desc {
+		res, nextCursor, err = si.db.ReverseKeys("k:", start, fetchLimit)
+	} else {
+		res, nextCursor, err = si.db.Keys(start, "k:\xff", fetchLimit)
+	}
 	if err != nil {
 		return nil, "", err
 	}
@@ -259,7 +275,8 @@ func (si *sortIndex) Iter(collection, cursor string, fetchLimit int, asOf int64)
 		// Add the extra metadata to the ID
 		_id.SetFlag(flagNoop)
 		_id.SetVersion(vstart)
-		_id.SetCursor(base64.URLEncoding.EncodeToString([]byte(vkv.PrevKey(kv.Key))))
+		// Cursor is needed by ID as we don't know yet which doc will be matched, and and want to return in the query
+		_id.SetCursor(base64.URLEncoding.EncodeToString([]byte(nextFunc(kv.Key))))
 
 		_ids = append(_ids, _id)
 	}

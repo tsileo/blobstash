@@ -15,7 +15,7 @@ import (
 //
 // Iter allow to iterates over all the valid document IDs for a given asOf (as <= 0 means "as of now")
 type IDIterator interface {
-	Iter(collection string, cursor string, fetchLimit int, asOf int64) (ids []*id.ID, nextCursor string, err error)
+	Iter(collection string, cursor string, desc bool, fetchLimit int, asOf int64) (ids []*id.ID, nextCursor string, err error)
 	Name() string
 }
 
@@ -35,9 +35,20 @@ func (i *noIndexIterator) Name() string {
 }
 
 // Iter implements the IDIterator interface
-func (i *noIndexIterator) Iter(collection, cursor string, fetchLimit int, asOf int64) ([]*id.ID, string, error) {
+func (i *noIndexIterator) Iter(collection, cursor string, desc bool, fetchLimit int, asOf int64) ([]*id.ID, string, error) {
 	// Handle the cursor
-	start := fmt.Sprintf(keyFmt, collection, "\xff")
+	var start, end string
+	var nextFunc func(string) string
+	if desc {
+		start = fmt.Sprintf(keyFmt, collection, "\xff")
+		end = fmt.Sprintf(keyFmt, collection, "")
+		nextFunc = vkv.PrevKey
+	} else {
+		start = fmt.Sprintf(keyFmt, collection, "")
+		end = fmt.Sprintf(keyFmt, collection, "\xff")
+		nextFunc = vkv.NextKey
+	}
+
 	if cursor != "" {
 		dcursor, err := base64.URLEncoding.DecodeString(cursor)
 		if err != nil {
@@ -47,12 +58,18 @@ func (i *noIndexIterator) Iter(collection, cursor string, fetchLimit int, asOf i
 
 	}
 
-	end := fmt.Sprintf(keyFmt, collection, "")
 	asOfStr := strconv.FormatInt(asOf, 10)
 	_ids := []*id.ID{}
 
 	// List keys from the kvstore
-	res, nextCursor, err := i.kvStore.ReverseKeys(context.TODO(), end, start, fetchLimit)
+	var res []*vkv.KeyValue
+	var nextCursor string
+	var err error
+	if desc {
+		res, nextCursor, err = i.kvStore.ReverseKeys(context.TODO(), end, start, fetchLimit)
+	} else {
+		res, nextCursor, err = i.kvStore.Keys(context.TODO(), start, end, fetchLimit)
+	}
 	if err != nil {
 		return nil, "", err
 	}
@@ -73,7 +90,7 @@ func (i *noIndexIterator) Iter(collection, cursor string, fetchLimit int, asOf i
 		_id.SetFlag(kv.Data[0])
 		_id.SetVersion(kv.Version)
 		// FIXME(tsileo): encode the _id.Raw() instead, and rebuit it with keyFmt
-		_id.SetCursor(base64.URLEncoding.EncodeToString([]byte(vkv.PrevKey(kv.Key))))
+		_id.SetCursor(base64.URLEncoding.EncodeToString([]byte(nextFunc(kv.Key))))
 
 		if asOf <= 0 {
 			// Add the current ID as no
