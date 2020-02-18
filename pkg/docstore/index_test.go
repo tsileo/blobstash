@@ -57,7 +57,7 @@ func TestIndex(t *testing.T) {
 		panic(err)
 	}
 
-	_ids, cursor, err := i.Iter("lol", "", 50, 0)
+	_ids, cursor, err := i.Iter("lol", "", true, 50, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -79,7 +79,7 @@ func TestIndex(t *testing.T) {
 		panic(err)
 	}
 
-	_ids2, cursor2, err := i.Iter("lol", "", 50, 0)
+	_ids2, cursor2, err := i.Iter("lol", "", true, 50, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -94,7 +94,7 @@ func TestIndex(t *testing.T) {
 		t.Errorf("expected second id for second iter to be _id1")
 	}
 
-	_ids3, cursor3, err := i.Iter("lol", "", 50, 2)
+	_ids3, cursor3, err := i.Iter("lol", "", true, 50, 2)
 	if err != nil {
 		panic(err)
 	}
@@ -117,7 +117,7 @@ func TestIndex(t *testing.T) {
 		panic(err)
 	}
 
-	_ids4, cursor4, err := i.Iter("lol", "", 50, 0)
+	_ids4, cursor4, err := i.Iter("lol", "", true, 50, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -151,7 +151,7 @@ func TestIndexUpdatedField(t *testing.T) {
 		panic(err)
 	}
 
-	_ids, cursor, err := i.Iter("lol", "", 50, 0)
+	_ids, cursor, err := i.Iter("lol", "", true, 50, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -173,7 +173,7 @@ func TestIndexUpdatedField(t *testing.T) {
 		panic(err)
 	}
 
-	_ids2, cursor2, err := i.Iter("lol", "", 50, 0)
+	_ids2, cursor2, err := i.Iter("lol", "", true, 50, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -188,7 +188,7 @@ func TestIndexUpdatedField(t *testing.T) {
 		t.Errorf("expected second id for second iter to be _id1")
 	}
 
-	_ids3, cursor3, err := i.Iter("lol", "", 50, 2)
+	_ids3, cursor3, err := i.Iter("lol", "", true, 50, 2)
 	if err != nil {
 		panic(err)
 	}

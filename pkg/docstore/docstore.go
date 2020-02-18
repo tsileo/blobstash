@@ -939,30 +939,31 @@ QUERY:
 						dat = []byte{'1'}
 					}
 					if err := docstore.queryCache.Put(&vkv.KeyValue{
-						Key:  fmt.Sprintf("%v:%v:%v", qmatcher.CacheKey(), _id.String(), _id.Version()),
+						Key:  cacheKey,
 						Data: dat,
 					}); err != nil {
 						return nil, nil, stats, err
 					}
 				}
 			}
-			if ok {
-				// The document  matches the query
-				if fetchPointers {
-					for k, v := range docPointers {
-						pointers[k] = v
-					}
+			if !ok {
+				continue
+			}
+			// The document  matches the query
+			if fetchPointers {
+				for k, v := range docPointers {
+					pointers[k] = v
 				}
-				doc, err = docstore.fdocs.Do(doc)
-				if err != nil {
-					return nil, nil, stats, err
-				}
-				docs = append(docs, doc)
-				stats.NReturned++
-				stats.LastID = _id.String()
-				if stats.NReturned == limit {
-					break QUERY
-				}
+			}
+			doc, err = docstore.fdocs.Do(doc)
+			if err != nil {
+				return nil, nil, stats, err
+			}
+			docs = append(docs, doc)
+			stats.NReturned++
+			stats.LastID = _id.String()
+			if stats.NReturned == limit {
+				break QUERY
 			}
 		}
 		if len(_ids) == 0 { // || len(_ids) < fetchLimit {
