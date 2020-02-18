@@ -955,6 +955,11 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				sortIndex:  q.Get("sort_index"),
 			}, cursor, limit, true, asOf)
 			if err != nil {
+				if errors.Is(err, ErrSortIndexNotFound) {
+					docstore.logger.Error("sort index not found", "sort_index", q.Get("sort_index"))
+					httputil.WriteJSONError(w, http.StatusUnprocessableEntity, fmt.Sprintf("The sort index %q does not exists", q.Get("sort_index")))
+					return
+				}
 				docstore.logger.Error("query failed", "err", err)
 				httputil.Error(w, err)
 				return
