@@ -801,16 +801,7 @@ QUERY:
 	return docs, pointers, stats, nil
 }
 
-func (docstore *DocStore) RebuildIndexes(collection string) error {
-	// FIXME(tsileo): locking
-	sidx, err := docstore.GetSortIndex(collection, "_updated")
-	if err != nil {
-		return err
-	}
-	if err := sidx.(*sortIndex).prepareRebuild(); err != nil {
-		panic(err)
-	}
-
+func (docstore *DocStore) IterCollection(collection string, cb func(*id.ID, map[string]interface{}) error) error {
 	end := fmt.Sprintf(keyFmt, collection, "")
 	start := fmt.Sprintf(keyFmt, collection, "\xff")
 
@@ -863,16 +854,34 @@ func (docstore *DocStore) RebuildIndexes(collection string) error {
 				}
 			}
 
-			if indexes, ok := docstore.indexes[collection]; ok {
-				for _, index := range indexes {
-					if err := index.Index(_id, doc); err != nil {
-						return err
-					}
+			if err := cb(_id, doc); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (docstore *DocStore) RebuildIndexes(collection string) error {
+	// FIXME(tsileo): locking
+	sidx, err := docstore.GetSortIndex(collection, "_updated")
+	if err != nil {
+		return err
+	}
+	if err := sidx.(*sortIndex).prepareRebuild(); err != nil {
+		panic(err)
+	}
+
+	if err := docstore.IterCollection(collection, func(_id *id.ID, doc map[string]interface{}) error {
+		if indexes, ok := docstore.indexes[collection]; ok {
+			for _, index := range indexes {
+				if err := index.Index(_id, doc); err != nil {
+					return err
 				}
 			}
-			// fmt.Printf("_id=%+v|%d|%+v\n", _id, version.Version, doc)
-			// FIXME(tsileo): re-index the doc if needed
 		}
+	}); err != nil {
+		return err
 	}
 	return nil
 }
