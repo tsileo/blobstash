@@ -264,9 +264,6 @@ func DefaultIterOtps() *IterOpts {
 }
 
 type Query struct {
-	StoredQuery     string
-	StoredQueryArgs interface{}
-
 	Query string
 
 	Script string
@@ -278,13 +275,6 @@ func (q *Query) ToQueryString() string {
 	}
 	if q.Script != "" {
 		return fmt.Sprintf("script=%s", url.QueryEscape(q.Script))
-	}
-	if q.StoredQueryArgs != nil {
-		js, err := json.Marshal(q.StoredQueryArgs)
-		if err != nil {
-			panic(err)
-		}
-		return fmt.Sprintf("stored_query=%s&stored_query_args=%s", q.StoredQuery, url.QueryEscape(string(js)))
 	}
 	return ""
 }

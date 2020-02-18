@@ -138,14 +138,8 @@ type DocstoreSortIndex struct {
 }
 
 type DocstoreConfig struct {
-	SortIndexes   map[string]map[string]*DocstoreSortIndex `yaml:"sort_indexes"`
-	StoredQueries []*StoredQuery                           `yaml:"stored_queries"`
-	Hooks         map[string]map[string]string             `yaml:"hooks"`
-}
-
-type StoredQuery struct {
-	Name string `yaml:"name"`
-	Path string `yaml:"path"`
+	SortIndexes map[string]map[string]*DocstoreSortIndex `yaml:"sort_indexes"`
+	Hooks       map[string]map[string]string             `yaml:"hooks"`
 }
 
 // New initialize a config object by loading the YAML path at the given path

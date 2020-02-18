@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -441,10 +440,8 @@ func (lh *LuaHooks) Close() error {
 }
 
 type LuaQueryEngine struct {
-	storedQueries   map[string]*storedQuery // Stored query store
-	storedQueryName string                  // Requested stored query name if any
-	lfunc           *lua.LFunction
-	hcode           string
+	lfunc *lua.LFunction
+	hcode string
 
 	code  string
 	query interface{} // Raw query
@@ -499,14 +496,11 @@ func (docstore *DocStore) newLuaQueryEngine(L *lua.LState, query *query) (*LuaQu
 		L = lua.NewState()
 	}
 	engine := &LuaQueryEngine{
-		storedQueries:   docstore.storedQueries,
-		query:           query.storedQueryArgs,
-		code:            queryToScript(query),
-		storedQueryName: query.storedQuery,
-		lfunc:           query.lfunc,
-		L:               lua.NewState(),
-		q:               lua.LNil,
-		logger:          docstore.logger.New("submodule", "lua_query_engine"),
+		code:   queryToScript(query),
+		lfunc:  query.lfunc,
+		L:      lua.NewState(),
+		q:      lua.LNil,
+		logger: docstore.logger.New("submodule", "lua_query_engine"),
 	}
 	fmt.Printf("code=\n\n%s\n\n", engine.code)
 	gluarequire2.NewRequire2Module(gluarequire2.NewRequireFromGitHub(nil)).SetGlobal(engine.L)
@@ -521,23 +515,6 @@ func (docstore *DocStore) newLuaQueryEngine(L *lua.LState, query *query) (*LuaQu
 	// XXX(tsileo): keep the function (along with the Lua context `L` for a few minutes) in a cache, so if a client is paginating
 	// through results, it will reuse the func/Lua context. (Cache[hash(script)] = FuncWithContextReadyToCall)
 	var ret *lua.LFunction
-	if engine.query != nil {
-		if engine.storedQueryName != "" {
-			// XXX(tsileo): concerns: the script should be checked at startup because right now,
-			// a user have to actually try a query before we can see if it's valud Lua.
-			engine.logger.Debug("loading stored query", "name", engine.storedQueryName)
-			squery, ok := engine.storedQueries[engine.storedQueryName]
-			if !ok {
-				return nil, fmt.Errorf("Unknown stored query name")
-			}
-			luautil.AddToPath(engine.L, filepath.Dir(squery.Main))
-			engine.L.SetGlobal("query", luautil.InterfaceToLValue(engine.L, engine.query))
-			if err := engine.L.DoFile(squery.Main); err != nil {
-				panic(err)
-			}
-			ret = engine.L.Get(-1).(*lua.LFunction)
-		}
-	}
 	if engine.lfunc != nil {
 		ret = engine.lfunc
 	}

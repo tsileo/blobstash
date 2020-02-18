@@ -28,7 +28,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -134,9 +133,8 @@ type DocStore struct {
 	conf *config.Config
 	// docIndex *index.HashIndexes
 
-	hooks         *LuaHooks
-	fdocs         *FDocs
-	storedQueries map[string]*storedQuery
+	hooks *LuaHooks
+	fdocs *FDocs
 
 	queryCache *vkv.DB
 
@@ -150,35 +148,12 @@ type DocStore struct {
 	logger log.Logger
 }
 
-type storedQuery struct {
-	Name string
-	Main string
-}
-
 // New initializes the `DocStoreExt`
 func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStore store.BlobStore, ft *filetree.FileTree) (*DocStore, error) {
 	logger.Debug("init")
 
 	sortIndexes := map[string]map[string]Indexer{}
 	var err error
-
-	// Load the docstore's stored queries from the config
-	storedQueries := map[string]*storedQuery{}
-	if conf.Docstore != nil && conf.Docstore.StoredQueries != nil {
-		for _, squery := range conf.Docstore.StoredQueries {
-			// First ensure the required match.lua is present
-			if _, err := os.Stat(filepath.Join(squery.Path, "main.lua")); os.IsNotExist(err) {
-				return nil, fmt.Errorf("missing `main.lua` for stored query %s", squery.Name)
-			}
-
-			storedQuery := &storedQuery{
-				Name: squery.Name,
-				Main: filepath.Join(squery.Path, "main.lua"),
-			}
-			storedQueries[squery.Name] = storedQuery
-		}
-		logger.Debug("sorted queries setup", "stored_queries", fmt.Sprintf("%+v", storedQueries))
-	}
 
 	// Load the sort indexes definitions if any
 	//if conf.Docstore != nil && conf.Docstore.SortIndexes != nil {
@@ -209,20 +184,19 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 	}
 
 	dc := &DocStore{
-		queryCache:    queryCache,
-		kvStore:       kvStore,
-		blobStore:     blobStore,
-		filetree:      ft,
-		storedQueries: storedQueries,
-		hooks:         hooks,
-		fdocs:         fdocs,
-		conf:          conf,
-		locker:        newLocker(),
-		logger:        logger,
-		indexes:       sortIndexes,
-		schemas:       map[string][]*LuaSchemaField{},
-		exts:          map[string]map[string]map[string]interface{}{},
-		actions:       map[string]map[string]string{},
+		queryCache: queryCache,
+		kvStore:    kvStore,
+		blobStore:  blobStore,
+		filetree:   ft,
+		hooks:      hooks,
+		fdocs:      fdocs,
+		conf:       conf,
+		locker:     newLocker(),
+		logger:     logger,
+		indexes:    sortIndexes,
+		schemas:    map[string][]*LuaSchemaField{},
+		exts:       map[string]map[string]map[string]interface{}{},
+		actions:    map[string]map[string]string{},
 	}
 
 	collections, err := dc.Collections()
@@ -376,7 +350,6 @@ func (dc *DocStore) SetupExt(col, ext string, data map[string]interface{}) {
 // Register registers all the HTTP handlers for the extension
 func (docstore *DocStore) Register(r *mux.Router, basicAuth func(http.Handler) http.Handler) {
 	r.Handle("/", basicAuth(http.HandlerFunc(docstore.collectionsHandler())))
-	r.Handle("/_stored_queries", basicAuth(http.HandlerFunc(docstore.storedQueriesHandler())))
 
 	r.Handle("/{collection}", basicAuth(http.HandlerFunc(docstore.docsHandler())))
 	r.Handle("/{collection}/_rebuild_indexes", basicAuth(http.HandlerFunc(docstore.reindexDocsHandler())))
@@ -557,30 +530,6 @@ func (docstore *DocStore) Collections() ([]string, error) {
 // 	}
 // }
 
-// HTTP handler for checking the loaded saved queries
-func (docstore *DocStore) storedQueriesHandler() func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case "GET":
-			if !auth.Can(
-				w,
-				r,
-				perms.Action(perms.Admin, perms.JSONCollection),
-				perms.Resource(perms.DocStore, perms.JSONCollection),
-			) {
-				auth.Forbidden(w)
-				return
-			}
-
-			httputil.WriteJSON(w, docstore.storedQueries)
-			return
-		default:
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-	}
-}
-
 // HTTP handler for getting the collections list
 func (docstore *DocStore) collectionsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -685,12 +634,10 @@ func (docstore *DocStore) Insert(collection string, doc map[string]interface{}) 
 }
 
 type query struct {
-	storedQuery     string
-	storedQueryArgs interface{}
-	basicQuery      string
-	script          string
-	lfunc           *lua.LFunction
-	sortIndex       string
+	basicQuery string
+	script     string
+	lfunc      *lua.LFunction
+	sortIndex  string
 }
 
 func queryToScript(q *query) string {
@@ -700,15 +647,11 @@ func queryToScript(q *query) string {
 end
 `
 	}
-	if q.script != "" {
-		return q.script
-	}
-	// Must be a stored query, return an empty string
-	return ""
+	return q.script
 }
 
 func (q *query) isMatchAll() bool {
-	if q.lfunc == nil && q.script == "" && q.basicQuery == "" && q.storedQuery == "" && q.storedQueryArgs == nil {
+	if q.lfunc == nil && q.script == "" && q.basicQuery == "" {
 		return true
 	}
 	return false
@@ -1123,16 +1066,6 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 				}
 			}
 
-			// Parse the query (JSON-encoded)
-			var queryArgs interface{}
-			jsQuery := q.Get("stored_query_args")
-			if jsQuery != "" {
-				if err := json.Unmarshal([]byte(jsQuery), &queryArgs); err != nil {
-					httputil.WriteJSONError(w, http.StatusInternalServerError, "Failed to decode JSON query")
-					return
-				}
-			}
-
 			limit, err := q.GetInt("limit", 50, 1000)
 			if err != nil {
 				httputil.Error(w, err)
@@ -1140,11 +1073,9 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			}
 
 			docs, pointers, stats, err := docstore.query(nil, collection, &query{
-				storedQueryArgs: queryArgs,
-				storedQuery:     q.Get("stored_query"),
-				script:          q.Get("script"),
-				basicQuery:      q.Get("query"),
-				sortIndex:       q.Get("sort_index"),
+				script:     q.Get("script"),
+				basicQuery: q.Get("query"),
+				sortIndex:  q.Get("sort_index"),
 			}, cursor, limit, true, asOf)
 			if err != nil {
 				docstore.logger.Error("query failed", "err", err)
@@ -1304,16 +1235,6 @@ func (docstore *DocStore) mapReduceHandler() func(http.ResponseWriter, *http.Req
 				}
 			}
 
-			// Parse the query (JSON-encoded)
-			var queryArgs interface{}
-			jsQuery := q.Get("stored_query_args")
-			if jsQuery != "" {
-				if err := json.Unmarshal([]byte(jsQuery), &queryArgs); err != nil {
-					httputil.WriteJSONError(w, http.StatusInternalServerError, "Failed to decode JSON query")
-					return
-				}
-			}
-
 			rootMre := NewMapReduceEngine()
 			defer rootMre.Close()
 			if err := rootMre.SetupReduce(input.Reduce); err != nil {
@@ -1360,10 +1281,8 @@ func (docstore *DocStore) mapReduceHandler() func(http.ResponseWriter, *http.Req
 			// Batch size
 			limit := 50
 			q := &query{
-				storedQueryArgs: queryArgs,
-				storedQuery:     q.Get("stored_query"),
-				script:          q.Get("script"),
-				basicQuery:      q.Get("query"),
+				script:     q.Get("script"),
+				basicQuery: q.Get("query"),
 			}
 
 			var wg sync.WaitGroup
