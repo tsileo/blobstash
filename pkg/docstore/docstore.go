@@ -130,7 +130,6 @@ type DocStore struct {
 	filetree  *filetree.FileTree
 
 	conf *config.Config
-	// docIndex *index.HashIndexes
 
 	queryCache *vkv.DB
 
@@ -671,17 +670,19 @@ func (docstore *DocStore) query(L *lua.LState, collection string, query *query, 
 
 	// Select the ID iterator (XXX sort indexes are a WIP)
 	var it IDIterator
-	if query.sortIndex == "" || query.sortIndex == "-_id" {
+	var desc bool
+	if query.sortIndex != "" && strings.HasPrefix(query.sortIndex, "-") {
+		desc = true
+		query.sortIndex = query.sortIndex[1:]
+	}
+
+	if query.sortIndex == "" || query.sortIndex == "_id" {
 		//	Use the default ID iterator (iter IDs in reverse order
 		it = newNoIndexIterator(docstore.kvStore)
 	} else {
-		if indexes, ok := docstore.indexes[collection]; ok {
-			if idx, ok := indexes[query.sortIndex]; ok {
-				it = idx
-			}
-		}
-		if it == nil {
-			return nil, nil, stats, fmt.Errorf("failed to select sort_index %q", query.sortIndex)
+		it, err = docstore.GetSortIndex(collection, query.sortIndex)
+		if err != nil {
+			return nil, nil, stats, err
 		}
 	}
 	stats.Index = it.Name()
@@ -709,11 +710,11 @@ func (docstore *DocStore) query(L *lua.LState, collection string, query *query, 
 QUERY:
 	for {
 		// Loop until we have the number of requested documents, or if we scanned everything
-		qLogger.Debug("internal query", "limit", limit, "start", start, "cursor", cursor, "nreturned", stats.NReturned)
+		qLogger.Debug("internal query", "limit", limit, "start", start, "cursor", cursor, "desc", desc, "nreturned", stats.NReturned)
 		// FIXME(tsileo): use `PrefixKeys` if ?sort=_id (-_id by default).
 
 		// Fetch a batch from the iterator
-		_ids, cursor, err := it.Iter(collection, start, true, fetchLimit, asOf)
+		_ids, cursor, err := it.Iter(collection, start, desc, fetchLimit, asOf)
 		if err != nil {
 			panic(err)
 		}
@@ -1630,10 +1631,6 @@ func (docstore *DocStore) docVersionsHandler() func(http.ResponseWriter, *http.R
 				httputil.Error(w, err)
 				return
 			}
-
-			// Serve the document JSON encoded
-			// permissions.CheckPerms(r, PermCollectionName, collection, PermRead)
-			// js := []byte{}
 
 			docs, pointers, cursor, err := docstore.FetchVersions(collection, sid, cursor, limit, fetchPointers)
 			if err != nil {
