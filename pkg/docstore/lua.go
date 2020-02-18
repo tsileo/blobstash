@@ -5,7 +5,6 @@ import (
 	"crypto/sha1"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os/exec"
 	"strings"
 	"sync"
@@ -284,7 +283,6 @@ func NewMapReduceEngine() *MapReduceEngine {
 }
 
 type LuaHooks struct {
-	hooks  map[string]map[string]*LuaHook
 	L      *lua.LState
 	config *config.Config
 	sync.Mutex
@@ -317,73 +315,13 @@ func newLuaHooks(conf *config.Config, ft *filetree.FileTree, bs store.BlobStore,
 	hooks := &LuaHooks{
 		config: conf,
 		L:      lua.NewState(),
-		hooks:  map[string]map[string]*LuaHook{},
 	}
 
 	// Load the "filetree" module
 	filetreeLua.Setup(hooks.L, ft, bs, kv)
 	// FIXME(tsileo): better CWD
 	util.Setup(hooks.L, "/tmp")
-	if c := conf.Docstore; c != nil {
-		if ch := c.Hooks; ch != nil {
-			for col, ops := range ch {
-				for op, path := range ops {
-					data, err := ioutil.ReadFile(path)
-					if err != nil {
-						return nil, err
-					}
-					if err := hooks.Register(col, op, string(data)); err != nil {
-						return nil, err
-					}
-				}
-			}
-		}
-	}
-
 	return hooks, nil
-}
-
-func (lh *LuaHooks) Register(col, op, code string) error {
-	lh.Lock()
-	defer lh.Unlock()
-	ops, ok := lh.hooks[col]
-	if !ok {
-		lh.hooks[col] = map[string]*LuaHook{}
-		ops = lh.hooks[col]
-	}
-	h, err := NewLuaHook(lh.L, code)
-	if err != nil {
-		return err
-	}
-	ops[op] = h
-	fmt.Printf("RESGISTERED %+v\n", lh.hooks)
-	return nil
-}
-
-func (lh *LuaHooks) Execute(col, op string, doc map[string]interface{}) (bool, map[string]interface{}, error) {
-	fmt.Printf("HOOKS EXECUTE %v %v check\n", col, op)
-	lh.Lock()
-	defer lh.Unlock()
-	ops, ok := lh.hooks[col]
-	if !ok {
-		return false, nil, nil
-	}
-	h, ok := ops[op]
-	if !ok {
-		return false, nil, nil
-	}
-
-	newDoc, err := h.Execute(doc)
-	if err != nil {
-		return true, nil, err
-	}
-
-	newDoc["_hooks"] = map[string]interface{}{
-		op: h.ID[:7],
-	}
-	fmt.Printf("HOOKS EXECUTE %v %v executed\n", col, op)
-
-	return true, newDoc, nil
 }
 
 func (lh *LuaHooks) Close() error {

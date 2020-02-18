@@ -82,7 +82,6 @@ var reservedKeys = map[string]struct{}{
 	"_updated": struct{}{},
 	"_created": struct{}{},
 	"_version": struct{}{},
-	"_hooks":   struct{}{},
 }
 
 func idFromKey(col, key string) (*id.ID, error) {
@@ -133,8 +132,6 @@ type DocStore struct {
 	conf *config.Config
 	// docIndex *index.HashIndexes
 
-	hooks *LuaHooks
-
 	queryCache *vkv.DB
 
 	locker *locker
@@ -165,11 +162,6 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 	//	logger.Debug("indexes setup", "indexes", fmt.Sprintf("%+v", sortIndexes))
 	//}
 
-	hooks, err := newLuaHooks(conf, ft, blobStore, kvStore)
-	if err != nil {
-		return nil, err
-	}
-
 	queryCache, err := vkv.New(filepath.Join(conf.VarDir(), "docstore_query_cache.cache"))
 	if err != nil {
 		return nil, err
@@ -180,12 +172,10 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 		kvStore:    kvStore,
 		blobStore:  blobStore,
 		filetree:   ft,
-		hooks:      hooks,
 		conf:       conf,
 		locker:     newLocker(),
 		logger:     logger,
 		indexes:    sortIndexes,
-		schemas:    map[string][]*LuaSchemaField{},
 	}
 
 	collections, err := dc.Collections()
@@ -248,34 +238,6 @@ func (dc *DocStore) GetSortIndex(col, name string) (Indexer, error) {
 
 func (dc *DocStore) LuaSetupSortIndex(col, name, field string) error {
 	// FIXME(tsileo): re-implement
-	return nil
-}
-
-type LuaSchemaField struct {
-	Name string
-	Type string
-	Data map[string]interface{}
-}
-
-func (dc *DocStore) LuaRegisterSchema(name string, fields []interface{}) error {
-	schema := []*LuaSchemaField{}
-
-	for _, field := range fields {
-		fdata := field.(map[string]interface{})
-		var data map[string]interface{}
-		if dat, ok := fdata["data"]; ok {
-			data = dat.(map[string]interface{})
-		}
-		f := &LuaSchemaField{
-			Name: fdata["field_name"].(string),
-			Type: fdata["field_type"].(string),
-			Data: data,
-		}
-		schema = append(schema, f)
-	}
-
-	dc.schemas[name] = schema
-	dc.logger.Debug("setup new schema", "name", name, "schema", fmt.Sprintf("%v", schema))
 	return nil
 }
 
@@ -514,20 +476,6 @@ func (docstore *DocStore) Insert(collection string, doc map[string]interface{}) 
 			// XXX(tsileo): delete them or raises an exception?
 			delete(doc, k)
 		}
-	}
-
-	// TODO(tsileo): track the hook execution time and log it
-	ok, newDoc, err := docstore.hooks.Execute(collection, "post", doc)
-	if err != nil {
-		return nil, err
-	}
-
-	if ok && newDoc == nil {
-		return nil, ErrUnprocessableEntity
-	}
-
-	if ok {
-		doc = newDoc
 	}
 
 	data, err := msgpack.Marshal(doc)
