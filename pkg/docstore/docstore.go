@@ -134,16 +134,12 @@ type DocStore struct {
 	// docIndex *index.HashIndexes
 
 	hooks *LuaHooks
-	fdocs *FDocs
 
 	queryCache *vkv.DB
 
 	locker *locker
 
 	indexes map[string]map[string]Indexer
-	exts    map[string]map[string]map[string]interface{}
-	schemas map[string][]*LuaSchemaField
-	actions map[string]map[string]string
 
 	logger log.Logger
 }
@@ -173,10 +169,6 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 	if err != nil {
 		return nil, err
 	}
-	fdocs, err := newFDocs(conf, ft, blobStore, kvStore)
-	if err != nil {
-		return nil, err
-	}
 
 	queryCache, err := vkv.New(filepath.Join(conf.VarDir(), "docstore_query_cache.cache"))
 	if err != nil {
@@ -189,14 +181,11 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 		blobStore:  blobStore,
 		filetree:   ft,
 		hooks:      hooks,
-		fdocs:      fdocs,
 		conf:       conf,
 		locker:     newLocker(),
 		logger:     logger,
 		indexes:    sortIndexes,
 		schemas:    map[string][]*LuaSchemaField{},
-		exts:       map[string]map[string]map[string]interface{}{},
-		actions:    map[string]map[string]string{},
 	}
 
 	collections, err := dc.Collections()
@@ -257,38 +246,6 @@ func (dc *DocStore) GetSortIndex(col, name string) (Indexer, error) {
 	return nil, fmt.Errorf("failed to fetch index %v/%v: %w", col, name, ErrSortIndexNotFound)
 }
 
-func (dc *DocStore) LuaGetActions(col string) []string {
-	out := []string{}
-
-	if colActions, ok := dc.actions[col]; ok {
-		for k, _ := range colActions {
-			out = append(out, k)
-		}
-	}
-
-	return out
-}
-
-func (dc *DocStore) LuaSetupAction(col, name, action string) error {
-	if _, ok := dc.actions[col]; !ok {
-		dc.actions[col] = map[string]string{}
-	}
-	if _, ok := dc.actions[col][name]; ok {
-		return nil
-	}
-	dc.actions[col][name] = action
-	return nil
-}
-
-func (dc *DocStore) LuaGetAction(col, name string) (lua.LString, error) {
-	if colActions, ok := dc.actions[col]; ok {
-		if dat, ok := colActions[name]; ok {
-			return lua.LString(dat), nil
-		}
-	}
-	return lua.LString(""), nil
-}
-
 func (dc *DocStore) LuaSetupSortIndex(col, name, field string) error {
 	// FIXME(tsileo): re-implement
 	return nil
@@ -320,31 +277,6 @@ func (dc *DocStore) LuaRegisterSchema(name string, fields []interface{}) error {
 	dc.schemas[name] = schema
 	dc.logger.Debug("setup new schema", "name", name, "schema", fmt.Sprintf("%v", schema))
 	return nil
-}
-
-func (dc *DocStore) LuaGetExt(col, ext string) (map[string]interface{}, error) {
-	if colExts, ok := dc.exts[col]; ok {
-		if dat, ok := colExts[ext]; ok {
-			return dat, nil
-		}
-	}
-	return nil, fmt.Errorf("no ext %s %s", col, ext)
-
-}
-
-func (dc *DocStore) LuaGetSchema(name string) ([]*LuaSchemaField, error) {
-	if schema, ok := dc.schemas[name]; ok {
-		return schema, nil
-	}
-	return nil, fmt.Errorf("schema %q not found", name)
-}
-
-func (dc *DocStore) SetupExt(col, ext string, data map[string]interface{}) {
-	if _, ok := dc.exts[col]; !ok {
-		dc.exts[col] = map[string]map[string]interface{}{}
-	}
-	dc.exts[col][ext] = data
-	dc.logger.Debug("setup new ext", "col", col, "ext", ext, "data", fmt.Sprintf("%+v", data))
 }
 
 // Register registers all the HTTP handlers for the extension
@@ -898,10 +830,6 @@ QUERY:
 					pointers[k] = v
 				}
 			}
-			doc, err = docstore.fdocs.Do(doc)
-			if err != nil {
-				return nil, nil, stats, err
-			}
 			docs = append(docs, doc)
 			stats.NReturned++
 			stats.LastID = _id.String()
@@ -1414,10 +1342,6 @@ func (docstore *DocStore) FetchVersions(collection, sid string, start int64, lim
 		}
 		_id.SetVersion(kv.Version)
 		addSpecialFields(doc, _id)
-		doc, err = docstore.fdocs.Do(doc)
-		if err != nil {
-			return nil, nil, cursor, err
-		}
 
 		if fetchPointers {
 			if err := docstore.fetchPointers(doc, pointers); err != nil {
@@ -1550,10 +1474,6 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			// FIXME(tsileo): ETag should take _lua script output
 			w.Header().Set("ETag", _id.VersionString())
 			addSpecialFields(doc, _id)
-			doc, err = docstore.fdocs.Do(doc)
-			if err != nil {
-				panic(err)
-			}
 
 			if r.Method == "GET" {
 				httputil.MarshalAndWrite(r, w, map[string]interface{}{
