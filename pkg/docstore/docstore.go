@@ -671,7 +671,10 @@ func (docstore *DocStore) query(L *lua.LState, collection string, query *query, 
 	// Select the ID iterator (XXX sort indexes are a WIP)
 	var it IDIterator
 	var desc bool
-	if query.sortIndex != "" && strings.HasPrefix(query.sortIndex, "-") {
+	if query.sortIndex == "" {
+		query.sortIndex = "-_id"
+	}
+	if strings.HasPrefix(query.sortIndex, "-") {
 		desc = true
 		query.sortIndex = query.sortIndex[1:]
 	}
