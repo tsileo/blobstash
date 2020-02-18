@@ -17,13 +17,8 @@ import (
 	"golang.org/x/crypto/blake2b"
 
 	luautil "a4.io/blobstash/pkg/apps/luautil"
-	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/docstore/textsearch"
-	"a4.io/blobstash/pkg/filetree"
-	filetreeLua "a4.io/blobstash/pkg/filetree/lua"
 	"a4.io/blobstash/pkg/luascripts"
-	"a4.io/blobstash/pkg/stash/store"
-	"a4.io/gluapp/util"
 	"a4.io/gluarequire2"
 )
 
@@ -49,7 +44,7 @@ func (mae *MatchAllEngine) Match(_ map[string]interface{}) (bool, error) {
 func (mae *MatchAllEngine) Close() error { return nil }
 
 type LuaHook struct {
-	L        *lua.LState // A pointer of the state from `LuaHooks`
+	L        *lua.LState
 	hookFunc *lua.LFunction
 	ID       string
 }
@@ -282,12 +277,6 @@ func NewMapReduceEngine() *MapReduceEngine {
 	return mre
 }
 
-type LuaHooks struct {
-	L      *lua.LState
-	config *config.Config
-	sync.Mutex
-}
-
 func setupCmd(cwd string) func(*lua.LState) int {
 	return func(L *lua.LState) int {
 		// register functions to the table
@@ -309,24 +298,6 @@ func setupCmd(cwd string) func(*lua.LState) int {
 		L.Push(mod)
 		return 1
 	}
-}
-
-func newLuaHooks(conf *config.Config, ft *filetree.FileTree, bs store.BlobStore, kv store.KvStore) (*LuaHooks, error) {
-	hooks := &LuaHooks{
-		config: conf,
-		L:      lua.NewState(),
-	}
-
-	// Load the "filetree" module
-	filetreeLua.Setup(hooks.L, ft, bs, kv)
-	// FIXME(tsileo): better CWD
-	util.Setup(hooks.L, "/tmp")
-	return hooks, nil
-}
-
-func (lh *LuaHooks) Close() error {
-	lh.L.Close()
-	return nil
 }
 
 type LuaQueryEngine struct {
