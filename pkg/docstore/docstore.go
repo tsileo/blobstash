@@ -432,19 +432,6 @@ func (docstore *DocStore) indexesHandler() func(http.ResponseWriter, *http.Reque
 				"indexes": fields,
 			})
 			srw.Close()
-			// 		case "POST":
-			// 			// POST request, create a new index from the body
-			// 			q := &index.Index{}
-			// 			if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
-			// 				panic(err)
-			// 			}
-
-			// 			// Actually save the index
-			// 			if err := docstore.AddIndex(collection, q); err != nil {
-			// 				panic(err)
-			// 			}
-
-			// 			w.WriteHeader(http.StatusCreated)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -582,7 +569,7 @@ func (docstore *DocStore) Update(collection, sid string, newDoc map[string]inter
 	ctx := context.Background()
 	// Fetch the actual doc
 	doc := map[string]interface{}{}
-	_id, _, err := docstore.Fetch(collection, sid, &doc, false, -1)
+	_id, _, err := docstore.Fetch(collection, sid, &doc, false, false, -1)
 	if err != nil {
 		if err == vkv.ErrNotFound || _id.Flag() == flagDeleted {
 			return nil, ErrDocNotFound
@@ -632,7 +619,7 @@ func (docstore *DocStore) Remove(collection, sid string) (*id.ID, error) {
 	docstore.locker.Lock(sid)
 	defer docstore.locker.Unlock(sid)
 
-	_id, _, err := docstore.Fetch(collection, sid, nil, false, -1)
+	_id, _, err := docstore.Fetch(collection, sid, nil, false, false, -1)
 	if err != nil {
 		if err == vkv.ErrNotFound || _id.Flag() == flagDeleted {
 			return nil, ErrDocNotFound
@@ -761,15 +748,13 @@ QUERY:
 			doc := map[string]interface{}{}
 			var err error
 			// Fetch the version tied to the ID (the iterator is taking care of selecting an ID version)
-			if _id, docPointers, err = docstore.Fetch(collection, _id.String(), &doc, fetchPointers, _id.Version()); err != nil {
+			if _id, docPointers, err = docstore.Fetch(collection, _id.String(), &doc, true, fetchPointers, _id.Version()); err != nil {
 				panic(err)
 			}
 
 			stats.TotalDocsExamined++
 
 			// Check if the doc match the query
-			addSpecialFields(doc, _id)
-
 			cacheKey := fmt.Sprintf("%v:%v:%v", qmatcher.CacheKey(), _id.String(), _id.Version())
 			cached, err := docstore.queryCache.Get(cacheKey, asOf)
 			if err != nil && err != vkv.ErrNotFound {
@@ -1349,7 +1334,7 @@ func (docstore *DocStore) FetchVersions(collection, sid string, start int64, lim
 }
 
 // Fetch a single document into `res` and returns the `id.ID`
-func (docstore *DocStore) Fetch(collection, sid string, res interface{}, fetchPointers bool, version int64) (*id.ID, map[string]interface{}, error) {
+func (docstore *DocStore) Fetch(collection, sid string, res interface{}, withSpecialFields bool, fetchPointers bool, version int64) (*id.ID, map[string]interface{}, error) {
 	if collection == "" {
 		return nil, nil, errors.New("missing collection query arg")
 	}
@@ -1389,6 +1374,10 @@ func (docstore *DocStore) Fetch(collection, sid string, res interface{}, fetchPo
 					return nil, nil, err
 				}
 			}
+			if withSpecialFields {
+				addSpecialFields(*idoc, _id)
+			}
+
 		case *[]byte:
 			// Decode the doc and encode it to JSON
 			out := map[string]interface{}{}
@@ -1444,7 +1433,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 
 			// FIXME(tsileo): support asOf?
 
-			if _id, pointers, err = docstore.Fetch(collection, sid, &doc, true, -1); err != nil {
+			if _id, pointers, err = docstore.Fetch(collection, sid, &doc, true, true, -1); err != nil {
 				if err == vkv.ErrNotFound || _id.Flag() == flagDeleted {
 					// Document doesn't exist, returns a status 404
 					w.WriteHeader(http.StatusNotFound)
@@ -1463,7 +1452,6 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 
 			// FIXME(tsileo): ETag should take _lua script output
 			w.Header().Set("ETag", _id.VersionString())
-			addSpecialFields(doc, _id)
 
 			if r.Method == "GET" {
 				httputil.MarshalAndWrite(r, w, map[string]interface{}{
@@ -1492,7 +1480,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 
 			// Fetch the current doc
 			js := []byte{}
-			if _id, _, err = docstore.Fetch(collection, sid, &js, false, -1); err != nil {
+			if _id, _, err = docstore.Fetch(collection, sid, &js, false, false, -1); err != nil {
 				if err == vkv.ErrNotFound {
 					// Document doesn't exist, returns a status 404
 					w.WriteHeader(http.StatusNotFound)

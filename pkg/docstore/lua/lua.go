@@ -105,7 +105,7 @@ func colGet(L *lua.LState) int {
 	var doc, pointers map[string]interface{}
 	var err error
 
-	if _, pointers, err = col.dc.Fetch(col.name, docID, &doc, true, -1); err != nil {
+	if _, pointers, err = col.dc.Fetch(col.name, docID, &doc, true, true, -1); err != nil {
 		panic(err)
 	}
 	L.Push(luautil.InterfaceToLValue(L, doc))
