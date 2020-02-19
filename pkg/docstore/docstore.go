@@ -1354,6 +1354,8 @@ func (docstore *DocStore) Fetch(collection, sid string, res interface{}, withSpe
 	// Extract the hash (first byte is the Flag)
 	// XXX(tsileo): add/handle a `Deleted` flag
 	blob := kv.Data[1:]
+	_id.SetFlag(kv.Data[0])
+	_id.SetVersion(kv.Version)
 
 	pointers := map[string]interface{}{}
 
@@ -1394,8 +1396,6 @@ func (docstore *DocStore) Fetch(collection, sid string, res interface{}, withSpe
 			*idoc = append(*idoc, js...)
 		}
 	}
-	_id.SetFlag(kv.Data[0])
-	_id.SetVersion(kv.Version)
 	return _id, pointers, nil
 }
 
