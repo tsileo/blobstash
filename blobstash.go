@@ -10,12 +10,13 @@ import (
 )
 
 var (
-	scan      bool
-	s3scan    bool
-	s3restore bool
-	check     bool
-	loglevel  string
-	err       error
+	scan                   bool
+	s3scan                 bool
+	s3restore              bool
+	docstoreIndexesReindex bool
+	check                  bool
+	loglevel               string
+	err                    error
 )
 
 func main() {
@@ -23,6 +24,7 @@ func main() {
 	flag.BoolVar(&scan, "scan", false, "Trigger a BlobStore rescan.")
 	flag.BoolVar(&s3scan, "s3-scan", false, "Trigger a BlobStore rescan of the S3 backend.")
 	flag.BoolVar(&s3restore, "s3-restore", false, "Trigger a BlobStore restore of the S3 backend.")
+	flag.BoolVar(&docstoreIndexesReindex, "docstore-indexes-reindex", false, "Trigger a re-indexing of all document store sort indexes.")
 	flag.StringVar(&loglevel, "loglevel", "", "logging level (debug|info|warn|crit)")
 	flag.Parse()
 	conf := &config.Config{}
@@ -38,6 +40,7 @@ func main() {
 	conf.ScanMode = scan
 	conf.S3ScanMode = s3scan
 	conf.S3RestoreMode = s3restore
+	conf.DocstoreIndexesReindexMode = docstoreIndexesReindex
 	if loglevel != "" {
 		conf.LogLevel = loglevel
 	}

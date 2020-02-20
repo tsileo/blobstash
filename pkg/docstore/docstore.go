@@ -147,7 +147,7 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 	sortIndexes := map[string]map[string]Indexer{}
 	var err error
 
-	// Load the sort indexes definitions if any
+	// Load the sort indexes from the config if any
 	if conf.Docstore != nil && conf.Docstore.SortIndexes != nil {
 		for collection, indexes := range conf.Docstore.SortIndexes {
 			sortIndexes[collection] = map[string]Indexer{}
@@ -177,6 +177,7 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 		indexes:    sortIndexes,
 	}
 
+	// Finish the indexes setup
 	collections, err := dc.Collections()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list collections: %w", err)
@@ -186,9 +187,12 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 		if _, err := dc.GetSortIndex(col, "_updated"); err != nil {
 			return nil, fmt.Errorf("failed to build index %v/_updated: %w", col, err)
 		}
-		// FIXME(tsileo): only rebuild config.RebuildDocStoreIndexes flag is set
-		if err := dc.RebuildIndexes(col); err != nil {
-			return nil, fmt.Errorf("failed to rebuild indexes for collection %v: %w", col, err)
+
+		// Only rebuild if blostash is started with --docstore-indexes-reindex
+		if conf.DocstoreIndexesReindexMode {
+			if err := dc.RebuildIndexes(col); err != nil {
+				return nil, fmt.Errorf("failed to rebuild indexes for collection %v: %w", col, err)
+			}
 		}
 	}
 
@@ -877,12 +881,13 @@ func (docstore *DocStore) IterCollection(collection string, cb func(*id.ID, map[
 
 func (docstore *DocStore) RebuildIndexes(collection string) error {
 	// FIXME(tsileo): locking
-	sidx, err := docstore.GetSortIndex(collection, "_updated")
-	if err != nil {
-		return err
-	}
-	if err := sidx.(*sortIndex).prepareRebuild(); err != nil {
-		panic(err)
+	if indexes, ok := docstore.indexes[collection]; ok {
+		for _, index := range indexes {
+			// FIXME(tsileo): make prepareRebuild part of the Indexer interface
+			if err := index.(*sortIndex).prepareRebuild(); err != nil {
+				panic(err)
+			}
+		}
 	}
 
 	if err := docstore.IterCollection(collection, func(_id *id.ID, doc map[string]interface{}) error {

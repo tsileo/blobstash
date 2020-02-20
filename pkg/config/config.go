@@ -74,7 +74,7 @@ type BasicAuth struct {
 type Role struct {
 	Name     string                 `yaml:"name"`
 	Template string                 `yaml:"template"`
-	Perms    []*Perm                `yaml:"permissions'`
+	Perms    []*Perm                `yaml:"permissions"`
 	Args     map[string]interface{} `yaml:"args"`
 
 	// Only set pragmatically for "managed role"
@@ -115,10 +115,11 @@ type Config struct {
 	SecretKey string `yaml:"secret_key"`
 
 	// Items defined with the CLI flags
-	CheckMode     bool `yaml:"-"`
-	ScanMode      bool `yaml:"-"`
-	S3ScanMode    bool `yaml:"-"`
-	S3RestoreMode bool `yaml:"-"`
+	CheckMode                  bool `yaml:"-"`
+	ScanMode                   bool `yaml:"-"`
+	S3ScanMode                 bool `yaml:"-"`
+	S3RestoreMode              bool `yaml:"-"`
+	DocstoreIndexesReindexMode bool `yaml:"-"`
 }
 
 func (c *Config) LogLvl() log15.Lvl {
