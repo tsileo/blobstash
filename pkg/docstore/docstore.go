@@ -49,6 +49,7 @@ import (
 	"a4.io/blobstash/pkg/httputil"
 	"a4.io/blobstash/pkg/httputil/bewit"
 	"a4.io/blobstash/pkg/perms"
+	"a4.io/blobstash/pkg/rangedb"
 	"a4.io/blobstash/pkg/stash/store"
 	"a4.io/blobstash/pkg/vkv"
 )
@@ -131,7 +132,7 @@ type DocStore struct {
 
 	conf *config.Config
 
-	queryCache *vkv.DB
+	queryCache *rangedb.RangeDB
 
 	locker *locker
 
@@ -161,7 +162,7 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 		logger.Debug("indexes setup", "indexes", fmt.Sprintf("%+v", sortIndexes))
 	}
 
-	queryCache, err := vkv.New(filepath.Join(conf.VarDir(), "docstore_query_cache.cache"))
+	queryCache, err := rangedb.New(filepath.Join(conf.VarDir(), "docstore_lua_queries.cache"))
 	if err != nil {
 		return nil, err
 	}
@@ -759,14 +760,14 @@ QUERY:
 			stats.TotalDocsExamined++
 
 			// Check if the doc match the query
-			cacheKey := fmt.Sprintf("%v:%v:%v", qmatcher.CacheKey(), _id.String(), _id.Version())
-			cached, err := docstore.queryCache.Get(cacheKey, asOf)
+			cacheKey := []byte(fmt.Sprintf("%v:%v:%v", qmatcher.CacheKey(), _id.String(), _id.Version()))
+			cached, err := docstore.queryCache.Get(cacheKey)
 			if err != nil && err != vkv.ErrNotFound {
 				return nil, nil, stats, err
 			}
 			var ok bool
 			if cached != nil {
-				if cached.Data[0] == '1' {
+				if cached[0] == '1' {
 					ok = true
 				}
 				qLogger.Debug("got query result from cache", "key", cacheKey, "value", ok)
@@ -782,10 +783,7 @@ QUERY:
 					if ok {
 						dat = []byte{'1'}
 					}
-					if err := docstore.queryCache.Put(&vkv.KeyValue{
-						Key:  cacheKey,
-						Data: dat,
-					}); err != nil {
+					if err := docstore.queryCache.Set(cacheKey, dat); err != nil {
 						return nil, nil, stats, err
 					}
 				}
