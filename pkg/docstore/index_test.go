@@ -21,11 +21,14 @@ func TestIndexBasic(t *testing.T) {
 	defer i.Close()
 	defer i.db.Destroy()
 	_id, _ := id.New(3)
-	v := buildVal(1, _id)
+	v := buildVal(1, 3, _id)
 	t.Logf("v=%+v\n", v)
-	s, _id2 := parseVal(v)
+	s, send, _id2 := parseVal(v)
 	if s != 1 {
 		t.Errorf("failed to parse start, got %q, expected 1", s)
+	}
+	if send != 3 {
+		t.Errorf("failed to parse end, got %q, expected 3", s)
 	}
 	if _id2.String() != _id.String() {
 		t.Errorf("failed to parse ID, got %v, expected %v", _id2.String(), _id.String())

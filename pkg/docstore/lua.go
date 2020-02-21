@@ -76,7 +76,7 @@ func (h *LuaHook) Execute(doc map[string]interface{}) (map[string]interface{}, e
 		fmt.Printf("failed to call pre put hook func: %+v %+v\n", doc, err)
 		return nil, err
 	}
-	newDoc := luautil.TableToMap(h.L.Get(-1).(*lua.LTable))
+	newDoc := luautil.TableToMap(h.L, h.L.Get(-1).(*lua.LTable))
 	h.L.Pop(1)
 	return newDoc, nil
 }
@@ -102,7 +102,7 @@ func (h *LuaHook) ExecuteReduce(key string, docs []map[string]interface{}) (map[
 		fmt.Printf("failed to call pre put hook func: %+v %+v\n", docs, err)
 		return nil, err
 	}
-	newDoc := luautil.TableToMap(h.L.Get(-1).(*lua.LTable))
+	newDoc := luautil.TableToMap(h.L, h.L.Get(-1).(*lua.LTable))
 	h.L.Pop(1)
 	return newDoc, nil
 }
@@ -221,7 +221,7 @@ func (mre *MapReduceEngine) Close() {
 
 func (mre *MapReduceEngine) emit(L *lua.LState) int {
 	key := L.ToString(1)
-	value := luautil.TableToMap(L.ToTable(2))
+	value := luautil.TableToMap(L, L.ToTable(2))
 	if _, ok := mre.emitted[key]; ok {
 		mre.emitted[key] = append(mre.emitted[key], value)
 	} else {
@@ -328,9 +328,9 @@ func SetLuaGlobals(L *lua.LState) {
 }
 
 func (docstore *DocStore) LuaTextSearch(L *lua.LState) int {
-	doc := luautil.TableToMap(L.ToTable(1))
+	doc := luautil.TableToMap(L, L.ToTable(1))
 	qs := L.ToString(2)
-	ifields := luautil.TableToSlice(L.ToTable(3))
+	ifields := luautil.TableToSlice(L, L.ToTable(3))
 	fields := []string{}
 	for _, f := range ifields {
 		fields = append(fields, f.(string))

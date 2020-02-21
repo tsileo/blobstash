@@ -265,7 +265,7 @@ func (docstore *DocStore) Register(r *mux.Router, basicAuth func(http.Handler) h
 	r.Handle("/", basicAuth(http.HandlerFunc(docstore.collectionsHandler())))
 
 	r.Handle("/{collection}", basicAuth(http.HandlerFunc(docstore.docsHandler())))
-	r.Handle("/{collection}/_rebuild_indexes", basicAuth(http.HandlerFunc(docstore.reindexDocsHandler())))
+	r.Handle("/{collection}/_rebuild_indexes", basicAuth(http.HandlerFunc(docstore.reindexDocsHandler()))) // FIXME Move this to _indexes with a DELETE ?
 	r.Handle("/{collection}/_map_reduce", basicAuth(http.HandlerFunc(docstore.mapReduceHandler())))
 	r.Handle("/{collection}/_indexes", basicAuth(http.HandlerFunc(docstore.indexesHandler())))
 	r.Handle("/{collection}/{_id}", basicAuth(http.HandlerFunc(docstore.docHandler())))
@@ -520,13 +520,8 @@ func (docstore *DocStore) Insert(collection string, doc map[string]interface{}) 
 	_id.SetVersion(kv.Version)
 
 	// Index the doc if needed
-	// FIXME(tsileo): move this to the hub via the kvstore
-	if indexes, ok := docstore.indexes[collection]; ok {
-		for _, index := range indexes {
-			if err := index.Index(_id, doc); err != nil {
-				panic(err)
-			}
-		}
+	if err := docstore.IndexDoc(collection, _id, doc); err != nil {
+		panic(err)
 	}
 
 	return _id, nil
@@ -608,13 +603,8 @@ func (docstore *DocStore) Update(collection, sid string, newDoc map[string]inter
 	}
 	_id.SetVersion(kv.Version)
 
-	// FIXME(tsileo): move this to the hub via the kvstore
-	if indexes, ok := docstore.indexes[collection]; ok {
-		for _, index := range indexes {
-			if err := index.Index(_id, newDoc); err != nil {
-				panic(err)
-			}
-		}
+	if err := docstore.IndexDoc(collection, _id, newDoc); err != nil {
+		panic(err)
 	}
 
 	return nil, err
@@ -640,14 +630,10 @@ func (docstore *DocStore) Remove(collection, sid string) (*id.ID, error) {
 	_id.SetVersion(kv.Version)
 	_id.SetFlag(flagDeleted)
 
-	// FIXME(tsileo): move this to the hub via the kvstore
-	if indexes, ok := docstore.indexes[collection]; ok {
-		for _, index := range indexes {
-			if err := index.Index(_id, nil); err != nil {
-				return nil, err
-			}
-		}
+	if err := docstore.IndexDoc(collection, _id, nil); err != nil {
+		panic(err)
 	}
+
 	return _id, nil
 }
 
@@ -891,6 +877,7 @@ func (docstore *DocStore) RebuildIndexes(collection string) error {
 	if err := docstore.IterCollection(collection, func(_id *id.ID, doc map[string]interface{}) error {
 		if indexes, ok := docstore.indexes[collection]; ok {
 			for _, index := range indexes {
+				// FIXME(tsileo): ensure we're re-indexing deleted doc
 				if err := index.Index(_id, doc); err != nil {
 					return err
 				}
@@ -899,6 +886,19 @@ func (docstore *DocStore) RebuildIndexes(collection string) error {
 		return nil
 	}); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (docstore *DocStore) IndexDoc(collection string, _id *id.ID, doc map[string]interface{}) error {
+	// Iterate over the index setup for the given collection (if any)
+	if indexes, ok := docstore.indexes[collection]; ok {
+		for _, index := range indexes {
+			docstore.logger.Debug("indexing document", "collection", collection, "_id", _id.String())
+			if err := index.Index(_id, doc); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -1337,7 +1337,7 @@ func (docstore *DocStore) FetchVersions(collection, sid string, start int64, lim
 }
 
 // Fetch a single document into `res` and returns the `id.ID`
-func (docstore *DocStore) Fetch(collection, sid string, res interface{}, withSpecialFields bool, fetchPointers bool, version int64) (*id.ID, map[string]interface{}, error) {
+func (docstore *DocStore) Fetch(collection, sid string, res *map[string]interface{}, withSpecialFields bool, fetchPointers bool, version int64) (*id.ID, map[string]interface{}, error) {
 	if collection == "" {
 		return nil, nil, errors.New("missing collection query arg")
 	}
@@ -1363,40 +1363,18 @@ func (docstore *DocStore) Fetch(collection, sid string, res interface{}, withSpe
 	pointers := map[string]interface{}{}
 
 	// FIXME(tsileo): handle deleted docs (also in the admin/query)
-	if len(blob) > 0 {
-
-		// Build the doc
-		switch idoc := res.(type) {
-		case nil:
-			// Do nothing
-		case *map[string]interface{}:
-			if err := msgpack.Unmarshal(blob, idoc); err != nil {
-				return nil, nil, fmt.Errorf("failed to unmarshal blob: %s", blob)
-			}
-			// TODO(tsileo): set the special fields _created/_updated/_hash
-			if fetchPointers {
-				if err := docstore.fetchPointers(*idoc, pointers); err != nil {
-					return nil, nil, err
-				}
-			}
-			if withSpecialFields {
-				addSpecialFields(*idoc, _id)
-			}
-
-		case *[]byte:
-			// Decode the doc and encode it to JSON
-			out := map[string]interface{}{}
-			if err := msgpack.Unmarshal(blob, &out); err != nil {
-				return nil, nil, fmt.Errorf("failed to unmarshal blob: %s", blob)
-			}
-			// TODO(tsileo): set the special fields _created/_updated/_hash
-			js, err := json.Marshal(out)
-			if err != nil {
+	if len(blob) > 0 && res != nil {
+		if err := msgpack.Unmarshal(blob, res); err != nil {
+			return nil, nil, fmt.Errorf("failed to unmarshal blob: %s", blob)
+		}
+		// TODO(tsileo): set the special fields _created/_updated/_hash
+		if fetchPointers {
+			if err := docstore.fetchPointers(*res, pointers); err != nil {
 				return nil, nil, err
 			}
-
-			// Just the copy if JSON if a []byte is provided
-			*idoc = append(*idoc, js...)
+		}
+		if withSpecialFields {
+			addSpecialFields(*res, _id)
 		}
 	}
 	return _id, pointers, nil
@@ -1482,13 +1460,18 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			ctx := context.Background()
 
 			// Fetch the current doc
-			js := []byte{}
-			if _id, _, err = docstore.Fetch(collection, sid, &js, false, false, -1); err != nil {
+			doc := map[string]interface{}{}
+			if _id, _, err = docstore.Fetch(collection, sid, &doc, false, false, -1); err != nil {
 				if err == vkv.ErrNotFound {
 					// Document doesn't exist, returns a status 404
 					w.WriteHeader(http.StatusNotFound)
 					return
 				}
+				panic(err)
+			}
+
+			js, err := json.Marshal(doc)
+			if err != nil {
 				panic(err)
 			}
 
@@ -1534,13 +1517,8 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			}
 			_id.SetVersion(nkv.Version)
 
-			// FIXME(tsileo): move this to the hub via the kvstore
-			if indexes, ok := docstore.indexes[collection]; ok {
-				for _, index := range indexes {
-					if err := index.Index(_id, ndoc); err != nil {
-						panic(err)
-					}
-				}
+			if err := docstore.IndexDoc(collection, _id, ndoc); err != nil {
+				panic(err)
 			}
 
 			w.Header().Set("ETag", _id.VersionString())

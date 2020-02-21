@@ -87,7 +87,7 @@ func colInsert(L *lua.LState) int {
 	if col == nil {
 		return 0
 	}
-	t := luautil.TableToMap(L.ToTable(2))
+	t := luautil.TableToMap(L, L.ToTable(2))
 	id, err := col.dc.Insert(col.name, t)
 	if err != nil {
 		panic(err)
@@ -131,7 +131,7 @@ func colUpdate(L *lua.LState) int {
 		return 0
 	}
 	docID := L.ToString(2)
-	newDoc := luautil.TableToMap(L.ToTable(3))
+	newDoc := luautil.TableToMap(L, L.ToTable(3))
 
 	if _, err := col.dc.Update(col.name, docID, newDoc, ""); err != nil {
 		panic(err)

@@ -7,10 +7,12 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"path/filepath"
 
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/docstore/id"
+	"a4.io/blobstash/pkg/rangedb"
 	"a4.io/blobstash/pkg/vkv"
 )
 
@@ -21,15 +23,25 @@ type Indexer interface {
 	IDIterator
 }
 
-// sortIndex implements a "temporal" index
+// sortIndex implements a "temporal" single-field index.
+// The index can be traversed in either direction (i.e. support ascending/descending sort order out of the box).
+// It stores the value of a specific field , ordered by its value.
+// When comparing different types, the following comparison order is used:
+//  1. null values
+//  2. numbers (ints and floats)
+//  3. string
+//  4. bool
+// The index is "temporal" because each document version is indexed with (start, end) timestamp that
+// specifies the lifetime of the indexed document (start == end means it's the latest version).
+// An additional "sub-index" is kept in roder to keep track of the "index key" of the latest version of each document.
 type sortIndex struct {
-	db               *vkv.DB
+	db               *rangedb.RangeDB
 	conf             *config.Config
 	name, collection string
 }
 
 func newSortIndex(conf *config.Config, collection, field string) (*sortIndex, error) {
-	db, err := vkv.New(filepath.Join(conf.VarDir(), fmt.Sprintf("docstore_%s_%s.index", collection, field)))
+	db, err := rangedb.New(filepath.Join(conf.VarDir(), fmt.Sprintf("docstore_%s_%s.index", collection, field)))
 	if err != nil {
 		return nil, err
 	}
@@ -50,34 +62,35 @@ func (si *sortIndex) prepareRebuild() error {
 	if err != nil {
 		return err
 	}
-	si.db, err = vkv.New(filepath.Join(si.conf.VarDir(), fmt.Sprintf("docstore_%s_%s.index", si.collection, si.name)))
+	si.db, err = rangedb.New(filepath.Join(si.conf.VarDir(), fmt.Sprintf("docstore_%s_%s.index", si.collection, si.name)))
 	return err
 }
 
-func buildVal(start int64, _id *id.ID) []byte {
-	v := make([]byte, 20) // start (8 byte int64) + 12 bytes ID
+func buildVal(start, end int64, _id *id.ID) []byte {
+	v := make([]byte, 28) // start + end (2 * 8 byte int64) + 12 bytes ID
 	binary.BigEndian.PutUint64(v[:], uint64(start))
-	copy(v[8:], _id.Raw())
+	binary.BigEndian.PutUint64(v[8:], uint64(end))
+	copy(v[16:], _id.Raw())
 	return v
 }
 
-func parseVal(d []byte) (int64, *id.ID) {
-	return int64(binary.BigEndian.Uint64(d[0:8])), id.FromRaw(d[8:])
-}
-
-func buildUint64Key(v uint64) []byte {
-	k := make([]byte, 18) // 8 bytes uint64 + 4 bytes prefix (`k:<type>:`) and 6 bytes random suffix
-	copy(k[:], []byte("k:1:"))
-	binary.BigEndian.PutUint64(k[4:], v)
-	return k
+func parseVal(d []byte) (int64, int64, *id.ID) {
+	return int64(binary.BigEndian.Uint64(d[0:8])), int64(binary.BigEndian.Uint64(d[8:16])), id.FromRaw(d[16:])
 }
 
 func buildFloat64Key(f float64) []byte {
 	buf := new(bytes.Buffer)
-	buf.WriteString("k:2:")
-	// XXX: The rationale for using this instead `math.Float64bits` is to ensure the big endianess
-	// (I'am afraid `math.Float64bits` endianess will depend on the arch)
-	err := binary.Write(buf, binary.BigEndian, f)
+	buf.WriteString("k:1:")
+	// Get the IEEE-754 binary version of this float
+	bits := math.Float64bits(f)
+	if f >= 0 {
+		// Flip the sign part of the IEEE-754 repr
+		bits ^= 0x8000000000000000
+	} else {
+		// Flip the sign part and reverse the ordering for negative numbers by flipping the bits
+		bits ^= 0xffffffffffffffff
+	}
+	err := binary.Write(buf, binary.BigEndian, bits)
 	if err != nil {
 		panic(err)
 	}
@@ -96,42 +109,42 @@ func buildKey(v interface{}) []byte {
 		klen = 0
 		k = make([]byte, 10)
 		if vv {
-			copy(k[:], []byte("k:4:1"))
+			copy(k[:], []byte("k:3:1"))
 		} else {
-			copy(k[:], []byte("k:4:0"))
+			copy(k[:], []byte("k:3:0"))
 		}
 	case string:
 		klen = len(vv)
 		k = make([]byte, klen+10) // 4 bytes prefix (`k:<type>:`) and 6 bytes random suffix
-		copy(k[:], []byte("k:3:"))
+		copy(k[:], []byte("k:2:"))
 		copy(k[4:], []byte(vv))
 	case int:
 		klen = 8
-		k = buildUint64Key(uint64(vv))
+		k = buildFloat64Key(float64(vv))
 	case int8:
 		klen = 8
-		k = buildUint64Key(uint64(vv))
+		k = buildFloat64Key(float64(vv))
 	case int16:
 		klen = 8
-		k = buildUint64Key(uint64(vv))
+		k = buildFloat64Key(float64(vv))
 	case int32:
 		klen = 8
-		k = buildUint64Key(uint64(vv))
+		k = buildFloat64Key(float64(vv))
 	case int64:
 		klen = 8
-		k = buildUint64Key(uint64(vv))
+		k = buildFloat64Key(float64(vv))
 	case uint8:
 		klen = 8
-		k = buildUint64Key(uint64(vv))
+		k = buildFloat64Key(float64(vv))
 	case uint16:
 		klen = 8
-		k = buildUint64Key(uint64(vv))
+		k = buildFloat64Key(float64(vv))
 	case uint32:
 		klen = 8
-		k = buildUint64Key(uint64(vv))
+		k = buildFloat64Key(float64(vv))
 	case uint64:
 		klen = 8
-		k = buildUint64Key(vv)
+		k = buildFloat64Key(float64(vv))
 	case float32:
 		klen = 8
 		// Get the IEEE 754 binary repr
@@ -161,59 +174,97 @@ func buildLastVersionKey(_id *id.ID) []byte {
 // Index implements the Indexer interface
 func (si *sortIndex) Index(_id *id.ID, doc map[string]interface{}) error {
 	lastVersionKey := buildLastVersionKey(_id)
-	oldSortKvKey, err := si.db.Get(string(lastVersionKey), -1)
+	oldSortKvKey, err := si.db.Get(lastVersionKey)
 	switch err {
 	case nil:
+		if oldSortKvKey == nil {
+			break
+		}
 		// There's an old key, fetch it
-		oldSortKv, err := si.db.Get(string(oldSortKvKey.Data), -1)
+		oldSortKv, err := si.db.Get(oldSortKvKey)
 		if err != nil {
 			return err
 		}
-		if len(oldSortKv.Data) == 0 {
+		if oldSortKv == nil || len(oldSortKv) == 0 {
 			break
 		}
-		_, _oid := parseVal(oldSortKv.Data)
+		start, _, _oid := parseVal(oldSortKv)
 		if _oid.String() != _id.String() {
 			return fmt.Errorf("_id should match the old version key")
 		}
-		if err := si.db.Put(&vkv.KeyValue{
-			Key:     oldSortKv.Key,
-			Data:    oldSortKv.Data,
-			Version: _id.Version(),
-		}); err != nil {
+		// And update its "end of life" date (the newer doc version's version)
+		if err := si.db.Set(oldSortKvKey, buildVal(start, _id.Version(), _oid)); err != nil {
 			return err
 		}
-	case vkv.ErrNotFound:
 	default:
 		return err
 	}
 
+	// If the index is updated with a deleted doc, updating the end of life of the last/previous version (done above) is enough
 	if _id.Flag() == flagDeleted {
 		return nil
 	}
 
+	// Build the "index key", the encoded value (for later lexicographical iter)
 	var sortKey []byte
 	if si.name == "_updated" {
 		sortKey = buildKey(_id.Version())
 	} else {
-		sortKey = buildKey(doc[si.name])
+		if val, ok := doc[si.name]; ok {
+			sortKey = buildKey(val)
+		} else {
+			sortKey = buildKey(nil)
+		}
 	}
 
-	if err := si.db.Put(&vkv.KeyValue{
-		Key:     string(sortKey),
-		Data:    buildVal(_id.Version(), _id),
-		Version: _id.Version(),
-	}); err != nil {
+	// Append the "index key", since it's the latest version, start == end
+	if err := si.db.Set(sortKey, buildVal(_id.Version(), _id.Version(), _id)); err != nil {
 		return err
 	}
-	if err := si.db.Put(&vkv.KeyValue{
-		Key:  string(lastVersionKey),
-		Data: sortKey,
-	}); err != nil {
+
+	// Update the pointer to the latest index key (to update its end of life when a newer version comes in
+	if err := si.db.Set(lastVersionKey, sortKey); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+type kv struct {
+	k []byte
+	v []byte
+}
+
+func (si *sortIndex) keys(start, end string, limit int, reverse bool) ([]*kv, string, error) {
+	var cursor string
+	out := []*kv{}
+
+	c := si.db.Range([]byte(start), []byte(end), reverse)
+	defer c.Close()
+
+	// Iterate the range
+	k, v, err := c.Next()
+	for ; err == nil && (limit <= 0 || len(out) < limit); k, v, err = c.Next() {
+		res := &kv{k: k, v: v}
+		out = append(out, res)
+	}
+
+	if len(out) > 0 {
+		// Generate next cursor
+		rcursor := string(out[len(out)-1].k)
+		if reverse {
+			cursor = vkv.PrevKey(rcursor)
+		} else {
+			cursor = vkv.NextKey(rcursor)
+		}
+	}
+
+	// Return
+	if err == io.EOF {
+		return out, cursor, nil
+	}
+
+	return out, cursor, nil
 }
 
 // Iter implements the IDIterator interface
@@ -221,7 +272,7 @@ func (si *sortIndex) Iter(collection, cursor string, desc bool, fetchLimit int, 
 	// asOfStr := strconv.FormatInt(asOf, 10)
 	_ids := []*id.ID{}
 
-	// Handle the cursor
+	// Handle the cursor (and the sort order)
 	var start string
 	var nextFunc func(string) string
 	if desc {
@@ -240,35 +291,32 @@ func (si *sortIndex) Iter(collection, cursor string, desc bool, fetchLimit int, 
 	}
 
 	// List keys from the kvstore
-	var res []*vkv.KeyValue
+	var res []*kv
 	var err error
 	var nextCursor string
 
 	if desc {
-		res, nextCursor, err = si.db.ReverseKeys("k:", start, fetchLimit)
+		res, nextCursor, err = si.keys("k:", start, fetchLimit, true)
 	} else {
-		res, nextCursor, err = si.db.Keys(start, "k:\xff", fetchLimit)
+		res, nextCursor, err = si.keys(start, "k:\xff", fetchLimit, false)
 	}
 	if err != nil {
 		return nil, "", err
 	}
-	var vstart int64
+	var vstart, vend int64
 	var _id *id.ID
 
 	for _, kv := range res {
-		if len(kv.Data) == 0 {
-			// Skip deleted entries
-			continue
-		}
-		vstart, _id = parseVal(kv.Data)
+		vstart, vend, _id = parseVal(kv.v)
 
 		// We only want key for the latest version if asOf == 0
-		if asOf == 0 && vstart != kv.Version {
+		if asOf == 0 && vstart != vend {
 			continue
 		}
 
-		if asOf > 0 && ((vstart == kv.Version && asOf < vstart) || (kv.Version > vstart && !(asOf >= vstart && asOf < kv.Version))) {
-			// Skip documents created after the requested asOf, or document versions which are not between vstart and version
+		if asOf > 0 && ((vstart == vend && asOf < vstart) || (vend > vstart && !(asOf >= vstart && asOf < vend))) {
+			// Skip the latest documents version (vstart == vend) created before the request asOf and
+			// the documents that are not between start and end
 			continue
 		}
 
@@ -276,7 +324,7 @@ func (si *sortIndex) Iter(collection, cursor string, desc bool, fetchLimit int, 
 		_id.SetFlag(flagNoop)
 		_id.SetVersion(vstart)
 		// Cursor is needed by ID as we don't know yet which doc will be matched, and and want to return in the query
-		_id.SetCursor(base64.URLEncoding.EncodeToString([]byte(nextFunc(kv.Key))))
+		_id.SetCursor(base64.URLEncoding.EncodeToString([]byte(nextFunc(string(kv.k)))))
 
 		_ids = append(_ids, _id)
 	}
