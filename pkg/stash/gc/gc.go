@@ -184,7 +184,7 @@ func jsonEncode(L *lua.LState) int {
 		L.Push(lua.LNil)
 		return 1
 	}
-	L.Push(lua.LString(string(luautil.ToJSON(data))))
+	L.Push(lua.LString(string(luautil.ToJSON(L, data))))
 	return 1
 }
 

@@ -274,7 +274,7 @@ func setupFileTree(ft *filetree.FileTree, bs store.BlobStore, kv store.KvStore) 
 			},
 			"put_file_at": func(L *lua.LState) int {
 				uploader := writer.NewUploader(filetree.NewBlobStoreCompat(bs, context.TODO()))
-				snap := toSnap(luautil.TableToMap(L.ToTable(1)))
+				snap := toSnap(luautil.TableToMap(L, L.ToTable(1)))
 				name := L.ToString(2)
 				contents := L.ToString(3)
 				var ref string

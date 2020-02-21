@@ -135,7 +135,7 @@ func httpClientDoReq(method string) func(*lua.LState) int {
 				body = strings.NewReader(string(lv))
 			case *lua.LTable:
 				header.Set("Content-Type", "application/json")
-				body = bytes.NewReader(luautil.ToJSON(L.Get(3)))
+				body = bytes.NewReader(luautil.ToJSON(L, L.Get(3)))
 			case *lua.LUserData:
 				if h, ok := lv.Value.(*values); ok {
 					header.Set("Content-Type", "application/x-www-form-urlencoded")

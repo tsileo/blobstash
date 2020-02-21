@@ -101,7 +101,7 @@ func setupState(L *lua.LState, conf *Config, w http.ResponseWriter, r *http.Requ
 			item := L.Get(i)
 			// We don't want table to be displayed as "table: 0xc420272240"
 			if t, ok := item.(*lua.LTable); ok {
-				item = lua.LString(luautil.ToJSON(t))
+				item = lua.LString(luautil.ToJSON(L, t))
 			}
 			args = append(args, item)
 		}
@@ -192,7 +192,7 @@ func SetupGlue(L *lua.LState, conf *Config) error {
 			item := L.Get(i)
 			// We don't want table to be displayed as "table: 0xc420272240"
 			if t, ok := item.(*lua.LTable); ok {
-				item = lua.LString(luautil.ToJSON(t))
+				item = lua.LString(luautil.ToJSON(L, t))
 			}
 			args = append(args, item)
 		}

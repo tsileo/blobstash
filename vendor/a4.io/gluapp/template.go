@@ -69,7 +69,7 @@ func setupTemplate(path string) func(*lua.LState) int {
 					// TODO(tsileo): return error?
 					return 0
 				}
-				if err := tpl.Execute(&out, luautil.TableToMap(L.ToTable(2))); err != nil {
+				if err := tpl.Execute(&out, luautil.TableToMap(L, L.ToTable(2))); err != nil {
 					L.Push(lua.LString(err.Error()))
 					return 1
 				}
@@ -91,7 +91,7 @@ func setupTemplate(path string) func(*lua.LState) int {
 					return 1
 				}
 				tmplName := filepath.Base(templates[len(templates)-1])
-				ctx := luautil.TableToMap(L.ToTable(L.GetTop()))
+				ctx := luautil.TableToMap(L, L.ToTable(L.GetTop()))
 				if err := tmpl.ExecuteTemplate(&out, tmplName, ctx); err != nil {
 					L.Push(lua.LString(err.Error()))
 					return 1

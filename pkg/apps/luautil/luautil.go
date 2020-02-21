@@ -14,6 +14,10 @@ import (
 	"github.com/yuin/gopher-lua"
 )
 
+// FIXME(tsileo): support a custom metatable so `jsonutil.new_list/map()` and `jsonutil.is_list/map()` can work
+// and jsonuti.new_list() can be dumped as an empty list via json.encode. Or use __index for __jsonutil_type "map"|"list" and a global "map"/"list" metatable from json
+// map VS object, list VS array
+
 // AddToPath append the given path the the Lua package.path
 func AddToPath(L *lua.LState, npath string) {
 	path := L.GetField(L.GetField(L.Get(lua.EnvironIndex), "package"), "path").(lua.LString)
@@ -22,18 +26,18 @@ func AddToPath(L *lua.LState, npath string) {
 }
 
 // TableToMap converts a `*lua.LTable` to a `map[string]interface{}`
-func TableToMap(table *lua.LTable) map[string]interface{} {
-	res, _ := tomap(table, map[*lua.LTable]bool{})
+func TableToMap(L *lua.LState, table *lua.LTable) map[string]interface{} {
+	res, _ := tomap(L, table, map[*lua.LTable]bool{})
 	return res
 }
 
 // TableToSlice converts a `*lua.LTable` to a `[]interface{}`
-func TableToSlice(table *lua.LTable) []interface{} {
-	_, res := tomap(table, map[*lua.LTable]bool{})
+func TableToSlice(L *lua.LState, table *lua.LTable) []interface{} {
+	_, res := tomap(L, table, map[*lua.LTable]bool{})
 	return res
 }
 
-func tomap(table *lua.LTable, visited map[*lua.LTable]bool) (map[string]interface{}, []interface{}) {
+func tomap(L *lua.LState, table *lua.LTable, visited map[*lua.LTable]bool) (map[string]interface{}, []interface{}) {
 	res := map[string]interface{}{}
 	var arrres []interface{}
 	nkey := false
@@ -78,7 +82,7 @@ func tomap(table *lua.LTable, visited map[*lua.LTable]bool) (map[string]interfac
 			//	panic("nested table")
 			// }
 			visited[converted] = true
-			stres, sares := tomap(converted, visited)
+			stres, sares := tomap(L, converted, visited)
 			if nkey {
 				if sares != nil {
 					arrres = append(arrres, sares)
@@ -94,12 +98,15 @@ func tomap(table *lua.LTable, visited map[*lua.LTable]bool) (map[string]interfac
 			}
 		}
 	})
+	if arrres == nil && L.GetMetatable(table) == L.GetGlobal("__gluapp_json_array") {
+		return nil, []interface{}{}
+	}
 	return res, arrres
 }
 
 // Convert a Lua table to JSON
 // Adapted from https://github.com/layeh/gopher-json/blob/master/util.go (Public domain)
-func ToJSON(value lua.LValue) []byte {
+func ToJSON(L *lua.LState, value lua.LValue) []byte {
 	var data []byte
 	var err error
 	switch converted := value.(type) {
@@ -118,7 +125,12 @@ func ToJSON(value lua.LValue) []byte {
 	case lua.LString:
 		data, err = json.Marshal(converted)
 	case *lua.LTable:
-		data, err = json.Marshal(TableToMap(converted))
+		res, ares := tomap(L, converted, map[*lua.LTable]bool{})
+		if ares != nil {
+			data, err = json.Marshal(ares)
+		} else {
+			data, err = json.Marshal(res)
+		}
 	case *lua.LUserData:
 		err = errors.New("ToJSON: cannot marshal user data")
 		// TODO: call metatable __tostring?
@@ -145,6 +157,7 @@ func InterfaceToLValue(L *lua.LState, value interface{}) lua.LValue {
 }
 
 func fromJSON(L *lua.LState, value interface{}) lua.LValue {
+	// XXX it handles so many types because the docstore uses msgpack (and it handles all the possible types)
 	switch converted := value.(type) {
 	case bool:
 		return lua.LBool(converted)
@@ -175,18 +188,25 @@ func fromJSON(L *lua.LState, value interface{}) lua.LValue {
 		for _, item := range converted {
 			arr.Append(fromJSON(L, item))
 		}
+		mt := L.GetGlobal("__gluapp_json_array")
+		if mt != lua.LNil {
+			L.SetMetatable(arr, mt)
+		}
 		return arr
 	case []map[string]interface{}:
 		arr := L.CreateTable(len(converted), 0)
 		for _, item := range converted {
 			arr.Append(fromJSON(L, item))
 		}
-		fmt.Printf("arr=%+v\n", arr)
 		return arr
 	case map[string]interface{}:
+		mt := L.GetGlobal("__gluapp_json_object")
 		tbl := L.CreateTable(0, len(converted))
 		for key, item := range converted {
 			tbl.RawSetH(lua.LString(key), fromJSON(L, item))
+		}
+		if mt != lua.LNil {
+			L.SetMetatable(tbl, mt)
 		}
 		return tbl
 	case nil:

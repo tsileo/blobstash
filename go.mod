@@ -1,6 +1,6 @@
 module a4.io/blobstash
 
-replace github.com/go-interpreter/wagon v0.0.0 => github.com/perlin-network/wagon v0.3.1-0.20180825141017-f8cb99b55a39
+replace a4.io/gluapp v0.0.0-20200214202429-b4a08105811e => /home/thomas/Proj/gluapp
 
 require (
 	a4.io/blobsfile v0.3.8

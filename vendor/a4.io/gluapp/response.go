@@ -165,7 +165,7 @@ func responseJsonify(L *lua.LState) int {
 	if resp == nil {
 		return 1
 	}
-	js := luautil.ToJSON(L.CheckAny(2))
+	js := luautil.ToJSON(L, L.CheckAny(2))
 	resp.buf.Write(js)
 	resp.Header.Set("Content-Type", "application/json")
 	return 0
