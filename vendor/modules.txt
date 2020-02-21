@@ -1,6 +1,6 @@
 # a4.io/blobsfile v0.3.8
 a4.io/blobsfile
-# a4.io/gluapp v0.0.0-20200214202429-b4a08105811e => /home/thomas/Proj/gluapp
+# a4.io/gluapp v0.0.0-20200221184138-44fb2766d27d
 a4.io/gluapp
 a4.io/gluapp/util
 # a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f
@@ -44,7 +44,7 @@ github.com/alecthomas/chroma/lexers/w
 github.com/alecthomas/chroma/lexers/x
 github.com/alecthomas/chroma/lexers/y
 github.com/alecthomas/chroma/styles
-# github.com/aws/aws-sdk-go v1.29.4
+# github.com/aws/aws-sdk-go v1.29.7
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/arn
 github.com/aws/aws-sdk-go/aws/awserr
@@ -241,7 +241,7 @@ github.com/yuin/gopher-lua/parse
 github.com/yuin/gopher-lua/pm
 # github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
 github.com/zpatrick/rbac
-# golang.org/x/crypto v0.0.0-20200214034016-1d94cc7ab1c6
+# golang.org/x/crypto v0.0.0-20200221170553-0f24fbd83dfb
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
 golang.org/x/crypto/blake2b
@@ -267,14 +267,14 @@ golang.org/x/crypto/ssh
 golang.org/x/crypto/ssh/agent
 golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
 golang.org/x/crypto/ssh/knownhosts
-# golang.org/x/net v0.0.0-20200202094626-16171245cfb2
+# golang.org/x/net v0.0.0-20200219183655-46282727080f
 golang.org/x/net/context
 golang.org/x/net/html
 golang.org/x/net/html/atom
 golang.org/x/net/idna
 golang.org/x/net/internal/socks
 golang.org/x/net/proxy
-# golang.org/x/sys v0.0.0-20200217220822-9197077df867
+# golang.org/x/sys v0.0.0-20200219091948-cb0a6d8edb6c
 golang.org/x/sys/cpu
 golang.org/x/sys/unix
 golang.org/x/sys/windows
