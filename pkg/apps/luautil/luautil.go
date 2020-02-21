@@ -98,7 +98,7 @@ func tomap(L *lua.LState, table *lua.LTable, visited map[*lua.LTable]bool) (map[
 			}
 		}
 	})
-	if arrres == nil && L.GetMetatable(table) == L.GetGlobal("__gluapp_json_array") {
+	if arrres == nil && L.GetGlobal("__gluapp_json_array") != lua.LNil && L.GetMetatable(table) == L.GetGlobal("__gluapp_json_array") {
 		return nil, []interface{}{}
 	}
 	return res, arrres
