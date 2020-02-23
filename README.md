@@ -26,7 +26,6 @@ you interact with BlobStash's database.
 Hosting static content is also an option.
 It let you easily add authentication to any app/proxied service.
 
-
 ### Blobs
 
 The content-addressed blob store (the identifier of a blob is its own hash, the chosen hash function is [BLAKE2b](https://blake2.net/)) is at the heart of everything in BlobStash. Everything permanently stored in BlobStash ends up in a blob.
@@ -92,7 +91,38 @@ BlobStash features fine-grained permissions support, with a model similar to AWS
    - `action:read:git-repo`/`resource:gitserver:git-repo:{ns}/{repo}`
    - `action:write:git-repo`/`resource:gitserver:git-repo:{ns}/{repo}`
 
-## Use Cases
+## Document Store
+
+The _Document Store_ stores JSON documents, think MongoDB or CouchDB.
+
+Every document versions is kept (and always accessible).
+
+Documents are stored in a collection. All collections are stored in a single namespace.
+
+It also support temporal queries (querying the state of collecton at an instant `t`).
+
+Documents are queried with Lua functions, like:
+
+```Lua
+local docstore = require('docstore')
+return function(doc)
+  if doc.subdoc.counter > 10 and docstore.text_search(doc, "query", {"content"}) then
+    return true
+  end
+  return false
+end
+```
+
+It also implements a basic MapReduce framework (Lua powered too).
+
+And lastly, a document can hold pointers to filse/nodes stored in the _FileTree Store_.
+
+Internally, a JSON document "version" is stored as a "versioned key-value" entry.
+Document IDs encode the creation version, and are lexicographically sorted by creation date (8 bytes nano timestamp + 4 random bytes).
+The _Versioned Key-Value Store_ is the default index for listing/sorting documents.
+
+
+## BlobStash Use Cases
 
 ### Backups from external servers
 
