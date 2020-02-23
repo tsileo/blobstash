@@ -67,7 +67,7 @@ func FlattenMap(m map[string]interface{}, parent, delimiter string) map[string]i
 }
 
 // GetPath returns the map value for the given "dot notation" path, or returns `ErrKeyNotFound`
-func GetPath(path string, doc map[string]interface{}) (interface{}, error) {
+func GetPath(doc map[string]interface{}, path string) (interface{}, error) {
 	keys := strings.Split(path, ".")
 	for i, key := range keys {
 		if val, ok := doc[key]; ok {

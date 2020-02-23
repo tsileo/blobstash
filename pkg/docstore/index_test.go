@@ -3,9 +3,13 @@ package docstore
 import (
 	"testing"
 
+	log "github.com/inconshreveable/log15"
+
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/docstore/id"
 )
+
+var logger = log.New()
 
 func testConf() *config.Config {
 	return &config.Config{
@@ -14,7 +18,8 @@ func testConf() *config.Config {
 }
 
 func TestIndexBasic(t *testing.T) {
-	i, err := newSortIndex(testConf(), "name", "name")
+
+	i, err := newSortIndex(logger, testConf(), "name", "name")
 	if err != nil {
 		panic(err)
 	}
@@ -41,7 +46,7 @@ func TestBuildIndexKey(t *testing.T) {
 }
 
 func TestIndex(t *testing.T) {
-	i, err := newSortIndex(testConf(), "letter", "letter")
+	i, err := newSortIndex(logger, testConf(), "letter", "letter")
 	if err != nil {
 		panic(err)
 	}
@@ -135,7 +140,7 @@ func TestIndex(t *testing.T) {
 }
 
 func TestIndexUpdatedField(t *testing.T) {
-	i, err := newSortIndex(testConf(), "letter", "_updated")
+	i, err := newSortIndex(logger, testConf(), "letter", "_updated")
 	if err != nil {
 		panic(err)
 	}

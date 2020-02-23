@@ -153,7 +153,7 @@ func New(logger log.Logger, conf *config.Config, kvStore store.KvStore, blobStor
 		for collection, indexes := range conf.Docstore.SortIndexes {
 			sortIndexes[collection] = map[string]Indexer{}
 			for _, sortIndex := range indexes {
-				sortIndexes[collection][sortIndex.Field], err = newSortIndex(conf, collection, sortIndex.Field)
+				sortIndexes[collection][sortIndex.Field], err = newSortIndex(logger, conf, collection, sortIndex.Field)
 				if err != nil {
 					return nil, fmt.Errorf("failed to init index: %v", err)
 				}
@@ -240,7 +240,7 @@ func (dc *DocStore) GetSortIndex(col, name string) (Indexer, error) {
 
 	// If the special "_updated" sort index is requested, create it on the fly
 	if name == "_updated" {
-		si, err := newSortIndex(dc.conf, col, name)
+		si, err := newSortIndex(dc.logger, dc.conf, col, name)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create sort index: %w", err)
 		}

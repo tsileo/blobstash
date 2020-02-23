@@ -9,9 +9,14 @@ import (
 	"io"
 	"math"
 	"path/filepath"
+	"time"
+
+	log "github.com/inconshreveable/log15"
+	logext "github.com/inconshreveable/log15/ext"
 
 	"a4.io/blobstash/pkg/config"
 	"a4.io/blobstash/pkg/docstore/id"
+	"a4.io/blobstash/pkg/docstore/maputil"
 	"a4.io/blobstash/pkg/rangedb"
 	"a4.io/blobstash/pkg/vkv"
 )
@@ -35,26 +40,28 @@ type Indexer interface {
 // specifies the lifetime of the indexed document (start == end means it's the latest version).
 // An additional "sub-index" is kept in roder to keep track of the "index key" of the latest version of each document.
 type sortIndex struct {
-	db               *rangedb.RangeDB
-	conf             *config.Config
-	name, collection string
+	db                *rangedb.RangeDB
+	conf              *config.Config
+	field, collection string
+	logger            log.Logger
 }
 
-func newSortIndex(conf *config.Config, collection, field string) (*sortIndex, error) {
+func newSortIndex(logger log.Logger, conf *config.Config, collection, field string) (*sortIndex, error) {
 	db, err := rangedb.New(filepath.Join(conf.VarDir(), fmt.Sprintf("docstore_%s_%s.index", collection, field)))
 	if err != nil {
 		return nil, err
 	}
 	return &sortIndex{
 		db:         db,
-		name:       field,
+		field:      field,
 		collection: collection,
 		conf:       conf,
+		logger:     logger.New("index", fmt.Sprintf("sf:%s:%s", collection, field)),
 	}, nil
 }
 
 func (si *sortIndex) Name() string {
-	return si.name
+	return fmt.Sprintf("sf:%s:%s", si.collection, si.field)
 }
 
 func (si *sortIndex) prepareRebuild() error {
@@ -62,7 +69,7 @@ func (si *sortIndex) prepareRebuild() error {
 	if err != nil {
 		return err
 	}
-	si.db, err = rangedb.New(filepath.Join(si.conf.VarDir(), fmt.Sprintf("docstore_%s_%s.index", si.collection, si.name)))
+	si.db, err = rangedb.New(filepath.Join(si.conf.VarDir(), fmt.Sprintf("docstore_%s_%s.index", si.collection, si.field)))
 	return err
 }
 
@@ -207,14 +214,11 @@ func (si *sortIndex) Index(_id *id.ID, doc map[string]interface{}) error {
 
 	// Build the "index key", the encoded value (for later lexicographical iter)
 	var sortKey []byte
-	if si.name == "_updated" {
+	if si.field == "_updated" {
 		sortKey = buildKey(_id.Version())
 	} else {
-		if val, ok := doc[si.name]; ok {
-			sortKey = buildKey(val)
-		} else {
-			sortKey = buildKey(nil)
-		}
+		val, _ := maputil.GetPath(doc, si.field)
+		sortKey = buildKey(val)
 	}
 
 	// Append the "index key", since it's the latest version, start == end
@@ -269,6 +273,11 @@ func (si *sortIndex) keys(start, end string, limit int, reverse bool) ([]*kv, st
 
 // Iter implements the IDIterator interface
 func (si *sortIndex) Iter(collection, cursor string, desc bool, fetchLimit int, asOf int64) ([]*id.ID, string, error) {
+	tstart := time.Now()
+	l := si.logger.New("id", logext.RandId(8))
+	l.Debug("starting iter")
+	var scanned int
+
 	// asOfStr := strconv.FormatInt(asOf, 10)
 	_ids := []*id.ID{}
 
@@ -307,6 +316,8 @@ func (si *sortIndex) Iter(collection, cursor string, desc bool, fetchLimit int, 
 	var _id *id.ID
 
 	for _, kv := range res {
+		scanned++
+
 		vstart, vend, _id = parseVal(kv.v)
 
 		// We only want key for the latest version if asOf == 0
@@ -328,6 +339,8 @@ func (si *sortIndex) Iter(collection, cursor string, desc bool, fetchLimit int, 
 
 		_ids = append(_ids, _id)
 	}
+
+	l.Debug("iter done", "duration", time.Since(tstart), "scanned", scanned, "count", len(_ids))
 
 	return _ids, base64.URLEncoding.EncodeToString([]byte(nextCursor)), nil
 }
