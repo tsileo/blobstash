@@ -93,13 +93,13 @@ BlobStash features fine-grained permissions support, with a model similar to AWS
 
 ## Document Store
 
-The _Document Store_ stores JSON documents, think MongoDB or CouchDB.
-
-Every document versions is kept (and always accessible).
+The _Document Store_ stores JSON documents, think MongoDB or CouchDB, and exposes it over an HTTP API.
 
 Documents are stored in a collection. All collections are stored in a single namespace.
 
-It also support temporal queries (querying the state of collecton at an instant `t`).
+Every document versions is kept (and always accessible via temporal queries, i.e. querying the state of a collection at an instant `t`).
+
+The _Document Store_ supports ETag, conditional requests (`If-Match`...) and [JSON Patch](http://jsonpatch.com/) for partial/consistent update.
 
 Documents are queried with Lua functions, like:
 
@@ -121,6 +121,44 @@ Internally, a JSON document "version" is stored as a "versioned key-value" entry
 Document IDs encode the creation version, and are lexicographically sorted by creation date (8 bytes nano timestamp + 4 random bytes).
 The _Versioned Key-Value Store_ is the default index for listing/sorting documents.
 
+### Collections
+
+#### Listing collections
+
+Collections are created on-the-fly when a document is inserted.
+
+##### GET /api/docstore
+
+```shell
+$ http --auth :apikey GET https://myinstance.com/api/docstore
+```
+
+##### Response
+
+```json
+{
+    "data": [
+        "mycollection"
+    ], 
+    "pagination": {
+        "count": 1, 
+        "cursor": "", 
+        "has_more": false, 
+        "per_page": 50
+    }
+}
+```
+
+#### Python
+
+```python
+from blobstash.docstore import DocStoreClient
+
+client = DocStoreClient(api_key="apikey")
+
+c.collections()
+# [blobstash.docstore.Collection(name='mycollection')]
+```
 
 ## BlobStash Use Cases
 
