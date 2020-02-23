@@ -2,7 +2,6 @@ package docstore
 
 import (
 	"bytes"
-	"crypto/sha1"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -27,15 +26,9 @@ var closedError = errors.New("map reduce engine closed")
 type QueryMatcher interface {
 	Match(map[string]interface{}) (bool, error)
 	Close() error
-	Cacheable() bool
-	CacheKey() string
 }
 
 type MatchAllEngine struct{}
-
-func (mae *MatchAllEngine) Cacheable() bool { return false }
-
-func (mae *MatchAllEngine) CacheKey() string { return "" }
 
 func (mae *MatchAllEngine) Match(_ map[string]interface{}) (bool, error) {
 	return true, nil
@@ -302,7 +295,6 @@ func setupCmd(cwd string) func(*lua.LState) int {
 
 type LuaQueryEngine struct {
 	lfunc *lua.LFunction
-	hcode string
 
 	code  string
 	query interface{} // Raw query
@@ -387,10 +379,7 @@ func (docstore *DocStore) newLuaQueryEngine(L *lua.LState, query *query) (*LuaQu
 		ret = engine.L.Get(-1).(*lua.LFunction)
 	}
 	if ret != nil {
-		// Get the function hash (by hashing its bytecode)
-		hcode := fmt.Sprintf("%x", sha1.Sum([]byte(fmt.Sprintf("%+v", ret.Proto))))
-		fmt.Printf("extracted fun %v code=%s\n", ret, hcode)
-		engine.hcode = hcode
+		fmt.Printf("extracted fun %v\n", ret)
 		matchDoc := func(doc map[string]interface{}) (bool, error) {
 			if err := engine.L.CallByParam(lua.P{
 				Fn:      ret,
@@ -412,10 +401,6 @@ func (docstore *DocStore) newLuaQueryEngine(L *lua.LState, query *query) (*LuaQu
 	}
 	return engine, nil
 }
-
-func (lqe *LuaQueryEngine) Cacheable() bool { return lqe.hcode != "" }
-
-func (lqe *LuaQueryEngine) CacheKey() string { return lqe.hcode }
 
 func (lqe *LuaQueryEngine) Match(doc map[string]interface{}) (bool, error) {
 	start := time.Now()

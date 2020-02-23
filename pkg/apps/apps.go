@@ -162,12 +162,14 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 			return nil, err
 		}
 		app.repo = r
-		coOpts := &git.CheckoutOptions{
-			Hash: plumbing.NewHash(parts[1]),
+		coOpts := &git.CheckoutOptions{}
+		if parts[1] != "master" {
+			coOpts.Branch = plumbing.ReferenceName("refs/tags/" + parts[1])
 		}
 		if err := wt.Checkout(coOpts); err != nil {
 			return nil, err
 		}
+		app.path = app.tmp
 	}
 
 	if appConf.Proxy != "" {

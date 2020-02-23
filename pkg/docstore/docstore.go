@@ -746,33 +746,9 @@ QUERY:
 			stats.TotalDocsExamined++
 
 			// Check if the doc match the query
-			cacheKey := []byte(fmt.Sprintf("%v:%v:%v", qmatcher.CacheKey(), _id.String(), _id.Version()))
-			cached, err := docstore.queryCache.Get(cacheKey)
-			if err != nil && err != vkv.ErrNotFound {
+			ok, err := qmatcher.Match(doc)
+			if err != nil {
 				return nil, nil, stats, err
-			}
-			var ok bool
-			if cached != nil {
-				if cached[0] == '1' {
-					ok = true
-				}
-				qLogger.Debug("got query result from cache", "key", cacheKey, "value", ok)
-				stats.NQueryCached++
-			} else {
-				ok, err = qmatcher.Match(doc)
-				if err != nil {
-					return nil, nil, stats, err
-				}
-				if qmatcher.Cacheable() {
-					qLogger.Debug("caching query result", "key", cacheKey, "value", ok)
-					dat := []byte{'0'}
-					if ok {
-						dat = []byte{'1'}
-					}
-					if err := docstore.queryCache.Set(cacheKey, dat); err != nil {
-						return nil, nil, stats, err
-					}
-				}
 			}
 			if !ok {
 				continue
@@ -790,7 +766,7 @@ QUERY:
 				break QUERY
 			}
 		}
-		if len(_ids) == 0 { // || len(_ids) < fetchLimit {
+		if len(_ids) == 0 {
 			break
 		}
 		start = cursor
