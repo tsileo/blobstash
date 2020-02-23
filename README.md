@@ -44,20 +44,6 @@ Internally, each "version" is stored as a separate blob, with a specific format,
 
 Key-Values are indexed in a temporary database (that can be rebuilt at any time by scanning all the blobs) and stored as a blob.
 
-### JSON documents
-
-A Lua-powered JSON document store lets you perform powerful queries against a collection of JSON documents.
-
-You can easily reference/embed blob or files.
-
-Internally, each document gets a key-value entry, keeping track of the modification history and documents are stored as raw blobs.
-
-When performing queryies, the embedded Lua interpreter runs through all documents sequentially, and returns you the results (indexes support is on its way).
-
-The document store supports ETag, conditional requests (`If-Match`...) and [JSON Patch](http://jsonpatch.com/) for partial/consistent update.
-
-Complex queries can be stored along with the server to prevent wasting bandwith.
-
 ### Files, tree of files
 
 Files and tree of files are first-class citizen in BlobStash.
@@ -160,7 +146,7 @@ client.collections()
 # [blobstash.docstore.Collection(name='mycollection')]
 ```
 
-### Inserting a document
+### Inserting documents
 
 Collections are created on-the-fly when a document is inserted.
 
@@ -189,6 +175,7 @@ from blobstash.docstore import DocStoreClient
 
 client = DocStoreClient("https://instance.com", api_key="apikey")
 
+# or `client["mycol"]` or `client.collection("mycol")`
 col = client.mycol
 
 doc = {"content": "lol"}
@@ -229,6 +216,8 @@ $ http --auth :apikey post https://instance.com/api/docstore/{collection} conten
 
 ##### blobstash-python
 
+### Deleting documents
+
 #### DELETE /api/docstore/{collection}/{id}
 
 ##### HTTP Request
@@ -248,11 +237,22 @@ from blobstash.docstore import DocStoreClient
 
 client = DocStoreClient("https://instance.com", api_key="apikey")
 
+# or `client["mycol"]` or `client.collection("mycol")`
 col = client.mycol
 
 # Can take an ID as `str`, an `ID` object, or a document (with the `_id` key)
 col.delete("15f611f032ae804d668dd855")
 ```
+
+### Retrieving documents
+
+### Querying documents
+
+### Sorting/indexes
+
+Sorting can only be done through indexes.
+
+### MapReduce framework
 
 ## BlobStash Use Cases
 
