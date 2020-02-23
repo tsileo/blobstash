@@ -127,13 +127,15 @@ The _Versioned Key-Value Store_ is the default index for listing/sorting documen
 
 Collections are created on-the-fly when a document is inserted.
 
-##### GET /api/docstore
+#### GET /api/docstore
+
+##### HTTPie
 
 ```shell
 $ http --auth :apikey GET https://myinstance.com/api/docstore
 ```
 
-##### Response
+###### Response
 
 ```json
 {
@@ -149,7 +151,7 @@ $ http --auth :apikey GET https://myinstance.com/api/docstore
 }
 ```
 
-#### Python
+#### blobstash-python
 
 ```python
 from blobstash.docstore import DocStoreClient
