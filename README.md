@@ -123,19 +123,19 @@ The _Versioned Key-Value Store_ is the default index for listing/sorting documen
 
 ### Collections
 
-#### Listing collections
-
 Collections are created on-the-fly when a document is inserted.
 
-##### GET /api/docstore
+#### GET /api/docstore
 
-###### Request
+List all the collections.
+
+##### HTTP Request
 
 ```shell
 $ http --auth :apikey GET https://myinstance.com/api/docstore
 ```
 
-###### Response
+##### HTTP Response
 
 ```json
 {
