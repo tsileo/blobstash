@@ -607,7 +607,7 @@ func (docstore *DocStore) Update(collection, sid string, newDoc map[string]inter
 		panic(err)
 	}
 
-	return nil, err
+	return _id, nil
 }
 
 func (docstore *DocStore) Remove(collection, sid string) (*id.ID, error) {
@@ -1053,6 +1053,8 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			w.Header().Set("BlobStash-DocStore-Doc-Id", _id.String())
 			w.Header().Set("BlobStash-DocStore-Doc-Version", _id.VersionString())
 			w.Header().Set("BlobStash-DocStore-Doc-CreatedAt", strconv.FormatInt(_id.Ts(), 10))
+
+			w.Header().Set("ETag", _id.VersionString())
 
 			created := time.Unix(0, _id.Ts()).UTC().Format(time.RFC3339)
 
@@ -1529,10 +1531,13 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			// Perform the update
 			_id, err := docstore.Update(collection, sid, newDoc, r.Header.Get("If-Match"))
 
+			fmt.Printf("_id=%+v\n", _id)
+
 			switch err {
 			case nil:
 			case ErrDocNotFound:
 				w.WriteHeader(http.StatusNotFound)
+				return
 			case ErrPreconditionFailed:
 				w.WriteHeader(http.StatusPreconditionFailed)
 				return
@@ -1565,6 +1570,7 @@ func (docstore *DocStore) docHandler() func(http.ResponseWriter, *http.Request) 
 			_, err := docstore.Remove(collection, sid)
 			switch err {
 			case nil:
+				w.WriteHeader(http.StatusNoContent)
 			case ErrDocNotFound:
 				w.WriteHeader(http.StatusNotFound)
 			default:

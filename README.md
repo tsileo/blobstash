@@ -123,8 +123,6 @@ The _Versioned Key-Value Store_ is the default index for listing/sorting documen
 
 ### Collections
 
-Collections are created on-the-fly when a document is inserted.
-
 #### GET /api/docstore
 
 List all the collections.
@@ -132,7 +130,7 @@ List all the collections.
 ##### HTTP Request
 
 ```shell
-$ http --auth :apikey GET https://myinstance.com/api/docstore
+$ http --auth :apikey GET https://instance.com/api/docstore
 ```
 
 ##### HTTP Response
@@ -156,10 +154,104 @@ $ http --auth :apikey GET https://myinstance.com/api/docstore
 ```python
 from blobstash.docstore import DocStoreClient
 
-client = DocStoreClient(api_key="apikey")
+client = DocStoreClient("https://instance.com", api_key="apikey")
 
-c.collections()
+client.collections()
 # [blobstash.docstore.Collection(name='mycollection')]
+```
+
+### Inserting a document
+
+Collections are created on-the-fly when a document is inserted.
+
+#### POST /api/docstore/{collection}
+
+##### HTTP Request
+
+```shell
+$ http --auth :apikey post https://instance.com/api/docstore/{collection} content=lol
+```
+
+##### HTTP Response
+
+```
+{
+    "_created": "2020-02-23T15:28:06Z", 
+    "_id": "15f6119d6dddd68fa986d4c7", 
+    "_version": "1582471686918100623"
+}
+```
+
+##### blobstash-python
+
+```python
+from blobstash.docstore import DocStoreClient
+
+client = DocStoreClient("https://instance.com", api_key="apikey")
+
+col = client.mycol
+
+doc = {"content": "lol"}
+
+col.insert(doc)
+# blobstash.docstore.ID(_id='15f611f032ae804d668dd855')
+
+doc
+# {'content': 'lol',
+#  '_id': blobstash.docstore.ID(_id='15f611f032ae804d668dd855')}
+```
+
+### Updating a document (by replacing it)
+
+#### POST /api/docstore/{collection}/{id}
+
+##### HTTP Request
+
+```shell
+$ http --auth :apikey post https://instance.com/api/docstore/{collection} content=lol
+```
+
+##### HTTP Response
+
+```
+{
+    "_created": "2020-02-23T15:28:06Z", 
+    "_id": "15f6119d6dddd68fa986d4c7", 
+    "_version": "1582471686918100623"
+}
+```
+
+#### PATCH /api/docstore/{collection}/{id}
+
+##### HTTP Request
+
+##### HTTP Response
+
+##### blobstash-python
+
+#### DELETE /api/docstore/{collection}/{id}
+
+##### HTTP Request
+
+```shell
+$ http --auth :apikey delete https://instance.com/api/docstore/{collection}/{id}
+```
+
+##### HTTP Response
+
+204 no content.
+
+##### blobstash-python
+
+```python
+from blobstash.docstore import DocStoreClient
+
+client = DocStoreClient("https://instance.com", api_key="apikey")
+
+col = client.mycol
+
+# Can take an ID as `str`, an `ID` object, or a document (with the `_id` key)
+col.delete("15f611f032ae804d668dd855")
 ```
 
 ## BlobStash Use Cases
