@@ -183,6 +183,7 @@ doc = {"content": "lol"}
 col.insert(doc)
 # blobstash.docstore.ID(_id='15f611f032ae804d668dd855')
 
+# the `dict` will be updated with its `_id`
 doc
 # {'content': 'lol',
 #  '_id': blobstash.docstore.ID(_id='15f611f032ae804d668dd855')}
@@ -247,6 +248,51 @@ col.delete("15f611f032ae804d668dd855")
 ### Retrieving documents
 
 ### Querying documents
+
+#### GET /api/docstore/{collection}{?sort_index,as_of}
+
+##### HTTP Request
+
+```shell
+$ http --auth :apikey get https://instance.com/api/docstore/{collection}
+```
+
+##### HTTP Response
+
+```json
+{
+    "data": [
+        {
+            "_created": "2020-02-23T15:50:24Z", 
+            "_id": "15f612d4f7715bdb28c93fd9", 
+            "_updated": "2020-02-23T15:55:15Z", 
+            "_version": "1582473315736447008", 
+            "content": "lol2"
+        }
+    ], 
+    "pagination": {
+        "count": 1, 
+        "cursor": "ZG9jc3RvcmU6Y29sMToxNWY2MTJkNGY3NzE1YmRiMjhjOTNmZDg=", 
+        "has_more": false, 
+        "per_page": 50
+    }, 
+    "pointers": {}
+}
+```
+
+##### blobstash-python
+
+```python
+from blobstash.docstore import DocStoreClient
+
+client = DocStoreClient("https://instance.com", api_key="apikey")
+
+# or `client["mycol"]` or `client.collection("mycol")`
+col = client.mycol
+
+col.query()
+#
+```
 
 ### Sorting/indexes
 

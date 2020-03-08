@@ -79,7 +79,7 @@ func New(conf *config.Config) (*Server, error) {
 	if err := auth.Setup(conf, logger.New("app", "perms")); err != nil {
 		return nil, fmt.Errorf("failed to setup auth: %v", err)
 	}
-	logger.SetHandler(log.LvlFilterHandler(conf.LogLvl(), log.StreamHandler(os.Stdout, log.TerminalFormat())))
+	logger.SetHandler(log.LvlFilterHandler(conf.LogLvl(), log.StreamHandler(os.Stdout, log.LogfmtFormat())))
 	var wg sync.WaitGroup
 	s := &Server{
 		router:        mux.NewRouter().StrictSlash(true),
