@@ -28,7 +28,7 @@ func (r *require2) require2(L *lua.LState) int {
 	if r.RequireSetuper != nil {
 		newName, err := r.RequireSetuper.Setup(L, name)
 		if err != nil {
-			L.ArgError(1, fmt.Sprintf("failed call the setup func", err.Error()))
+			L.ArgError(1, fmt.Sprintf("failed call the setup func: %v", err.Error()))
 			return 0
 		}
 		name = newName

@@ -1,7 +1,0 @@
- kind: pipeline
- name: default
- steps:
-   - name: test
-     image: golang:latest
-     commands:
-       - go test -v

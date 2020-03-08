@@ -1,6 +1,6 @@
 # Gluapp
 
-[![Build Status](https://d.a4.io/api/badges/tsileo/gluapp/status.svg)](https://d.a4.io/tsileo/gluapp)
+[![builds.sr.ht status](https://builds.sr.ht/~tsileo/gluapp.svg)](https://builds.sr.ht/~tsileo/gluapp?)
 &nbsp; &nbsp;[![Godoc Reference](https://godoc.org/a4.io/gluapp?status.svg)](https://godoc.org/a4.io/gluapp)
 
 HTTP framework for [GopherLua](https://github.com/yuin/gopher-lua).

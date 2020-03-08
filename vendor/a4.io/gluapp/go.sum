@@ -13,6 +13,10 @@ a4.io/blobstash v0.0.0-20200202192640-d62b4924ec01 h1:Cxt+qvHHH+W20N1/9WhKEbYjly
 a4.io/blobstash v0.0.0-20200202192640-d62b4924ec01/go.mod h1:38J1ivXRQHMj5UZasbPi7o/P5nc7snAeaAu7lIXL1gM=
 a4.io/blobstash v0.0.0-20200221184026-dea61889318d h1:GOPH8nYqw+ABA7ASLGKtLiLXE/0+OAp7iz1mLkKN+84=
 a4.io/blobstash v0.0.0-20200221184026-dea61889318d/go.mod h1:rBeIGLPLaPL47+6gKO4jCld+sBWpC55Va6XvxLrYKzs=
+a4.io/blobstash v0.0.0-20200221184353-1c4cc6429817 h1:zq/xLFWbQGgbRn24M06lUIuKLXUzHt49kkPWjoXfpbA=
+a4.io/blobstash v0.0.0-20200221184353-1c4cc6429817/go.mod h1:6zWY2+AG69x/Ijl4B+gcztuKCx30X/dGFAT6Hh/udl4=
+a4.io/blobstash v0.0.0-20200221185322-50bf3c15ebe0 h1:rhssv2/YV0FobUQVfDojX6i+bXgjwsEc/FXfornx/p0=
+a4.io/blobstash v0.0.0-20200221185322-50bf3c15ebe0/go.mod h1:6zWY2+AG69x/Ijl4B+gcztuKCx30X/dGFAT6Hh/udl4=
 a4.io/gluapp v0.0.0-20181203183836-c136dc4e9123/go.mod h1:rK/CQwI+tDICKCR1szNtBP0rJdH1LCrO/ZnculcIjWI=
 a4.io/gluapp v0.0.0-20181217122610-c6ba9b02f21b/go.mod h1:hDz8O30eiYv+1bAFzssTvbRaLy27xwk7pdR7v2md7Ew=
 a4.io/gluapp v0.0.0-20181218195258-2be1706b2908/go.mod h1:hDz8O30eiYv+1bAFzssTvbRaLy27xwk7pdR7v2md7Ew=
@@ -20,8 +24,11 @@ a4.io/gluapp v0.0.0-20190530193846-2ad05291e3be/go.mod h1:46QpRqVnBeahZFsw+6+/NP
 a4.io/gluapp v0.0.0-20200131211012-723a51b0e790/go.mod h1:XvZKnPX9E8UAoNcbJ5ESYCr9c6yYTRyv/4iDsDt/Eyo=
 a4.io/gluapp v0.0.0-20200202115504-51581a8e4642/go.mod h1:jgLJ6nULqKUJSJsT4W0KuNhh/lqXo6cS/pDuuESx4ko=
 a4.io/gluapp v0.0.0-20200214202429-b4a08105811e/go.mod h1:P313jMDJOXJwnAA0qtWCScB6TQPfZ/QwTUah9aO3t4Y=
+a4.io/gluapp v0.0.0-20200221184138-44fb2766d27d/go.mod h1:SnPbw2WapvLDMfarcCs/pqYhYUvQqCk5u6TJjni5M3k=
 a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f h1:mfEWN0Dd2AfIXU5WO5ZfqbFVk63Qz5M/CANs182pm+U=
 a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f/go.mod h1:t7OhwCmPQfuUf8cjm7n8chSbZt5CTILu+dTLu1MQKjQ=
+a4.io/gluarequire2 v0.0.0-20200222094423-7528d5a10bc1 h1:prvtjU2SK4PCsJnvY39+DkQyLzxq39E5q0kOimBZsaY=
+a4.io/gluarequire2 v0.0.0-20200222094423-7528d5a10bc1/go.mod h1:mPtxfgeyyAcPonI669LtVTsmZfNSklo7kq3zSFej+jk=
 a4.io/go/indieauth v1.0.0/go.mod h1:yCJuSTw9d22VdPWrZ8frGLwVOdwscJTiXjG4IgVL0Vw=
 a4.io/ssse v0.0.0-20181202155639-1949828a8689/go.mod h1:/4k4qDJv4lDmiIcMs9k/5Rs7bU/1FkIvu42oMyf5A7Y=
 bazil.org/fuse v0.0.0-20180421153158-65cc252bf669/go.mod h1:Xbm+BRKSBEpa4q4hTSxohYNQpsxXPbPry4JJWOB3LB8=
@@ -47,6 +54,7 @@ github.com/aws/aws-sdk-go v1.16.11/go.mod h1:KmX6BPdI08NWTb3/sm4ZGu5ShLoqVDhKgpi
 github.com/aws/aws-sdk-go v1.25.31/go.mod h1:KmX6BPdI08NWTb3/sm4ZGu5ShLoqVDhKgpiN924inxo=
 github.com/aws/aws-sdk-go v1.28.9/go.mod h1:KmX6BPdI08NWTb3/sm4ZGu5ShLoqVDhKgpiN924inxo=
 github.com/aws/aws-sdk-go v1.29.4/go.mod h1:1KvfttTE3SPKMpo8g2c6jL3ZKfXtFvKscTgahTma5Xg=
+github.com/aws/aws-sdk-go v1.29.7/go.mod h1:1KvfttTE3SPKMpo8g2c6jL3ZKfXtFvKscTgahTma5Xg=
 github.com/blevesearch/segment v0.0.0-20160915185041-762005e7a34f/go.mod h1:IInt5XRvpiGE09KOk9mmCMLjHhydIhNPKPPFLFBB7L8=
 github.com/carbocation/handlers v0.0.0-20140528190747-c939c6d9ef31/go.mod h1:iGISoFvZYz358DFlmHvYFlh4CgRdzPLXB2NJE48x6lY=
 github.com/carbocation/interpose v0.0.0-20161206215253-723534742ba3/go.mod h1:4PGcghc3ZjA/uozANO8lCHo/gnHyMsm8iFYppSkVE/M=
@@ -241,6 +249,7 @@ golang.org/x/crypto v0.0.0-20190701094942-4def268fd1a4/go.mod h1:yigFU9vqHzYiE8U
 golang.org/x/crypto v0.0.0-20191108234033-bd318be0434a/go.mod h1:LzIPMQfyMNhhGPhUkYOs5KpL4U8rLKemX1yGLhDgUto=
 golang.org/x/crypto v0.0.0-20200128174031-69ecbb4d6d5d/go.mod h1:LzIPMQfyMNhhGPhUkYOs5KpL4U8rLKemX1yGLhDgUto=
 golang.org/x/crypto v0.0.0-20200214034016-1d94cc7ab1c6/go.mod h1:LzIPMQfyMNhhGPhUkYOs5KpL4U8rLKemX1yGLhDgUto=
+golang.org/x/crypto v0.0.0-20200221170553-0f24fbd83dfb/go.mod h1:LzIPMQfyMNhhGPhUkYOs5KpL4U8rLKemX1yGLhDgUto=
 golang.org/x/net v0.0.0-20180724234803-3673e40ba225/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
 golang.org/x/net v0.0.0-20180906233101-161cd47e91fd/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
 golang.org/x/net v0.0.0-20181213202711-891ebc4b82d6/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
@@ -254,6 +263,7 @@ golang.org/x/net v0.0.0-20190724013045-ca1201d0de80/go.mod h1:z5CRVTTTmAJ677TzLL
 golang.org/x/net v0.0.0-20191109021931-daa7c04131f5/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
 golang.org/x/net v0.0.0-20200114155413-6afb5195e5aa/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
 golang.org/x/net v0.0.0-20200202094626-16171245cfb2/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
+golang.org/x/net v0.0.0-20200219183655-46282727080f/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
 golang.org/x/sync v0.0.0-20180314180146-1d60e4601c6f/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.0.0-20181108010431-42b317875d0f/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.0.0-20181221193216-37e7f081c4d4/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
@@ -277,6 +287,7 @@ golang.org/x/sys v0.0.0-20191210023423-ac6580df4449/go.mod h1:h1NjWce9XRLGQEsW7w
 golang.org/x/sys v0.0.0-20200116001909-b77594299b42/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20200124204421-9fbb57f87de9/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20200217220822-9197077df867/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
+golang.org/x/sys v0.0.0-20200219091948-cb0a6d8edb6c/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
 golang.org/x/text v0.3.2/go.mod h1:bEr9sfX3Q8Zfm5fL9x+3itogRgK3+ptLWKqgva+5dAk=
 golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=

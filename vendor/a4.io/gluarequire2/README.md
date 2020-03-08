@@ -1,6 +1,6 @@
 # gluarequire2
 
-[![Build Status](https://travis-ci.org/tsileo/gluarequire2.svg?branch=master)](https://travis-ci.org/tsileo/gluarequire2)
+[![builds.sr.ht status](https://builds.sr.ht/~tsileo/gluarequire2.svg)](https://builds.sr.ht/~tsileo/gluarequire2?)
 &nbsp; &nbsp;[![Godoc Reference](https://godoc.org/a4.io/gluarequire2?status.svg)](https://godoc.org/a4.io/gluarequire2)
 
 gluarequire2 provides a way to import file directly from GitHub using [GopherLua](https://github.com/yuin/gopher-lua).
