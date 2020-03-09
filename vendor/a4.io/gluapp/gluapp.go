@@ -71,11 +71,12 @@ func setupMetatable(L *lua.LState) {
 	// Setup the Lua meta table for the headers user-defined type
 	mtValues := L.NewTypeMetatable("values")
 	L.SetField(mtValues, "__index", L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
-		"add": valuesAdd,
-		"set": valuesSet,
-		"del": valuesDel,
-		"get": valuesGet,
-		"raw": valuesRaw,
+		"add":    valuesAdd,
+		"set":    valuesSet,
+		"del":    valuesDel,
+		"get":    valuesGet,
+		"raw":    valuesRaw,
+		"encode": valuesEncode,
 	}))
 }
 

@@ -1,15 +1,15 @@
 module a4.io/blobstash
 
-// replace a4.io/gluapp v0.0.0-20200214202429-b4a08105811e => /home/thomas/Proj/gluapp
+// replace a4.io/gluapp v0.0.0-20200222094913-718c6afb9cbe => /home/thomas/Proj/gluapp
 
 require (
 	a4.io/blobsfile v0.3.8
-	a4.io/gluapp v0.0.0-20200222094913-718c6afb9cbe
+	a4.io/gluapp v0.0.0-20200308213855-74e393b208ff
 	a4.io/gluarequire2 v0.0.0-20200222094423-7528d5a10bc1
 	a4.io/go/indieauth v1.0.0
 	a4.io/ssse v0.0.0-20181202155639-1949828a8689
 	bazil.org/fuse v0.0.0-20200117225306-7b5117fecadc
-	github.com/aws/aws-sdk-go v1.29.19
+	github.com/aws/aws-sdk-go v1.29.20
 	github.com/blevesearch/segment v0.0.0-20160915185041-762005e7a34f
 	github.com/carbocation/interpose v0.0.0-20161206215253-723534742ba3
 	github.com/dave/jennifer v1.4.0
@@ -47,4 +47,4 @@ require (
 	gopkg.in/yaml.v2 v2.2.8
 )
 
-go 1.13
+go 1.14
