@@ -1,0 +1,12 @@
+image: ubuntu/latest
+sources:
+    - https://git.sr.ht/~tsileo/gluapp
+tasks:
+- setup: |
+   mkdir go
+   export GOPATH=/home/build/go
+   wget https://dl.google.com/go/go1.13.4.linux-amd64.tar.gz
+   sudo tar -C /usr/local -xzf go1.13.4.linux-amd64.tar.gz
+- test: |
+    cd gluapp
+    /usr/local/go/bin/go test -v .
