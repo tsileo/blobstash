@@ -8,8 +8,8 @@ tasks:
 - setup: |
    mkdir go
    export GOPATH=/home/build/go
-   wget https://dl.google.com/go/go1.13.4.linux-amd64.tar.gz
-   sudo tar -C /usr/local -xzf go1.13.4.linux-amd64.tar.gz
+   wget https://dl.google.com/go/go1.14.linux-amd64.tar.gz
+   sudo tar -C /usr/local -xzf go1.14.linux-amd64.tar.gz
    pip3 install git+https://github.com/tsileo/blobstash-python.git
 - test: |
    export GOPATH=/home/build/go
