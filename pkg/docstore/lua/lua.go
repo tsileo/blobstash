@@ -1,6 +1,9 @@
 package lua // import "a4.io/blobstash/pkg/docstore/lua"
 
 import (
+	"strconv"
+	"time"
+
 	"github.com/yuin/gopher-lua"
 
 	luautil "a4.io/blobstash/pkg/apps/luautil"
@@ -59,11 +62,12 @@ func setupDocStore(dc *docstore.DocStore) func(*lua.LState) int {
 func Setup(L *lua.LState, dc *docstore.DocStore) {
 	mtCol := L.NewTypeMetatable("col")
 	L.SetField(mtCol, "__index", L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
-		"remove": colRemove,
-		"update": colUpdate,
-		"insert": colInsert,
-		"query":  colQuery,
-		"get":    colGet,
+		"remove":   colRemove,
+		"update":   colUpdate,
+		"insert":   colInsert,
+		"query":    colQuery,
+		"get":      colGet,
+		"versions": colVersions,
 	}))
 	L.PreloadModule("docstore", setupDocStore(dc))
 }
@@ -103,12 +107,35 @@ func colGet(L *lua.LState) int {
 	}
 	docID := L.ToString(2)
 	var doc, pointers map[string]interface{}
-	var err error
+	version, err := strconv.ParseInt(L.OptString(3, "-1"), 10, 64)
+	if err != nil {
+		panic(err)
+	}
 
-	if _, pointers, err = col.dc.Fetch(col.name, docID, &doc, true, true, -1); err != nil {
+	if _, pointers, err = col.dc.Fetch(col.name, docID, &doc, true, true, version); err != nil {
 		panic(err)
 	}
 	L.Push(luautil.InterfaceToLValue(L, doc))
+	L.Push(luautil.InterfaceToLValue(L, pointers))
+	return 2
+}
+
+func colVersions(L *lua.LState) int {
+	col := checkCol(L)
+	if col == nil {
+		return 0
+	}
+	docID := L.ToString(2)
+	var err error
+	start := L.OptInt64(3, time.Now().UnixNano())
+	limit := L.OptInt(4, 100)
+	fetchPointers := L.OptBool(5, true)
+	// FIXME(tsileo): return cursor as a string (as unix nano is too big for Lua numbers)
+	versions, pointers, _, err := col.dc.FetchVersions(col.name, docID, start, limit, fetchPointers)
+	if err != nil {
+		panic(err)
+	}
+	L.Push(luautil.InterfaceToLValue(L, versions))
 	L.Push(luautil.InterfaceToLValue(L, pointers))
 	return 2
 }

@@ -1,6 +1,7 @@
 package extra // import "a4.io/blobstash/pkg/extra"
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
@@ -49,6 +50,10 @@ func setupExtra(e *Extra) func(*lua.LState) int {
 					tbl.Append(lua.LString(part))
 				}
 				L.Push(tbl)
+				return 1
+			},
+			"v": func(L *lua.LState) int {
+				L.Push(lua.LString(fmt.Sprintf("%v", time.Now().UnixNano())))
 				return 1
 			},
 		})

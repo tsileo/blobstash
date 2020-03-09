@@ -1613,7 +1613,7 @@ func (docstore *DocStore) docVersionsHandler() func(http.ResponseWriter, *http.R
 				httputil.Error(w, err)
 				return
 			}
-			cursor, err := q.GetInt64Default("cursor", time.Now().UTC().UnixNano())
+			cursor, err := q.GetInt64Default("cursor", time.Now().UnixNano())
 			if err != nil {
 				httputil.Error(w, err)
 				return
