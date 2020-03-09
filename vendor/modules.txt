@@ -1,15 +1,21 @@
 # a4.io/blobsfile v0.3.8
+## explicit
 a4.io/blobsfile
 # a4.io/gluapp v0.0.0-20200308213855-74e393b208ff
+## explicit
 a4.io/gluapp
 a4.io/gluapp/util
 # a4.io/gluarequire2 v0.0.0-20200222094423-7528d5a10bc1
+## explicit
 a4.io/gluarequire2
 # a4.io/go/indieauth v1.0.0
+## explicit
 a4.io/go/indieauth
 # a4.io/ssse v0.0.0-20181202155639-1949828a8689
+## explicit
 a4.io/ssse/pkg/client
 # bazil.org/fuse v0.0.0-20200117225306-7b5117fecadc
+## explicit
 bazil.org/fuse
 bazil.org/fuse/fs
 bazil.org/fuse/fuseutil
@@ -45,6 +51,7 @@ github.com/alecthomas/chroma/lexers/x
 github.com/alecthomas/chroma/lexers/y
 github.com/alecthomas/chroma/styles
 # github.com/aws/aws-sdk-go v1.29.20
+## explicit
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/arn
 github.com/aws/aws-sdk-go/aws/awserr
@@ -90,10 +97,12 @@ github.com/aws/aws-sdk-go/service/s3/s3manager
 github.com/aws/aws-sdk-go/service/sts
 github.com/aws/aws-sdk-go/service/sts/stsiface
 # github.com/blevesearch/segment v0.0.0-20160915185041-762005e7a34f
+## explicit
 github.com/blevesearch/segment
 # github.com/carbocation/handlers v0.0.0-20140528190747-c939c6d9ef31
 github.com/carbocation/handlers
 # github.com/carbocation/interpose v0.0.0-20161206215253-723534742ba3
+## explicit
 github.com/carbocation/interpose/adaptors
 github.com/carbocation/interpose/middleware
 # github.com/codegangsta/inject v0.0.0-20150114235600-33e0aa1cb7c0
@@ -101,11 +110,13 @@ github.com/codegangsta/inject
 # github.com/danwakefield/fnmatch v0.0.0-20160403171240-cbb64ac3d964
 github.com/danwakefield/fnmatch
 # github.com/dave/jennifer v1.4.0
+## explicit
 github.com/dave/jennifer/jen
 # github.com/dlclark/regexp2 v1.2.0
 github.com/dlclark/regexp2
 github.com/dlclark/regexp2/syntax
 # github.com/dustin/go-humanize v1.0.0
+## explicit
 github.com/dustin/go-humanize
 # github.com/emirpasic/gods v1.12.0
 github.com/emirpasic/gods/containers
@@ -115,31 +126,40 @@ github.com/emirpasic/gods/trees
 github.com/emirpasic/gods/trees/binaryheap
 github.com/emirpasic/gods/utils
 # github.com/evanphx/json-patch v4.5.0+incompatible
+## explicit
 github.com/evanphx/json-patch
 # github.com/go-martini/martini v0.0.0-20170121215854-22fa46961aab
 github.com/go-martini/martini
 # github.com/go-stack/stack v1.8.0
 github.com/go-stack/stack
 # github.com/golang/protobuf v1.3.4
+## explicit
 github.com/golang/protobuf/proto
 # github.com/golang/snappy v0.0.1
+## explicit
 github.com/golang/snappy
 # github.com/goods/httpbuf v0.0.0-20120503183857-5709e9bb814c
 github.com/goods/httpbuf
 # github.com/gorilla/context v1.1.1
+## explicit
 github.com/gorilla/context
 # github.com/gorilla/handlers v1.4.2
+## explicit
 github.com/gorilla/handlers
 # github.com/gorilla/mux v1.7.4
+## explicit
 github.com/gorilla/mux
 # github.com/gorilla/securecookie v1.1.1
 github.com/gorilla/securecookie
 # github.com/gorilla/sessions v1.2.0
+## explicit
 github.com/gorilla/sessions
 # github.com/hashicorp/golang-lru v0.5.4
+## explicit
 github.com/hashicorp/golang-lru
 github.com/hashicorp/golang-lru/simplelru
 # github.com/inconshreveable/log15 v0.0.0-20200109203555-b30bc20e4fd1
+## explicit
 github.com/inconshreveable/log15
 github.com/inconshreveable/log15/ext
 # github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99
@@ -157,6 +177,7 @@ github.com/klauspost/reedsolomon
 # github.com/konsorten/go-windows-terminal-sequences v1.0.2
 github.com/konsorten/go-windows-terminal-sequences
 # github.com/mattn/go-colorable v0.1.6
+## explicit
 github.com/mattn/go-colorable
 # github.com/mattn/go-isatty v0.0.12
 github.com/mattn/go-isatty
@@ -165,8 +186,10 @@ github.com/meatballhat/negroni-logrus
 # github.com/mitchellh/go-homedir v1.1.0
 github.com/mitchellh/go-homedir
 # github.com/mitchellh/go-ps v1.0.0
+## explicit
 github.com/mitchellh/go-ps
 # github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
+## explicit
 github.com/nfnt/resize
 # github.com/peterhellberg/link v1.1.0
 github.com/peterhellberg/link
@@ -175,12 +198,16 @@ github.com/phyber/negroni-gzip/gzip
 # github.com/pkg/errors v0.9.1
 github.com/pkg/errors
 # github.com/reiver/go-porterstemmer v1.0.1
+## explicit
 github.com/reiver/go-porterstemmer
 # github.com/restic/chunker v0.3.0
+## explicit
 github.com/restic/chunker
 # github.com/robfig/cron v1.2.0
+## explicit
 github.com/robfig/cron
 # github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd
+## explicit
 github.com/rwcarlsen/goexif/exif
 github.com/rwcarlsen/goexif/tiff
 # github.com/ryanuber/go-glob v1.0.0
@@ -197,6 +224,7 @@ github.com/src-d/gcfg/types
 # github.com/src-d/go-oniguruma v1.1.0
 github.com/src-d/go-oniguruma
 # github.com/syndtr/goleveldb v1.0.1-0.20190923125748-758128399b1d
+## explicit
 github.com/syndtr/goleveldb/leveldb
 github.com/syndtr/goleveldb/leveldb/cache
 github.com/syndtr/goleveldb/leveldb/comparer
@@ -212,17 +240,21 @@ github.com/syndtr/goleveldb/leveldb/util
 # github.com/toqueteos/trie v1.0.0
 github.com/toqueteos/trie
 # github.com/unrolled/secure v1.0.7
+## explicit
 github.com/unrolled/secure
 # github.com/urfave/negroni v1.0.0
 github.com/urfave/negroni
 # github.com/vmihailenco/msgpack v4.0.4+incompatible
+## explicit
 github.com/vmihailenco/msgpack
 github.com/vmihailenco/msgpack/codes
 # github.com/xanzy/ssh-agent v0.2.1
 github.com/xanzy/ssh-agent
 # github.com/xeonx/timeago v1.0.0-rc4
+## explicit
 github.com/xeonx/timeago
 # github.com/yuin/goldmark v1.1.25
+## explicit
 github.com/yuin/goldmark
 github.com/yuin/goldmark/ast
 github.com/yuin/goldmark/extension
@@ -233,15 +265,19 @@ github.com/yuin/goldmark/renderer/html
 github.com/yuin/goldmark/text
 github.com/yuin/goldmark/util
 # github.com/yuin/goldmark-highlighting v0.0.0-20200307114337-60d527fdb691
+## explicit
 github.com/yuin/goldmark-highlighting
 # github.com/yuin/gopher-lua v0.0.0-20191220021717-ab39c6098bdb
+## explicit
 github.com/yuin/gopher-lua
 github.com/yuin/gopher-lua/ast
 github.com/yuin/gopher-lua/parse
 github.com/yuin/gopher-lua/pm
 # github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
+## explicit
 github.com/zpatrick/rbac
 # golang.org/x/crypto v0.0.0-20200302210943-78000ba7a073
+## explicit
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
 golang.org/x/crypto/blake2b
@@ -268,6 +304,7 @@ golang.org/x/crypto/ssh/agent
 golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
 golang.org/x/crypto/ssh/knownhosts
 # golang.org/x/net v0.0.0-20200301022130-244492dfa37a
+## explicit
 golang.org/x/net/context
 golang.org/x/net/html
 golang.org/x/net/html/atom
@@ -275,6 +312,7 @@ golang.org/x/net/idna
 golang.org/x/net/internal/socks
 golang.org/x/net/proxy
 # golang.org/x/sys v0.0.0-20200302150141-5c8b2ff67527
+## explicit
 golang.org/x/sys/cpu
 golang.org/x/sys/unix
 golang.org/x/sys/windows
@@ -296,8 +334,10 @@ google.golang.org/appengine/internal/log
 google.golang.org/appengine/internal/modules
 google.golang.org/appengine/internal/remote_api
 # gopkg.in/inconshreveable/log15.v2 v2.0.0-20200109203555-b30bc20e4fd1
+## explicit
 gopkg.in/inconshreveable/log15.v2
 # gopkg.in/src-d/enry.v1 v1.7.3
+## explicit
 gopkg.in/src-d/enry.v1
 gopkg.in/src-d/enry.v1/data
 gopkg.in/src-d/enry.v1/data/rule
@@ -310,6 +350,7 @@ gopkg.in/src-d/go-billy.v4/helper/polyfill
 gopkg.in/src-d/go-billy.v4/osfs
 gopkg.in/src-d/go-billy.v4/util
 # gopkg.in/src-d/go-git.v4 v4.13.1
+## explicit
 gopkg.in/src-d/go-git.v4
 gopkg.in/src-d/go-git.v4/config
 gopkg.in/src-d/go-git.v4/internal/revision
@@ -356,6 +397,7 @@ gopkg.in/toqueteos/substring.v1
 # gopkg.in/warnings.v0 v0.1.2
 gopkg.in/warnings.v0
 # gopkg.in/yaml.v2 v2.2.8
+## explicit
 gopkg.in/yaml.v2
 # mvdan.cc/xurls v1.1.0
 mvdan.cc/xurls
