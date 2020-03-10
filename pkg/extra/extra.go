@@ -2,11 +2,13 @@ package extra // import "a4.io/blobstash/pkg/extra"
 
 import (
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/yuin/gopher-lua"
+	"willnorris.com/go/microformats"
 )
 
 type Extra struct{}
@@ -53,6 +55,37 @@ func setupExtra(e *Extra) func(*lua.LState) int {
 			},
 			"v": func(L *lua.LState) int {
 				L.Push(lua.LString(fmt.Sprintf("%v", time.Now().UnixNano())))
+				return 1
+			},
+			"parse_microformats": func(L *lua.LState) int {
+				req, err := http.NewRequest("GET", L.ToString(1), nil)
+				if err != nil {
+					panic(err)
+				}
+				// TODO(tsileo): set a user agent
+				// req.Header.Set("User-Agent", UserAgent)
+
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					panic(err)
+				}
+				defer resp.Body.Close()
+
+				data := microformats.Parse(resp.Body, resp.Request.URL)
+
+				rels := L.NewTable()
+				for rel, links := range data.Rels {
+					ls := L.NewTable()
+					for _, link := range links {
+						ls.Append(lua.LString(link))
+					}
+					rels.RawSetString(rel, ls)
+				}
+
+				tbl := L.NewTable()
+				tbl.RawSetString("rels", rels)
+				L.Push(tbl)
+
 				return 1
 			},
 		})

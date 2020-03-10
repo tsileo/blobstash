@@ -220,7 +220,7 @@ func (apps *Apps) newApp(appConf *config.AppConfig, conf *config.Config) (*App, 
 						}
 					}
 					// In {2, 3} (i.e. no custom app domain), join the `/api/apps/{app.name}` path
-					baseURL = path.Join(baseURL, "/api/apps/"+app.name)
+					baseURL = baseURL + "/api/apps/" + app.name
 				}
 				// Check if Let's Encrypt is setup
 				if app.rootConfig.AutoTLS {
@@ -231,7 +231,12 @@ func (apps *Apps) newApp(appConf *config.AppConfig, conf *config.Config) (*App, 
 
 				// Now that we have the base URL, we can export a new `url_for` helper
 				L.SetGlobal("url_for", L.NewFunction(func(L *lua.LState) int {
-					L.Push(lua.LString(path.Join(baseURL, L.ToString(1))))
+					u, err := url.Parse(baseURL)
+					if err != nil {
+						panic(err)
+					}
+					u.Path = path.Join(u.Path, L.ToString(1))
+					L.Push(lua.LString(u.String()))
 					return 1
 				}))
 

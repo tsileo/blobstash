@@ -45,6 +45,7 @@ require (
 	gopkg.in/src-d/enry.v1 v1.7.3
 	gopkg.in/src-d/go-git.v4 v4.13.1
 	gopkg.in/yaml.v2 v2.2.8
+	willnorris.com/go/microformats v1.0.0
 )
 
 go 1.14

@@ -402,4 +402,5 @@ gopkg.in/yaml.v2
 # mvdan.cc/xurls v1.1.0
 mvdan.cc/xurls
 # willnorris.com/go/microformats v1.0.0
+## explicit
 willnorris.com/go/microformats
