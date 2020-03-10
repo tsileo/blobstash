@@ -80,6 +80,7 @@ func (apps *Apps) Apps() map[string]*App {
 
 // App handle an app meta data
 type App struct {
+	rootConfig *config.Config
 	path, name string
 	entrypoint string
 	domain     string
@@ -104,12 +105,13 @@ type App struct {
 	mu  sync.Mutex
 }
 
-func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
+func (apps *Apps) newApp(appConf *config.AppConfig, conf *config.Config) (*App, error) {
 	appCache, err := lru.New(512)
 	if err != nil {
 		return nil, err
 	}
 	app := &App{
+		rootConfig: conf,
 		docstore:   apps.docstore,
 		path:       appConf.Path,
 		name:       appConf.Name,
@@ -202,11 +204,44 @@ func (apps *Apps) newApp(appConf *config.AppConfig) (*App, error) {
 			SetupState: func(L *lua.LState) error {
 				cache := app.buildCache(L)
 
+				// Build the app "base URL"
+				// 1. Assume a custom domain at the "app level" (that will serve the app at `/`)
+				baseURL := app.domain
+				if baseURL == "" {
+					// 2. Check if the server has a custom domain setup (and take the first one if any)
+					if len(app.rootConfig.Domains) > 0 {
+						baseURL = app.rootConfig.Domains[0]
+					} else {
+						// 3. No custom domain, most likely running on localhost/dev setup
+						baseURL = app.rootConfig.Listen
+						if strings.HasPrefix(baseURL, ":") {
+							// The default listen has no host, replace it with localhost
+							baseURL = "localhost" + baseURL
+						}
+					}
+					// In {2, 3} (i.e. no custom app domain), join the `/api/apps/{app.name}` path
+					baseURL = path.Join(baseURL, "/api/apps/"+app.name)
+				}
+				// Check if Let's Encrypt is setup
+				if app.rootConfig.AutoTLS {
+					baseURL = "https://" + baseURL
+				} else {
+					baseURL = "http://" + baseURL
+				}
+
+				// Now that we have the base URL, we can export a new `url_for` helper
+				L.SetGlobal("url_for", L.NewFunction(func(L *lua.LState) int {
+					L.Push(lua.LString(path.Join(baseURL, L.ToString(1))))
+					return 1
+				}))
+
+				// Set the "app-specific" global variable
+				// Add some config in the `blobstash` global var
 				confTable := L.NewTable()
-				// Set the `app` global variable
-				fmt.Printf("app=%+v\n", app)
 				confTable.RawSetString("app_id", lua.LString(app.name))
-				confTable.RawSetString("cache", cache)
+				confTable.RawSetString("app_cache", cache)
+				confTable.RawSetString("app_config", luautil.InterfaceToLValue(L, app.config))
+				confTable.RawSetString("app_base_url", lua.LString(baseURL))
 				L.SetGlobal("blobstash", confTable)
 
 				docstore.SetLuaGlobals(L)
@@ -325,7 +360,7 @@ func New(logger log.Logger, conf *config.Config, bs *blobstore.BlobStore, kvs st
 	}
 	apps.cron.Start()
 	for _, appConf := range conf.Apps {
-		app, err := apps.newApp(appConf)
+		app, err := apps.newApp(appConf, conf)
 		if err != nil {
 			return nil, err
 		}

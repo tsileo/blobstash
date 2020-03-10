@@ -9,8 +9,7 @@ import (
 	"github.com/yuin/gopher-lua"
 )
 
-type Extra struct {
-}
+type Extra struct{}
 
 func setupExtra(e *Extra) func(*lua.LState) int {
 	return func(L *lua.LState) int {

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 
 	"github.com/yuin/gopher-lua"
 )
@@ -209,6 +210,17 @@ func fromJSON(L *lua.LState, value interface{}) lua.LValue {
 			L.SetMetatable(tbl, mt)
 		}
 		return tbl
+	// This one is for YAML: https://github.com/go-yaml/yaml/issues/139
+	case map[interface{}]interface{}:
+		mt := L.GetGlobal("__gluapp_json_object")
+		tbl := L.CreateTable(0, len(converted))
+		for key, item := range converted {
+			tbl.RawSetH(lua.LString(key.(string)), fromJSON(L, item))
+		}
+		if mt != lua.LNil {
+			L.SetMetatable(tbl, mt)
+		}
+		return tbl
 	case nil:
 		return lua.LNil
 	default:
@@ -221,6 +233,6 @@ func fromJSON(L *lua.LState, value interface{}) lua.LValue {
 		if err == nil {
 			return FromJSON(L, js)
 		}
-		panic(fmt.Errorf("unsupported type %+v", converted))
+		panic(fmt.Errorf("unsupported type %+v/%v", converted, reflect.TypeOf(converted)))
 	}
 }
