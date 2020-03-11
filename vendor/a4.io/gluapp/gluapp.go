@@ -2,6 +2,7 @@ package gluapp // import "a4.io/gluapp"
 
 import (
 	"fmt"
+	"html/template"
 	"net/http"
 	"path/filepath"
 
@@ -46,6 +47,8 @@ type Config struct {
 
 	// Stack trace will be displayed in debug mode
 	Debug bool
+
+	TemplateFuncMap template.FuncMap
 }
 
 // Setup "global" metatable (used by multiple modules)
@@ -78,6 +81,21 @@ func setupMetatable(L *lua.LState) {
 		"raw":    valuesRaw,
 		"encode": valuesEncode,
 	}))
+}
+
+func getFuncMaps(fm template.FuncMap) template.FuncMap {
+	finalFuncs := template.FuncMap{}
+	for k, v := range funcs {
+		finalFuncs[k] = v
+	}
+	if fm != nil {
+		for k, v := range fm {
+			finalFuncs[k] = v
+		}
+	} else {
+		finalFuncs = funcs
+	}
+	return finalFuncs
 }
 
 func setupState(L *lua.LState, conf *Config, w http.ResponseWriter, r *http.Request) (*Response, error) {
@@ -157,7 +175,9 @@ func setupState(L *lua.LState, conf *Config, w http.ResponseWriter, r *http.Requ
 	L.PreloadModule("http", setupHTTP(client, conf.Path))
 
 	L.PreloadModule("form", setupForm()) // must be executed after setupHTTP
-	L.PreloadModule("template", setupTemplate(filepath.Join(conf.Path, "templates")))
+	finalFuncs := getFuncMaps(conf.TemplateFuncMap)
+
+	L.PreloadModule("template", setupTemplate(filepath.Join(conf.Path, "templates"), finalFuncs))
 	// TODO(tsileo): a read/write file module for the data/ directory???
 
 	// Setup additional modules provided by the user
@@ -233,7 +253,9 @@ func SetupGlue(L *lua.LState, conf *Config) error {
 	L.PreloadModule("http", setupHTTP(client, conf.Path))
 
 	L.PreloadModule("form", setupForm()) // must be executed after setupHTTP
-	L.PreloadModule("template", setupTemplate(filepath.Join(conf.Path, "templates")))
+
+	finalFuncs := getFuncMaps(conf.TemplateFuncMap)
+	L.PreloadModule("template", setupTemplate(filepath.Join(conf.Path, "templates"), finalFuncs))
 	// TODO(tsileo): a read/write file module for the data/ directory???
 
 	// Setup additional modules provided by the user

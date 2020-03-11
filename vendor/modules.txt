@@ -1,7 +1,7 @@
 # a4.io/blobsfile v0.3.8
 ## explicit
 a4.io/blobsfile
-# a4.io/gluapp v0.0.0-20200308213855-74e393b208ff
+# a4.io/gluapp v0.0.0-20200311203905-eb3c48991ada
 ## explicit
 a4.io/gluapp
 a4.io/gluapp/util
@@ -50,7 +50,7 @@ github.com/alecthomas/chroma/lexers/w
 github.com/alecthomas/chroma/lexers/x
 github.com/alecthomas/chroma/lexers/y
 github.com/alecthomas/chroma/styles
-# github.com/aws/aws-sdk-go v1.29.20
+# github.com/aws/aws-sdk-go v1.29.22
 ## explicit
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/arn
@@ -164,7 +164,8 @@ github.com/inconshreveable/log15
 github.com/inconshreveable/log15/ext
 # github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99
 github.com/jbenet/go-context/io
-# github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af
+# github.com/jmespath/go-jmespath v0.0.0-20200310193758-2437e8417af5
+## explicit
 github.com/jmespath/go-jmespath
 # github.com/justinas/nosurf v1.1.0
 github.com/justinas/nosurf
@@ -276,7 +277,7 @@ github.com/yuin/gopher-lua/pm
 # github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
 ## explicit
 github.com/zpatrick/rbac
-# golang.org/x/crypto v0.0.0-20200302210943-78000ba7a073
+# golang.org/x/crypto v0.0.0-20200311171314-f7b00557c8c4
 ## explicit
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert

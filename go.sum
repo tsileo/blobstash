@@ -29,6 +29,8 @@ a4.io/gluapp v0.0.0-20200222094913-718c6afb9cbe h1:WqcaAdZzWCWLn6jwiOkWR1SIQ/rOZ
 a4.io/gluapp v0.0.0-20200222094913-718c6afb9cbe/go.mod h1:A3U6Yc1zqp5Bnsz7PxrlYmbZ4iEN/LBKeuuwaxpLBMY=
 a4.io/gluapp v0.0.0-20200308213855-74e393b208ff h1:HXHJfbkddS+0KQAcfO4+IAJ3OkSh9wt7emnsKJWGkjY=
 a4.io/gluapp v0.0.0-20200308213855-74e393b208ff/go.mod h1:A3U6Yc1zqp5Bnsz7PxrlYmbZ4iEN/LBKeuuwaxpLBMY=
+a4.io/gluapp v0.0.0-20200311203905-eb3c48991ada h1:t7D1dBddA0Joo/MKSIj9GJsv0iGerABouNrNP220PVg=
+a4.io/gluapp v0.0.0-20200311203905-eb3c48991ada/go.mod h1:A3U6Yc1zqp5Bnsz7PxrlYmbZ4iEN/LBKeuuwaxpLBMY=
 a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f h1:mfEWN0Dd2AfIXU5WO5ZfqbFVk63Qz5M/CANs182pm+U=
 a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f/go.mod h1:t7OhwCmPQfuUf8cjm7n8chSbZt5CTILu+dTLu1MQKjQ=
 a4.io/gluarequire2 v0.0.0-20200222094423-7528d5a10bc1 h1:prvtjU2SK4PCsJnvY39+DkQyLzxq39E5q0kOimBZsaY=
@@ -81,6 +83,8 @@ github.com/aws/aws-sdk-go v1.29.19 h1:+jifYixffn6kzWygtGWFWQMv0tDGyISZHNwugF9V2s
 github.com/aws/aws-sdk-go v1.29.19/go.mod h1:1KvfttTE3SPKMpo8g2c6jL3ZKfXtFvKscTgahTma5Xg=
 github.com/aws/aws-sdk-go v1.29.20 h1:vAHJhARpdbdeJstTVaugeHgvVj5lBnfz3blbbD24gfo=
 github.com/aws/aws-sdk-go v1.29.20/go.mod h1:1KvfttTE3SPKMpo8g2c6jL3ZKfXtFvKscTgahTma5Xg=
+github.com/aws/aws-sdk-go v1.29.22 h1:3WmsCj3C30l6/4f50mPkDZoTPWSvaRCjcVJOWdCJoIE=
+github.com/aws/aws-sdk-go v1.29.22/go.mod h1:1KvfttTE3SPKMpo8g2c6jL3ZKfXtFvKscTgahTma5Xg=
 github.com/blevesearch/segment v0.0.0-20160915185041-762005e7a34f h1:kqbi9lqXLLs+zfWlgo1PIiRQ86n33K1JKotjj4rSYOg=
 github.com/blevesearch/segment v0.0.0-20160915185041-762005e7a34f/go.mod h1:IInt5XRvpiGE09KOk9mmCMLjHhydIhNPKPPFLFBB7L8=
 github.com/carbocation/handlers v0.0.0-20140528190747-c939c6d9ef31 h1:SDMgCFII5drFRIyAaihze9ceRMpTt1FW6Q5jjpc2u4c=
@@ -220,6 +224,8 @@ github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99/go.mod h1:1lJo3i
 github.com/jessevdk/go-flags v1.4.0/go.mod h1:4FA24M0QyGHXBuZZK/XkWh8h0e1EYbRYJSGM75WSRxI=
 github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af h1:pmfjZENx5imkbgOkpRUYLnmbU7UEFbjtDA2hxJ1ichM=
 github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af/go.mod h1:Nht3zPeWKUH0NzdCt2Blrr5ys8VGpn0CEB0cQHVjt7k=
+github.com/jmespath/go-jmespath v0.0.0-20200310193758-2437e8417af5 h1:uHQ3zN9bw90YSNUeGWrboinB/fjXSDA7dNSg7Dznw18=
+github.com/jmespath/go-jmespath v0.0.0-20200310193758-2437e8417af5/go.mod h1:9QtRXoHjLGCJ5IBSaohpXITPlowMeeYCZ7fLUTSywik=
 github.com/justinas/nosurf v0.0.0-20181122113328-3af30e51c05b h1:fWjiIutptAhQwIoCjCEsyCx6KtaHJ6WyqCLdmFJ3udQ=
 github.com/justinas/nosurf v0.0.0-20181122113328-3af30e51c05b/go.mod h1:Aucr5I5chr4OCuuVB4LTuHVrKHBuyRSo7vM2hqrcb7E=
 github.com/justinas/nosurf v1.1.0 h1:qqV6FJmnDBJ6F9pOzhZgZitAZWBYonMOXglof7TtdZw=
@@ -349,6 +355,7 @@ github.com/stretchr/testify v1.3.0 h1:TivCn/peBQ7UY8ooIcPgZFpTNSz0Q2U6UrFlUfqbe0
 github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UVUgZn+9EI=
 github.com/stretchr/testify v1.4.0 h1:2E4SXV/wtOkTonXsotYi4li6zVWxYlZuYNCXe9XRJyk=
 github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81PSLYec5m4=
+github.com/stretchr/testify v1.5.1/go.mod h1:5W2xD1RspED5o8YsWQXVCued0rvSQ+mT+I5cxcmMvtA=
 github.com/syndtr/goleveldb v0.0.0-20181128100959-b001fa50d6b2 h1:GnOzE5fEFN3b2zDhJJABEofdb51uMRNb8eqIVtdducs=
 github.com/syndtr/goleveldb v0.0.0-20181128100959-b001fa50d6b2/go.mod h1:Z4AUp2Km+PwemOoO/VB5AOx9XSsIItzFjoJlOSiYmn0=
 github.com/syndtr/goleveldb v1.0.0/go.mod h1:ZVVdQEZoIme9iO1Ch2Jdy24qqXrMMOU6lpPAyBWyWuQ=
@@ -430,6 +437,8 @@ golang.org/x/crypto v0.0.0-20200221170553-0f24fbd83dfb h1:Bg7BRk6M/6/zfhJrglNmi/
 golang.org/x/crypto v0.0.0-20200221170553-0f24fbd83dfb/go.mod h1:LzIPMQfyMNhhGPhUkYOs5KpL4U8rLKemX1yGLhDgUto=
 golang.org/x/crypto v0.0.0-20200302210943-78000ba7a073 h1:xMPOj6Pz6UipU1wXLkrtqpHbR0AVFnyPEQq/wRWz9lM=
 golang.org/x/crypto v0.0.0-20200302210943-78000ba7a073/go.mod h1:LzIPMQfyMNhhGPhUkYOs5KpL4U8rLKemX1yGLhDgUto=
+golang.org/x/crypto v0.0.0-20200311171314-f7b00557c8c4 h1:QmwruyY+bKbDDL0BaglrbZABEali68eoMFhTZpCjYVA=
+golang.org/x/crypto v0.0.0-20200311171314-f7b00557c8c4/go.mod h1:LzIPMQfyMNhhGPhUkYOs5KpL4U8rLKemX1yGLhDgUto=
 golang.org/x/net v0.0.0-20180724234803-3673e40ba225/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
 golang.org/x/net v0.0.0-20180906233101-161cd47e91fd/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
 golang.org/x/net v0.0.0-20181213202711-891ebc4b82d6 h1:gT0Y6H7hbVPUtvtk0YGxMXPgN+p8fYlqWkgJeUCZcaQ=
