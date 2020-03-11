@@ -1,6 +1,7 @@
 package extra // import "a4.io/blobstash/pkg/extra"
 
 import (
+	"crypto/rand"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -51,6 +52,15 @@ func setupExtra(e *Extra) func(*lua.LState) int {
 					tbl.Append(lua.LString(part))
 				}
 				L.Push(tbl)
+				return 1
+			},
+			"random": func(L *lua.LState) int {
+				raw := make([]byte, L.ToInt(1))
+				if _, err := rand.Read(raw); err != nil {
+					panic(err)
+				}
+				out := fmt.Sprintf("%x", raw)
+				L.Push(lua.LString(out))
 				return 1
 			},
 			"v": func(L *lua.LState) int {

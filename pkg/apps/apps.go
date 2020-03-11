@@ -3,6 +3,7 @@ package apps // import "a4.io/blobstash/pkg/apps"
 import (
 	"context"
 	"fmt"
+	"html/template"
 	"io/ioutil"
 	"net/http"
 	rhttputil "net/http/httputil"
@@ -195,40 +196,50 @@ func (apps *Apps) newApp(appConf *config.AppConfig, conf *config.Config) (*App, 
 		return app, nil
 	}
 
+	// Build the app "base URL"
+	// 1. Assume a custom domain at the "app level" (that will serve the app at `/`)
+	baseURL := app.domain
+	if baseURL == "" {
+		// 2. Check if the server has a custom domain setup (and take the first one if any)
+		if len(app.rootConfig.Domains) > 0 {
+			baseURL = app.rootConfig.Domains[0]
+		} else {
+			// 3. No custom domain, most likely running on localhost/dev setup
+			baseURL = app.rootConfig.Listen
+			if strings.HasPrefix(baseURL, ":") {
+				// The default listen has no host, replace it with localhost
+				baseURL = "localhost" + baseURL
+			}
+		}
+		// In {2, 3} (i.e. no custom app domain), join the `/api/apps/{app.name}` path
+		baseURL = baseURL + "/api/apps/" + app.name
+	}
+	// Check if Let's Encrypt is setup
+	if app.rootConfig.AutoTLS {
+		baseURL = "https://" + baseURL
+	} else {
+		baseURL = "http://" + baseURL
+	}
+
 	// Setup the gluapp app
 	if app.path != "" {
 		var err error
 		app.app, err = gluapp.NewApp(&gluapp.Config{
 			Path:       app.path,
 			Entrypoint: app.entrypoint,
+			TemplateFuncMap: template.FuncMap{
+				"url_for": func(p string) string {
+					u, err := url.Parse(baseURL)
+					if err != nil {
+						panic(err)
+					}
+					u.Path = path.Join(u.Path, p)
+					return u.String()
+
+				},
+			},
 			SetupState: func(L *lua.LState) error {
 				cache := app.buildCache(L)
-
-				// Build the app "base URL"
-				// 1. Assume a custom domain at the "app level" (that will serve the app at `/`)
-				baseURL := app.domain
-				if baseURL == "" {
-					// 2. Check if the server has a custom domain setup (and take the first one if any)
-					if len(app.rootConfig.Domains) > 0 {
-						baseURL = app.rootConfig.Domains[0]
-					} else {
-						// 3. No custom domain, most likely running on localhost/dev setup
-						baseURL = app.rootConfig.Listen
-						if strings.HasPrefix(baseURL, ":") {
-							// The default listen has no host, replace it with localhost
-							baseURL = "localhost" + baseURL
-						}
-					}
-					// In {2, 3} (i.e. no custom app domain), join the `/api/apps/{app.name}` path
-					baseURL = baseURL + "/api/apps/" + app.name
-				}
-				// Check if Let's Encrypt is setup
-				if app.rootConfig.AutoTLS {
-					baseURL = "https://" + baseURL
-				} else {
-					baseURL = "http://" + baseURL
-				}
-
 				// Now that we have the base URL, we can export a new `url_for` helper
 				L.SetGlobal("url_for", L.NewFunction(func(L *lua.LState) int {
 					u, err := url.Parse(baseURL)
@@ -285,7 +296,14 @@ func (app *App) buildCache(L *lua.LState) *lua.LTable {
 	}))
 	L.SetField(mt, "__newindex", L.NewFunction(func(ls *lua.LState) int {
 		// FIXME(tsileo): extract the LGFunction for functions and reject invalid types
-		app.appCache.Add(ls.Get(2), ls.Get(3))
+		key := ls.Get(2)
+		val := ls.Get(3)
+
+		// Setting the value to nil is the same as removing the key
+		if val == lua.LNil {
+			app.appCache.Remove(key)
+		}
+		app.appCache.Add(key, val)
 		return 0
 	}))
 
