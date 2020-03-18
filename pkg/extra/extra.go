@@ -54,6 +54,10 @@ func setupExtra(e *Extra) func(*lua.LState) int {
 				L.Push(tbl)
 				return 1
 			},
+			"now": func(L *lua.LState) int {
+				L.Push(lua.LNumber(time.Now().Unix()))
+				return 1
+			},
 			"random": func(L *lua.LState) int {
 				raw := make([]byte, L.ToInt(1))
 				if _, err := rand.Read(raw); err != nil {

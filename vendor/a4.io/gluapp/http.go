@@ -395,6 +395,17 @@ func valuesGet(L *lua.LState) int {
 	return 1
 }
 
+func valuesGetlist(L *lua.LState) int {
+	values := checkValues(L)
+	tbl := L.NewTable()
+	if rvalues, ok := values.values[string(L.ToString(2))]; ok {
+		for _, val := range rvalues {
+			tbl.Append(lua.LString(val))
+		}
+	}
+	L.Push(tbl)
+	return 1
+}
 func valuesRaw(L *lua.LState) int {
 	values := checkValues(L)
 	out := L.CreateTable(0, len(values.values))

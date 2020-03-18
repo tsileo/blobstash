@@ -1,7 +1,7 @@
 # a4.io/blobsfile v0.3.8
 ## explicit
 a4.io/blobsfile
-# a4.io/gluapp v0.0.0-20200311203905-eb3c48991ada
+# a4.io/gluapp v0.0.0-20200318195221-e8e54ae2232c
 ## explicit
 a4.io/gluapp
 a4.io/gluapp/util
@@ -50,7 +50,7 @@ github.com/alecthomas/chroma/lexers/w
 github.com/alecthomas/chroma/lexers/x
 github.com/alecthomas/chroma/lexers/y
 github.com/alecthomas/chroma/styles
-# github.com/aws/aws-sdk-go v1.29.22
+# github.com/aws/aws-sdk-go v1.29.27
 ## explicit
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/arn
@@ -132,7 +132,7 @@ github.com/evanphx/json-patch
 github.com/go-martini/martini
 # github.com/go-stack/stack v1.8.0
 github.com/go-stack/stack
-# github.com/golang/protobuf v1.3.4
+# github.com/golang/protobuf v1.3.5
 ## explicit
 github.com/golang/protobuf/proto
 # github.com/golang/snappy v0.0.1
@@ -164,7 +164,7 @@ github.com/inconshreveable/log15
 github.com/inconshreveable/log15/ext
 # github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99
 github.com/jbenet/go-context/io
-# github.com/jmespath/go-jmespath v0.0.0-20200310193758-2437e8417af5
+# github.com/jmespath/go-jmespath v0.3.0
 ## explicit
 github.com/jmespath/go-jmespath
 # github.com/justinas/nosurf v1.1.0
@@ -277,7 +277,7 @@ github.com/yuin/gopher-lua/pm
 # github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
 ## explicit
 github.com/zpatrick/rbac
-# golang.org/x/crypto v0.0.0-20200311171314-f7b00557c8c4
+# golang.org/x/crypto v0.0.0-20200317142112-1b76d66859c6
 ## explicit
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
@@ -312,7 +312,7 @@ golang.org/x/net/html/atom
 golang.org/x/net/idna
 golang.org/x/net/internal/socks
 golang.org/x/net/proxy
-# golang.org/x/sys v0.0.0-20200302150141-5c8b2ff67527
+# golang.org/x/sys v0.0.0-20200317113312-5766fd39f98d
 ## explicit
 golang.org/x/sys/cpu
 golang.org/x/sys/unix
