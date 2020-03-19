@@ -300,6 +300,42 @@ func setupForm() func(*lua.LState) int {
 	}
 }
 
+type lurl struct {
+	u  *url.URL
+	qs url.Values
+}
+
+func checkURL(L *lua.LState) *lurl {
+	ud := L.CheckUserData(1)
+	if v, ok := ud.Value.(*lurl); ok {
+		return v
+	}
+	L.ArgError(1, "url expected")
+	return nil
+}
+
+func setupURL() func(*lua.LState) int {
+	return func(L *lua.LState) int {
+		// Setup the "http" module
+		mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
+			"parse": func(L *lua.LState) int {
+				u, err := url.Parse(L.ToString(1))
+				if err != nil {
+					L.Push(lua.LNil)
+					return 1
+				}
+				ud := L.NewUserData()
+				ud.Value = &lurl{u, u.Query()}
+				L.SetMetatable(ud, L.GetTypeMetatable("lurl"))
+				L.Push(ud)
+				return 1
+			},
+		})
+		L.Push(mod)
+		return 1
+	}
+}
+
 func buildValues(L *lua.LState, vals url.Values) lua.LValue {
 	ud := L.NewUserData()
 	ud.Value = &values{vals}

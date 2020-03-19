@@ -82,6 +82,70 @@ func setupMetatable(L *lua.LState) {
 		"raw":     valuesRaw,
 		"encode":  valuesEncode,
 	}))
+	mtURL := L.NewTypeMetatable("lurl")
+	L.SetField(mtURL, "__tostring", L.NewFunction(func(ls *lua.LState) int {
+		ud := L.CheckUserData(1)
+		url, ok := ud.Value.(*lurl)
+		if !ok {
+			panic("bad userdata")
+		}
+		url.u.RawQuery = url.qs.Encode()
+		L.Push(lua.LString(url.u.String()))
+		return 1
+	}))
+	L.SetField(mtURL, "__index", L.NewFunction(func(ls *lua.LState) int {
+		ud := ls.CheckUserData(1)
+		url, ok := ud.Value.(*lurl)
+		if !ok {
+			panic("bad userdata")
+		}
+		k := ls.ToString(2)
+		var v string
+		switch k {
+		case "path":
+			v = url.u.Path
+		case "host":
+			v = url.u.Host
+		case "scheme":
+			v = url.u.Scheme
+		case "fragment":
+			v = url.u.Fragment
+		case "query":
+			ls.Push(buildValues(ls, url.qs))
+			return 1
+		default:
+			ls.Push(lua.LNil)
+			return 1
+		}
+		ls.Push(lua.LString(v))
+		return 1
+	}))
+	L.SetField(mtURL, "__newindex", L.NewFunction(func(ls *lua.LState) int {
+		ud := ls.CheckUserData(1)
+		url, ok := ud.Value.(*lurl)
+		if !ok {
+			panic("bad userdata")
+		}
+		k := ls.ToString(2)
+		v := ls.ToString(3)
+		switch k {
+		case "path":
+			url.u.Path = v
+		case "host":
+			url.u.Host = v
+		case "scheme":
+			url.u.Scheme = v
+		case "fragment":
+			url.u.Fragment = v
+		default:
+			if k == "query" {
+				ls.ArgError(2, "please update query directly")
+			} else {
+				ls.ArgError(2, fmt.Sprintf("unknown field %v", k))
+			}
+		}
+		return 0
+	}))
 }
 
 func getFuncMaps(fm template.FuncMap) template.FuncMap {
@@ -175,6 +239,7 @@ func setupState(L *lua.LState, conf *Config, w http.ResponseWriter, r *http.Requ
 	}
 	L.PreloadModule("http", setupHTTP(client, conf.Path))
 
+	L.PreloadModule("url", setupURL())   // must be executed after setupHTTP
 	L.PreloadModule("form", setupForm()) // must be executed after setupHTTP
 	finalFuncs := getFuncMaps(conf.TemplateFuncMap)
 
@@ -253,6 +318,7 @@ func SetupGlue(L *lua.LState, conf *Config) error {
 	}
 	L.PreloadModule("http", setupHTTP(client, conf.Path))
 
+	L.PreloadModule("url", setupURL())   // must be executed after setupHTTP
 	L.PreloadModule("form", setupForm()) // must be executed after setupHTTP
 
 	finalFuncs := getFuncMaps(conf.TemplateFuncMap)

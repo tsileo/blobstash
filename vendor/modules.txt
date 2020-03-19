@@ -1,7 +1,7 @@
 # a4.io/blobsfile v0.3.8
 ## explicit
 a4.io/blobsfile
-# a4.io/gluapp v0.0.0-20200318195221-e8e54ae2232c
+# a4.io/gluapp v0.0.0-20200319193350-12ed52fbe112
 ## explicit
 a4.io/gluapp
 a4.io/gluapp/util
@@ -50,7 +50,7 @@ github.com/alecthomas/chroma/lexers/w
 github.com/alecthomas/chroma/lexers/x
 github.com/alecthomas/chroma/lexers/y
 github.com/alecthomas/chroma/styles
-# github.com/aws/aws-sdk-go v1.29.27
+# github.com/aws/aws-sdk-go v1.29.28
 ## explicit
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/arn

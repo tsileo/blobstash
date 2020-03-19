@@ -34,6 +34,8 @@ a4.io/gluapp v0.0.0-20200311203905-eb3c48991ada h1:t7D1dBddA0Joo/MKSIj9GJsv0iGer
 a4.io/gluapp v0.0.0-20200311203905-eb3c48991ada/go.mod h1:A3U6Yc1zqp5Bnsz7PxrlYmbZ4iEN/LBKeuuwaxpLBMY=
 a4.io/gluapp v0.0.0-20200318195221-e8e54ae2232c h1:c3IQNOYa2q284CepZqxPJdP+TQwh6aWKPtWYnnd91Ek=
 a4.io/gluapp v0.0.0-20200318195221-e8e54ae2232c/go.mod h1:vRUnOCoU0xprQIH3uvQJG2NnyqJGFmnqBTk528JCEwg=
+a4.io/gluapp v0.0.0-20200319193350-12ed52fbe112 h1:xdh0Yciqt6NIjW9IWt6B/iWkRBXnXGKOC7STqiAsjDk=
+a4.io/gluapp v0.0.0-20200319193350-12ed52fbe112/go.mod h1:vRUnOCoU0xprQIH3uvQJG2NnyqJGFmnqBTk528JCEwg=
 a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f h1:mfEWN0Dd2AfIXU5WO5ZfqbFVk63Qz5M/CANs182pm+U=
 a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f/go.mod h1:t7OhwCmPQfuUf8cjm7n8chSbZt5CTILu+dTLu1MQKjQ=
 a4.io/gluarequire2 v0.0.0-20200222094423-7528d5a10bc1 h1:prvtjU2SK4PCsJnvY39+DkQyLzxq39E5q0kOimBZsaY=
@@ -90,6 +92,8 @@ github.com/aws/aws-sdk-go v1.29.22 h1:3WmsCj3C30l6/4f50mPkDZoTPWSvaRCjcVJOWdCJoI
 github.com/aws/aws-sdk-go v1.29.22/go.mod h1:1KvfttTE3SPKMpo8g2c6jL3ZKfXtFvKscTgahTma5Xg=
 github.com/aws/aws-sdk-go v1.29.27 h1:4A53lDDGtk4TvnXFzvcOO3Vx3tDqEPfwvChhhxTPN/M=
 github.com/aws/aws-sdk-go v1.29.27/go.mod h1:1KvfttTE3SPKMpo8g2c6jL3ZKfXtFvKscTgahTma5Xg=
+github.com/aws/aws-sdk-go v1.29.28 h1:4eKUDBN+v1yxpGDxxPY+FG2Abc6yJB6vvkEDRJ9jIW0=
+github.com/aws/aws-sdk-go v1.29.28/go.mod h1:1KvfttTE3SPKMpo8g2c6jL3ZKfXtFvKscTgahTma5Xg=
 github.com/blevesearch/segment v0.0.0-20160915185041-762005e7a34f h1:kqbi9lqXLLs+zfWlgo1PIiRQ86n33K1JKotjj4rSYOg=
 github.com/blevesearch/segment v0.0.0-20160915185041-762005e7a34f/go.mod h1:IInt5XRvpiGE09KOk9mmCMLjHhydIhNPKPPFLFBB7L8=
 github.com/carbocation/handlers v0.0.0-20140528190747-c939c6d9ef31 h1:SDMgCFII5drFRIyAaihze9ceRMpTt1FW6Q5jjpc2u4c=
