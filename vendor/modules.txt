@@ -50,7 +50,7 @@ github.com/alecthomas/chroma/lexers/w
 github.com/alecthomas/chroma/lexers/x
 github.com/alecthomas/chroma/lexers/y
 github.com/alecthomas/chroma/styles
-# github.com/aws/aws-sdk-go v1.29.28
+# github.com/aws/aws-sdk-go v1.30.4
 ## explicit
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/arn
@@ -96,7 +96,7 @@ github.com/aws/aws-sdk-go/service/s3/s3iface
 github.com/aws/aws-sdk-go/service/s3/s3manager
 github.com/aws/aws-sdk-go/service/sts
 github.com/aws/aws-sdk-go/service/sts/stsiface
-# github.com/blevesearch/segment v0.0.0-20160915185041-762005e7a34f
+# github.com/blevesearch/segment v0.9.0
 ## explicit
 github.com/blevesearch/segment
 # github.com/carbocation/handlers v0.0.0-20140528190747-c939c6d9ef31
@@ -187,7 +187,6 @@ github.com/inconshreveable/log15/ext
 # github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99
 github.com/jbenet/go-context/io
 # github.com/jmespath/go-jmespath v0.3.0
-## explicit
 github.com/jmespath/go-jmespath
 # github.com/justinas/nosurf v1.1.0
 github.com/justinas/nosurf
@@ -200,7 +199,6 @@ github.com/klauspost/reedsolomon
 # github.com/konsorten/go-windows-terminal-sequences v1.0.2
 github.com/konsorten/go-windows-terminal-sequences
 # github.com/mattn/go-colorable v0.1.6
-## explicit
 github.com/mattn/go-colorable
 # github.com/mattn/go-isatty v0.0.12
 github.com/mattn/go-isatty
@@ -213,6 +211,8 @@ github.com/mitchellh/go-homedir
 github.com/mitchellh/go-ps
 # github.com/mitchellh/mapstructure v1.1.2
 github.com/mitchellh/mapstructure
+# github.com/mvdan/xurls v1.1.0
+## explicit
 # github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 ## explicit
 github.com/nfnt/resize
@@ -294,7 +294,6 @@ github.com/yuin/goldmark/renderer/html
 github.com/yuin/goldmark/text
 github.com/yuin/goldmark/util
 # github.com/yuin/goldmark-highlighting v0.0.0-20200307114337-60d527fdb691
-## explicit
 github.com/yuin/goldmark-highlighting
 # github.com/yuin/gopher-lua v0.0.0-20191220021717-ab39c6098bdb
 ## explicit
@@ -305,7 +304,7 @@ github.com/yuin/gopher-lua/pm
 # github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
 ## explicit
 github.com/zpatrick/rbac
-# golang.org/x/crypto v0.0.0-20200317142112-1b76d66859c6
+# golang.org/x/crypto v0.0.0-20200403201458-baeed622b8d8
 ## explicit
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
@@ -337,7 +336,7 @@ golang.org/x/crypto/ssh
 golang.org/x/crypto/ssh/agent
 golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
 golang.org/x/crypto/ssh/knownhosts
-# golang.org/x/net v0.0.0-20200301022130-244492dfa37a
+# golang.org/x/net v0.0.0-20200324143707-d3edc9973b7e
 ## explicit
 golang.org/x/net/context
 golang.org/x/net/html
@@ -345,7 +344,7 @@ golang.org/x/net/html/atom
 golang.org/x/net/idna
 golang.org/x/net/internal/socks
 golang.org/x/net/proxy
-# golang.org/x/sys v0.0.0-20200317113312-5766fd39f98d
+# golang.org/x/sys v0.0.0-20200331124033-c3d80250170d
 ## explicit
 golang.org/x/sys/cpu
 golang.org/x/sys/unix
