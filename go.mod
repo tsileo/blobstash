@@ -1,10 +1,8 @@
 module a4.io/blobstash
 
-replace a4.io/gluapp v0.0.0-20200319193350-12ed52fbe112 => /home/thomas/Proj/gluapp
-
 require (
 	a4.io/blobsfile v0.3.8
-	a4.io/gluapp v0.0.0-20200319193350-12ed52fbe112
+	a4.io/gluapp v0.0.0-20200404171232-054f285d8e63
 	a4.io/gluarequire2 v0.0.0-20200222094423-7528d5a10bc1
 	a4.io/go/indieauth v1.0.0
 	a4.io/ssse v0.0.0-20181202155639-1949828a8689

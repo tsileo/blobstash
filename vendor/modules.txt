@@ -1,7 +1,7 @@
 # a4.io/blobsfile v0.3.8
 ## explicit
 a4.io/blobsfile
-# a4.io/gluapp v0.0.0-20200319193350-12ed52fbe112 => /home/thomas/Proj/gluapp
+# a4.io/gluapp v0.0.0-20200404171232-054f285d8e63
 ## explicit
 a4.io/gluapp
 a4.io/gluapp/util

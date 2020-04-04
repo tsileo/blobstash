@@ -26,6 +26,9 @@ a4.io/gluapp v0.0.0-20200221184138-44fb2766d27d h1:mG+tM6bamBDHVxKF6QgdkRwTyFkmd
 a4.io/gluapp v0.0.0-20200221184138-44fb2766d27d/go.mod h1:SnPbw2WapvLDMfarcCs/pqYhYUvQqCk5u6TJjni5M3k=
 a4.io/gluapp v0.0.0-20200311203905-eb3c48991ada h1:t7D1dBddA0Joo/MKSIj9GJsv0iGerABouNrNP220PVg=
 a4.io/gluapp v0.0.0-20200311203905-eb3c48991ada/go.mod h1:A3U6Yc1zqp5Bnsz7PxrlYmbZ4iEN/LBKeuuwaxpLBMY=
+a4.io/gluapp v0.0.0-20200319193350-12ed52fbe112/go.mod h1:vRUnOCoU0xprQIH3uvQJG2NnyqJGFmnqBTk528JCEwg=
+a4.io/gluapp v0.0.0-20200404171232-054f285d8e63 h1:5pvuqwXXPmxcM2DiT43qOA/0Pnj0Zymq8uyyE/7qMNs=
+a4.io/gluapp v0.0.0-20200404171232-054f285d8e63/go.mod h1:vRUnOCoU0xprQIH3uvQJG2NnyqJGFmnqBTk528JCEwg=
 a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f h1:mfEWN0Dd2AfIXU5WO5ZfqbFVk63Qz5M/CANs182pm+U=
 a4.io/gluarequire2 v0.0.0-20170611121149-66e0eb2c6a9f/go.mod h1:t7OhwCmPQfuUf8cjm7n8chSbZt5CTILu+dTLu1MQKjQ=
 a4.io/gluarequire2 v0.0.0-20200222094423-7528d5a10bc1 h1:prvtjU2SK4PCsJnvY39+DkQyLzxq39E5q0kOimBZsaY=
