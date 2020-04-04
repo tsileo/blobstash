@@ -226,7 +226,6 @@ func New(conf *config.Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	wa.Register(s.router.PathPrefix("/api/webauthn").Subrouter(), basicAuth)
 
 	apps, err := apps.New(logger.New("app", "apps"), conf, sess, wa, rootBlobstore, kvstore, filetree, docstore, git, hub, s.whitelistHosts)
 	if err != nil {

@@ -2,6 +2,7 @@
 package webauthn // import "a4.io/blobstash/pkg/webauthn"
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -15,7 +16,6 @@ import (
 	"a4.io/blobstash/pkg/session"
 	"github.com/duo-labs/webauthn/protocol"
 	w "github.com/duo-labs/webauthn/webauthn"
-	"github.com/gorilla/mux"
 )
 
 var id = []byte("1")
@@ -29,7 +29,6 @@ type credential struct {
 
 type user struct {
 	conf  *config.Config
-	cred  *w.Credential
 	creds []w.Credential
 }
 
@@ -65,13 +64,22 @@ func (u *user) load(rpid string) error {
 	return nil
 }
 
+// save or update a Webauthn credential in the JSON DB file
 func (u *user) save(rpid string, rcred *w.Credential) error {
 	allCreds, err := u.loadAll()
 	if err != nil {
 		return err
 	}
-	allCreds = append(allCreds, &credential{rpid, rcred})
-	js, err := json.Marshal(allCreds)
+	newCreds := []*credential{}
+	for _, acred := range allCreds {
+		if acred.RPID == rpid && bytes.Equal(acred.Cred.ID, rcred.ID) {
+			newCreds = append(newCreds, &credential{rpid, rcred})
+			continue
+		}
+
+		newCreds = append(newCreds, acred)
+	}
+	js, err := json.Marshal(newCreds)
 	if err != nil {
 		return err
 	}
@@ -117,39 +125,20 @@ func (u *user) WebAuthnCredentials() []w.Credential {
 type WebAuthn struct {
 	conf  *config.Config
 	sess  *session.Session
-	web   *w.WebAuthn
 	rdata *w.SessionData
 	user  *user
 }
 
 func New(conf *config.Config, s *session.Session) (*WebAuthn, error) {
-	web, err := w.New(&w.Config{
-		RPDisplayName: "BlobStash",
-		RPID:          "localhost",
-		RPOrigin:      "https://localhost",
-	})
-	if err != nil {
-		return nil, err
-	}
-	cred := &w.Credential{}
-	dat, err := ioutil.ReadFile("wa2.json")
-	if err != nil {
-		return nil, err
-	}
-	if err := json.Unmarshal(dat, cred); err != nil {
-		return nil, err
-	}
-
 	return &WebAuthn{
 		sess: s,
 		conf: conf,
-		web:  web,
-		user: &user{conf, cred, nil},
+		user: &user{conf, nil},
 	}, nil
 }
 
 func (wa *WebAuthn) BeginRegistration(rw http.ResponseWriter, r *http.Request, origin string) (string, error) {
-	web, err := wa.web2(origin)
+	web, err := wa.web(origin)
 	if err != nil {
 		return "", err
 	}
@@ -178,7 +167,7 @@ func (wa *WebAuthn) BeginRegistration(rw http.ResponseWriter, r *http.Request, o
 }
 
 func (wa *WebAuthn) FinishRegistration(rw http.ResponseWriter, r *http.Request, origin, js string) error {
-	web, err := wa.web2(origin)
+	web, err := wa.web(origin)
 	if err != nil {
 		return err
 	}
@@ -236,87 +225,7 @@ func (wa *WebAuthn) getSession(r *http.Request, name string) (*w.SessionData, er
 	return &sessionData, nil
 }
 
-func (wa *WebAuthn) RegisterHandler() func(http.ResponseWriter, *http.Request) {
-	return func(rw http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case "GET":
-			dat, err := wa.BeginRegistration(rw, r, "http://localhost:8050/")
-			if err != nil {
-				panic(err)
-			}
-			rw.Write([]byte(`<html><a href="#" id="register_link">register</a><script>var credentialCreationOptions = ` + dat + `;
-// Base64 to ArrayBuffer
-function bufferDecode(value) {
-  return Uint8Array.from(atob(value), c => c.charCodeAt(0));
-}
-
-// ArrayBuffer to URLBase64
-function bufferEncode(value) {
-  return btoa(String.fromCharCode.apply(null, new Uint8Array(value)))
-	.replace(/\+/g, "-")
-	.replace(/\//g, "_")
-	.replace(/=/g, "");;
-}
-credentialCreationOptions.publicKey.challenge = bufferDecode(credentialCreationOptions.publicKey.challenge);
-credentialCreationOptions.publicKey.user.id = bufferDecode(credentialCreationOptions.publicKey.user.id);
-if (credentialCreationOptions.publicKey.excludeCredentials) {
-  for (var i = 0; i < credentialCreationOptions.publicKey.excludeCredentials.length; i++) {
-    credentialCreationOptions.publicKey.excludeCredentials[i].id = bufferDecode(credentialCreationOptions.publicKey.excludeCredentials[i].id);
-  }
-}
-
-document.getElementById("register_link").onclick = function() {
-navigator.credentials.create({
-  publicKey: credentialCreationOptions.publicKey
-}).then(function(credential) {
-let attestationObject = credential.response.attestationObject;
-let clientDataJSON = credential.response.clientDataJSON;
-let rawId = credential.rawId;
-let payload = JSON.stringify({
-  id: credential.id,
-  rawId: bufferEncode(rawId),
-  type: credential.type,
-    response: {
-      attestationObject: bufferEncode(attestationObject),
-      clientDataJSON: bufferEncode(clientDataJSON),
-	},
-});
-fetch("/api/webauthn/register", {
-  headers: {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json'
-  },
-  method: "POST",
-  body: payload,
-}).then(function(res){ console.log(res) })
-  .catch(function(res){ console.log(res) })
-})
-}
-</script></html>`))
-		case "POST":
-			sessionData, err := wa.getSession(r, "registration")
-			if err != nil {
-				panic(err)
-			}
-			credential, err := wa.web.FinishRegistration(wa.user, *sessionData, r)
-			if err != nil {
-				panic(err)
-			}
-			wa.user.cred = credential
-			cjs, err := json.Marshal(&credential)
-			if err != nil {
-				panic(err)
-			}
-			if err := ioutil.WriteFile("wa2.json", cjs, 0600); err != nil {
-				panic(err)
-			}
-		default:
-			rw.WriteHeader(http.StatusMethodNotAllowed)
-		}
-	}
-}
-
-func (wa *WebAuthn) web2(origin string) (*w.WebAuthn, error) {
+func (wa *WebAuthn) web(origin string) (*w.WebAuthn, error) {
 	u, err := url.Parse(origin)
 	if err != nil {
 		return nil, err
@@ -341,7 +250,7 @@ func (wa *WebAuthn) web2(origin string) (*w.WebAuthn, error) {
 }
 
 func (wa *WebAuthn) BeginLogin(rw http.ResponseWriter, r *http.Request, origin string) (string, error) {
-	web, err := wa.web2(origin)
+	web, err := wa.web(origin)
 	if err != nil {
 		return "", err
 	}
@@ -364,7 +273,7 @@ func (wa *WebAuthn) BeginLogin(rw http.ResponseWriter, r *http.Request, origin s
 }
 
 func (wa *WebAuthn) FinishLogin(rw http.ResponseWriter, r *http.Request, origin, js string) error {
-	web, err := wa.web2(origin)
+	web, err := wa.web(origin)
 	if err != nil {
 		return err
 	}
@@ -382,95 +291,9 @@ func (wa *WebAuthn) FinishLogin(rw http.ResponseWriter, r *http.Request, origin,
 		return err
 	}
 	// FIXME(ts): check the counter, warning, and store the new cred
-	fmt.Printf("CREDS=%+v\nNCREDS=%+v\n", wa.user.cred, ncred)
-	return nil
-}
-
-func (wa *WebAuthn) LoginHandler() func(http.ResponseWriter, *http.Request) {
-	return func(rw http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case "GET":
-			options, sessionData, err := wa.web.BeginLogin(wa.user)
-			if err != nil {
-				panic(err)
-			}
-			if err := wa.saveSession(rw, r, "login", sessionData); err != nil {
-				panic(err)
-			}
-
-			js, err := json.Marshal(options)
-			if err != nil {
-				panic(err)
-			}
-
-			rw.Write([]byte(`<html><a href="#" id="login_link">login</a><script>var credentialRequestOptions = ` + string(js) + `;
-// Base64 to ArrayBuffer
-function bufferDecode(value) {
-  return Uint8Array.from(atob(value), c => c.charCodeAt(0));
-}
-
-// ArrayBuffer to URLBase64
-function bufferEncode(value) {
-  return btoa(String.fromCharCode.apply(null, new Uint8Array(value)))
-	.replace(/\+/g, "-")
-	.replace(/\//g, "_")
-	.replace(/=/g, "");;
-}
-console.log(credentialRequestOptions)
-credentialRequestOptions.publicKey.challenge = bufferDecode(credentialRequestOptions.publicKey.challenge);
-credentialRequestOptions.publicKey.allowCredentials.forEach(function (listItem) {
-  listItem.id = bufferDecode(listItem.id)
-});
-document.getElementById("login_link").onclick = function() {
-navigator.credentials.get({
-  publicKey: credentialRequestOptions.publicKey,
-}).then(function(assertion) {
-console.log(assertion);
-let authData = assertion.response.authenticatorData;
-let clientDataJSON = assertion.response.clientDataJSON;
-let rawId = assertion.rawId;
-let sig = assertion.response.signature;
-let userHandle = assertion.response.userHandle;
-let payload = JSON.stringify({
-  id: assertion.id,
-  rawId: bufferEncode(rawId),
-  type: assertion.type,
-  response: {
-	authenticatorData: bufferEncode(authData),
-	clientDataJSON: bufferEncode(clientDataJSON),
-	signature: bufferEncode(sig),
-	userHandle: bufferEncode(userHandle),
-  },
-})
-fetch("/api/webauthn/login", {
-  headers: {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json'
-  },
-  method: "POST",
-  body: payload,
-}).then(function(res){ console.log("YES"); console.log(res) })
-  .catch(function(res){ console.log(res) })
-})
-}
-</script></html>`))
-		case "POST":
-			sessionData, err := wa.getSession(r, "login")
-			if err != nil {
-				panic(err)
-			}
-			ncred, err := wa.web.FinishLogin(wa.user, *sessionData, r)
-			if err != nil {
-				panic(err)
-			}
-			fmt.Printf("CREDS=%+v\nNCREDS=%+v\n", wa.user.cred, ncred)
-		default:
-			rw.WriteHeader(http.StatusMethodNotAllowed)
-		}
+	if err := wa.user.save(web.Config.RPID, ncred); err != nil {
+		return err
 	}
-}
-
-func (wa *WebAuthn) Register(r *mux.Router, basicAuth func(http.Handler) http.Handler) {
-	r.Handle("/register", http.HandlerFunc(wa.RegisterHandler()))
-	r.Handle("/login", http.HandlerFunc(wa.LoginHandler()))
+	fmt.Printf("NCREDS_TO_SAVE=%+v\n", ncred)
+	return nil
 }
