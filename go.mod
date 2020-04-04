@@ -1,6 +1,6 @@
 module a4.io/blobstash
 
-// replace a4.io/gluapp v0.0.0-20200318195221-e8e54ae2232c => /home/thomas/Proj/gluapp
+replace a4.io/gluapp v0.0.0-20200319193350-12ed52fbe112 => /home/thomas/Proj/gluapp
 
 require (
 	a4.io/blobsfile v0.3.8
@@ -13,6 +13,7 @@ require (
 	github.com/blevesearch/segment v0.0.0-20160915185041-762005e7a34f
 	github.com/carbocation/interpose v0.0.0-20161206215253-723534742ba3
 	github.com/dave/jennifer v1.4.0
+	github.com/duo-labs/webauthn v0.0.0-20200131223046-0864f70a0509
 	github.com/dustin/go-humanize v1.0.0
 	github.com/evanphx/json-patch v4.5.0+incompatible
 	github.com/golang/protobuf v1.3.5 // indirect

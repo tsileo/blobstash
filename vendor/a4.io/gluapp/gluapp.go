@@ -37,7 +37,7 @@ type Config struct {
 	Client *http.Client
 
 	// Hook for adding/setting additional modules/global variables
-	SetupState func(L *lua.LState) error
+	SetupState func(L *lua.LState, w http.ResponseWriter, r *http.Request) error
 
 	// Hook executed just after the script execution, just before the request is written
 	AfterScriptExecHook func(L *lua.LState) error
@@ -248,7 +248,7 @@ func setupState(L *lua.LState, conf *Config, w http.ResponseWriter, r *http.Requ
 
 	// Setup additional modules provided by the user
 	if conf.SetupState != nil {
-		if err := conf.SetupState(L); err != nil {
+		if err := conf.SetupState(L, w, r); err != nil {
 			return nil, fmt.Errorf("SetupState failed: %v", err)
 		}
 	}
@@ -257,7 +257,7 @@ func setupState(L *lua.LState, conf *Config, w http.ResponseWriter, r *http.Requ
 }
 
 // SetupGlue setup the "glue"/std lib for use outside of gluapp
-func SetupGlue(L *lua.LState, conf *Config) error {
+func SetupGlue(L *lua.LState, conf *Config, w http.ResponseWriter, r *http.Request) error {
 	// Update the path if needed
 	if conf.Path != "" {
 		path := L.GetField(L.GetField(L.Get(lua.EnvironIndex), "package"), "path").(lua.LString)
@@ -327,7 +327,7 @@ func SetupGlue(L *lua.LState, conf *Config) error {
 
 	// Setup additional modules provided by the user
 	if conf.SetupState != nil {
-		if err := conf.SetupState(L); err != nil {
+		if err := conf.SetupState(L, w, r); err != nil {
 			return fmt.Errorf("SetupState failed: %v", err)
 		}
 	}

@@ -15,7 +15,6 @@ import (
 
 	humanize "github.com/dustin/go-humanize"
 	"github.com/gorilla/mux"
-	"github.com/gorilla/sessions"
 	log "github.com/inconshreveable/log15"
 	"github.com/yuin/gopher-lua"
 	git "gopkg.in/src-d/go-git.v4"
@@ -36,7 +35,9 @@ import (
 	"a4.io/blobstash/pkg/httputil"
 	"a4.io/blobstash/pkg/hub"
 	kvLua "a4.io/blobstash/pkg/kvstore/lua"
+	"a4.io/blobstash/pkg/session"
 	"a4.io/blobstash/pkg/stash/store"
+	"a4.io/blobstash/pkg/webauthn"
 	"a4.io/gluapp"
 	"a4.io/go/indieauth"
 	"github.com/hashicorp/golang-lru"
@@ -49,16 +50,17 @@ import (
 type Apps struct {
 	apps            map[string]*App
 	config          *config.Config
+	sess            *session.Session
 	gs              *gitserver.GitServer
 	ft              *filetree.FileTree
 	bs              *blobstore.BlobStore
 	docstore        *docstore.DocStore
 	kvs             store.KvStore
+	wa              *webauthn.WebAuthn
 	hub             *hub.Hub
 	hostWhitelister func(...string)
 	log             log.Logger
 	cron            *cron.Cron
-	cookieStore     *sessions.CookieStore
 	sync.Mutex
 }
 
@@ -100,6 +102,7 @@ type App struct {
 	app      *gluapp.App
 	repo     *git.Repository
 	tree     *object.Tree
+	wa       *webauthn.WebAuthn
 	tmp      string
 
 	log log.Logger
@@ -122,6 +125,7 @@ func (apps *Apps) newApp(appConf *config.AppConfig, conf *config.Config) (*App, 
 		config:     appConf.Config,
 		appCache:   appCache,
 		scheduled:  appConf.Scheduled,
+		wa:         apps.wa,
 		log:        apps.log.New("app", appConf.Name),
 		mu:         sync.Mutex{},
 	}
@@ -130,7 +134,7 @@ func (apps *Apps) newApp(appConf *config.AppConfig, conf *config.Config) (*App, 
 		app.auth = httputil.BasicAuthFunc(appConf.Username, appConf.Password)
 	}
 	if appConf.IndieAuthEndpoint != "" {
-		ia, err := indieauth.New(apps.cookieStore, appConf.IndieAuthEndpoint)
+		ia, err := indieauth.New(apps.sess.Session(), appConf.IndieAuthEndpoint)
 		if err != nil {
 			return nil, err
 		}
@@ -238,7 +242,45 @@ func (apps *Apps) newApp(appConf *config.AppConfig, conf *config.Config) (*App, 
 
 				},
 			},
-			SetupState: func(L *lua.LState) error {
+			SetupState: func(L *lua.LState, w http.ResponseWriter, r *http.Request) error {
+				L.PreloadModule("webauthn", func(L *lua.LState) int {
+					mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
+						"begin_registration": func(L *lua.LState) int {
+							js, err := app.wa.BeginRegistration(w, r, baseURL)
+							if err != nil {
+								panic(err)
+							}
+							L.Push(lua.LString(js))
+							return 1
+						},
+						"finish_registration": func(L *lua.LState) int {
+							if err := app.wa.FinishRegistration(w, r, baseURL, L.ToString(1)); err != nil {
+								panic(err)
+							}
+							L.Push(lua.LNil)
+							return 1
+						},
+						"begin_login": func(L *lua.LState) int {
+							js, err := app.wa.BeginLogin(w, r, baseURL)
+							if err != nil {
+								panic(err)
+							}
+							L.Push(lua.LString(js))
+							return 1
+						},
+						"finish_login": func(L *lua.LState) int {
+							js := L.ToString(1)
+							if err := app.wa.FinishLogin(w, r, baseURL, js); err != nil {
+								panic(err)
+							}
+							L.Push(lua.LNil)
+							return 1
+						},
+					})
+					// returns the module
+					L.Push(mod)
+					return 1
+				})
 				cache := app.buildCache(L)
 				// Now that we have the base URL, we can export a new `url_for` helper
 				L.SetGlobal("url_for", L.NewFunction(func(L *lua.LState) int {
@@ -362,22 +404,23 @@ func (app *App) serve(ctx context.Context, p string, w http.ResponseWriter, req 
 }
 
 // New initializes the Apps manager
-func New(logger log.Logger, conf *config.Config, bs *blobstore.BlobStore, kvs store.KvStore, ft *filetree.FileTree, ds *docstore.DocStore, gs *gitserver.GitServer, chub *hub.Hub, hostWhitelister func(...string)) (*Apps, error) {
+func New(logger log.Logger, conf *config.Config, sess *session.Session, wa *webauthn.WebAuthn, bs *blobstore.BlobStore, kvs store.KvStore, ft *filetree.FileTree, ds *docstore.DocStore, gs *gitserver.GitServer, chub *hub.Hub, hostWhitelister func(...string)) (*Apps, error) {
 	if conf.SecretKey == "" {
 		return nil, fmt.Errorf("missing secret_key in config")
 	}
 	// var err error
 	apps := &Apps{
+		sess:            sess,
 		apps:            map[string]*App{},
 		ft:              ft,
 		log:             logger,
 		gs:              gs,
 		bs:              bs,
 		config:          conf,
+		wa:              wa,
 		kvs:             kvs,
 		hub:             chub,
 		docstore:        ds,
-		cookieStore:     sessions.NewCookieStore([]byte(conf.SecretKey)),
 		cron:            cron.New(),
 		hostWhitelister: hostWhitelister,
 	}

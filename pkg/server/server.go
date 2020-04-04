@@ -33,9 +33,11 @@ import (
 	"a4.io/blobstash/pkg/middleware"
 	"a4.io/blobstash/pkg/oplog"
 	"a4.io/blobstash/pkg/replication"
+	"a4.io/blobstash/pkg/session"
 	"a4.io/blobstash/pkg/stash"
 	stashAPI "a4.io/blobstash/pkg/stash/api"
 	synctable "a4.io/blobstash/pkg/sync"
+	"a4.io/blobstash/pkg/webauthn"
 	gcontext "github.com/gorilla/context"
 
 	"golang.org/x/crypto/acme/autocert"
@@ -81,6 +83,9 @@ func New(conf *config.Config) (*Server, error) {
 	}
 	logger.SetHandler(log.LvlFilterHandler(conf.LogLvl(), log.StreamHandler(os.Stdout, log.LogfmtFormat())))
 	var wg sync.WaitGroup
+
+	sess := session.New(conf)
+
 	s := &Server{
 		router:        mux.NewRouter().StrictSlash(true),
 		conf:          conf,
@@ -217,7 +222,13 @@ func New(conf *config.Config) (*Server, error) {
 		}
 	}
 
-	apps, err := apps.New(logger.New("app", "apps"), conf, rootBlobstore, kvstore, filetree, docstore, git, hub, s.whitelistHosts)
+	wa, err := webauthn.New(conf, sess)
+	if err != nil {
+		return nil, err
+	}
+	wa.Register(s.router.PathPrefix("/api/webauthn").Subrouter(), basicAuth)
+
+	apps, err := apps.New(logger.New("app", "apps"), conf, sess, wa, rootBlobstore, kvstore, filetree, docstore, git, hub, s.whitelistHosts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize filetree app: %v", err)
 	}
