@@ -200,6 +200,20 @@ func (apps *Apps) newApp(appConf *config.AppConfig, conf *config.Config) (*App, 
 		return app, nil
 	}
 
+	// Fetch BlobStash root URL (not the app URL)
+	var bsurl string
+	if len(app.rootConfig.Domains) > 0 {
+		bsurl = app.rootConfig.Domains[0]
+	} else {
+		// 3. No custom domain, most likely running on localhost/dev setup
+		bsurl = app.rootConfig.Listen
+		if strings.HasPrefix(bsurl, ":") {
+			// The default listen has no host, replace it with localhost
+			bsurl = "localhost" + bsurl
+		}
+		bsurl = strings.Replace(bsurl, "0.0.0.0", "localhost", 1)
+	}
+
 	// Build the app "base URL"
 	// 1. Assume a custom domain at the "app level" (that will serve the app at `/`)
 	baseURL := app.domain
@@ -214,6 +228,7 @@ func (apps *Apps) newApp(appConf *config.AppConfig, conf *config.Config) (*App, 
 				// The default listen has no host, replace it with localhost
 				baseURL = "localhost" + baseURL
 			}
+			baseURL = strings.Replace(baseURL, "0.0.0.0", "localhost", 1)
 		}
 		// In {2, 3} (i.e. no custom app domain), join the `/api/apps/{app.name}` path
 		baseURL = baseURL + "/api/apps/" + app.name
@@ -221,8 +236,10 @@ func (apps *Apps) newApp(appConf *config.AppConfig, conf *config.Config) (*App, 
 	// Check if Let's Encrypt is setup
 	if app.rootConfig.AutoTLS {
 		baseURL = "https://" + baseURL
+		bsurl = "https://" + bsurl
 	} else {
 		baseURL = "http://" + baseURL
+		bsurl = "http://" + bsurl
 	}
 
 	// Setup the gluapp app
@@ -239,48 +256,20 @@ func (apps *Apps) newApp(appConf *config.AppConfig, conf *config.Config) (*App, 
 					}
 					u.Path = path.Join(u.Path, p)
 					return u.String()
-
+				},
+				"url_for_js": func(p string) string {
+					u, err := url.Parse(bsurl)
+					if err != nil {
+						panic(err)
+					}
+					u.Path = path.Join(u.Path, "/js/"+p)
+					return u.String()
 				},
 			},
 			SetupState: func(L *lua.LState, w http.ResponseWriter, r *http.Request) error {
-				L.PreloadModule("webauthn", func(L *lua.LState) int {
-					mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
-						"begin_registration": func(L *lua.LState) int {
-							js, err := app.wa.BeginRegistration(w, r, baseURL)
-							if err != nil {
-								panic(err)
-							}
-							L.Push(lua.LString(js))
-							return 1
-						},
-						"finish_registration": func(L *lua.LState) int {
-							if err := app.wa.FinishRegistration(w, r, baseURL, L.ToString(1)); err != nil {
-								panic(err)
-							}
-							L.Push(lua.LNil)
-							return 1
-						},
-						"begin_login": func(L *lua.LState) int {
-							js, err := app.wa.BeginLogin(w, r, baseURL)
-							if err != nil {
-								panic(err)
-							}
-							L.Push(lua.LString(js))
-							return 1
-						},
-						"finish_login": func(L *lua.LState) int {
-							js := L.ToString(1)
-							if err := app.wa.FinishLogin(w, r, baseURL, js); err != nil {
-								panic(err)
-							}
-							L.Push(lua.LNil)
-							return 1
-						},
-					})
-					// returns the module
-					L.Push(mod)
-					return 1
-				})
+				// Setup the Webauthn module
+				apps.wa.SetupLua(L, baseURL, w, r)
+				// Setup the in-mem cache
 				cache := app.buildCache(L)
 				// Now that we have the base URL, we can export a new `url_for` helper
 				L.SetGlobal("url_for", L.NewFunction(func(L *lua.LState) int {

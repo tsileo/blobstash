@@ -27,6 +27,7 @@ import (
 	"a4.io/blobstash/pkg/gitserver"
 	"a4.io/blobstash/pkg/httputil"
 	"a4.io/blobstash/pkg/hub"
+	"a4.io/blobstash/pkg/js"
 	"a4.io/blobstash/pkg/kvstore"
 	kvStoreAPI "a4.io/blobstash/pkg/kvstore/api"
 	"a4.io/blobstash/pkg/meta"
@@ -232,6 +233,8 @@ func New(conf *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to initialize filetree app: %v", err)
 	}
 	apps.Register(s.router.PathPrefix("/api/apps").Subrouter(), s.router, basicAuth)
+
+	js.Register(s.router.PathPrefix("/js").Subrouter(), basicAuth)
 
 	caps, err := capabilities.New(logger.New("app", "caps"), conf, rootBlobstore, hub)
 	if err != nil {

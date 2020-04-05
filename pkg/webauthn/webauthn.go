@@ -16,6 +16,7 @@ import (
 	"a4.io/blobstash/pkg/session"
 	"github.com/duo-labs/webauthn/protocol"
 	w "github.com/duo-labs/webauthn/webauthn"
+	lua "github.com/yuin/gopher-lua"
 )
 
 var id = []byte("1")
@@ -71,14 +72,21 @@ func (u *user) save(rpid string, rcred *w.Credential) error {
 		return err
 	}
 	newCreds := []*credential{}
+	var replaced bool
 	for _, acred := range allCreds {
 		if acred.RPID == rpid && bytes.Equal(acred.Cred.ID, rcred.ID) {
 			newCreds = append(newCreds, &credential{rpid, rcred})
+			replaced = true
 			continue
 		}
 
 		newCreds = append(newCreds, acred)
 	}
+
+	if !replaced {
+		newCreds = append(newCreds, &credential{rpid, rcred})
+	}
+
 	js, err := json.Marshal(newCreds)
 	if err != nil {
 		return err
@@ -296,4 +304,64 @@ func (wa *WebAuthn) FinishLogin(rw http.ResponseWriter, r *http.Request, origin,
 	}
 	fmt.Printf("NCREDS_TO_SAVE=%+v\n", ncred)
 	return nil
+}
+
+func (wa *WebAuthn) SetupLua(L *lua.LState, baseURL string, w http.ResponseWriter, r *http.Request) {
+	L.PreloadModule("webauthn", func(L *lua.LState) int {
+		mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
+			"registered_credentials": func(L *lua.LState) int {
+				web, err := wa.web(baseURL)
+				if err != nil {
+					panic(err)
+				}
+
+				if err := wa.user.load(web.Config.RPID); err != nil {
+					panic(err)
+				}
+
+				tbl := L.NewTable()
+				if wa.user.creds != nil {
+					for _, cred := range wa.user.creds {
+						tbl.Append(lua.LString(string(cred.ID)))
+					}
+				}
+				L.Push(tbl)
+				return 1
+			},
+			"begin_registration": func(L *lua.LState) int {
+				js, err := wa.BeginRegistration(w, r, baseURL)
+				if err != nil {
+					panic(err)
+				}
+				L.Push(lua.LString(js))
+				return 1
+			},
+			"finish_registration": func(L *lua.LState) int {
+				if err := wa.FinishRegistration(w, r, baseURL, L.ToString(1)); err != nil {
+					panic(err)
+				}
+				L.Push(lua.LNil)
+				return 1
+			},
+			"begin_login": func(L *lua.LState) int {
+				js, err := wa.BeginLogin(w, r, baseURL)
+				if err != nil {
+					panic(err)
+				}
+				L.Push(lua.LString(js))
+				return 1
+			},
+			"finish_login": func(L *lua.LState) int {
+				js := L.ToString(1)
+				if err := wa.FinishLogin(w, r, baseURL, js); err != nil {
+					panic(err)
+				}
+				L.Push(lua.LNil)
+				return 1
+			},
+		})
+		// returns the module
+		L.Push(mod)
+		return 1
+	})
 }
