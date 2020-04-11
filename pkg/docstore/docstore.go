@@ -940,12 +940,11 @@ func (docstore *DocStore) docsHandler() func(http.ResponseWriter, *http.Request)
 			var err error
 			if v := q.Get("as_of"); v != "" {
 				asOf, err = asof.ParseAsOf(v)
-			}
-			if asOf == 0 {
+			} else {
 				asOf, err = q.GetInt64Default("as_of_nano", 0)
-				if err != nil {
-					panic(err)
-				}
+			}
+			if err != nil {
+				panic(err)
 			}
 
 			limit, err := q.GetInt("limit", 50, 1000)

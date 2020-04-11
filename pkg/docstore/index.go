@@ -221,12 +221,12 @@ func (si *sortIndex) Index(_id *id.ID, doc map[string]interface{}) error {
 		sortKey = buildKey(val)
 	}
 
-	// Append the "index key", since it's the latest version, start == end
-	if err := si.db.Set(sortKey, buildVal(_id.Version(), _id.Version(), _id)); err != nil {
+	// Append the "index key", since it's the latest version, end == max int64
+	if err := si.db.Set(sortKey, buildVal(_id.Version(), math.MaxInt64, _id)); err != nil {
 		return err
 	}
 
-	// Update the pointer to the latest index key (to update its end of life when a newer version comes in
+	// Update the pointer to the latest index key (to update its end of life when a newer version comes in)
 	if err := si.db.Set(lastVersionKey, sortKey); err != nil {
 		return err
 	}
@@ -320,14 +320,9 @@ func (si *sortIndex) Iter(collection, cursor string, desc bool, fetchLimit int, 
 
 		vstart, vend, _id = parseVal(kv.v)
 
-		// We only want key for the latest version if asOf == 0
-		if asOf == 0 && vstart != vend {
-			continue
-		}
-
-		if asOf > 0 && ((vstart == vend && asOf < vstart) || (vend > vstart && !(asOf >= vstart && asOf < vend))) {
-			// Skip the latest documents version (vstart == vend) created before the request asOf and
-			// the documents that are not between start and end
+		// Skip doc if the latest version is requested and this is not the latest version
+		// Or if the current doc is not between start and end
+		if (asOf == 0 && vend != math.MaxInt64) || (asOf > 0 && !(asOf >= vstart && asOf < vend)) {
 			continue
 		}
 

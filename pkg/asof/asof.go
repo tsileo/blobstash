@@ -41,8 +41,9 @@ func ParseAsOf(asOf string) (int64, error) {
 	}
 	// Try parsing a timestamp
 	ts, err := strconv.ParseInt(asOf, 10, 0)
-	if err == nil {
-		return time.Unix(ts, 0).UnixNano(), nil
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse asof %q: %w", asOf, err)
 	}
-	return 0, fmt.Errorf("failed to parse asof \"%s\"", asOf)
+
+	return time.Unix(ts, 0).UnixNano(), nil
 }
