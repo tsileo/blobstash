@@ -50,7 +50,7 @@ github.com/alecthomas/chroma/lexers/w
 github.com/alecthomas/chroma/lexers/x
 github.com/alecthomas/chroma/lexers/y
 github.com/alecthomas/chroma/styles
-# github.com/aws/aws-sdk-go v1.30.4
+# github.com/aws/aws-sdk-go v1.30.7
 ## explicit
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/arn
@@ -304,7 +304,7 @@ github.com/yuin/gopher-lua/pm
 # github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
 ## explicit
 github.com/zpatrick/rbac
-# golang.org/x/crypto v0.0.0-20200403201458-baeed622b8d8
+# golang.org/x/crypto v0.0.0-20200406173513-056763e48d71
 ## explicit
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
@@ -344,7 +344,7 @@ golang.org/x/net/html/atom
 golang.org/x/net/idna
 golang.org/x/net/internal/socks
 golang.org/x/net/proxy
-# golang.org/x/sys v0.0.0-20200331124033-c3d80250170d
+# golang.org/x/sys v0.0.0-20200409092240-59c9f1ba88fa
 ## explicit
 golang.org/x/sys/cpu
 golang.org/x/sys/unix

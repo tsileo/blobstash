@@ -7,7 +7,7 @@ require (
 	a4.io/go/indieauth v1.0.0
 	a4.io/ssse v0.0.0-20181202155639-1949828a8689
 	bazil.org/fuse v0.0.0-20200117225306-7b5117fecadc
-	github.com/aws/aws-sdk-go v1.30.4
+	github.com/aws/aws-sdk-go v1.30.7
 	github.com/blevesearch/segment v0.9.0
 	github.com/carbocation/interpose v0.0.0-20161206215253-723534742ba3
 	github.com/dave/jennifer v1.4.0
@@ -36,9 +36,9 @@ require (
 	github.com/yuin/goldmark v1.1.25
 	github.com/yuin/gopher-lua v0.0.0-20191220021717-ab39c6098bdb
 	github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
-	golang.org/x/crypto v0.0.0-20200403201458-baeed622b8d8
+	golang.org/x/crypto v0.0.0-20200406173513-056763e48d71
 	golang.org/x/net v0.0.0-20200324143707-d3edc9973b7e
-	golang.org/x/sys v0.0.0-20200331124033-c3d80250170d // indirect
+	golang.org/x/sys v0.0.0-20200409092240-59c9f1ba88fa // indirect
 	gopkg.in/inconshreveable/log15.v2 v2.0.0-20200109203555-b30bc20e4fd1
 	gopkg.in/src-d/enry.v1 v1.7.3
 	gopkg.in/src-d/go-git.v4 v4.13.1
