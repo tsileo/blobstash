@@ -1,5 +1,5 @@
-//go:generate go run tools/genluaindex.go
-//go:generate go run tools/genjs.go
+//go:generate go run tools/genluaindex/genluaindex.go
+//go:generate go run tools/genjs/genjs.go
 package main
 
 import (
