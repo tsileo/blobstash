@@ -216,10 +216,6 @@ func (wa *WebAuthn) BeginRegistration(rw http.ResponseWriter, r *http.Request, o
 	return string(js), nil
 }
 
-func (wa *WebAuthn) CredentialFinder(id []byte) (warp.Credential, error) {
-	return nil, fmt.Errorf("no creds")
-}
-
 func (wa *WebAuthn) FinishRegistration(rw http.ResponseWriter, r *http.Request, origin, js string) error {
 	relyingParty := &rp{
 		origin: origin,
@@ -239,7 +235,7 @@ func (wa *WebAuthn) FinishRegistration(rw http.ResponseWriter, r *http.Request, 
 		return fmt.Errorf("failed to unmarshal attestation: %w", err)
 	}
 
-	att, err := warp.FinishRegistration(relyingParty, wa.CredentialFinder, sessionData.CreationOptions, &cred)
+	att, err := warp.FinishRegistration(relyingParty, wa.findCredential, sessionData.CreationOptions, &cred)
 	if err != nil {
 		for err != nil {
 			fmt.Printf("%v", err)
