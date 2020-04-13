@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"io"
 
-	"github.com/fxamacker/cbor"
+	"github.com/fxamacker/cbor/v2"
 )
 
 //AuthenticatorData encodes contextual bindings made by the authenticator.
@@ -76,7 +76,8 @@ func (ad *AuthenticatorData) Encode(w io.Writer) error {
 	}
 
 	if ad.ED {
-		err = cbor.NewEncoder(w, cbor.CTAP2EncOptions()).Encode(ad.Extensions)
+		em, _ := cbor.CTAP2EncOptions().EncMode()
+		err = em.NewEncoder(w).Encode(ad.Extensions)
 		if err != nil {
 			return ErrEncodeAuthenticatorData.Wrap(NewError("Error writing extensions").Wrap(err))
 		}
@@ -202,7 +203,8 @@ func (acd *AttestedCredentialData) Encode(w io.Writer) error {
 	if uint16(n) != credLen {
 		return ErrEncodeAttestedCredentialData.Wrap(NewError("CredentialID wrote %d bytes, needed %d", n, credLen))
 	}
-	err = cbor.NewEncoder(w, cbor.CTAP2EncOptions()).Encode(acd.CredentialPublicKey)
+	em, _ := cbor.CTAP2EncOptions().EncMode()
+	err = em.NewEncoder(w).Encode(acd.CredentialPublicKey)
 	if err != nil {
 		return ErrEncodeAttestedCredentialData.Wrap(NewError("Error writing CredentialPublicKey").Wrap(err))
 	}

@@ -7,12 +7,13 @@ require (
 	a4.io/go/indieauth v1.0.0
 	a4.io/ssse v0.0.0-20181202155639-1949828a8689
 	bazil.org/fuse v0.0.0-20200117225306-7b5117fecadc
+	github.com/alecthomas/chroma v0.7.2 // indirect
 	github.com/aws/aws-sdk-go v1.30.7
 	github.com/blevesearch/segment v0.9.0
 	github.com/carbocation/interpose v0.0.0-20161206215253-723534742ba3
 	github.com/dave/jennifer v1.4.0
 	github.com/dustin/go-humanize v1.0.0
-	github.com/e3b0c442/warp v0.6.0
+	github.com/e3b0c442/warp v0.6.1
 	github.com/evanphx/json-patch v4.5.0+incompatible
 	github.com/fxamacker/cbor v1.5.1 // indirect
 	github.com/golang/protobuf v1.3.5 // indirect

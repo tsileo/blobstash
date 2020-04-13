@@ -18,9 +18,9 @@ type Decoder struct {
 	bytesRead int
 }
 
-// NewDecoder returns a new decoder that reads from r.
+// NewDecoder returns a new decoder that reads from r using the default decoding options.
 func NewDecoder(r io.Reader) *Decoder {
-	return &Decoder{r: r}
+	return defaultDecMode.NewDecoder(r)
 }
 
 // Decode reads the next CBOR-encoded value from its input and stores it in
@@ -37,14 +37,14 @@ func (dec *Decoder) Decode(v interface{}) error {
 	dec.off += dec.d.off
 	dec.bytesRead += dec.d.off
 	if err != nil {
-		if err == io.ErrUnexpectedEOF {
-			// Need to read more data.
-			if n, err := dec.read(); n == 0 {
-				return err
-			}
-			return dec.Decode(v)
+		if err != io.ErrUnexpectedEOF {
+			return err
 		}
-		return err
+		// Need to read more data.
+		if n, e := dec.read(); n == 0 {
+			return e
+		}
+		return dec.Decode(v)
 	}
 	return nil
 }
@@ -79,14 +79,14 @@ func (dec *Decoder) read() (int, error) {
 // Encoder writes CBOR values to an output stream.
 type Encoder struct {
 	w          io.Writer
-	opts       EncOptions
-	e          encodeState
+	em         *encMode
+	e          *encodeState
 	indefTypes []cborType
 }
 
-// NewEncoder returns a new encoder that writes to w.
-func NewEncoder(w io.Writer, encOpts EncOptions) *Encoder {
-	return &Encoder{w: w, opts: encOpts, e: encodeState{}}
+// NewEncoder returns a new encoder that writes to w using the default encoding options.
+func NewEncoder(w io.Writer) *Encoder {
+	return defaultEncMode.NewEncoder(w)
 }
 
 // Encode writes the CBOR encoding of v to the stream.
@@ -107,7 +107,7 @@ func (enc *Encoder) Encode(v interface{}) error {
 		}
 	}
 
-	err := enc.e.marshal(v, enc.opts)
+	err := encode(enc.e, enc.em, reflect.ValueOf(v))
 	if err == nil {
 		_, err = enc.e.WriteTo(enc.w)
 	}
@@ -163,8 +163,8 @@ var cborIndefHeader = map[cborType][]byte{
 }
 
 func (enc *Encoder) startIndefinite(typ cborType) error {
-	if enc.opts.disableIndefiniteLength {
-		return errors.New("cbor: indefinite-length items are not allowed")
+	if enc.em.indefLength == IndefLengthForbidden {
+		return &IndefiniteLengthError{typ}
 	}
 	_, err := enc.w.Write(cborIndefHeader[typ])
 	if err == nil {

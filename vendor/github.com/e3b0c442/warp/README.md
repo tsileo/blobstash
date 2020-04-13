@@ -13,7 +13,9 @@ session storage.
 
 _Requires Go 1.13+_
 
-**This library is still pre-v1, and API stability is not guaranteed. The library will adhere to SemVer and Go backward campatibilty promises.**
+**This library is still pre-v1, and API stability is not guaranteed. The library will adhere to SemVer and Go backward compatibility promises.**
+
+*Update 2020-04-13* I am about ready to cut a 1.0 release, likely as soon as I finish the TPM attestation format. After running a couple of implementations, I'm fairly confident in the public API as it currently exists. I did look at achieving FIDO2 conformance, but this requires conforming to the FIDO2 Server spec which has some subtle and not-so-subtle changes/requirements on top of WebAuthn. I'll explore adding a FIDO2 compatibility layer in the future either as a part of this library or as a separate library.
 
 ## Contents
 - [Installation](#installation)
@@ -223,9 +225,9 @@ _warp_ was built with the following goals in mind:
 ## Specification coverage
 * Key algorithms:
   * Supported: ES256, ES384, ES512, EdDSA, RS1, RS256, RS384, RS512, PS256, PS384, PS512
-  * To be implemented: None plannned
+  * To be implemented: None planned
 * Attestation formats
-  * Supported: _packed, _fido-u2f_, _none_
+  * Supported: _packed_, _fido-u2f_, _none_
   * To be implemented: _tpm_, _android-key_, _android-safetynet_
 * Defined extensions
   * Supported: _appid_, _txAuthSimple_, _txAuthGeneric_
@@ -313,14 +315,14 @@ type CredentialFinder func([]byte) (Credential, error)
 ```go
 type RegistrationValidator func(opts *PublicKeyCredentialCreationOptions, cred *AttestationPublicKeyCredential) error
 ```
-`RegistrationValidator` defines a function which takes the credential creation options and returend attestation credential, and performs any additional validation desired. Pointers to the two structs are passed so they can be modified if needed. `RegistrationValidator`s are run before any other validations in `FinishRegistration`
+`RegistrationValidator` defines a function which takes the credential creation options and returned attestation credential, and performs any additional validation desired. Pointers to the two structs are passed so they can be modified if needed. `RegistrationValidator`s are run before any other validations in `FinishRegistration`
 
 #### `AuthenticationValidator`
 
 ```go
 type AuthenticationValidator func(opts *PublicKeyCredentialRequestOptions, cred *AssertionPublicKeyCredential) error
 ```
-`AuthenticationValidator` defines a function which takes the credential request options and returned assertion credential, and performs any additional validation desired. Pointers to the two structs are passed so they can be modified if needed. `AuthenticationValidator`s are run before any other validations in `FinishAuthentication`
+`AuthenticationValidator` defines a function which takes the credential request options and returned assertion credential, and performs any additional validation desired. Pointers to the two structs are passed so they can be modified if needed. `AuthenticationValidator`s are run before any other validations in `FinishAuthentication`.
 
 
 ### Registration:
@@ -381,7 +383,7 @@ func StartAuthentication(opts ...Option) (*PublicKeyCredentialRequestOptions, er
 `StartAuthentication` starts the authentication ceremony by generating a cryptographic challenge and sending it to the client along with options in the form of a [`PublicKeyCredentialRequestOptions`](https://www.w3.org/TR/webauthn-1/#assertion-options) object.
 
 ##### Parameters:
-* `opts`: zero or more `Option` functions to adjust the `PublicKeyCredentialRequestOptions` as needed. These do not need to be set, and likely shouldn't unless you know what you are doing. The follownig function generators are included:
+* `opts`: zero or more `Option` functions to adjust the `PublicKeyCredentialRequestOptions` as needed. These do not need to be set, and likely shouldn't unless you know what you are doing. The following function generators are included:
   * `Timeout(uint)`: Sets the client timeout
   * `RelyingPartyID(string)`: Adds the explicit relying party ID to the object
   * `AllowCredentials([]PublicKeyCredentialDescriptor)`: Restrict allowed credentials

@@ -19,7 +19,8 @@ a4.io/ssse/pkg/client
 bazil.org/fuse
 bazil.org/fuse/fs
 bazil.org/fuse/fuseutil
-# github.com/alecthomas/chroma v0.7.2-0.20200305040604-4f3623dce67a
+# github.com/alecthomas/chroma v0.7.2
+## explicit
 github.com/alecthomas/chroma
 github.com/alecthomas/chroma/formatters/html
 github.com/alecthomas/chroma/lexers
@@ -118,7 +119,7 @@ github.com/dlclark/regexp2/syntax
 # github.com/dustin/go-humanize v1.0.0
 ## explicit
 github.com/dustin/go-humanize
-# github.com/e3b0c442/warp v0.6.0
+# github.com/e3b0c442/warp v0.6.1
 ## explicit
 github.com/e3b0c442/warp
 # github.com/emirpasic/gods v1.12.0
@@ -133,7 +134,8 @@ github.com/emirpasic/gods/utils
 github.com/evanphx/json-patch
 # github.com/fxamacker/cbor v1.5.1
 ## explicit
-github.com/fxamacker/cbor
+# github.com/fxamacker/cbor/v2 v2.2.0
+github.com/fxamacker/cbor/v2
 # github.com/go-martini/martini v0.0.0-20170121215854-22fa46961aab
 github.com/go-martini/martini
 # github.com/go-stack/stack v1.8.0

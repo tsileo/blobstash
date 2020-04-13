@@ -2,7 +2,7 @@
 
 See [bench_test.go](bench_test.go).
 
-Benchmarks on Jan. 12, 2020 with cbor v1.5.0:
+Benchmarks on Feb. 22, 2020 with cbor v2.2.0:
 * [Go builtin types](#go-builtin-types)
 * [Go structs](#go-structs)
 * [Go structs with "keyasint" struct tag](#go-structs-with-keyasint-struct-tag)
@@ -26,34 +26,34 @@ Benchmarks use data representing the following values:
 
 Decoding Benchmark | Time | Memory | Allocs 
 --- | ---: | ---: | ---:
-BenchmarkUnmarshal/CBOR_bool_to_Go_interface_{}-2 | 117 ns/op | 16 B/op | 1 allocs/op
-BenchmarkUnmarshal/CBOR_bool_to_Go_bool-2 | 91.4 ns/op | 1 B/op | 1 allocs/op
-BenchmarkUnmarshal/CBOR_positive_int_to_Go_interface_{}-2 | 140 ns/op | 24 B/op | 2 allocs/op
-BenchmarkUnmarshal/CBOR_positive_int_to_Go_uint64-2 | 103 ns/op | 8 B/op | 1 allocs/op
-BenchmarkUnmarshal/CBOR_negative_int_to_Go_interface_{}-2 | 139 ns/op | 24 B/op | 2 allocs/op
-BenchmarkUnmarshal/CBOR_negative_int_to_Go_int64-2 | 102 ns/op | 8 B/op | 1 allocs/op
-BenchmarkUnmarshal/CBOR_float_to_Go_interface_{}-2 | 141 ns/op | 24 B/op | 2 allocs/op
-BenchmarkUnmarshal/CBOR_float_to_Go_float64-2 | 102 ns/op | 8 B/op | 1 allocs/op
-BenchmarkUnmarshal/CBOR_bytes_to_Go_interface_{}-2 | 186 ns/op | 80 B/op | 3 allocs/op
-BenchmarkUnmarshal/CBOR_bytes_to_Go_[]uint8-2 | 189 ns/op | 64 B/op | 2 allocs/op
-BenchmarkUnmarshal/CBOR_text_to_Go_interface_{}-2 | 220 ns/op | 80 B/op | 3 allocs/op
-BenchmarkUnmarshal/CBOR_text_to_Go_string-2 | 182 ns/op | 64 B/op | 2 allocs/op
-BenchmarkUnmarshal/CBOR_array_to_Go_interface_{}-2 |1190 ns/op | 672 B/op | 29 allocs/op
-BenchmarkUnmarshal/CBOR_array_to_Go_[]int-2 | 1177 ns/op | 272 B/op | 3 allocs/op
-BenchmarkUnmarshal/CBOR_map_to_Go_interface_{}-2 | 3021 ns/op | 1421 B/op | 30 allocs/op
-BenchmarkUnmarshal/CBOR_map_to_Go_map[string]interface_{}-2 | 3961 ns/op | 964 B/op | 19 allocs/op
-BenchmarkUnmarshal/CBOR_map_to_Go_map[string]string-2 | 2732 ns/op | 741 B/op | 5 allocs/op
+BenchmarkUnmarshal/CBOR_bool_to_Go_interface_{}-2 | 110 ns/op | 16 B/op | 1 allocs/op
+BenchmarkUnmarshal/CBOR_bool_to_Go_bool-2 | 99.3 ns/op | 1 B/op | 1 allocs/op
+BenchmarkUnmarshal/CBOR_positive_int_to_Go_interface_{}-2 | 135 ns/op | 24 B/op | 2 allocs/op
+BenchmarkUnmarshal/CBOR_positive_int_to_Go_uint64-2 | 116 ns/op | 8 B/op | 1 allocs/op
+BenchmarkUnmarshal/CBOR_negative_int_to_Go_interface_{}-2 | 133 ns/op | 24 B/op | 2 allocs/op
+BenchmarkUnmarshal/CBOR_negative_int_to_Go_int64-2 | 113 ns/op | 8 B/op | 1 allocs/op
+BenchmarkUnmarshal/CBOR_float_to_Go_interface_{}-2 | 137 ns/op | 24 B/op | 2 allocs/op
+BenchmarkUnmarshal/CBOR_float_to_Go_float64-2 | 115 ns/op | 8 B/op | 1 allocs/op
+BenchmarkUnmarshal/CBOR_bytes_to_Go_interface_{}-2 | 179 ns/op | 80 B/op | 3 allocs/op
+BenchmarkUnmarshal/CBOR_bytes_to_Go_[]uint8-2 | 194 ns/op | 64 B/op | 2 allocs/op
+BenchmarkUnmarshal/CBOR_text_to_Go_interface_{}-2 | 209 ns/op | 80 B/op | 3 allocs/op
+BenchmarkUnmarshal/CBOR_text_to_Go_string-2 | 193 ns/op | 64 B/op | 2 allocs/op
+BenchmarkUnmarshal/CBOR_array_to_Go_interface_{}-2 |1068 ns/op | 672 B/op | 29 allocs/op
+BenchmarkUnmarshal/CBOR_array_to_Go_[]int-2 | 1073 ns/op | 272 B/op | 3 allocs/op
+BenchmarkUnmarshal/CBOR_map_to_Go_interface_{}-2 | 2926 ns/op | 1420 B/op | 30 allocs/op
+BenchmarkUnmarshal/CBOR_map_to_Go_map[string]interface_{}-2 | 3755 ns/op | 965 B/op | 19 allocs/op
+BenchmarkUnmarshal/CBOR_map_to_Go_map[string]string-2 | 2586 ns/op | 740 B/op | 5 allocs/op
 
 Encoding Benchmark | Time | Memory | Allocs 
 --- | ---: | ---: | ---:
-BenchmarkMarshal/Go_bool_to_CBOR_bool-2 | 89.2 ns/op	| 1 B/op | 1 allocs/op
-BenchmarkMarshal/Go_uint64_to_CBOR_positive_int-2 | 99.2 ns/op | 16 B/op | 1 allocs/op
-BenchmarkMarshal/Go_int64_to_CBOR_negative_int-2 | 92.6 ns/op | 3 B/op | 1 allocs/op
-BenchmarkMarshal/Go_float64_to_CBOR_float-2 | 99.5 ns/op	| 16 B/op | 1 allocs/op
-BenchmarkMarshal/Go_[]uint8_to_CBOR_bytes-2 | 124 ns/op | 32 B/op	| 1 allocs/op
-BenchmarkMarshal/Go_string_to_CBOR_text-2 | 121 ns/op | 48 B/op | 1 allocs/op
-BenchmarkMarshal/Go_[]int_to_CBOR_array-2 | 490 ns/op | 32 B/op	| 1 allocs/op
-BenchmarkMarshal/Go_map[string]string_to_CBOR_map-2 | 2189 ns/op | 576 B/op | 28 allocs/op
+BenchmarkMarshal/Go_bool_to_CBOR_bool-2 | 86.1 ns/op	| 1 B/op | 1 allocs/op
+BenchmarkMarshal/Go_uint64_to_CBOR_positive_int-2 | 97.0 ns/op | 16 B/op | 1 allocs/op
+BenchmarkMarshal/Go_int64_to_CBOR_negative_int-2 | 90.3 ns/op | 3 B/op | 1 allocs/op
+BenchmarkMarshal/Go_float64_to_CBOR_float-2 | 97.9 ns/op	| 16 B/op | 1 allocs/op
+BenchmarkMarshal/Go_[]uint8_to_CBOR_bytes-2 | 121 ns/op | 32 B/op	| 1 allocs/op
+BenchmarkMarshal/Go_string_to_CBOR_text-2 | 115 ns/op | 48 B/op | 1 allocs/op
+BenchmarkMarshal/Go_[]int_to_CBOR_array-2 | 529 ns/op | 32 B/op	| 1 allocs/op
+BenchmarkMarshal/Go_map[string]string_to_CBOR_map-2 | 2115 ns/op | 576 B/op | 28 allocs/op
 
 ## Go structs
 
@@ -74,13 +74,13 @@ Benchmarks use struct and map[string]interface{} representing the following valu
 
 Decoding Benchmark | Time | Memory | Allocs 
 --- | ---: | ---: | ---:
-BenchmarkUnmarshal/CBOR_map_to_Go_map[string]interface{}-2 | 6693 ns/op | 2621 B/op | 73 allocs/op
-BenchmarkUnmarshal/CBOR_map_to_Go_struct-2 | 4694 ns/op | 1172 B/op | 10 allocs/op
+BenchmarkUnmarshal/CBOR_map_to_Go_map[string]interface{}-2 | 6221 ns/op | 2621 B/op | 73 allocs/op
+BenchmarkUnmarshal/CBOR_map_to_Go_struct-2 | 4458 ns/op | 1172 B/op | 10 allocs/op
 
 Encoding Benchmark | Time | Memory | Allocs 
 --- | ---: | ---: | ---:
-BenchmarkMarshal/Go_map[string]interface{}_to_CBOR_map-2 | 4638 ns/op | 1072 B/op | 45 allocs/op
-BenchmarkMarshal/Go_struct_to_CBOR_map-2 | 2994 ns/op | 720 B/op | 28 allocs/op
+BenchmarkMarshal/Go_map[string]interface{}_to_CBOR_map-2 | 4441 ns/op | 1072 B/op | 45 allocs/op
+BenchmarkMarshal/Go_struct_to_CBOR_map-2 | 2866 ns/op | 720 B/op | 28 allocs/op
 
 ## Go structs with "keyasint" struct tag
 
@@ -116,13 +116,13 @@ type T struct {
 
 Decoding Benchmark | Time | Memory | Allocs 
 --- | ---: | ---: | ---:
-BenchmarkUnmarshal/CBOR_map_to_Go_map[int]interface{}-2| 6525 ns/op | 2516 B/op | 70 allocs/op
-BenchmarkUnmarshal/CBOR_map_to_Go_struct_keyasint-2 | 4881 ns/op | 1236 B/op | 18 allocs/op
+BenchmarkUnmarshal/CBOR_map_to_Go_map[int]interface{}-2| 6030 ns/op | 2517 B/op | 70 allocs/op
+BenchmarkUnmarshal/CBOR_map_to_Go_struct_keyasint-2 | 4332 ns/op | 1173 B/op | 10 allocs/op
 
 Encoding Benchmark | Time | Memory | Allocs 
 --- | ---: | ---: | ---:
-BenchmarkMarshal/Go_map[int]interface{}_to_CBOR_map-2 | 4469 ns/op | 992 B/op | 45 allocs/op
-BenchmarkMarshal/Go_struct_keyasint_to_CBOR_map-2 | 3011 ns/op | 704 B/op | 28 allocs/op
+BenchmarkMarshal/Go_map[int]interface{}_to_CBOR_map-2 | 4348 ns/op | 992 B/op | 45 allocs/op
+BenchmarkMarshal/Go_struct_keyasint_to_CBOR_map-2 | 2847 ns/op | 704 B/op | 28 allocs/op
 
 ## Go structs with "toarray" struct tag
 
@@ -159,13 +159,13 @@ type T struct {
 
 Decoding Benchmark | Time | Memory | Allocs 
 --- | ---: | ---: | ---:
-BenchmarkUnmarshal/CBOR_array_to_Go_[]interface{}-2 | 5186 ns/op | 2404 B/op | 67 allocs/op
-BenchmarkUnmarshal/CBOR_array_to_Go_struct_toarray-2 | 4443 ns/op | 1165 B/op | 9 allocs/op
+BenchmarkUnmarshal/CBOR_array_to_Go_[]interface{}-2 | 4863 ns/op | 2404 B/op | 67 allocs/op
+BenchmarkUnmarshal/CBOR_array_to_Go_struct_toarray-2 | 4173 ns/op | 1164 B/op | 9 allocs/op
 
 Encoding Benchmark | Time | Memory | Allocs 
 --- | ---: | ---: | ---:
-BenchmarkMarshal/Go_[]interface{}_to_CBOR_map-2 | 3352 ns/op | 704 B/op | 28 allocs/op
-BenchmarkMarshal/Go_struct_toarray_to_CBOR_array-2 | 3024 ns/op | 704 B/op | 28 allocs/op
+BenchmarkMarshal/Go_[]interface{}_to_CBOR_map-2 | 3240 ns/op | 704 B/op | 28 allocs/op
+BenchmarkMarshal/Go_struct_toarray_to_CBOR_array-2 | 2823 ns/op | 704 B/op | 28 allocs/op
 
 ## COSE data
 
@@ -205,15 +205,15 @@ Benchmarks use COSE data from https://tools.ietf.org/html/rfc8392#appendix-A sec
 
 Decoding Benchmark | Time | Memory | Allocs 
 --- | ---: | ---: | ---:
-BenchmarkUnmarshalCOSE/128-Bit_Symmetric_Key-2 | 763 ns/op | 280 B/op | 9 allocs/op
-BenchmarkUnmarshalCOSE/256-Bit_Symmetric_Key-2 | 765 ns/op | 296 B/op | 9 allocs/op
-BenchmarkUnmarshalCOSE/ECDSA_P256_256-Bit_Key-2 | 1388 ns/op | 448 B/op | 18 allocs/op
+BenchmarkUnmarshalCOSE/128-Bit_Symmetric_Key-2 | 562 ns/op | 240 B/op | 4 allocs/op
+BenchmarkUnmarshalCOSE/256-Bit_Symmetric_Key-2 | 568 ns/op | 256 B/op | 4 allocs/op
+BenchmarkUnmarshalCOSE/ECDSA_P256_256-Bit_Key-2 | 968 ns/op | 360 B/op | 7 allocs/op
 
 Encoding Benchmark | Time | Memory | Allocs 
 --- | ---: | ---: | ---:
-BenchmarkMarshalCOSE/128-Bit_Symmetric_Key-2 | 537 ns/op | 224 B/op | 2 allocs/op
-BenchmarkMarshalCOSE/256-Bit_Symmetric_Key-2 | 538 ns/op | 240 B/op | 2 allocs/op
-BenchmarkMarshalCOSE/ECDSA_P256_256-Bit_Key-2 | 683 ns/op | 320 B/op | 2 allocs/op
+BenchmarkMarshalCOSE/128-Bit_Symmetric_Key-2 | 523 ns/op | 224 B/op | 2 allocs/op
+BenchmarkMarshalCOSE/256-Bit_Symmetric_Key-2 | 521 ns/op | 240 B/op | 2 allocs/op
+BenchmarkMarshalCOSE/ECDSA_P256_256-Bit_Key-2 | 668 ns/op | 320 B/op | 2 allocs/op
 
 ## CWT claims data
 
@@ -233,11 +233,11 @@ Benchmarks use CTW claims data from https://tools.ietf.org/html/rfc8392#appendix
 
 Decoding Benchmark | Time | Memory | Allocs 
 --- | ---: | ---: | ---:
-BenchmarkUnmarshalCWTClaims-2 | 1027 ns/op | 240 B/op | 13 allocs/op
+BenchmarkUnmarshalCWTClaims-2 | 765 ns/op | 176 B/op | 6 allocs/op
 
 Encoding Benchmark | Time | Memory | Allocs 
 --- | ---: | ---: | ---:
-BenchmarkMarshalCWTClaims-2 | 474 ns/op | 176 B/op | 2 allocs/op
+BenchmarkMarshalCWTClaims-2 | 451 ns/op | 176 B/op | 2 allocs/op
 
 ## SenML data
 
@@ -257,8 +257,8 @@ Benchmarks use SenML data from https://tools.ietf.org/html/rfc8428#section-6
 
 Decoding Benchmark | Time | Memory | Allocs 
 --- | ---: | ---: | ---:
-BenchmarkUnmarshalSenML-2 | 4361 ns/op | 1720 B/op | 40 allocs/op
+BenchmarkUnmarshalSenML-2 | 3106 ns/op | 1544 B/op | 18 allocs/op
 
 Encoding Benchmark | Time | Memory | Allocs 
 --- | ---: | ---: | ---:
-BenchmarkMarshalSenML-2 | 2975 ns/op | 272 B/op	| 2 allocs/op
+BenchmarkMarshalSenML-2 | 2976 ns/op | 272 B/op	| 2 allocs/op

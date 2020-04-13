@@ -7,7 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 
-	"github.com/fxamacker/cbor"
+	"github.com/fxamacker/cbor/v2"
 )
 
 var idFidoGenCeAaguid asn1.ObjectIdentifier = asn1.ObjectIdentifier([]int{1, 3, 6, 1, 4, 1, 45724, 1, 1, 4})
@@ -37,7 +37,8 @@ func (ao *AttestationObject) MarshalBinary() (data []byte, err error) {
 		AttStmt:  ao.AttStmt,
 	}
 
-	return cbor.Marshal(&intermediate, cbor.CTAP2EncOptions())
+	em, _ := cbor.CTAP2EncOptions().EncMode()
+	return em.Marshal(&intermediate)
 }
 
 //UnmarshalBinary implements the BinaryUnmarshaler interface, and populates an

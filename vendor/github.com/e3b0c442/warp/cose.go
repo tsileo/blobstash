@@ -11,7 +11,7 @@ import (
 	"encoding/binary"
 	"math/big"
 
-	"github.com/fxamacker/cbor"
+	"github.com/fxamacker/cbor/v2"
 )
 
 //COSEKey represents a key decoded from COSE format.
