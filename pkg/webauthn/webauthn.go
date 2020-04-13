@@ -91,7 +91,7 @@ func (c *credential) CredentialPublicKey() []byte {
 }
 
 func (c *credential) CredentialSignCount() uint {
-	return 0
+	return uint(c.Att.AuthData.SignCount)
 }
 
 type sessionData struct {
@@ -121,7 +121,6 @@ func (u *user) load(rpid string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("ALLCREDS=%+v\n", allCreds)
 	for _, cred := range allCreds {
 		if cred.RPID == rpid {
 			id := base64.RawURLEncoding.EncodeToString(cred.Att.AuthData.AttestedCredentialData.CredentialID)
@@ -132,24 +131,21 @@ func (u *user) load(rpid string) error {
 }
 
 // save or update a Webauthn credential in the JSON DB file
-func (u *user) save(rpid string, rcred *credential) error {
+func (u *user) save(rpid string, rcred *credential, cid []byte, authData *warp.AuthenticatorData) error {
 	allCreds, err := loadAll(u.conf)
 	if err != nil {
 		return err
 	}
 	newCreds := []*credential{}
-	var replaced bool
 	for _, acred := range allCreds {
-		if acred.RPID == rpid && bytes.Equal(acred.Att.AuthData.AttestedCredentialData.CredentialID, rcred.Att.AuthData.AttestedCredentialData.CredentialID) {
-			newCreds = append(newCreds, rcred)
-			replaced = true
-			continue
+		if acred.RPID == rpid && authData != nil && bytes.Equal(acred.Att.AuthData.AttestedCredentialData.CredentialID, cid) {
+			acred.Att.AuthData.SignCount = authData.SignCount
 		}
 
 		newCreds = append(newCreds, acred)
 	}
 
-	if !replaced {
+	if rcred != nil {
 		newCreds = append(newCreds, rcred)
 	}
 
@@ -233,13 +229,10 @@ func (wa *WebAuthn) FinishRegistration(rw http.ResponseWriter, r *http.Request, 
 		return err
 	}
 
-	fmt.Printf("will GOT SESSION\n\n")
 	sessionData, err := wa.getSession(r, "registration")
 	if err != nil {
 		panic(fmt.Errorf("failed to get session: %w", err))
 	}
-
-	fmt.Printf("GOT SESSION\n\n")
 
 	cred := warp.AttestationPublicKeyCredential{}
 	if err := json.Unmarshal([]byte(js), &cred); err != nil {
@@ -248,7 +241,6 @@ func (wa *WebAuthn) FinishRegistration(rw http.ResponseWriter, r *http.Request, 
 
 	att, err := warp.FinishRegistration(relyingParty, wa.CredentialFinder, sessionData.CreationOptions, &cred)
 	if err != nil {
-		fmt.Printf("finish reg failed: %v\n\n", err)
 		for err != nil {
 			fmt.Printf("%v", err)
 			err = errors.Unwrap(err)
@@ -264,7 +256,7 @@ func (wa *WebAuthn) FinishRegistration(rw http.ResponseWriter, r *http.Request, 
 		owner: wa.user,
 	}
 
-	if err := wa.user.save(relyingParty.EntityID(), newCred); err != nil {
+	if err := wa.user.save(relyingParty.EntityID(), newCred, nil, nil); err != nil {
 		panic(err)
 	}
 
@@ -361,7 +353,7 @@ func (wa *WebAuthn) FinishLogin(rw http.ResponseWriter, r *http.Request, origin,
 		return err
 	}
 
-	_, err = warp.FinishAuthentication(
+	newAuthData, err := warp.FinishAuthentication(
 		relyingParty,
 		func(_ []byte) (warp.User, error) {
 			return wa.user, nil
@@ -372,6 +364,10 @@ func (wa *WebAuthn) FinishLogin(rw http.ResponseWriter, r *http.Request, origin,
 
 	if err != nil {
 		return err
+	}
+
+	if err := wa.user.save(relyingParty.EntityID(), nil, cred.RawID, newAuthData); err != nil {
+		panic(err)
 	}
 
 	return nil
