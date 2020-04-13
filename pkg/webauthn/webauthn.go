@@ -44,53 +44,53 @@ func (r rp) Origin() string {
 	return r.origin
 }
 
-type user2 struct {
+type user struct {
 	conf        *config.Config
 	name        string
 	id          []byte
 	credentials map[string]warp.Credential
 }
 
-func (u *user2) EntityID() []byte {
+func (u *user) EntityID() []byte {
 	return u.id
 }
 
-func (u *user2) EntityName() string {
+func (u *user) EntityName() string {
 	return u.name
 }
 
-func (u *user2) EntityDisplayName() string {
+func (u *user) EntityDisplayName() string {
 	return u.name
 }
 
-func (u *user2) EntityIcon() string {
+func (u *user) EntityIcon() string {
 	return ""
 }
 
-func (u *user2) Credentials() map[string]warp.Credential {
+func (u *user) Credentials() map[string]warp.Credential {
 	return u.credentials
 }
 
-type credential2 struct {
+type credential struct {
 	owner warp.User
 	Att   *warp.AttestationObject
 	RPID  string
 }
 
-func (c *credential2) Owner() warp.User {
+func (c *credential) Owner() warp.User {
 	return c.owner
 }
 
-func (c *credential2) CredentialID() []byte {
+func (c *credential) CredentialID() []byte {
 	return c.Att.AuthData.AttestedCredentialData.CredentialID
 }
 
-func (c *credential2) CredentialPublicKey() []byte {
+func (c *credential) CredentialPublicKey() []byte {
 
 	return c.Att.AuthData.AttestedCredentialData.CredentialPublicKey
 }
 
-func (c *credential2) CredentialSignCount() uint {
+func (c *credential) CredentialSignCount() uint {
 	return 0
 }
 
@@ -99,8 +99,8 @@ type sessionData struct {
 	RequestOptions  *warp.PublicKeyCredentialRequestOptions
 }
 
-func loadAll(conf *config.Config) ([]*credential2, error) {
-	allCreds := []*credential2{}
+func loadAll(conf *config.Config) ([]*credential, error) {
+	allCreds := []*credential{}
 	dat, err := ioutil.ReadFile(filepath.Join(conf.VarDir(), "webauthn.json"))
 	switch {
 	case err == nil:
@@ -115,7 +115,7 @@ func loadAll(conf *config.Config) ([]*credential2, error) {
 	}
 }
 
-func (u *user2) load(rpid string) error {
+func (u *user) load(rpid string) error {
 	u.credentials = map[string]warp.Credential{}
 	allCreds, err := loadAll(u.conf)
 	if err != nil {
@@ -132,12 +132,12 @@ func (u *user2) load(rpid string) error {
 }
 
 // save or update a Webauthn credential in the JSON DB file
-func (u *user2) save(rpid string, rcred *credential2) error {
+func (u *user) save(rpid string, rcred *credential) error {
 	allCreds, err := loadAll(u.conf)
 	if err != nil {
 		return err
 	}
-	newCreds := []*credential2{}
+	newCreds := []*credential{}
 	var replaced bool
 	for _, acred := range allCreds {
 		if acred.RPID == rpid && bytes.Equal(acred.Att.AuthData.AttestedCredentialData.CredentialID, rcred.Att.AuthData.AttestedCredentialData.CredentialID) {
@@ -164,16 +164,16 @@ func (u *user2) save(rpid string, rcred *credential2) error {
 }
 
 type WebAuthn struct {
-	conf  *config.Config
-	sess  *session.Session
-	user2 *user2
+	conf *config.Config
+	sess *session.Session
+	user *user
 }
 
 func New(conf *config.Config, s *session.Session) (*WebAuthn, error) {
 	return &WebAuthn{
 		sess: s,
 		conf: conf,
-		user2: &user2{
+		user: &user{
 			conf:        conf,
 			id:          id,
 			name:        name,
@@ -184,22 +184,22 @@ func New(conf *config.Config, s *session.Session) (*WebAuthn, error) {
 
 func (wa *WebAuthn) findCredential(id []byte) (warp.Credential, error) {
 	strID := base64.RawStdEncoding.EncodeToString(id)
-	if c, ok := wa.user2.credentials[strID]; ok {
+	if c, ok := wa.user.credentials[strID]; ok {
 		return c, nil
 	}
 	return nil, fmt.Errorf("no credential")
 }
 
-func (wa *WebAuthn) BeginRegistration2(rw http.ResponseWriter, r *http.Request, origin string) (string, error) {
+func (wa *WebAuthn) BeginRegistration(rw http.ResponseWriter, r *http.Request, origin string) (string, error) {
 	relyingParty := &rp{
 		origin: origin,
 	}
 
-	if err := wa.user2.load(relyingParty.EntityID()); err != nil {
+	if err := wa.user.load(relyingParty.EntityID()); err != nil {
 		return "", err
 	}
 
-	opts, err := warp.StartRegistration(relyingParty, wa.user2, warp.Attestation(warp.ConveyanceDirect))
+	opts, err := warp.StartRegistration(relyingParty, wa.user, warp.Attestation(warp.ConveyanceDirect))
 	if err != nil {
 		return "", err
 	}
@@ -208,7 +208,7 @@ func (wa *WebAuthn) BeginRegistration2(rw http.ResponseWriter, r *http.Request, 
 		CreationOptions: opts,
 	}
 
-	if err := wa.saveSession2(rw, r, "registration", sessionData); err != nil {
+	if err := wa.saveSession(rw, r, "registration", sessionData); err != nil {
 		return "", err
 	}
 
@@ -224,17 +224,17 @@ func (wa *WebAuthn) CredentialFinder(id []byte) (warp.Credential, error) {
 	return nil, fmt.Errorf("no creds")
 }
 
-func (wa *WebAuthn) FinishRegistration2(rw http.ResponseWriter, r *http.Request, origin, js string) error {
+func (wa *WebAuthn) FinishRegistration(rw http.ResponseWriter, r *http.Request, origin, js string) error {
 	relyingParty := &rp{
 		origin: origin,
 	}
 
-	if err := wa.user2.load(relyingParty.EntityID()); err != nil {
+	if err := wa.user.load(relyingParty.EntityID()); err != nil {
 		return err
 	}
 
 	fmt.Printf("will GOT SESSION\n\n")
-	sessionData, err := wa.getSession2(r, "registration")
+	sessionData, err := wa.getSession(r, "registration")
 	if err != nil {
 		panic(fmt.Errorf("failed to get session: %w", err))
 	}
@@ -258,22 +258,22 @@ func (wa *WebAuthn) FinishRegistration2(rw http.ResponseWriter, r *http.Request,
 
 	fmt.Printf("att=%+v\n\n", att)
 
-	newCred := &credential2{
+	newCred := &credential{
 		RPID:  relyingParty.EntityID(),
 		Att:   att,
-		owner: wa.user2,
+		owner: wa.user,
 	}
 
-	if err := wa.user2.save(relyingParty.EntityID(), newCred); err != nil {
+	if err := wa.user.save(relyingParty.EntityID(), newCred); err != nil {
 		panic(err)
 	}
 
 	return nil
 }
 
-func (wa *WebAuthn) saveSession2(rw http.ResponseWriter, r *http.Request, name string, sessionData *sessionData) error {
+func (wa *WebAuthn) saveSession(rw http.ResponseWriter, r *http.Request, name string, sessionData *sessionData) error {
 	fmt.Printf("WA: %+v\n", wa)
-	store, err := wa.sess.Session().Get(r, "webauthn2")
+	store, err := wa.sess.Session().Get(r, "webauthn")
 	if err != nil {
 		return err
 	}
@@ -290,8 +290,8 @@ func (wa *WebAuthn) saveSession2(rw http.ResponseWriter, r *http.Request, name s
 	return nil
 }
 
-func (wa *WebAuthn) getSession2(r *http.Request, name string) (*sessionData, error) {
-	store, err := wa.sess.Session().Get(r, "webauthn2")
+func (wa *WebAuthn) getSession(r *http.Request, name string) (*sessionData, error) {
+	store, err := wa.sess.Session().Get(r, "webauthn")
 	if err != nil {
 		return nil, err
 	}
@@ -305,12 +305,12 @@ func (wa *WebAuthn) getSession2(r *http.Request, name string) (*sessionData, err
 	return sessionData, nil
 }
 
-func (wa *WebAuthn) BeginLogin2(rw http.ResponseWriter, r *http.Request, origin string) (string, error) {
+func (wa *WebAuthn) BeginLogin(rw http.ResponseWriter, r *http.Request, origin string) (string, error) {
 	relyingParty := &rp{
 		origin: origin,
 	}
 
-	if err := wa.user2.load(relyingParty.EntityID()); err != nil {
+	if err := wa.user.load(relyingParty.EntityID()); err != nil {
 		return "", err
 	}
 
@@ -324,14 +324,14 @@ func (wa *WebAuthn) BeginLogin2(rw http.ResponseWriter, r *http.Request, origin 
 				})
 			}
 			return ds
-		}(wa.user2)),
+		}(wa.user)),
 		warp.RelyingPartyID(relyingParty.EntityID()),
 	)
 	sessionData := &sessionData{
 		RequestOptions: opts,
 	}
 
-	if err := wa.saveSession2(rw, r, "login3", sessionData); err != nil {
+	if err := wa.saveSession(rw, r, "login", sessionData); err != nil {
 		return "", err
 	}
 
@@ -342,16 +342,16 @@ func (wa *WebAuthn) BeginLogin2(rw http.ResponseWriter, r *http.Request, origin 
 	return string(js), nil
 }
 
-func (wa *WebAuthn) FinishLogin2(rw http.ResponseWriter, r *http.Request, origin, js string) error {
+func (wa *WebAuthn) FinishLogin(rw http.ResponseWriter, r *http.Request, origin, js string) error {
 	relyingParty := &rp{
 		origin: origin,
 	}
 
-	if err := wa.user2.load(relyingParty.EntityID()); err != nil {
+	if err := wa.user.load(relyingParty.EntityID()); err != nil {
 		return err
 	}
 
-	sessionData, err := wa.getSession2(r, "login3")
+	sessionData, err := wa.getSession(r, "login")
 	if err != nil {
 		panic(err)
 	}
@@ -364,7 +364,7 @@ func (wa *WebAuthn) FinishLogin2(rw http.ResponseWriter, r *http.Request, origin
 	_, err = warp.FinishAuthentication(
 		relyingParty,
 		func(_ []byte) (warp.User, error) {
-			return wa.user2, nil
+			return wa.user, nil
 		},
 		sessionData.RequestOptions,
 		&cred,
@@ -392,12 +392,12 @@ func (wa *WebAuthn) SetupLua(L *lua.LState, baseURL string, w http.ResponseWrite
 					origin: baseURL,
 				}
 
-				if err := wa.user2.load(relyingParty.EntityID()); err != nil {
+				if err := wa.user.load(relyingParty.EntityID()); err != nil {
 					panic(err)
 				}
 				tbl := L.NewTable()
 
-				for id, _ := range wa.user2.credentials {
+				for id, _ := range wa.user.credentials {
 					tbl.Append(lua.LString(id))
 				}
 
@@ -405,7 +405,7 @@ func (wa *WebAuthn) SetupLua(L *lua.LState, baseURL string, w http.ResponseWrite
 				return 1
 			},
 			"begin_registration": func(L *lua.LState) int {
-				js, err := wa.BeginRegistration2(w, r, baseURL)
+				js, err := wa.BeginRegistration(w, r, baseURL)
 				if err != nil {
 					panic(err)
 				}
@@ -413,14 +413,14 @@ func (wa *WebAuthn) SetupLua(L *lua.LState, baseURL string, w http.ResponseWrite
 				return 1
 			},
 			"finish_registration": func(L *lua.LState) int {
-				if err := wa.FinishRegistration2(w, r, baseURL, L.ToString(1)); err != nil {
+				if err := wa.FinishRegistration(w, r, baseURL, L.ToString(1)); err != nil {
 					panic(err)
 				}
 				L.Push(lua.LNil)
 				return 1
 			},
 			"begin_login": func(L *lua.LState) int {
-				js, err := wa.BeginLogin2(w, r, baseURL)
+				js, err := wa.BeginLogin(w, r, baseURL)
 				if err != nil {
 					panic(err)
 				}
@@ -429,7 +429,7 @@ func (wa *WebAuthn) SetupLua(L *lua.LState, baseURL string, w http.ResponseWrite
 			},
 			"finish_login": func(L *lua.LState) int {
 				js := L.ToString(1)
-				if err := wa.FinishLogin2(w, r, baseURL, js); err != nil {
+				if err := wa.FinishLogin(w, r, baseURL, js); err != nil {
 					panic(err)
 				}
 				L.Push(lua.LNil)
