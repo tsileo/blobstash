@@ -105,13 +105,6 @@ github.com/carbocation/handlers
 ## explicit
 github.com/carbocation/interpose/adaptors
 github.com/carbocation/interpose/middleware
-# github.com/cloudflare/cfssl v0.0.0-20190726000631-633726f6bcb7
-github.com/cloudflare/cfssl/crypto/pkcs7
-github.com/cloudflare/cfssl/errors
-github.com/cloudflare/cfssl/helpers
-github.com/cloudflare/cfssl/helpers/derhelpers
-github.com/cloudflare/cfssl/log
-github.com/cloudflare/cfssl/revoke
 # github.com/codegangsta/inject v0.0.0-20150114235600-33e0aa1cb7c0
 github.com/codegangsta/inject
 # github.com/danwakefield/fnmatch v0.0.0-20160403171240-cbb64ac3d964
@@ -119,21 +112,15 @@ github.com/danwakefield/fnmatch
 # github.com/dave/jennifer v1.4.0
 ## explicit
 github.com/dave/jennifer/jen
-# github.com/dgrijalva/jwt-go v3.2.0+incompatible
-github.com/dgrijalva/jwt-go
 # github.com/dlclark/regexp2 v1.2.0
 github.com/dlclark/regexp2
 github.com/dlclark/regexp2/syntax
-# github.com/duo-labs/webauthn v0.0.0-20200131223046-0864f70a0509
-## explicit
-github.com/duo-labs/webauthn/metadata
-github.com/duo-labs/webauthn/protocol
-github.com/duo-labs/webauthn/protocol/googletpm
-github.com/duo-labs/webauthn/protocol/webauthncose
-github.com/duo-labs/webauthn/webauthn
 # github.com/dustin/go-humanize v1.0.0
 ## explicit
 github.com/dustin/go-humanize
+# github.com/e3b0c442/warp v0.6.0
+## explicit
+github.com/e3b0c442/warp
 # github.com/emirpasic/gods v1.12.0
 github.com/emirpasic/gods/containers
 github.com/emirpasic/gods/lists
@@ -144,6 +131,9 @@ github.com/emirpasic/gods/utils
 # github.com/evanphx/json-patch v4.5.0+incompatible
 ## explicit
 github.com/evanphx/json-patch
+# github.com/fxamacker/cbor v1.5.1
+## explicit
+github.com/fxamacker/cbor
 # github.com/go-martini/martini v0.0.0-20170121215854-22fa46961aab
 github.com/go-martini/martini
 # github.com/go-stack/stack v1.8.0
@@ -156,12 +146,6 @@ github.com/golang/protobuf/proto
 github.com/golang/snappy
 # github.com/goods/httpbuf v0.0.0-20120503183857-5709e9bb814c
 github.com/goods/httpbuf
-# github.com/google/certificate-transparency-go v1.0.21
-github.com/google/certificate-transparency-go
-github.com/google/certificate-transparency-go/asn1
-github.com/google/certificate-transparency-go/tls
-github.com/google/certificate-transparency-go/x509
-github.com/google/certificate-transparency-go/x509/pkix
 # github.com/gorilla/context v1.1.1
 ## explicit
 github.com/gorilla/context
@@ -209,8 +193,6 @@ github.com/mitchellh/go-homedir
 # github.com/mitchellh/go-ps v1.0.0
 ## explicit
 github.com/mitchellh/go-ps
-# github.com/mitchellh/mapstructure v1.1.2
-github.com/mitchellh/mapstructure
 # github.com/mvdan/xurls v1.1.0
 ## explicit
 # github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
@@ -237,11 +219,10 @@ github.com/rwcarlsen/goexif/exif
 github.com/rwcarlsen/goexif/tiff
 # github.com/ryanuber/go-glob v1.0.0
 github.com/ryanuber/go-glob
-# github.com/satori/go.uuid v1.2.0
-github.com/satori/go.uuid
 # github.com/sergi/go-diff v1.1.0
 github.com/sergi/go-diff/diffmatchpatch
-# github.com/sirupsen/logrus v1.4.2
+# github.com/sirupsen/logrus v1.5.0
+## explicit
 github.com/sirupsen/logrus
 # github.com/src-d/gcfg v1.4.0
 github.com/src-d/gcfg
@@ -266,8 +247,6 @@ github.com/syndtr/goleveldb/leveldb/table
 github.com/syndtr/goleveldb/leveldb/util
 # github.com/toqueteos/trie v1.0.0
 github.com/toqueteos/trie
-# github.com/ugorji/go/codec v1.1.7
-github.com/ugorji/go/codec
 # github.com/unrolled/secure v1.0.7
 ## explicit
 github.com/unrolled/secure
@@ -277,12 +256,14 @@ github.com/urfave/negroni
 ## explicit
 github.com/vmihailenco/msgpack
 github.com/vmihailenco/msgpack/codes
+# github.com/x448/float16 v0.8.4
+github.com/x448/float16
 # github.com/xanzy/ssh-agent v0.2.1
 github.com/xanzy/ssh-agent
 # github.com/xeonx/timeago v1.0.0-rc4
 ## explicit
 github.com/xeonx/timeago
-# github.com/yuin/goldmark v1.1.25
+# github.com/yuin/goldmark v1.1.28
 ## explicit
 github.com/yuin/goldmark
 github.com/yuin/goldmark/ast
@@ -312,14 +293,11 @@ golang.org/x/crypto/blake2b
 golang.org/x/crypto/blowfish
 golang.org/x/crypto/cast5
 golang.org/x/crypto/chacha20
-golang.org/x/crypto/cryptobyte
-golang.org/x/crypto/cryptobyte/asn1
 golang.org/x/crypto/curve25519
 golang.org/x/crypto/ed25519
 golang.org/x/crypto/ed25519/internal/edwards25519
 golang.org/x/crypto/internal/subtle
 golang.org/x/crypto/nacl/secretbox
-golang.org/x/crypto/ocsp
 golang.org/x/crypto/openpgp
 golang.org/x/crypto/openpgp/armor
 golang.org/x/crypto/openpgp/elgamal
@@ -327,8 +305,6 @@ golang.org/x/crypto/openpgp/errors
 golang.org/x/crypto/openpgp/packet
 golang.org/x/crypto/openpgp/s2k
 golang.org/x/crypto/pbkdf2
-golang.org/x/crypto/pkcs12
-golang.org/x/crypto/pkcs12/internal/rc2
 golang.org/x/crypto/poly1305
 golang.org/x/crypto/salsa20/salsa
 golang.org/x/crypto/scrypt

@@ -11,9 +11,10 @@ require (
 	github.com/blevesearch/segment v0.9.0
 	github.com/carbocation/interpose v0.0.0-20161206215253-723534742ba3
 	github.com/dave/jennifer v1.4.0
-	github.com/duo-labs/webauthn v0.0.0-20200131223046-0864f70a0509
 	github.com/dustin/go-humanize v1.0.0
+	github.com/e3b0c442/warp v0.6.0
 	github.com/evanphx/json-patch v4.5.0+incompatible
+	github.com/fxamacker/cbor v1.5.1 // indirect
 	github.com/golang/protobuf v1.3.5 // indirect
 	github.com/golang/snappy v0.0.1
 	github.com/gorilla/context v1.1.1
@@ -29,11 +30,12 @@ require (
 	github.com/restic/chunker v0.3.0
 	github.com/robfig/cron v1.2.0
 	github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd
+	github.com/sirupsen/logrus v1.5.0 // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20190923125748-758128399b1d
 	github.com/unrolled/secure v1.0.7
 	github.com/vmihailenco/msgpack v4.0.4+incompatible
 	github.com/xeonx/timeago v1.0.0-rc4
-	github.com/yuin/goldmark v1.1.25
+	github.com/yuin/goldmark v1.1.28
 	github.com/yuin/gopher-lua v0.0.0-20191220021717-ab39c6098bdb
 	github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
 	golang.org/x/crypto v0.0.0-20200406173513-056763e48d71

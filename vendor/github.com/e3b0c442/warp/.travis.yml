@@ -1,0 +1,18 @@
+language: go
+
+go:
+  - 1.13.x
+  - 1.14beta1
+
+before_install:
+  - go get -t -v ./...
+  - go get -u golang.org/x/lint/golint
+  - go get -u honnef.co/go/tools/cmd/staticcheck
+
+script:
+  - golint -set_exit_status ./...
+  - staticcheck ./...
+  - go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+
+after_success:
+  - bash <(curl -s https://codecov.io/bash)
