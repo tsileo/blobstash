@@ -14,11 +14,8 @@ a4.io/go/indieauth
 # a4.io/ssse v0.0.0-20181202155639-1949828a8689
 ## explicit
 a4.io/ssse/pkg/client
-# bazil.org/fuse v0.0.0-20200117225306-7b5117fecadc
+# bazil.org/fuse v0.0.0-20200415052832-70bd89b671a2
 ## explicit
-bazil.org/fuse
-bazil.org/fuse/fs
-bazil.org/fuse/fuseutil
 # github.com/alecthomas/chroma v0.7.2
 ## explicit
 github.com/alecthomas/chroma
@@ -140,7 +137,7 @@ github.com/fxamacker/cbor/v2
 github.com/go-martini/martini
 # github.com/go-stack/stack v1.8.0
 github.com/go-stack/stack
-# github.com/golang/protobuf v1.3.5
+# github.com/golang/protobuf v1.4.0
 ## explicit
 github.com/golang/protobuf/proto
 # github.com/golang/snappy v0.0.1
@@ -194,7 +191,6 @@ github.com/meatballhat/negroni-logrus
 github.com/mitchellh/go-homedir
 # github.com/mitchellh/go-ps v1.0.0
 ## explicit
-github.com/mitchellh/go-ps
 # github.com/mvdan/xurls v1.1.0
 ## explicit
 # github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
@@ -265,7 +261,7 @@ github.com/xanzy/ssh-agent
 # github.com/xeonx/timeago v1.0.0-rc4
 ## explicit
 github.com/xeonx/timeago
-# github.com/yuin/goldmark v1.1.28
+# github.com/yuin/goldmark v1.1.29
 ## explicit
 github.com/yuin/goldmark
 github.com/yuin/goldmark/ast
@@ -287,7 +283,7 @@ github.com/yuin/gopher-lua/pm
 # github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
 ## explicit
 github.com/zpatrick/rbac
-# golang.org/x/crypto v0.0.0-20200406173513-056763e48d71
+# golang.org/x/crypto v0.0.0-20200414173820-0848c9571904
 ## explicit
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
@@ -322,7 +318,7 @@ golang.org/x/net/html/atom
 golang.org/x/net/idna
 golang.org/x/net/internal/socks
 golang.org/x/net/proxy
-# golang.org/x/sys v0.0.0-20200409092240-59c9f1ba88fa
+# golang.org/x/sys v0.0.0-20200413165638-669c56c373c4
 ## explicit
 golang.org/x/sys/cpu
 golang.org/x/sys/unix
@@ -344,6 +340,34 @@ google.golang.org/appengine/internal/datastore
 google.golang.org/appengine/internal/log
 google.golang.org/appengine/internal/modules
 google.golang.org/appengine/internal/remote_api
+# google.golang.org/protobuf v1.21.0
+google.golang.org/protobuf/encoding/prototext
+google.golang.org/protobuf/encoding/protowire
+google.golang.org/protobuf/internal/descfmt
+google.golang.org/protobuf/internal/descopts
+google.golang.org/protobuf/internal/detrand
+google.golang.org/protobuf/internal/encoding/defval
+google.golang.org/protobuf/internal/encoding/messageset
+google.golang.org/protobuf/internal/encoding/tag
+google.golang.org/protobuf/internal/encoding/text
+google.golang.org/protobuf/internal/errors
+google.golang.org/protobuf/internal/fieldnum
+google.golang.org/protobuf/internal/fieldsort
+google.golang.org/protobuf/internal/filedesc
+google.golang.org/protobuf/internal/filetype
+google.golang.org/protobuf/internal/flags
+google.golang.org/protobuf/internal/genname
+google.golang.org/protobuf/internal/impl
+google.golang.org/protobuf/internal/mapsort
+google.golang.org/protobuf/internal/pragma
+google.golang.org/protobuf/internal/set
+google.golang.org/protobuf/internal/strs
+google.golang.org/protobuf/internal/version
+google.golang.org/protobuf/proto
+google.golang.org/protobuf/reflect/protoreflect
+google.golang.org/protobuf/reflect/protoregistry
+google.golang.org/protobuf/runtime/protoiface
+google.golang.org/protobuf/runtime/protoimpl
 # gopkg.in/inconshreveable/log15.v2 v2.0.0-20200109203555-b30bc20e4fd1
 ## explicit
 gopkg.in/inconshreveable/log15.v2
