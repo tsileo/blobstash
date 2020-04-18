@@ -8,7 +8,7 @@ require (
 	a4.io/ssse v0.0.0-20181202155639-1949828a8689
 	bazil.org/fuse v0.0.0-20200415052832-70bd89b671a2 // indirect
 	github.com/alecthomas/chroma v0.7.2 // indirect
-	github.com/aws/aws-sdk-go v1.30.7
+	github.com/aws/aws-sdk-go v1.30.9
 	github.com/blevesearch/segment v0.9.0
 	github.com/carbocation/interpose v0.0.0-20161206215253-723534742ba3
 	github.com/dave/jennifer v1.4.0
@@ -36,7 +36,7 @@ require (
 	github.com/unrolled/secure v1.0.7
 	github.com/vmihailenco/msgpack v4.0.4+incompatible
 	github.com/xeonx/timeago v1.0.0-rc4
-	github.com/yuin/goldmark v1.1.29
+	github.com/yuin/goldmark v1.1.30
 	github.com/yuin/gopher-lua v0.0.0-20191220021717-ab39c6098bdb
 	github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
 	golang.org/x/crypto v0.0.0-20200414173820-0848c9571904

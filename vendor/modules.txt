@@ -48,7 +48,7 @@ github.com/alecthomas/chroma/lexers/w
 github.com/alecthomas/chroma/lexers/x
 github.com/alecthomas/chroma/lexers/y
 github.com/alecthomas/chroma/styles
-# github.com/aws/aws-sdk-go v1.30.7
+# github.com/aws/aws-sdk-go v1.30.9
 ## explicit
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/arn
@@ -261,7 +261,7 @@ github.com/xanzy/ssh-agent
 # github.com/xeonx/timeago v1.0.0-rc4
 ## explicit
 github.com/xeonx/timeago
-# github.com/yuin/goldmark v1.1.29
+# github.com/yuin/goldmark v1.1.30
 ## explicit
 github.com/yuin/goldmark
 github.com/yuin/goldmark/ast
