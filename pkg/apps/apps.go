@@ -16,7 +16,7 @@ import (
 	humanize "github.com/dustin/go-humanize"
 	"github.com/gorilla/mux"
 	log "github.com/inconshreveable/log15"
-	"github.com/yuin/gopher-lua"
+	lua "github.com/yuin/gopher-lua"
 	git "gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/plumbing"
 	"gopkg.in/src-d/go-git.v4/plumbing/object"
@@ -30,8 +30,6 @@ import (
 	"a4.io/blobstash/pkg/extra"
 	"a4.io/blobstash/pkg/filetree"
 	filetreeLua "a4.io/blobstash/pkg/filetree/lua"
-	"a4.io/blobstash/pkg/gitserver"
-	gitserverLua "a4.io/blobstash/pkg/gitserver/lua"
 	"a4.io/blobstash/pkg/httputil"
 	"a4.io/blobstash/pkg/hub"
 	kvLua "a4.io/blobstash/pkg/kvstore/lua"
@@ -40,7 +38,7 @@ import (
 	"a4.io/blobstash/pkg/webauthn"
 	"a4.io/gluapp"
 	"a4.io/go/indieauth"
-	"github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/robfig/cron"
 )
 
@@ -51,7 +49,6 @@ type Apps struct {
 	apps            map[string]*App
 	config          *config.Config
 	sess            *session.Session
-	gs              *gitserver.GitServer
 	ft              *filetree.FileTree
 	bs              *blobstore.BlobStore
 	docstore        *docstore.DocStore
@@ -296,7 +293,6 @@ func (apps *Apps) newApp(appConf *config.AppConfig, conf *config.Config) (*App, 
 				filetreeLua.Setup(L, apps.ft, apps.bs, apps.kvs)
 				docstoreLua.Setup(L, apps.docstore)
 				kvLua.Setup(L, apps.kvs, context.TODO())
-				gitserverLua.Setup(L, apps.gs)
 				// setup "apps"
 				setup(L, apps)
 				extra.Setup(L)
@@ -393,7 +389,7 @@ func (app *App) serve(ctx context.Context, p string, w http.ResponseWriter, req 
 }
 
 // New initializes the Apps manager
-func New(logger log.Logger, conf *config.Config, sess *session.Session, wa *webauthn.WebAuthn, bs *blobstore.BlobStore, kvs store.KvStore, ft *filetree.FileTree, ds *docstore.DocStore, gs *gitserver.GitServer, chub *hub.Hub, hostWhitelister func(...string)) (*Apps, error) {
+func New(logger log.Logger, conf *config.Config, sess *session.Session, wa *webauthn.WebAuthn, bs *blobstore.BlobStore, kvs store.KvStore, ft *filetree.FileTree, ds *docstore.DocStore, chub *hub.Hub, hostWhitelister func(...string)) (*Apps, error) {
 	if conf.SecretKey == "" {
 		return nil, fmt.Errorf("missing secret_key in config")
 	}
@@ -403,7 +399,6 @@ func New(logger log.Logger, conf *config.Config, sess *session.Session, wa *weba
 		apps:            map[string]*App{},
 		ft:              ft,
 		log:             logger,
-		gs:              gs,
 		bs:              bs,
 		config:          conf,
 		wa:              wa,

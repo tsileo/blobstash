@@ -14,8 +14,6 @@ a4.io/go/indieauth
 # a4.io/ssse v0.0.0-20181202155639-1949828a8689
 ## explicit
 a4.io/ssse/pkg/client
-# bazil.org/fuse v0.0.0-20200415052832-70bd89b671a2
-## explicit
 # github.com/alecthomas/chroma v0.7.2
 ## explicit
 github.com/alecthomas/chroma
@@ -129,8 +127,6 @@ github.com/emirpasic/gods/utils
 # github.com/evanphx/json-patch v4.5.0+incompatible
 ## explicit
 github.com/evanphx/json-patch
-# github.com/fxamacker/cbor v1.5.1
-## explicit
 # github.com/fxamacker/cbor/v2 v2.2.0
 github.com/fxamacker/cbor/v2
 # github.com/go-martini/martini v0.0.0-20170121215854-22fa46961aab
@@ -189,8 +185,6 @@ github.com/mattn/go-isatty
 github.com/meatballhat/negroni-logrus
 # github.com/mitchellh/go-homedir v1.1.0
 github.com/mitchellh/go-homedir
-# github.com/mitchellh/go-ps v1.0.0
-## explicit
 # github.com/mvdan/xurls v1.1.0
 ## explicit
 # github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
@@ -227,8 +221,6 @@ github.com/src-d/gcfg
 github.com/src-d/gcfg/scanner
 github.com/src-d/gcfg/token
 github.com/src-d/gcfg/types
-# github.com/src-d/go-oniguruma v1.1.0
-github.com/src-d/go-oniguruma
 # github.com/syndtr/goleveldb v1.0.1-0.20190923125748-758128399b1d
 ## explicit
 github.com/syndtr/goleveldb/leveldb
@@ -243,8 +235,6 @@ github.com/syndtr/goleveldb/leveldb/opt
 github.com/syndtr/goleveldb/leveldb/storage
 github.com/syndtr/goleveldb/leveldb/table
 github.com/syndtr/goleveldb/leveldb/util
-# github.com/toqueteos/trie v1.0.0
-github.com/toqueteos/trie
 # github.com/unrolled/secure v1.0.7
 ## explicit
 github.com/unrolled/secure
@@ -258,9 +248,6 @@ github.com/vmihailenco/msgpack/codes
 github.com/x448/float16
 # github.com/xanzy/ssh-agent v0.2.1
 github.com/xanzy/ssh-agent
-# github.com/xeonx/timeago v1.0.0-rc4
-## explicit
-github.com/xeonx/timeago
 # github.com/yuin/goldmark v1.1.30
 ## explicit
 github.com/yuin/goldmark
@@ -371,13 +358,6 @@ google.golang.org/protobuf/runtime/protoimpl
 # gopkg.in/inconshreveable/log15.v2 v2.0.0-20200109203555-b30bc20e4fd1
 ## explicit
 gopkg.in/inconshreveable/log15.v2
-# gopkg.in/src-d/enry.v1 v1.7.3
-## explicit
-gopkg.in/src-d/enry.v1
-gopkg.in/src-d/enry.v1/data
-gopkg.in/src-d/enry.v1/data/rule
-gopkg.in/src-d/enry.v1/internal/tokenizer
-gopkg.in/src-d/enry.v1/regex
 # gopkg.in/src-d/go-billy.v4 v4.3.2
 gopkg.in/src-d/go-billy.v4
 gopkg.in/src-d/go-billy.v4/helper/chroot
@@ -427,8 +407,6 @@ gopkg.in/src-d/go-git.v4/utils/merkletrie/filesystem
 gopkg.in/src-d/go-git.v4/utils/merkletrie/index
 gopkg.in/src-d/go-git.v4/utils/merkletrie/internal/frame
 gopkg.in/src-d/go-git.v4/utils/merkletrie/noder
-# gopkg.in/toqueteos/substring.v1 v1.0.2
-gopkg.in/toqueteos/substring.v1
 # gopkg.in/warnings.v0 v0.1.2
 gopkg.in/warnings.v0
 # gopkg.in/yaml.v2 v2.2.8

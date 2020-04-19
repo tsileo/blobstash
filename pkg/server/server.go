@@ -24,7 +24,6 @@ import (
 	docstoreLua "a4.io/blobstash/pkg/docstore/lua"
 	"a4.io/blobstash/pkg/expvarserver"
 	"a4.io/blobstash/pkg/filetree"
-	"a4.io/blobstash/pkg/gitserver"
 	"a4.io/blobstash/pkg/httputil"
 	"a4.io/blobstash/pkg/hub"
 	"a4.io/blobstash/pkg/js"
@@ -198,12 +197,6 @@ func New(conf *config.Config) (*Server, error) {
 	}
 	docstore.Register(s.router.PathPrefix("/api/docstore").Subrouter(), basicAuth)
 
-	git, err := gitserver.New(logger.New("app", "gitserver"), conf, kvstore, blobstore, hub)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize git server app: %v", err)
-	}
-	git.Register(s.router.PathPrefix("/api/git").Subrouter(), s.router, basicAuth)
-
 	// Load the Lua config
 	if _, err := os.Stat("blobstash.lua"); err == nil {
 		if err := func() error {
@@ -228,7 +221,7 @@ func New(conf *config.Config) (*Server, error) {
 		return nil, err
 	}
 
-	apps, err := apps.New(logger.New("app", "apps"), conf, sess, wa, rootBlobstore, kvstore, filetree, docstore, git, hub, s.whitelistHosts)
+	apps, err := apps.New(logger.New("app", "apps"), conf, sess, wa, rootBlobstore, kvstore, filetree, docstore, hub, s.whitelistHosts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize filetree app: %v", err)
 	}
