@@ -129,9 +129,44 @@ func (s *StashAPI) dataContextGCHandler() func(http.ResponseWriter, *http.Reques
 	}
 }
 
+type GC2Input struct {
+	Ref     string `json:"ref" msgpack:"ref"`
+	Version int64  `json:"version" msgpack:"version"`
+}
+
+func (s *StashAPI) dataContextGC2Handler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		name := mux.Vars(r)["name"]
+		ctx = ctxutil.WithNamespace(ctx, name)
+
+		_, ok := s.stash.DataContextByName(name)
+		switch r.Method {
+		case "POST":
+			defer r.Body.Close()
+			if !ok {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			out := &GC2Input{}
+			if err := httputil.Unmarshal(r, out); err != nil {
+				panic(err)
+			}
+			fmt.Printf("\n\nGC imput: %+v\n\n", out)
+			if err := s.stash.MergeFileTreeVersionAndDestroy(ctx, name, out.Ref, out.Version); err != nil {
+				panic(err)
+			}
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}
+}
+
 func (s *StashAPI) Register(r *mux.Router, basicAuth func(http.Handler) http.Handler) {
 	r.Handle("/", basicAuth(http.HandlerFunc(s.listHandler())))
 	r.Handle("/{name}", basicAuth(http.HandlerFunc(s.dataContextHandler())))
 	r.Handle("/{name}/_merge", basicAuth(http.HandlerFunc(s.dataContextMergeHandler())))
 	r.Handle("/{name}/_gc", basicAuth(http.HandlerFunc(s.dataContextGCHandler())))
+	r.Handle("/{name}/_merge_filetree_version", basicAuth(http.HandlerFunc(s.dataContextGC2Handler())))
 }

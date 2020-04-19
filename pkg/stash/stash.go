@@ -10,9 +10,11 @@ import (
 
 	log "github.com/inconshreveable/log15"
 
+	"a4.io/blobsfile"
 	"a4.io/blobstash/pkg/blob"
 	"a4.io/blobstash/pkg/blobstore"
 	"a4.io/blobstash/pkg/ctxutil"
+	"a4.io/blobstash/pkg/filetree/filetreeutil/node"
 	"a4.io/blobstash/pkg/hub"
 	"a4.io/blobstash/pkg/kvstore"
 	"a4.io/blobstash/pkg/meta"
@@ -79,6 +81,93 @@ func (dc *dataContext) Merge(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// orderedRefs holds the "sorted" references
+type orderedRefs struct {
+	refs []string
+	idx  map[string]struct{}
+}
+
+func newOrderedRefs() *orderedRefs {
+	return &orderedRefs{
+		refs: []string{},
+		idx:  map[string]struct{}{},
+	}
+}
+
+func (r *orderedRefs) Add(ref string) {
+	if _, ok := r.idx[ref]; !ok {
+		r.idx[ref] = struct{}{}
+		r.refs = append(r.refs, ref)
+	}
+}
+
+func (dc *dataContext) MergeFileTreeNode(ctx context.Context, refs *orderedRefs, bs store.BlobStore, ref string) error {
+	data, err := dc.bsProxy.Get(ctx, ref)
+	if err != nil {
+		return err
+	}
+
+	n, err := node.NewNodeFromBlob(ref, data)
+	if err != nil {
+		return err
+	}
+
+	if n.Type == "file" {
+		for _, dref := range n.Refs {
+			// Save each blob content
+			data := dref.([]interface{})
+			bref := data[1].(string)
+			refs.Add(bref)
+		}
+	} else {
+		// Iter the dir
+		for _, cref := range n.Refs {
+			// Merge the children recursively
+			if err := dc.MergeFileTreeNode(ctx, refs, bs, cref.(string)); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Only save the node ref once all it's children has been saved
+	refs.Add(ref)
+
+	return nil
+}
+
+func (dc *dataContext) MergeFileTreeVersion(ctx context.Context, key string, version int64) (*orderedRefs, error) {
+	if dc.root {
+		return nil, fmt.Errorf("cannot merge filtree version in root data context")
+	}
+
+	refs := newOrderedRefs()
+
+	// Fetch the root BlobStore (as fetching the original struct behind the interface is costly)
+	rootBs := dc.bsProxy.(*store.BlobStoreProxy).ReadSrc
+
+	// Fetch the blob that contains the KV entry for the FileTree version
+	kvBlobRef, err := dc.kvs.GetMetaBlob(ctx, key, version)
+	if err != nil {
+		return nil, err
+	}
+
+	// Now, traverse the tree, starting at the root
+	kv, err := dc.kvs.Get(ctx, key, version)
+	if err != nil {
+		return nil, err
+	}
+
+	// Merge the root node recursively
+	ftRoot := kv.HexHash()
+	if err := dc.MergeFileTreeNode(ctx, refs, rootBs, ftRoot); err != nil {
+		return nil, err
+	}
+
+	refs.Add(kvBlobRef)
+
+	return refs, nil
 }
 
 func (dc *dataContext) Close() error {
@@ -239,6 +328,51 @@ func (s *Stash) DoAndDestroy(ctx context.Context, name string, do func(context.C
 
 	s.Lock()
 	defer s.Unlock()
+	if err := s.destroy(dc, name); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Stash) MergeFileTreeVersionAndDestroy(ctx context.Context, name string, key string, version int64) error {
+	s.Lock()
+	defer s.Unlock()
+	dc, ok := s.contexes[name]
+	if !ok {
+		return fmt.Errorf("data context not found")
+	}
+
+	refs, err := dc.MergeFileTreeVersion(ctx, key, version)
+	if err != nil {
+		return err
+	}
+
+	var blobsCnt int
+	var totalSize uint64
+	for _, ref := range refs.refs {
+		// Get the marked blob from the blobstore proxy
+		data, err := dc.StashBlobStore().Get(ctx, ref)
+		if err != nil {
+			if err == blobsfile.ErrBlobNotFound {
+				continue
+			}
+			return err
+		}
+
+		// Save it in the root blobstore
+		saved, err := s.Root().BlobStore().Put(ctx, &blob.Blob{Hash: ref, Data: data})
+		if err != nil {
+			return err
+		}
+
+		if saved {
+			blobsCnt++
+			totalSize += uint64(len(data))
+		}
+	}
+	fmt.Printf("GC/merge filetree refs=%d blobs, saved %d blobs\n", len(refs.refs), blobsCnt)
+
 	if err := s.destroy(dc, name); err != nil {
 		return err
 	}

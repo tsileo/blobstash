@@ -64,24 +64,11 @@ func (f *Filetree) MakeSnapshot(ref, fs, message, userAgent string) (int64, erro
 
 // GC performs a garbage collection to save the latest filetreee snapshot
 func (f *Filetree) GC(ns, name string, rev int64) error {
-	gcScript := fmt.Sprintf(`
-local kvstore = require('kvstore')
-
-local key = "_filetree:fs:%s"
-local version = "%d"
-local _, ref, _ = kvstore.get(key, version)
-
--- mark the actual KV entry
-mark_kv(key, version)
-
--- mark the whole tree
-mark_filetree_node(ref)
-`, name, rev)
-
-	resp, err := f.client.PostMsgpack(
-		fmt.Sprintf("/api/stash/%s/_gc", ns),
+	resp, err := f.client.PostJSON(
+		fmt.Sprintf("/api/stash/%s/_merge_filetree_version", ns),
 		map[string]interface{}{
-			"script": gcScript,
+			"ref":     fmt.Sprintf("_filetree:fs:%s", name),
+			"version": rev,
 		},
 	)
 	if err != nil {

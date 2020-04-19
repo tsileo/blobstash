@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/vmihailenco/msgpack"
-	"github.com/yuin/gopher-lua"
+	lua "github.com/yuin/gopher-lua"
 
 	"a4.io/blobsfile"
 	"a4.io/blobstash/pkg/apps/luautil"
@@ -27,6 +27,7 @@ func GC(ctx context.Context, h *hub.Hub, s *stash.Stash, dc store.DataContext, s
 	orderedRefs := []string{}
 
 	L := lua.NewState()
+	defer L.Close()
 	var skipped int
 
 	// premark(<blob hash>) notify the GC that this blob is already in the root blobstore explicitely (to speedup huge GC)
