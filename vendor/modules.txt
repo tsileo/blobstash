@@ -46,7 +46,7 @@ github.com/alecthomas/chroma/lexers/w
 github.com/alecthomas/chroma/lexers/x
 github.com/alecthomas/chroma/lexers/y
 github.com/alecthomas/chroma/styles
-# github.com/aws/aws-sdk-go v1.30.9
+# github.com/aws/aws-sdk-go v1.30.14
 ## explicit
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/arn
@@ -173,7 +173,8 @@ github.com/justinas/nosurf
 github.com/kevinburke/ssh_config
 # github.com/klauspost/cpuid v1.2.3
 github.com/klauspost/cpuid
-# github.com/klauspost/reedsolomon v1.9.3
+# github.com/klauspost/reedsolomon v1.9.4
+## explicit
 github.com/klauspost/reedsolomon
 # github.com/konsorten/go-windows-terminal-sequences v1.0.2
 github.com/konsorten/go-windows-terminal-sequences
@@ -270,7 +271,7 @@ github.com/yuin/gopher-lua/pm
 # github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
 ## explicit
 github.com/zpatrick/rbac
-# golang.org/x/crypto v0.0.0-20200414173820-0848c9571904
+# golang.org/x/crypto v0.0.0-20200423211502-4bdfaf469ed5
 ## explicit
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
@@ -297,7 +298,7 @@ golang.org/x/crypto/ssh
 golang.org/x/crypto/ssh/agent
 golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
 golang.org/x/crypto/ssh/knownhosts
-# golang.org/x/net v0.0.0-20200324143707-d3edc9973b7e
+# golang.org/x/net v0.0.0-20200421231249-e086a090c8fd
 ## explicit
 golang.org/x/net/context
 golang.org/x/net/html
@@ -305,7 +306,7 @@ golang.org/x/net/html/atom
 golang.org/x/net/idna
 golang.org/x/net/internal/socks
 golang.org/x/net/proxy
-# golang.org/x/sys v0.0.0-20200413165638-669c56c373c4
+# golang.org/x/sys v0.0.0-20200420163511-1957bb5e6d1f
 ## explicit
 golang.org/x/sys/cpu
 golang.org/x/sys/unix
@@ -315,7 +316,8 @@ golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
-# google.golang.org/appengine v1.6.5
+# google.golang.org/appengine v1.6.6
+## explicit
 google.golang.org/appengine
 google.golang.org/appengine/datastore
 google.golang.org/appengine/datastore/internal/cloudkey

@@ -7,7 +7,7 @@ require (
 	a4.io/go/indieauth v1.0.0
 	a4.io/ssse v0.0.0-20181202155639-1949828a8689
 	github.com/alecthomas/chroma v0.7.2 // indirect
-	github.com/aws/aws-sdk-go v1.30.9
+	github.com/aws/aws-sdk-go v1.30.14
 	github.com/blevesearch/segment v0.9.0
 	github.com/carbocation/interpose v0.0.0-20161206215253-723534742ba3
 	github.com/dave/jennifer v1.4.0
@@ -22,6 +22,7 @@ require (
 	github.com/gorilla/sessions v1.2.0
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/inconshreveable/log15 v0.0.0-20200109203555-b30bc20e4fd1
+	github.com/klauspost/reedsolomon v1.9.4 // indirect
 	github.com/mvdan/xurls v1.1.0 // indirect
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	github.com/reiver/go-porterstemmer v1.0.1
@@ -35,9 +36,10 @@ require (
 	github.com/yuin/goldmark v1.1.30
 	github.com/yuin/gopher-lua v0.0.0-20191220021717-ab39c6098bdb
 	github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
-	golang.org/x/crypto v0.0.0-20200414173820-0848c9571904
-	golang.org/x/net v0.0.0-20200324143707-d3edc9973b7e // indirect
-	golang.org/x/sys v0.0.0-20200413165638-669c56c373c4 // indirect
+	golang.org/x/crypto v0.0.0-20200423211502-4bdfaf469ed5
+	golang.org/x/net v0.0.0-20200421231249-e086a090c8fd // indirect
+	golang.org/x/sys v0.0.0-20200420163511-1957bb5e6d1f // indirect
+	google.golang.org/appengine v1.6.6 // indirect
 	gopkg.in/inconshreveable/log15.v2 v2.0.0-20200109203555-b30bc20e4fd1
 	gopkg.in/src-d/go-git.v4 v4.13.1
 	gopkg.in/yaml.v2 v2.2.8
