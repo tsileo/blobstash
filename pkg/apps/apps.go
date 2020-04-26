@@ -135,6 +135,7 @@ func (apps *Apps) newApp(appConf *config.AppConfig, conf *config.Config) (*App, 
 	if appConf.IndieAuthEndpoint != "" {
 		app.waitForIndieAuth = true
 		go func() {
+			// Let the server start completely if the IndieAuth server is a BlobStash app
 			time.Sleep(10 * time.Second)
 			ia, err := indieauth.New(apps.sess.Session(), appConf.IndieAuthEndpoint)
 			if err != nil {
@@ -143,6 +144,7 @@ func (apps *Apps) newApp(appConf *config.AppConfig, conf *config.Config) (*App, 
 			ia.RedirectPath = "/api/apps/" + app.name + "/indieauth-redirect"
 			app.auth = ia.Check
 			app.ia = ia
+			app.waitForIndieAuth = false
 			app.log.Info("IndieAuth ready")
 		}()
 	}
