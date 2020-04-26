@@ -12,6 +12,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"time"
 
 	humanize "github.com/dustin/go-humanize"
 	"github.com/gorilla/mux"
@@ -80,15 +81,16 @@ func (apps *Apps) Apps() map[string]*App {
 
 // App handle an app meta data
 type App struct {
-	rootConfig *config.Config
-	path, name string
-	entrypoint string
-	domain     string
-	remote     string
-	config     map[string]interface{}
-	scheduled  string
-	auth       func(*http.Request) bool
-	ia         *indieauth.IndieAuth
+	rootConfig       *config.Config
+	path, name       string
+	entrypoint       string
+	domain           string
+	remote           string
+	config           map[string]interface{}
+	scheduled        string
+	auth             func(*http.Request) bool
+	ia               *indieauth.IndieAuth
+	waitForIndieAuth bool
 
 	proxyTarget *url.URL
 	proxy       *rhttputil.ReverseProxy
@@ -131,13 +133,18 @@ func (apps *Apps) newApp(appConf *config.AppConfig, conf *config.Config) (*App, 
 		app.auth = httputil.BasicAuthFunc(appConf.Username, appConf.Password)
 	}
 	if appConf.IndieAuthEndpoint != "" {
-		ia, err := indieauth.New(apps.sess.Session(), appConf.IndieAuthEndpoint)
-		if err != nil {
-			return nil, err
-		}
-		ia.RedirectPath = "/api/apps/" + app.name + "/indieauth-redirect"
-		app.auth = ia.Check
-		app.ia = ia
+		app.waitForIndieAuth = true
+		go func() {
+			time.Sleep(10 * time.Second)
+			ia, err := indieauth.New(apps.sess.Session(), appConf.IndieAuthEndpoint)
+			if err != nil {
+				panic(err)
+			}
+			ia.RedirectPath = "/api/apps/" + app.name + "/indieauth-redirect"
+			app.auth = ia.Check
+			app.ia = ia
+			app.log.Info("IndieAuth ready")
+		}()
 	}
 
 	// If it's a remote app, clone the repo in a temp dir
@@ -342,6 +349,9 @@ func (app *App) buildCache(L *lua.LState) *lua.LTable {
 func (app *App) serve(ctx context.Context, p string, w http.ResponseWriter, req *http.Request) {
 	if app.auth != nil {
 		if !app.auth(req) {
+			if app.waitForIndieAuth && app.ia != nil {
+				panic("IndieAuth not ready")
+			}
 			// Handle IndieAuth
 			if app.ia != nil {
 				if err := app.ia.Redirect(w, req); err != nil {
