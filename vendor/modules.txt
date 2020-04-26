@@ -8,7 +8,7 @@ a4.io/gluapp/util
 # a4.io/gluarequire2 v0.0.0-20200222094423-7528d5a10bc1
 ## explicit
 a4.io/gluarequire2
-# a4.io/go/indieauth v1.0.0
+# a4.io/go/indieauth v1.0.3
 ## explicit
 a4.io/go/indieauth
 # a4.io/ssse v0.0.0-20181202155639-1949828a8689
@@ -298,7 +298,7 @@ golang.org/x/crypto/ssh
 golang.org/x/crypto/ssh/agent
 golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
 golang.org/x/crypto/ssh/knownhosts
-# golang.org/x/net v0.0.0-20200421231249-e086a090c8fd
+# golang.org/x/net v0.0.0-20200425230154-ff2c4b7c35a0
 ## explicit
 golang.org/x/net/context
 golang.org/x/net/html
