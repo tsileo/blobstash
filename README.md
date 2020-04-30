@@ -64,18 +64,6 @@ BlobStash features fine-grained permissions support, with a model similar to AWS
 
  - `admin`: full access to everything
    - `action:*`/`resource:*`
- - `git-admin`: full access to the Git API, including the Git smart HTTP support
-    - `action:read:git-repo`/`resource:gitserver:git-repo:*`
-    - `action:write:git-repo`/`resource:gitserver:git-repo:*`
-    - `action:list:git-ns`/`resource:gitserver:git-ns:*`
-
-#### Templated roles
-
- - `git-ro`: read-only access (clone)
-   - `action:read:git-repo`/`resource:gitserver:git-repo:{ns}/{repo}`
- - `git`: read-write access (clone and push)
-   - `action:read:git-repo`/`resource:gitserver:git-repo:{ns}/{repo}`
-   - `action:write:git-repo`/`resource:gitserver:git-repo:{ns}/{repo}`
 
 ## Document Store
 
@@ -334,89 +322,6 @@ $ export BLOBS_API_HOST=https://my-blobstash-instance.com BLOBS_API_KEY=my_api_k
 $ blobstash-uploader server1 /path/to/data
 ```
 
-## Git smart HTTP backend
-
-You can store Git repositories via Git smart HTTP, and all the data will be deduplicated (at the chunk level and even across FileTree trees). 
-
-### Getting Started
-
-To backup a Git repository, just add a new remote (new repositories will be created automatically):
-
-```shell
-$ git remote add blobstash https://tom:mypass@myinstance.com/git/myns/myrepo.git
-$ git push blobstash
-```
-
-For big repositories, you may need to tweak the maximum body size for HTTP requests:
-
-```shell
-$ git config --global http.postBuffer 1048576000
-```
-
-To restore a Git repository:
-
-```shell
-$ git clone https://thomas:123@myinstance.com/git/myns/myrepo.git
-```
-
-You can also access Git repositories using the [Admin UI](https://github.com/tsileo/blobstash-admin).
-
-### HTTP API
-
-All the examples are using [HTTPie](https://httpie.org/).
-
-#### GET /api/git
-
-List all the namespaces.
-
-##### Example
-
-```shell
-$ http --auth :apikey GET https://myinstance.com/api/git
-```
-
-##### Response
-
-```json
-{
-    "data": [
-        "myns"
-    ], 
-    "pagination": {
-        "count": 1, 
-        "cursor": "", 
-        "has_more": false, 
-        "per_page": 50
-    }
-}
-```
-
-#### GET /api/git/:ns
-
-List all the repositories for the given namespace.
-
-##### Example
-
-```shell
-$ http --auth :apikey GET https://myinstance.com/api/git/myns
-```
-
-##### Response
-
-
-```json
-{
-    "data": [
-        "myrepo"
-    ], 
-    "pagination": {
-        "count": 1, 
-        "cursor": "", 
-        "has_more": false, 
-        "per_page": 50
-    }
-}
-```
 ### Lua API
 
 #### Extra module

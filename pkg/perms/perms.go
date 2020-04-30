@@ -34,8 +34,6 @@ const (
 	KVEntry        ObjectType = "kv"
 	FS             ObjectType = "fs"
 	Node           ObjectType = "node"
-	GitRepo        ObjectType = "git-repo"
-	GitNs          ObjectType = "git-ns"
 	Namespace      ObjectType = "namespace"
 	JSONDocument   ObjectType = "json-doc"
 	JSONCollection ObjectType = "json-col"
@@ -47,7 +45,6 @@ const (
 	KvStore   ServiceName = "kvstore"
 	DocStore  ServiceName = "docstore"
 	Filetree  ServiceName = "filetree"
-	GitServer ServiceName = "gitserver"
 	Stash     ServiceName = "stash"
 )
 
@@ -93,49 +90,6 @@ func init() {
 			&config.Perm{
 				Action:   Action(Snapshot, FS),
 				Resource: ResourceWithID(Filetree, FS, "{{.name}}"),
-			},
-		},
-	})
-	SetupRole(&config.Role{
-		Template:     "git-ro",
-		Managed:      true,
-		ArgsRequired: []string{"ns", "repo"},
-		Perms: []*config.Perm{
-			&config.Perm{
-				Action:   Action(Read, GitRepo),
-				Resource: ResourceWithID(GitServer, GitRepo, "{{.ns}}/{{.repo}}"),
-			},
-		},
-	})
-	SetupRole(&config.Role{
-		Template:     "git",
-		Managed:      true,
-		ArgsRequired: []string{"ns", "repo"},
-		Perms: []*config.Perm{
-			&config.Perm{
-				Action:   Action(Read, GitRepo),
-				Resource: ResourceWithID(GitServer, GitRepo, "{{.ns}}/{{.repo}}"),
-			},
-			&config.Perm{
-				Action:   Action(Write, GitRepo),
-				Resource: ResourceWithID(GitServer, GitRepo, "{{.ns}}/{{.repo}}"),
-			},
-		},
-	})
-	SetupRole(&config.Role{
-		Name: "git-admin",
-		Perms: []*config.Perm{
-			&config.Perm{
-				Action:   Action(Read, GitRepo),
-				Resource: ResourceWithID(GitServer, GitRepo, "*/*"),
-			},
-			&config.Perm{
-				Action:   Action(Write, GitRepo),
-				Resource: ResourceWithID(GitServer, GitRepo, "*/*"),
-			},
-			&config.Perm{
-				Action:   Action(List, GitNs),
-				Resource: ResourceWithID(GitServer, GitNs, "*"),
 			},
 		},
 	})
