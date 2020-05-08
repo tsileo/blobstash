@@ -7,14 +7,14 @@ require (
 	a4.io/go/indieauth v1.0.3
 	a4.io/ssse v0.0.0-20181202155639-1949828a8689
 	github.com/alecthomas/chroma v0.7.2 // indirect
-	github.com/aws/aws-sdk-go v1.30.18
+	github.com/aws/aws-sdk-go v1.30.23
 	github.com/blevesearch/segment v0.9.0
 	github.com/carbocation/interpose v0.0.0-20161206215253-723534742ba3
 	github.com/dave/jennifer v1.4.0
 	github.com/dustin/go-humanize v1.0.0
 	github.com/e3b0c442/warp v0.6.1
 	github.com/evanphx/json-patch v4.5.0+incompatible
-	github.com/golang/protobuf v1.4.0 // indirect
+	github.com/golang/protobuf v1.4.1 // indirect
 	github.com/golang/snappy v0.0.1
 	github.com/gorilla/context v1.1.1
 	github.com/gorilla/handlers v1.4.2
@@ -22,7 +22,7 @@ require (
 	github.com/gorilla/sessions v1.2.0
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/inconshreveable/log15 v0.0.0-20200109203555-b30bc20e4fd1
-	github.com/klauspost/reedsolomon v1.9.4 // indirect
+	github.com/klauspost/reedsolomon v1.9.6 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.3 // indirect
 	github.com/mvdan/xurls v1.1.0 // indirect
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
@@ -30,7 +30,7 @@ require (
 	github.com/restic/chunker v0.3.0
 	github.com/robfig/cron v1.2.0
 	github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd
-	github.com/sirupsen/logrus v1.5.0 // indirect
+	github.com/sirupsen/logrus v1.6.0 // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20190923125748-758128399b1d
 	github.com/unrolled/secure v1.0.7
 	github.com/vmihailenco/msgpack v4.0.4+incompatible
@@ -38,8 +38,8 @@ require (
 	github.com/yuin/gopher-lua v0.0.0-20191220021717-ab39c6098bdb
 	github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
 	golang.org/x/crypto v0.0.0-20200429183012-4b2356b1ed79
-	golang.org/x/net v0.0.0-20200425230154-ff2c4b7c35a0 // indirect
-	golang.org/x/sys v0.0.0-20200430082407-1f5687305801 // indirect
+	golang.org/x/net v0.0.0-20200506145744-7e3656a0809f // indirect
+	golang.org/x/sys v0.0.0-20200501145240-bc7a7d42d5c3 // indirect
 	google.golang.org/appengine v1.6.6 // indirect
 	gopkg.in/inconshreveable/log15.v2 v2.0.0-20200109203555-b30bc20e4fd1
 	gopkg.in/src-d/go-git.v4 v4.13.1

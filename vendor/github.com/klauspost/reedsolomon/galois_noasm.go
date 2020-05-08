@@ -32,7 +32,3 @@ func sliceXor(in, out []byte, sse2 bool) {
 func init() {
 	defaultOptions.useAVX512 = false
 }
-
-func (r reedSolomon) codeSomeShardsAvx512(matrixRows, inputs, outputs [][]byte, outputCount, byteCount int) {
-	panic("unreachable")
-}
