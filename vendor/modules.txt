@@ -14,7 +14,7 @@ a4.io/go/indieauth
 # a4.io/ssse v0.0.0-20181202155639-1949828a8689
 ## explicit
 a4.io/ssse/pkg/client
-# github.com/alecthomas/chroma v0.7.2
+# github.com/alecthomas/chroma v0.7.3
 ## explicit
 github.com/alecthomas/chroma
 github.com/alecthomas/chroma/formatters/html
@@ -46,7 +46,7 @@ github.com/alecthomas/chroma/lexers/w
 github.com/alecthomas/chroma/lexers/x
 github.com/alecthomas/chroma/lexers/y
 github.com/alecthomas/chroma/styles
-# github.com/aws/aws-sdk-go v1.30.23
+# github.com/aws/aws-sdk-go v1.30.27
 ## explicit
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/arn
@@ -173,7 +173,7 @@ github.com/justinas/nosurf
 github.com/kevinburke/ssh_config
 # github.com/klauspost/cpuid v1.2.4
 github.com/klauspost/cpuid
-# github.com/klauspost/reedsolomon v1.9.6
+# github.com/klauspost/reedsolomon v1.9.7
 ## explicit
 github.com/klauspost/reedsolomon
 # github.com/konsorten/go-windows-terminal-sequences v1.0.3
@@ -272,7 +272,7 @@ github.com/yuin/gopher-lua/pm
 # github.com/zpatrick/rbac v0.0.0-20180829190353-d2c4f050cf28
 ## explicit
 github.com/zpatrick/rbac
-# golang.org/x/crypto v0.0.0-20200429183012-4b2356b1ed79
+# golang.org/x/crypto v0.0.0-20200510223506-06a226fb4e37
 ## explicit
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
@@ -299,7 +299,7 @@ golang.org/x/crypto/ssh
 golang.org/x/crypto/ssh/agent
 golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
 golang.org/x/crypto/ssh/knownhosts
-# golang.org/x/net v0.0.0-20200506145744-7e3656a0809f
+# golang.org/x/net v0.0.0-20200513185701-a91f0712d120
 ## explicit
 golang.org/x/net/context
 golang.org/x/net/html
@@ -307,7 +307,7 @@ golang.org/x/net/html/atom
 golang.org/x/net/idna
 golang.org/x/net/internal/socks
 golang.org/x/net/proxy
-# golang.org/x/sys v0.0.0-20200501145240-bc7a7d42d5c3
+# golang.org/x/sys v0.0.0-20200513112337-417ce2331b5c
 ## explicit
 golang.org/x/sys/cpu
 golang.org/x/sys/internal/unsafeheader
@@ -413,7 +413,7 @@ gopkg.in/src-d/go-git.v4/utils/merkletrie/internal/frame
 gopkg.in/src-d/go-git.v4/utils/merkletrie/noder
 # gopkg.in/warnings.v0 v0.1.2
 gopkg.in/warnings.v0
-# gopkg.in/yaml.v2 v2.2.8
+# gopkg.in/yaml.v2 v2.3.0
 ## explicit
 gopkg.in/yaml.v2
 # mvdan.cc/xurls v1.1.0
