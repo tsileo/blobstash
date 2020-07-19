@@ -1,8 +1,8 @@
 # microformats
 
-[![GoDoc](https://godoc.org/willnorris.com/go/webmention?status.svg)](https://godoc.org/willnorris.com/go/microformats)
-[![Build Status](https://travis-ci.org/willnorris/microformats.svg)](https://travis-ci.org/willnorris/microformats)
-[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat)](LICENSE)
+[![GoDoc](https://img.shields.io/static/v1?label=godoc&message=reference&color=blue)](https://pkg.go.dev/willnorris.com/go/microformats)
+[![Test Status](https://github.com/willnorris/microformats/workflows/tests/badge.svg)](https://github.com/willnorris/microformats/actions?query=workflow%3Atests)
+[![Test Coverage](https://codecov.io/gh/willnorris/microformats/branch/master/graph/badge.svg)](https://codecov.io/gh/willnorris/microformats)
 
 microformats is a go library and tool for parsing [microformats][], supporting
 both classic v1 and [v2 syntax][].  It is based on Andy Leap's [original
@@ -24,10 +24,10 @@ Fetch the HTML contents of a page, and call [Parse][] or [ParseNode][],
 depending on what input you have (an [io.Reader][] or an [html.Node][]). See an
 example of each in [cmd/gomf/main.go](cmd/gomf/main.go).
 
-[Parse]: https://godoc.org/willnorris.com/go/microformats#Parse
-[ParseNode]: https://godoc.org/willnorris.com/go/microformats#ParseNode
+[Parse]: https://pkg.go.dev/willnorris.com/go/microformats#Parse
+[ParseNode]: https://pkg.go.dev/willnorris.com/go/microformats#ParseNode
 [io.Reader]: https://golang.org/pkg/io/#Reader
-[html.Node]: https://godoc.org/golang.org/x/net/html#Node
+[html.Node]: https://pkg.go.dev/golang.org/x/net/html#Node
 
 ## License
 

@@ -51,7 +51,7 @@ var (
 	// map microformats v1 property classes to their v2 equivalent. These
 	// mappings are root-specific.
 	backcompatPropertyMap = map[string]map[string]string{
-		"h-adr": map[string]string{
+		"h-adr": {
 			"country-name":     "p-country-name",
 			"extended-address": "p-extended-address",
 			"locality":         "p-locality",
@@ -60,7 +60,7 @@ var (
 			"region":           "p-region",
 			"street-address":   "p-street-address",
 		},
-		"h-card": map[string]string{
+		"h-card": {
 			"additional-name":  "p-additional-name",
 			"adr":              "p-adr",
 			"agent":            "p-agent",
@@ -92,7 +92,7 @@ var (
 			"uid":              "u-uid",
 			"url":              "u-url",
 		},
-		"h-entry": map[string]string{
+		"h-entry": {
 			"author":        "p-author",
 			"category":      "p-category",
 			"entry-content": "e-content",
@@ -102,7 +102,7 @@ var (
 			"summary":       "p-summary",
 			"updated":       "dt-updated",
 		},
-		"h-event": map[string]string{
+		"h-event": {
 			"attendee":    "p-attendee",
 			"category":    "p-category",
 			"description": "p-description",
@@ -114,28 +114,28 @@ var (
 			"summary":     "p-name",
 			"url":         "u-url",
 		},
-		"h-feed": map[string]string{
+		"h-feed": {
 			"author": "p-author",
 			"entry":  "p-entry",
 			"photo":  "u-photo",
 			"url":    "u-url",
 		},
-		"h-geo": map[string]string{
+		"h-geo": {
 			"latitude":  "p-latitude",
 			"longitude": "p-longitude",
 		},
-		"h-item": map[string]string{
+		"h-item": {
 			"fn":    "p-name",
 			"photo": "u-photo",
 			"url":   "u-url",
 		},
-		"h-news": map[string]string{
+		"h-news": {
 			"dateline":   "p-dateline",
 			"entry":      "p-entry",
 			"geo":        "p-geo",
 			"source-org": "p-source-org",
 		},
-		"h-product": map[string]string{
+		"h-product": {
 			"brand":       "p-brand",
 			"category":    "p-category",
 			"description": "p-description",
@@ -147,7 +147,7 @@ var (
 			"review":      "p-review",
 			"url":         "u-url",
 		},
-		"h-recipe": map[string]string{
+		"h-recipe": {
 			"author":       "p-author",
 			"category":     "p-category",
 			"duration":     "dt-duration",
@@ -159,7 +159,7 @@ var (
 			"summary":      "p-summary",
 			"yield":        "p-yield",
 		},
-		"h-resume": map[string]string{
+		"h-resume": {
 			"affiliation":  "p-affiliation",
 			"contact":      "p-contact",
 			"education":    "p-education",
@@ -168,7 +168,7 @@ var (
 			"skill":        "p-skill",
 			"summary":      "p-summary",
 		},
-		"h-review": map[string]string{
+		"h-review": {
 			"best":        "p-best",
 			"description": "e-content",
 			"dtreviewed":  "dt-reviewed",
@@ -178,7 +178,7 @@ var (
 			"summary":     "p-name",
 			"worst":       "p-worst",
 		},
-		"h-review-aggregate": map[string]string{
+		"h-review-aggregate": {
 			"average": "p-average",
 			"best":    "p-best",
 			"count":   "p-count",
@@ -193,23 +193,23 @@ var (
 	// map microformats v1 rel values to their v2 property equivalent. These
 	// mappings are root-specific.
 	backcompatRelMap = map[string]map[string]string{
-		"h-card": map[string]string{
+		"h-card": {
 			"tag": "u-category",
 		},
-		"h-entry": map[string]string{
+		"h-entry": {
 			"bookmark": "u-url",
 			"tag":      "u-category",
 		},
-		"h-feed": map[string]string{
+		"h-feed": {
 			"tag": "u-category",
 		},
-		"h-news": map[string]string{
+		"h-news": {
 			"principles": "u-principles",
 		},
-		"h-recipe": map[string]string{
+		"h-recipe": {
 			"tag": "u-category",
 		},
-		"h-review": map[string]string{
+		"h-review": {
 			"bookmark": "u-url",
 			"tag":      "u-category",
 		},
@@ -283,6 +283,16 @@ func backcompatURLCategory(s string) string {
 	return s
 }
 
+// backcompatIncludeRefs returns references found using the include pattern.
+//
+// refs includes the IDs of referenced nodes (without any leading '#')
+//
+// replace is true if the referenced node was identified using a pattern  which
+// instructs the referencing node to be replaced entirely, rather than the
+// referenced node being amended.
+//
+// See http://microformats.org/wiki/include-pattern
+// See http://microformats.org/wiki/microdata
 func (p *parser) backcompatIncludeRefs(node *html.Node) (refs []string, replace bool) {
 	classes := getClasses(node)
 	for _, class := range classes {
@@ -316,6 +326,10 @@ func (p *parser) backcompatIncludeRefs(node *html.Node) (refs []string, replace 
 	return refs, false
 }
 
+// backcompatIncludeNode includes referenced notes following the include
+// pattern.
+//
+// see backcompatIncludeRefs for information on refs and replace parameters.
 func (p *parser) backcompatIncludeNode(node *html.Node, refs []string, replace bool) *html.Node {
 	if len(refs) == 0 {
 		return node
@@ -323,7 +337,7 @@ func (p *parser) backcompatIncludeNode(node *html.Node, refs []string, replace b
 
 	for _, ref := range refs {
 		if n := findNodeByID(p.root, ref); n != nil {
-			if node != n && !isParentNode(node, n) {
+			if node != n && !isAncestorNode(node, n) {
 				if replace {
 					return n
 				}
@@ -335,6 +349,8 @@ func (p *parser) backcompatIncludeNode(node *html.Node, refs []string, replace b
 	return node
 }
 
+// findNodeByID searches node and its children, returning the node with the
+// specified id value.
 func findNodeByID(node *html.Node, id string) *html.Node {
 	if getAttr(node, "id") == id {
 		return node
@@ -347,8 +363,9 @@ func findNodeByID(node *html.Node, id string) *html.Node {
 	return nil
 }
 
-func isParentNode(child, parent *html.Node) bool {
-	for c := child; c.Parent != nil; c = c.Parent {
+// isAncestorNode returns true if parent is an ancestor node of child.
+func isAncestorNode(child, parent *html.Node) bool {
+	for c := child; c != nil; c = c.Parent {
 		if c == parent {
 			return true
 		}
@@ -356,6 +373,7 @@ func isParentNode(child, parent *html.Node) bool {
 	return false
 }
 
+// cloneNode makes a copy of node, detaching any parent or sibling nodes.
 func cloneNode(node *html.Node) *html.Node {
 	clone := *node
 	clone.Parent = nil

@@ -48,13 +48,14 @@ import (
 )
 
 var (
-	rootClassNames     = regexp.MustCompile(`^h-[a-z\-]+$`)
-	propertyClassNames = regexp.MustCompile(`^(p|u|dt|e)-([a-z\-]+)$`)
+	rootClassNames     = regexp.MustCompile(`^h-([a-z0-9]+-)?[a-z]+(-[a-z]+)*$`)
+	propertyClassNames = regexp.MustCompile(`^(p|u|dt|e)-([a-z0-9]+-)?[a-z]+(-[a-z]+)*$`)
 )
 
 // Microformat specifies a single microformat object and its properties.  It
 // may represent a person, an address, a blog post, etc.
 type Microformat struct {
+	ID         string                   `json:"id,omitempty"`
 	Value      string                   `json:"value,omitempty"`
 	HTML       string                   `json:"html,omitempty"`
 	Type       []string                 `json:"type"`
@@ -181,7 +182,6 @@ func (p *parser) expandAttrURLs(node *html.Node) {
 		if value != nil {
 			*value = expandURL(*value, p.base)
 		}
-		return
 	}
 
 	for c := node.FirstChild; c != nil; c = c.NextSibling {
@@ -203,6 +203,10 @@ func expandURL(r string, base *url.URL) string {
 
 // walk the DOM rooted at node, storing parsed microformats in p.
 func (p *parser) walk(node *html.Node) {
+	if isAtom(node, atom.Template) {
+		return
+	}
+
 	var curItem *Microformat
 	var priorItem *Microformat
 	var rootclasses []string
@@ -229,6 +233,9 @@ func (p *parser) walk(node *html.Node) {
 			Type:       rootclasses,
 			Properties: make(map[string][]interface{}),
 			backcompat: backcompat,
+		}
+		if !backcompat {
+			curItem.ID = getAttr(node, "id")
 		}
 		if p.curItem == nil {
 			p.curData.Items = append(p.curData.Items, curItem)
@@ -263,7 +270,7 @@ func (p *parser) walk(node *html.Node) {
 			urlVal := getAttr(node, "href")
 			urlVal = expandURL(urlVal, p.base)
 
-			rels = strings.Split(rel, " ")
+			rels = strings.Fields(rel)
 			for _, relval := range rels {
 				var seen bool // whether we've already stored this url for this rel
 				for _, u := range p.curData.Rels[relval] {
@@ -311,8 +318,13 @@ func (p *parser) walk(node *html.Node) {
 				}
 			}
 			if _, ok := curItem.Properties["photo"]; !ok {
-				photo := getImpliedPhoto(node, p.base)
-				if photo != "" {
+				photo, alt := getImpliedPhoto(node, p.base)
+				if alt != "" {
+					curItem.Properties["photo"] = append(curItem.Properties["photo"], map[string]string{
+						"alt":   alt,
+						"value": photo,
+					})
+				} else if photo != "" {
 					curItem.Properties["photo"] = append(curItem.Properties["photo"], photo)
 				}
 			}
@@ -349,7 +361,7 @@ func (p *parser) walk(node *html.Node) {
 			prefix, name := parts[0], parts[1]
 
 			var value, embedValue *string
-			var htmlbody string
+			var propData = make(map[string]string)
 			switch prefix {
 			case "p":
 				if p.curItem != nil {
@@ -379,7 +391,15 @@ func (p *parser) walk(node *html.Node) {
 				if value == nil && isAtom(node, atom.A, atom.Area, atom.Link) {
 					value = getAttrPtr(node, "href")
 				}
-				if value == nil && isAtom(node, atom.Img, atom.Audio, atom.Video, atom.Source) {
+				if value == nil && isAtom(node, atom.Img) {
+					value = getAttrPtr(node, "src")
+					if !p.curItem.backcompat {
+						if alt := imageAltValue(node); alt != "" {
+							propData["alt"] = alt
+						}
+					}
+				}
+				if value == nil && isAtom(node, atom.Audio, atom.Video, atom.Source) {
 					value = getAttrPtr(node, "src")
 				}
 				if value == nil && isAtom(node, atom.Object) {
@@ -387,9 +407,6 @@ func (p *parser) walk(node *html.Node) {
 				}
 				if value == nil && isAtom(node, atom.Video) {
 					value = getAttrPtr(node, "poster")
-				}
-				if value != nil {
-					*value = expandURL(*value, p.base)
 				}
 				if value == nil {
 					value = getValueClassPattern(node)
@@ -403,6 +420,9 @@ func (p *parser) walk(node *html.Node) {
 				if value == nil {
 					value = new(string)
 					*value = strings.TrimSpace(getTextContent(node, nil))
+				}
+				if value != nil {
+					*value = strings.TrimSpace(expandURL(*value, p.base))
 				}
 				if curItem != nil && p.curItem != nil {
 					embedValue = getFirstPropValue(curItem, "url")
@@ -424,13 +444,14 @@ func (p *parser) walk(node *html.Node) {
 					p.expandAttrURLs(c) // microformats/microformats2-parsing#38
 					html.Render(&buf, c)
 				}
-				htmlbody = strings.TrimSpace(buf.String())
+				htmlbody := strings.TrimSpace(buf.String())
 
 				// HTML spec: Serializing HTML Fragments algorithm does not include
 				// a trailing slash, so remove it.  Nor should apostrophes be
 				// encoded, which golang.org/x/net/html is doing.
 				htmlbody = strings.Replace(htmlbody, `/>`, `>`, -1)
 				htmlbody = strings.Replace(htmlbody, `&#39;`, `'`, -1)
+				propData["html"] = htmlbody
 			case "dt":
 				if value == nil {
 					value = getDateTimeValue(node)
@@ -454,16 +475,18 @@ func (p *parser) walk(node *html.Node) {
 					embedValue = value
 				}
 				p.curItem.Properties[name] = append(p.curItem.Properties[name], &Microformat{
+					ID:         curItem.ID,
 					Type:       curItem.Type,
 					Properties: curItem.Properties,
 					Coords:     curItem.Coords,
 					Shape:      curItem.Shape,
 					Value:      *embedValue,
-					HTML:       htmlbody,
+					HTML:       propData["html"],
 				})
 			} else if value != nil && p.curItem != nil {
-				if htmlbody != "" {
-					p.curItem.Properties[name] = append(p.curItem.Properties[name], map[string]interface{}{"value": *value, "html": htmlbody})
+				if len(propData) > 0 {
+					propData["value"] = *value
+					p.curItem.Properties[name] = append(p.curItem.Properties[name], propData)
 				} else {
 					p.curItem.Properties[name] = append(p.curItem.Properties[name], *value)
 				}
@@ -480,7 +503,7 @@ func (p *parser) walk(node *html.Node) {
 // getClasses returns all of the classes on node.
 func getClasses(node *html.Node) []string {
 	if c := getAttrPtr(node, "class"); c != nil {
-		return strings.Split(*c, " ")
+		return strings.Fields(*c)
 	}
 	return nil
 }
@@ -539,7 +562,7 @@ func getTextContent(node *html.Node, imgFn func(*html.Node) string) string {
 	if node == nil {
 		return ""
 	}
-	if isAtom(node, atom.Script, atom.Style) {
+	if isAtom(node, atom.Script, atom.Style, atom.Template) {
 		return ""
 	}
 	if isAtom(node, atom.Img) && imgFn != nil {
@@ -697,13 +720,14 @@ func getImpliedName(node *html.Node) string {
 	return strings.TrimSpace(*name)
 }
 
-// getImpliedName gets the implied photo value for node.
+// getImpliedPhoto gets the implied photo value for node.
 //
 // See http://microformats.org/wiki/microformats2-parsing
-func getImpliedPhoto(node *html.Node, baseURL *url.URL) string {
+func getImpliedPhoto(node *html.Node, baseURL *url.URL) (src, alt string) {
 	var photo *string
 	if photo == nil && isAtom(node, atom.Img) {
 		photo = getAttrPtr(node, "src")
+		alt = getAttr(node, "alt")
 	}
 	if photo == nil && isAtom(node, atom.Object) {
 		photo = getAttrPtr(node, "data")
@@ -713,6 +737,7 @@ func getImpliedPhoto(node *html.Node, baseURL *url.URL) string {
 		subnode := getOnlyChildAtomWithAttr(node, atom.Img, "src")
 		if subnode != nil && !hasMatchingClass(subnode, rootClassNames) {
 			photo = getAttrPtr(subnode, "src")
+			alt = getAttr(subnode, "alt")
 		}
 	}
 	if photo == nil {
@@ -728,6 +753,7 @@ func getImpliedPhoto(node *html.Node, baseURL *url.URL) string {
 			subsubnode := getOnlyChildAtomWithAttr(subnode, atom.Img, "src")
 			if subsubnode != nil && !hasMatchingClass(subsubnode, rootClassNames) {
 				photo = getAttrPtr(subsubnode, "src")
+				alt = getAttr(subsubnode, "alt")
 			}
 		}
 	}
@@ -742,9 +768,9 @@ func getImpliedPhoto(node *html.Node, baseURL *url.URL) string {
 	}
 
 	if photo == nil {
-		return ""
+		return "", alt
 	}
-	return expandURL(*photo, baseURL)
+	return expandURL(*photo, baseURL), alt
 }
 
 // getImpliedName gets the implied url value for node.
